@@ -98,3 +98,17 @@ def test_models_registry_roundtrip():
                                      "capabilities": ["text"]})
     models = client.get("/api/registry/models").json()
     assert any(m["modelKey"] == "qwen-test" for m in models)
+
+
+def test_auth_middleware_optional():
+    import os
+    from fastapi.testclient import TestClient as TC
+    from app.main import app
+    os.environ["WF_API_TOKEN"] = "sekret"
+    c = TC(app)
+    try:
+        assert c.get("/api/workflows").status_code == 401
+        assert c.get("/api/workflows", headers={"Authorization": "Bearer sekret"}).status_code == 200
+    finally:
+        del os.environ["WF_API_TOKEN"]
+    assert c.get("/api/workflows").status_code == 200

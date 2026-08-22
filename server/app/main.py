@@ -29,6 +29,19 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="Lightweight Workflow Kernel", version="0.1.0", lifespan=lifespan)
 
+
+@app.middleware("http")
+async def auth_middleware(request, call_next):
+    """RBAC 真鉴权（可选）：WF_API_TOKEN 设置后 /api/* 需 Bearer token。"""
+    import os
+    from fastapi.responses import JSONResponse
+    token = os.environ.get("WF_API_TOKEN", "")
+    if token and request.url.path.startswith("/api/"):
+        auth = request.headers.get("authorization", "")
+        if auth != f"Bearer {token}":
+            return JSONResponse({"detail": "未授权：缺少有效 Bearer token"}, status_code=401)
+    return await call_next(request)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],

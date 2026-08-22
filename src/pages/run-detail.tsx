@@ -45,16 +45,17 @@ import { useListQuery } from "@/hooks/use-list-query"
 import { formatDateTime } from "@/lib/time"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
 import { getRun, listExecutions } from "@/services/mock-service"
+import { realRunDetail, wfEnabled } from "@/services/wf-api"
 import type { InteractionExecution } from "@/domain/types"
 
 export default function RunDetailPage() {
   const { taskId = "", runId = "" } = useParams()
   const navigate = useNavigate()
-  const { data: run, loading, error, retry } = useAsyncData(() => getRun(runId), [runId])
+  const { data: run, loading, error, retry } = useAsyncData(() => (wfEnabled() ? realRunDetail(runId).then((r) => r.run) : getRun(runId)), [runId])
   const { params, update } = useListQuery(50)
   const filters = useMemo(() => parseListFilters(params.filters), [params.filters])
   const { data: executions, loading: execLoading } = useAsyncData(
-    () => listExecutions(runId, params),
+    () => (wfEnabled() ? realRunDetail(runId).then((r) => r.executions) : listExecutions(runId, params)),
     [runId, params.search, params.page, params.pageSize, params.filters],
   )
 

@@ -90,8 +90,9 @@ export interface NodeDefinition {
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const tok = typeof wfApiToken === "function" ? wfApiToken() : ""
   const res = await fetch(`${WF_BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(tok ? { Authorization: `Bearer ${tok}` } : {}) },
     ...init,
   })
   if (!res.ok) {
@@ -190,3 +191,46 @@ export const scheduleApi = {
 export const runRetry = (runId: string) =>
   req<{ runId: string; originRunId: string }>(`/api/runs/${runId}/retry`, { method: "POST" })
 export const runExportUrl = (runId: string) => `${WF_BASE}/api/runs/${runId}/export`
+
+/* ---------- P1：Run Detail 真 API 适配（冻结页 run-detail 复用） ---------- */
+import type { ExecutionStatus, InteractionExecution, Run, RunStatus } from "@/domain/types"
+
+const RUN_STATUS: Record<string, RunStatus> = {
+  succeeded: "SUCCESS", running: "RUNNING", queued: "PENDING",
+  failed: "FAILED", cancelled: "CANCELLED", timed_out: "FAILED",
+}
+const EX_STATUS: Record<string, ExecutionStatus> = { success: "SUCCESS", failed: "ERROR", skipped: "SKIPPED", running: "SKIPPED", pending: "SKIPPED" }
+const BC = { brand: "-", productCategory: "-", serviceType: "-", issueTopic: "-" }
+
+export async function realRunDetail(runId: string): Promise<{ run: Run; executions: { items: InteractionExecution[]; total: number; page: number; pageSize: number } }> {
+  const d = await req<Record<string, any>>(`/api/runs/${runId}`)
+  const run: Run = {
+    id: d.runId, taskId: "-", taskName: "Workflow Run",
+    status: RUN_STATUS[d.status] ?? "PENDING",
+    startedAt: d.startedAt ?? new Date().toISOString(),
+    finishedAt: d.endedAt ?? undefined,
+    duration: d.durationMs != null ? `${d.durationMs}ms` : undefined,
+    dataWindow: { start: "-", end: "-", label: "-" },
+    snapshot: {
+      agentName: "workflow", agentVersion: "-", dataAssetName: "-", dataAssetRevision: 0,
+      scope: "-", sampling: "-", runtime: "fastapi-kernel", toolVersions: [], inputMapping: [],
+    },
+    summary: {
+      input: (d.nodeRuns ?? []).length,
+      success: (d.nodeRuns ?? []).filter((n: any) => n.status === "success").length,
+      skipped: (d.nodeRuns ?? []).filter((n: any) => n.status === "skipped").length,
+      error: (d.nodeRuns ?? []).filter((n: any) => n.status === "failed").length,
+    },
+  }
+  const executions: InteractionExecution[] = (d.nodeRuns ?? []).map((n: any) => ({
+    id: n.nodeRunId, runId, interactionId: n.nodeId, agentName: n.nodeType, teamName: "-",
+    businessContext: BC, status: EX_STATUS[n.status] ?? "SKIPPED",
+    duration: n.durationMs != null ? `${n.durationMs}ms` : undefined,
+    errorType: n.error?.message, attempts: [{ no: n.attempt ?? 1, status: EX_STATUS[n.status] ?? "SKIPPED", error: n.error?.message }],
+  }))
+  return { run, executions: { items: executions, total: executions.length, page: 1, pageSize: 50 } }
+}
+
+export const wfApiToken = () =>
+  (typeof localStorage !== "undefined" && localStorage.getItem("wf_api_token")) ||
+  (import.meta as any).env?.VITE_WF_API_TOKEN || ""
