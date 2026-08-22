@@ -1,5 +1,8 @@
 /** Models 管理页：Provider + 模型 CRUD（真实 LLM 联调入口）。 */
 import { useEffect, useState } from "react"
+import { useListQuery } from "@/hooks/use-list-query"
+import { Pagination } from "@/components/app/pagination"
+import { pagedApi } from "@/services/wf-api"
 import { Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -43,11 +46,15 @@ export default function WfModelsPage() {
   const [mKey, setMKey] = useState("")
   const [mProv, setMProv] = useState("")
 
+  const { params, update } = useListQuery(12)
+  const [total, setTotal] = useState(0)
   const load = () => {
-    api<Provider[]>("/api/model-providers").then(setProviders).catch(() => undefined)
-    api<ModelRow[]>("/api/registry/models").then(setModels).catch(() => undefined)
+    pagedApi.providers({ page: 1, pageSize: 50 }).then((r) => setProviders(r.items as Provider[])).catch(() => undefined)
+    pagedApi.models({ page: params.page, pageSize: params.pageSize }).then((r) => {
+      setModels(r.items as ModelRow[]); setTotal(r.total)
+    }).catch(() => undefined)
   }
-  useEffect(load, [])
+  useEffect(() => { load() }, [params.page, params.pageSize])
 
   return (
     <PageContainer wide className="space-y-4">
@@ -89,6 +96,8 @@ export default function WfModelsPage() {
           </div>
         ))}
       </div>
+      <Pagination page={params.page ?? 1} pageSize={params.pageSize ?? 12} total={total}
+        pageSizeOptions={[12, 24, 48]} onPageChange={(pg) => update({ page: pg })} onPageSizeChange={(n) => update({ pageSize: n }, true)} />
 
       <Dialog open={pOpen} onOpenChange={setPOpen}>
         <DialogContent>

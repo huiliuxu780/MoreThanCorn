@@ -1,5 +1,8 @@
 /** Agents 列表 — quickservice 复刻版（16 §8）。真 API（server/:8100）。 */
 import { useEffect, useState } from "react"
+import { useListQuery } from "@/hooks/use-list-query"
+import { Pagination } from "@/components/app/pagination"
+import { pagedApi } from "@/services/wf-api"
 import { toast } from "sonner"
 import { useNavigate } from "react-router-dom"
 import { ChevronDown, Plus, Search , Trash2 } from "lucide-react"
@@ -31,8 +34,10 @@ interface AgentRow { id: string; name: string; typeLabel: string; status: string
 
 export default function WfAgentsListPage() {
   const navigate = useNavigate()
-  const [search, setSearch] = useState("")
+  const { params, update } = useListQuery(12)
+  const search = params.search ?? ""
   const [rows, setRows] = useState<AgentRow[]>([])
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
@@ -41,9 +46,11 @@ export default function WfAgentsListPage() {
 
   const load = () => {
     setLoading(true)
-    fetch(`${WF_BASE}/api/agents`).then((r) => r.json()).then((r: AgentRow[]) => { setRows(r); setLoading(false) }).catch(() => setLoading(false))
+    pagedApi.agents({ page: params.page, pageSize: params.pageSize, search }).then((r) => {
+      setRows(r.items as AgentRow[]); setTotal(r.total); setLoading(false)
+    }).catch(() => setLoading(false))
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [params.page, params.pageSize, search])
 
   const onCreate = async () => {
     if (!name.trim()) return
@@ -68,7 +75,7 @@ export default function WfAgentsListPage() {
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-2 size-4" style={{ color: INK3 }} />
-            <Input className="h-8 w-40 rounded-md bg-white pl-7" placeholder="搜索" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input className="h-8 w-40 rounded-md bg-white pl-7" placeholder="搜索" value={search} onChange={(e) => update({ search: e.target.value || undefined }, true)} />
           </div>
           <Button variant="outline" size="sm" className="h-8 gap-1 rounded-md bg-white">按更新时间 <ChevronDown className="size-3" /></Button>
           <Button variant="outline" size="sm" className="h-8 gap-1 rounded-md bg-white">全部 <ChevronDown className="size-3" /></Button>
@@ -118,6 +125,8 @@ export default function WfAgentsListPage() {
       {!loading && filtered.length === 0 && (
         <div className="py-20 text-center text-sm" style={{ color: INK3 }}>暂无 Agent，点击"创建Agent"开始</div>
       )}
+      <Pagination page={params.page ?? 1} pageSize={params.pageSize ?? 12} total={total}
+        pageSizeOptions={[12, 24, 48]} onPageChange={(pg) => update({ page: pg })} onPageSizeChange={(n) => update({ pageSize: n }, true)} />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="rounded-xl">

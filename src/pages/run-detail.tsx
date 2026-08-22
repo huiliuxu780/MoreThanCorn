@@ -160,7 +160,7 @@ export default function RunDetailPage() {
       {/* Frozen Snapshot */}
       <div className="space-y-2">
         <SectionHeader title="Frozen Snapshot" description="Run 为不可变执行事实：冻结当次实际依赖" />
-        <div className="rounded-lg border bg-card px-4 py-2">
+        <div className="grid grid-cols-1 gap-x-6 rounded-lg border bg-card px-4 py-2 md:grid-cols-2 xl:grid-cols-3">
           <DefinitionRow label="Analysis Task">{run.taskName}</DefinitionRow>
           <DefinitionRow label="Agent + Version">{run.snapshot.agentName} · {run.snapshot.agentVersion}</DefinitionRow>
           <DefinitionRow label="Data Asset + Revision">{run.snapshot.dataAssetName} · R{run.snapshot.dataAssetRevision}</DefinitionRow>

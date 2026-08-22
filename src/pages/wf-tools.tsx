@@ -1,6 +1,8 @@
 /** Tools — 真 API + 原版 4 列紧凑卡片设计（Design Spec §15.2）。路由 /config/tools（env 门控）。 */
 import { Play, Plus, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
+import { useListQuery } from "@/hooks/use-list-query"
+import { pagedApi } from "@/services/wf-api"
 import { toast } from "sonner"
 
 import { FilterBar, SearchField } from "@/components/app/filters"
@@ -40,26 +42,26 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 export default function WfToolsPage() {
   const [all, setAll] = useState<ToolRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState("")
-  const [kind, setKind] = useState("")
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(12)
+    const [kind, setKind] = useState("")
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
   const [nkind, setNkind] = useState("builtin")
   const [spec, setSpec] = useState('{ "kind": "echo" }')
 
+  const { params, update } = useListQuery(12)
+  const search = params.search ?? ""
+  const [total, setTotal] = useState(0)
   const load = () => {
     setLoading(true)
-    api<ToolRow[]>("/api/tools").then((rows) => { setAll(rows); setLoading(false) })
-      .catch(() => setLoading(false))
+    pagedApi.tools({ page: params.page, pageSize: params.pageSize, search: params.search ?? "" }).then((r) => {
+      setAll(r.items as ToolRow[]); setTotal(r.total); setLoading(false)
+    }).catch(() => setLoading(false))
   }
-  useEffect(load, [])
+  useEffect(() => { load() }, [params.page, params.pageSize, params.search])
 
   const filtered = all
     .filter((t) => !search || t.name.toLowerCase().includes(search.toLowerCase()))
     .filter((t) => !kind || t.kind === kind)
-  const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
 
   const create = async () => {
     try {
@@ -83,8 +85,8 @@ export default function WfToolsPage() {
         actions={<Button className="bg-black text-white hover:bg-neutral-800" onClick={() => setOpen(true)}><Plus className="size-4" /> 创建 Tool</Button>}
       />
       <FilterBar>
-        <SearchField value={search} onChange={(v) => { setSearch(v); setPage(1) }} placeholder="搜索 Tool..." />
-        <select className="h-9 rounded-md border bg-transparent px-2 text-sm" value={kind} onChange={(e) => { setKind(e.target.value); setPage(1) }}>
+        <SearchField value={search} onChange={(v) => update({ search: v || undefined }, true)} placeholder="搜索 Tool..." />
+        <select className="h-9 rounded-md border bg-transparent px-2 text-sm" value={kind} onChange={(e) => { setKind(e.target.value); update({ page: 1 }) }}>
           <option value="">全部类型</option>
           <option value="builtin">builtin</option>
           <option value="http">http</option>
@@ -93,13 +95,13 @@ export default function WfToolsPage() {
 
       {loading ? (
         <CardGridSkeleton count={8} />
-      ) : paged.length === 0 ? (
-        search || kind ? <FilteredEmptyState onClear={() => { setSearch(""); setKind(""); setPage(1) }} />
+      ) : filtered.length === 0 ? (
+        search || kind ? <FilteredEmptyState onClear={() => { update({ search: undefined, page: 1 }, true); setKind("") }} />
           : <EmptyState title="暂无 Tool" description="创建第一个 API Tool，连接企业能力" />
       ) : (
         <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {paged.map((tool) => (
+            {filtered.map((tool) => (
               <div key={tool.id} className="group flex h-40 flex-col rounded-lg border bg-card p-3.5 hover:border-muted-foreground/40">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -139,8 +141,8 @@ export default function WfToolsPage() {
               </div>
             ))}
           </div>
-          <Pagination page={page} pageSize={pageSize} total={filtered.length}
-            pageSizeOptions={[12, 24, 48]} onPageChange={setPage} onPageSizeChange={(n) => { setPageSize(n); setPage(1) }} />
+          <Pagination page={params.page ?? 1} pageSize={params.pageSize ?? 12} total={total}
+            pageSizeOptions={[12, 24, 48]} onPageChange={(pg) => update({ page: pg })} onPageSizeChange={(n) => update({ pageSize: n }, true)} />
         </>
       )}
 

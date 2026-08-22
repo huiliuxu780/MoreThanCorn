@@ -231,6 +231,20 @@ export async function realRunDetail(runId: string): Promise<{ run: Run; executio
   return { run, executions: { items: executions, total: executions.length, page: 1, pageSize: 50 } }
 }
 
+export interface Paged<T> { items: T[]; total: number; page: number; pageSize: number }
+export const pagedApi = {
+  agents: (p: { page?: number; pageSize?: number; search?: string }) =>
+    req<Paged<Record<string, any>>>(`/api/agents?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}&search=${encodeURIComponent(p.search ?? "")}`),
+  tools: (p: { page?: number; pageSize?: number; search?: string }) =>
+    req<Paged<Record<string, any>>>(`/api/tools?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}&search=${encodeURIComponent(p.search ?? "")}`),
+  connections: (p: { page?: number; pageSize?: number; search?: string }) =>
+    req<Paged<Record<string, any>>>(`/api/connections?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}&search=${encodeURIComponent(p.search ?? "")}`),
+  models: (p: { page?: number; pageSize?: number }) =>
+    req<Paged<Record<string, any>>>(`/api/registry/models?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}`),
+  providers: (p: { page?: number; pageSize?: number }) =>
+    req<Paged<Record<string, any>>>(`/api/model-providers?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}`),
+}
+
 export const wfApiToken = () =>
   (typeof localStorage !== "undefined" && localStorage.getItem("wf_api_token")) ||
   (import.meta as any).env?.VITE_WF_API_TOKEN || ""

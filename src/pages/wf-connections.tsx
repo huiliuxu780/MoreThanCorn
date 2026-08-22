@@ -1,6 +1,9 @@
 /** Connections — 真 API + 卡片网格设计。路由 /settings/connections（env 门控）。 */
 import { KeyRound, Plus, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
+import { useListQuery } from "@/hooks/use-list-query"
+import { Pagination } from "@/components/app/pagination"
+import { pagedApi } from "@/services/wf-api"
 import { toast } from "sonner"
 
 import { FilterBar, SearchField } from "@/components/app/filters"
@@ -38,11 +41,15 @@ export default function WfConnectionsPage() {
   const [name, setName] = useState("")
   const [secret, setSecret] = useState("")
 
+  const { params, update } = useListQuery(12)
+  const [total, setTotal] = useState(0)
   const load = () => {
     setLoading(true)
-    api<ConnRow[]>("/api/connections").then((r) => { setRows(r); setLoading(false) }).catch(() => setLoading(false))
+    pagedApi.connections({ page: params.page, pageSize: params.pageSize, search: params.search ?? "" }).then((r) => {
+      setRows(r.items as ConnRow[]); setTotal(r.total); setLoading(false)
+    }).catch(() => setLoading(false))
   }
-  useEffect(load, [])
+  useEffect(() => { load() }, [params.page, params.pageSize, params.search])
 
   const filtered = rows.filter((c) => !search || c.name.toLowerCase().includes(search.toLowerCase()))
 
@@ -103,6 +110,8 @@ export default function WfConnectionsPage() {
         </div>
       )}
 
+      <Pagination page={params.page ?? 1} pageSize={params.pageSize ?? 12} total={total}
+        pageSizeOptions={[12, 24, 48]} onPageChange={(pg) => update({ page: pg })} onPageSizeChange={(n) => update({ pageSize: n }, true)} />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>创建连接</DialogTitle></DialogHeader>

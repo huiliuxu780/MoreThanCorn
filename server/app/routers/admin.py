@@ -39,9 +39,15 @@ def create_connection(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.get("/api/connections")
-def list_connections(db: Session = Depends(get_db)):
-    return [{"id": c.id, "name": c.name, "kind": c.kind, "status": c.status,
-             "providerHint": c.provider_hint} for c in db.query(Connection).all()]
+def list_connections(page: int = 1, pageSize: int = 20, search: str = "", db: Session = Depends(get_db)):
+    q = db.query(Connection)
+    if search:
+        q = q.filter(Connection.name.ilike(f"%{search}%"))
+    total = q.count()
+    rows = q.offset((page - 1) * pageSize).limit(pageSize).all()
+    return {"items": [{"id": c.id, "name": c.name, "kind": c.kind, "status": c.status,
+                       "providerHint": c.provider_hint} for c in rows],
+            "total": total, "page": page, "pageSize": pageSize}
 
 
 @router.post("/api/connections/{cid}/test")
@@ -69,9 +75,13 @@ def delete_connection(cid: str, db: Session = Depends(get_db)):
 # ---------- Models / Providers ----------
 
 @router.get("/api/model-providers")
-def list_providers(db: Session = Depends(get_db)):
-    return [{"id": p.id, "name": p.name, "baseUrl": p.base_url, "connectionId": p.auth_connection_id}
-            for p in db.query(ModelProvider).all()]
+def list_providers(page: int = 1, pageSize: int = 20, db: Session = Depends(get_db)):
+    q = db.query(ModelProvider)
+    total = q.count()
+    rows = q.offset((page - 1) * pageSize).limit(pageSize).all()
+    return {"items": [{"id": p.id, "name": p.name, "baseUrl": p.base_url, "connectionId": p.auth_connection_id}
+                      for p in rows],
+            "total": total, "page": page, "pageSize": pageSize}
 
 
 @router.post("/api/model-providers", status_code=201)
@@ -121,15 +131,19 @@ def create_tool(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.get("/api/tools")
-def list_tools(db: Session = Depends(get_db)):
+def list_tools(page: int = 1, pageSize: int = 20, search: str = "", db: Session = Depends(get_db)):
+    q = db.query(Tool)
+    if search:
+        q = q.filter(Tool.name.ilike(f"%{search}%"))
+    total = q.count()
     out = []
-    for t in db.query(Tool).all():
+    for t in q.order_by(Tool.created_at.desc()).offset((page - 1) * pageSize).limit(pageSize).all():
         vs = db.query(ToolVersion).filter_by(tool_id=t.id).order_by(ToolVersion.version_no.desc()).all()
         out.append({"id": t.id, "name": t.name, "kind": t.kind, "status": t.status,
                     "connectionId": t.connection_id, "description": t.description or "",
                     "updatedAt": t.created_at.isoformat(),
                     "versions": [{"version": v.version_no, "status": v.status} for v in vs]})
-    return out
+    return {"items": out, "total": total, "page": page, "pageSize": pageSize}
 
 
 @router.put("/api/tools/{tid}")
