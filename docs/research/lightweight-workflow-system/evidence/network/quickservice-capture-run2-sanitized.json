@@ -1,0 +1,3543 @@
+{
+ "capturedAt": "2026-08-21T14:03:47.156Z",
+ "total": 40,
+ "steps": [
+  {
+   "t": 298,
+   "step": "new-tab",
+   "info": "CE6EDCBA276932FC28BB9A7A9D79F860"
+  },
+  {
+   "t": 85196,
+   "step": "shot",
+   "info": "plan-page"
+  },
+  {
+   "t": 86459,
+   "step": "plan-input",
+   "info": "undefined"
+  },
+  {
+   "t": 98610,
+   "step": "shot",
+   "info": "plan-run-1"
+  },
+  {
+   "t": 110702,
+   "step": "shot",
+   "info": "plan-run-2"
+  }
+ ],
+ "entries": [
+  {
+   "dt": 11697,
+   "method": "GET",
+   "url": "https://xspace.quickservice.lydaas.com/jsonp/commonLoginByXspace?xpScene=xixikf&xpToken=a5f4a0417f094451be130c651ffa8602&xpServicerId=1205440079&buId=25052416228933&callback=__jp0",
+   "type": "Script",
+   "status": 200,
+   "mimeType": "application/javascript"
+  },
+  {
+   "dt": 11701,
+   "method": "POST",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.xixi.base.graphql/1.0/?operationName=RuntimeSettings&operationType=query&appKey=4272&t=1787320926182&sign=d9a617c169eb657d4eeab5d0c19da3a7&type=originaljson&api=mopen.xixi.base.graphql&v=1.0&dataType=json",
+   "postData": "data=%7B%22request%22%3A%7B%22query%22%3A%22%5Cn%20%20%20%20query%20RuntimeSettings(%24input%3A%20BARuntimeSettingInput!)%20%7B%5Cn%20%20runtimeSettings(input%3A%20%24input)%20%7B%5Cn%20%20%20%20name%5Cn%20%20%20%20ownerKey%5Cn%20%20%20%20ownerType%5Cn%20%20%20%20value%5Cn%20%20%7D%5Cn%7D%5Cn%20%20%20%20%22%2C%22variables%22%3A%7B%22input%22%3A%7B%22apps%22%3A%5B%22com.xixikf.workbench.ShellApp%22%5D%2C%22extensions%22%3A%5B%5D%7D%7D%7D%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "api": "mopen.xixi.base.graphql",
+    "v": "1.0",
+    "ret": [
+     "SUCCESS::接口调用成功"
+    ],
+    "success": true,
+    "errorCode": null,
+    "errorMessage": null,
+    "data": {
+     "runtimeSettings": [
+      {
+       "name": "com.xixikf.workbench.ShellApp.Nickname",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.phoneNumber",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.shortParse",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/antelope-short-phrase/antelope-short-phrase"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.avatar",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": null
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.WorkbenchConfig",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "custom_content",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.online.workOrder.createSettings",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.hotline.workOrder.createSettings",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.online.browser.remind",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.Member",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": null
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.CategoryManage",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": null
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.PluginManage",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": null
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.AppManage",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": null
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.CustomerService",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/person-manager/yun-bss-organization.PersonManager"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.SkillGroup",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/group-manager/yun-bss-organization.GroupManager"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.yunRoleManage",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/antelope-bss-role/antelope-bss-role"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.yunSmsTemplate",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/sms-template/sms-template"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.yunCaseConfig",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/antelope-case-configuration/antelope-case-configuration"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.yunCaseView",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/antelope-case-view-configuration/antelope-case-view-configuration"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.yunCaseAutoRule",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/antelope-automation-rule-setting/antelope-automation-rule-setting"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.yunCaseSetting",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/antelope-case-search-setting/antelope-case-search-setting"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.yunCaseVisitor",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/visitor-ticket/visitor-ticket"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.DingNickname",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://{tenantId}.service.xixikf.com/personal-settings/200104029/200106017"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.hotlinePersonManage",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.qualificationManagement",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://account.aliyun.com/login/third_party_bind_login.htm?type=dingtalk_app&oauth_callback=https%3A%2F%2Fdyvms.console.aliyun.com%2Fqualification%2Fcommon%3Ffrom%3Dding&isMobile=true&oauthScene=dingOauth2&corpId=${corpId}"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.applicationNumber",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://account.aliyun.com/login/third_party_bind_login.htm?type=dingtalk_app&oauth_callback=https%3A%2F%2Fdyvmsnext.console.aliyun.com%2Fservice%2Flist&isMobile=true&oauthScene=dingOauth2&corpId=${corpId}"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.orderManage",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": null
+      },
+      {
+       "name": "framework.appname.potential-customer-tag",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/potential-customer-tag/potential-customer-tag"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.systemPhraseSetting",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true&tenant=true#/yun-bss/remote/antelope-short-phrase/antelope-short-phrase"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.member-intergration",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://signin.xixikf.com/index.htm?redirect_url=http%3A%2F%2Fdeveloper.xixikf.com%2Fconsole.htm"
+      },
+      {
+       "name": "com.xixikf.hotline.desk.HotlineDeskApp.PSTNOfflineSetting",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://{tenantId}.service.xixikf.com/personal-settings/200138033/200164001"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.ServiceAssistant",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.DataPermissions",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.Organizational",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.VisibleWorkOrder",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.BlackListInline",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.SatisfactionEvaluation",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.OperationLog",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.TicketDistribution",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.MemberAssistanceSetting",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.case.customDataSources",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.VideoAppointmentBoard",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.ChannelTransferConfig",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.customizeAppPermis",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.tenantCustomConfig",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      }
+     ],
+     "traceId": "c0a8209417873209263065803d0088"
+    },
+    "ext": {
+     "traceId": "c0a8209417873209263065803d0088",
+     "unitType": "aliyun",
+     "cluster": "one",
+     "api": "mopen.xixi.base.graphql_RuntimeSettings",
+     "requestId": null
+    }
+   }
+  },
+  {
+   "dt": 11714,
+   "method": "POST",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.xixi.connected.graphql/1.0/?operationName=OpenConnection&operationType=mutation&appKey=4272&t=1787320926404&sign=d6f3852807004607a6bbc507eb326fdc&type=originaljson&api=mopen.xixi.connected.graphql&v=1.0&dataType=json",
+   "postData": "data=%7B%22request%22%3A%7B%22query%22%3A%22%5Cn%20%20%20%20mutation%20OpenConnection(%24request%3A%20OpenConnectionRequest!)%20%7B%5Cn%20%20openConnection(request%3A%20%24request)%20%7B%5Cn%20%20%20%20url%5Cn%20%20%20%20heartbeatInterval%5Cn%20%20%7D%5Cn%7D%5Cn%20%20%20%20%22%2C%22variables%22%3A%7B%22request%22%3A%7B%22appName%22%3A%22xixikf%22%2C%22clientType%22%3A%22PC%22%2C%22userType%22%3A%222%22%2C%22tenantId%22%3A%2225052416228933%22%7D%7D%7D%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "api": "mopen.xixi.connected.graphql",
+    "v": "1.0",
+    "ret": [
+     "SUCCESS::接口调用成功"
+    ],
+    "success": true,
+    "errorCode": null,
+    "errorMessage": null,
+    "data": {
+     "openConnection": {
+      "url": "wss://connected3.quickservice.lydaas.com/ws?userType=2&userId=1205440079&appName=xixikf&clientType=PC&timestamp=1787320926655&xcode=holhjp9cLwOVDy-RT3PQ8F62nLM&xsp_tenantid=25052416228933",
+      "heartbeatInterval": 6
+     },
+     "traceId": "c0a820fb17873209266205582d0088"
+    },
+    "ext": {
+     "traceId": "c0a820fb17873209266205582d0088",
+     "unitType": "aliyun",
+     "cluster": "one",
+     "api": "mopen.xixi.connected.graphql_OpenConnection",
+     "requestId": null
+    }
+   }
+  },
+  {
+   "dt": 11716,
+   "method": "POST",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.xixi.base.graphql/1.0/?operationName=RuntimeSettings&operationType=query&appKey=4272&t=1787320926405&sign=7456decf3b5a20551840dc0cd7718077&type=originaljson&api=mopen.xixi.base.graphql&v=1.0&dataType=json",
+   "postData": "data=%7B%22request%22%3A%7B%22query%22%3A%22%5Cn%20%20%20%20query%20RuntimeSettings(%24input%3A%20BARuntimeSettingInput!)%20%7B%5Cn%20%20runtimeSettings(input%3A%20%24input)%20%7B%5Cn%20%20%20%20name%5Cn%20%20%20%20ownerKey%5Cn%20%20%20%20ownerType%5Cn%20%20%20%20value%5Cn%20%20%7D%5Cn%7D%5Cn%20%20%20%20%22%2C%22variables%22%3A%7B%22input%22%3A%7B%22apps%22%3A%5B%22com.xixikf.workbench.ShellApp%22%5D%2C%22extensions%22%3A%5B%5D%7D%7D%7D%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "api": "mopen.xixi.base.graphql",
+    "v": "1.0",
+    "ret": [
+     "SUCCESS::接口调用成功"
+    ],
+    "success": true,
+    "errorCode": null,
+    "errorMessage": null,
+    "data": {
+     "runtimeSettings": [
+      {
+       "name": "com.xixikf.workbench.ShellApp.Nickname",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.phoneNumber",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.shortParse",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/antelope-short-phrase/antelope-short-phrase"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.avatar",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": null
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.WorkbenchConfig",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "custom_content",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.online.workOrder.createSettings",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.hotline.workOrder.createSettings",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.online.browser.remind",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.Member",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": null
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.CategoryManage",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": null
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.PluginManage",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": null
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.AppManage",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": null
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.CustomerService",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/person-manager/yun-bss-organization.PersonManager"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.SkillGroup",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/group-manager/yun-bss-organization.GroupManager"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.yunRoleManage",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/antelope-bss-role/antelope-bss-role"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.yunSmsTemplate",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/sms-template/sms-template"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.yunCaseConfig",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/antelope-case-configuration/antelope-case-configuration"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.yunCaseView",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/antelope-case-view-configuration/antelope-case-view-configuration"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.yunCaseAutoRule",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/antelope-automation-rule-setting/antelope-automation-rule-setting"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.yunCaseSetting",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/antelope-case-search-setting/antelope-case-search-setting"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.yunCaseVisitor",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/visitor-ticket/visitor-ticket"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.DingNickname",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://{tenantId}.service.xixikf.com/personal-settings/200104029/200106017"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.hotlinePersonManage",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.qualificationManagement",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://account.aliyun.com/login/third_party_bind_login.htm?type=dingtalk_app&oauth_callback=https%3A%2F%2Fdyvms.console.aliyun.com%2Fqualification%2Fcommon%3Ffrom%3Dding&isMobile=true&oauthScene=dingOauth2&corpId=${corpId}"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.applicationNumber",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://account.aliyun.com/login/third_party_bind_login.htm?type=dingtalk_app&oauth_callback=https%3A%2F%2Fdyvmsnext.console.aliyun.com%2Fservice%2Flist&isMobile=true&oauthScene=dingOauth2&corpId=${corpId}"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.orderManage",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": null
+      },
+      {
+       "name": "framework.appname.potential-customer-tag",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true#/yun-bss/remote/potential-customer-tag/potential-customer-tag"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.systemPhraseSetting",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://xspace.xixikf.com/yun.htm?page=yun-bss&hideMenu=true&tenant=true#/yun-bss/remote/antelope-short-phrase/antelope-short-phrase"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.member-intergration",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://signin.xixikf.com/index.htm?redirect_url=http%3A%2F%2Fdeveloper.xixikf.com%2Fconsole.htm"
+      },
+      {
+       "name": "com.xixikf.hotline.desk.HotlineDeskApp.PSTNOfflineSetting",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": "https://{tenantId}.service.xixikf.com/personal-settings/200138033/200164001"
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.ServiceAssistant",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.DataPermissions",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.Organizational",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.VisibleWorkOrder",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.BlackListInline",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.SatisfactionEvaluation",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.OperationLog",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.TicketDistribution",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.MemberAssistanceSetting",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.case.customDataSources",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.VideoAppointmentBoard",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.ChannelTransferConfig",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.customizeAppPermis",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      },
+      {
+       "name": "com.xixikf.workbench.ShellApp.tenantCustomConfig",
+       "ownerKey": "com.xixikf.workbench.ShellApp",
+       "ownerType": "application",
+       "value": ""
+      }
+     ],
+     "traceId": "c0a8210217873209266433350d0087"
+    },
+    "ext": {
+     "traceId": "c0a8210217873209266433350d0087",
+     "unitType": "aliyun",
+     "cluster": "one",
+     "api": "mopen.xixi.base.graphql_RuntimeSettings",
+     "requestId": null
+    }
+   }
+  },
+  {
+   "dt": 11740,
+   "method": "GET",
+   "url": "blob:https://config.quickservice.lydaas.com/e5a8dc47-eb39-4b2d-bd12-d841b279c742",
+   "type": "Script"
+  },
+  {
+   "dt": 12125,
+   "method": "GET",
+   "url": "https://config.quickservice.lydaas.com/base/user-tenants",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "data": [
+     {
+      "idpAccountId": "3577ab55a692458db2726c4fb6d9a780",
+      "idpAccountName": "1**********",
+      "tenantId": 25052416228933,
+      "tenantName": "BSH Agent",
+      "tenantUrl": "25052416228933.quickservice.lydaas.com"
+     }
+    ],
+    "success": true
+   }
+  },
+  {
+   "dt": 12126,
+   "method": "GET",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.xspace.opscommodityorderreadservice.selectpermissiontreebyappcodes/1.0/?appKey=4272&t=1787320928208&sign=e725085c64cfc1488c4ffd496c0610bd&api=mopen.xspace.OpsCommodityOrderReadService.selectPermissionTreeByAppCodes&v=1.0&type=jsonp&dataType=jsonp&timeout=20000&jsonpIncPrefix=kfzs&callback=mtopjsonpkfzs1&data=%7B%22prodLineId%22%3A10552599%2C%22bizType%22%3A%22xp_commerce_aliyun%22%2C%22appCodes%22%3A%5B%22com.xixikf.imdesk.IMDeskApp%22%2C%22com.xixikf.ticket.TicketCenterApp%22%5D%7D",
+   "type": "Script",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": " mtopjsonpkfzs1({\"api\":\"mopen.xspace.opscommodityorderreadservice.selectpermissiontreebyappcodes\",\"v\":\"1.0\",\"ret\":[\"SUCCESS::接口调用成功\"],\"success\":true,\"errorCode\":null,\"errorMessage\":null,\"data\":{\"result\":[{\"gmtModified\":null,\"code\":\"xspace.permission.IMDeskPage\",\"platformType\":0,\"orderNum\":null,\"description\":\"在线工作台【页面】\",\"pid\":300009003,\"appCode\":\"com.xixikf.imdesk.IMDeskApp\",\"type\":\"MENU\",\"platform\":0,\"rootNode\":false,\"isOnlyPreEnv\":null,\"children\":null,\"dataResourceConfigs\":null,\"serviceIntlTitleCode\":\"permission.xspace.permission.IMDeskPage\",\"id\":null,\"class\":\"com.taobao.xspace.ops.dto.XspacePermisionDO\",\"buId\":null,\"ext\":null,\"permisionId\":200044128,\"isAppNode\":null,\"isActivated\":true,\"gmtCreate\":null,\"url\":null,\"modifyServicerId\":null,\"createServicerId\":null,\"name\":\"在线工作台【页面】\",\"outerId\":null,\"dataResourceTypes\":null},{\"gmtModified\":null,\"code\":\"xspace.permission.onlyForward\",\"platformType\":0,\"orderNum\":null,\"description\":\"上下班-仅转交【按钮】\",\"pid\":300009003,\"appCode\":\"com.xixikf.imdesk.IMDeskApp\",\"type\":\"MENU\",\"platform\":0,\"rootNode\":false,\"isOnlyPreEnv\":null,\"children\":null,\"dataResourceConfigs\":null,\"serviceIntlTitleCode\":\"permission.xspace.permission.onlyForward\",\"id\":null,\"class\":\"com.taobao.xspace.ops.dto.XspacePermisionDO\",\"buId\":null,\"ext\":null,\"permisionId\":200044130,\"isAppNode\":null,\"isActivated\":true,\"gmtCreate\":null,\"url\":null,\"modifyServicerId\":null,\"createServicerId\":null,\"name\":\"上下班-仅转交【按钮】\",\"outerId\":null,\"dataResourceTypes\":null},{\"gmtModified\":null,\"code\":\"xspace.permission.online.batchCommuting\",\"platformType\":0,\"orderNum\":null,\"description\":\"批量上下班【按钮】\",\"pid\":300009003,\"appCode\":\"com.xixikf.imdesk.IMDeskApp\",\"type\":\"ACL\",\"platform\":0,\"rootNode\":false,\"isOnlyPreEnv\":null,\"children\":null,\"dataResourceConfigs\":null,\"serviceIntlTitleCode\":\"permission.xspace.permission.online.batchCommuting\",\"id\":null,\"class\":\"com.taobao.xspace.ops.dto.XspacePermisionDO\",\"buId\":null,\"ext\":null,\"permisionId\":200044129,\"isAppNode\":null,\"isActivated\":true,\"gmtCreate\":null,\"url\":null,\"modifyServicerId\":null,\"createServicerId\":null,\"name\":\"批量上下班【按钮】\",\"outerId\":null,\"dataResourceTypes\":null},{\"gmtModified\":null,\"code\":\"com.xixikf.ticket.TicketCenterApp.page\",\"platformType\":0,\"orderNum\":null,\"description\":\"工单中心【页面】\",\"pid\":300009005,\"appCode\":\"com.xixikf.ticket.TicketCenterApp\",\"type\":\"MENU\",\"platform\":0,\"rootNode\":false,\"isOnlyPreEnv\":null,\"children\":null,\"dataResourceConfigs\":null,\"serviceIntlTitleCode\":\"permission.com.xixikf.ticket.TicketCenterApp.page\",\"id\":null,\"class\":\"com.taobao.xspace.ops.dto.XspacePermisionDO\",\"buId\":null,\"ext\":null,\"permisionId\":300009104,\"isAppNode\":null,\"isActivated\":true,\"gmtCreate\":null,\"url\":null,\"modifyServicerId\":null,\"createServicerId\":null,\"name\":\"工单中心【页面】\",\"outerId\":null,\"dataResourceTypes\":null},{\"gmtModified\":null,\"code\":\"xspace.permission.batchApplication\",\"platformType\":0,\"orderNum\":null,\"description\":\"批量申领【按钮】\",\"pid\":300009005,\"appCode\":\"com.xixikf.ticket.TicketCenterApp\",\"type\":\"ACL\",\"platform\":0,\"rootNode\":false,\"isOnlyPreEnv\":null,\"children\":null,\"dataResourceConfigs\":null,\"serviceIntlTitleCode\":\"permission.xspace.permission.batchApplication\",\"id\":null,\"class\":\"com.taobao.xspace.ops.dto.XspacePermisionDO\",\"buId\":null,\"ext\":null,\"permisionId\":300009100,\"isAppNode\":null,\"isActivated\":true,\"gmtCreate\":null,\"url\":null,\"modifyServicerId\":null,\"createServicerId\":null,\"name\":\"批量申领【按钮】\",\"outerId\":null,\"dataResourceTypes\":null},{\"gmtModified\":null,\"code\":\"xspace.permission.batchCompletion\",\"platformType\":0,\"orderNum\":null,\"description\":\"批量完结【按钮】\",\"pid\":300009005,\"appCode\":\"com.xixikf.ticket.TicketCenterApp\",\"type\":\"ACL\",\"platform\":0,\"rootNode\":false,\"isOnlyPreEnv\":null,\"children\":null,\"dataResourceConfigs\":null,\"serviceIntlTitleCode\":\"permission.xspace.permission.batchCompletion\",\"id\":null,\"class\":\"com.taobao.xspace.ops.dto.XspacePermisionDO\",\"buId\":null,\"ext\":null,\"permisionId\":300009101,\"isAppNode\":null,\"isActivated\":true,\"gmtCreate\":null,\"url\":null,\"modifyServicerId\":null,\"createServicerId\":null,\"name\":\"批量完结【按钮】\",\"outerId\":null,\"dataResourceTypes\":null},{\"gmtModified\":null,\"code\":\"xspace.permission.batchTransfer\",\"platformType\":0,\"orderNum\":null,\"description\":\"批量转交【按钮】\",\"pid\":300009005,\"appCode\":\"com.xixikf.ticket.TicketCenterApp\",\"type\":\"ACL\",\"platform\":0,\"rootNode\":false,\"isOnlyPreEnv\":null,\"children\":null,\"dataResourceConfigs\":null,\"serviceIntlTitleCode\":\"permission.xspace.permission.batchTransfer\",\"id\":null,\"class\":\"com.taobao.xspace.ops.dto.XspacePermisionDO\",\"buId\":null,\"ext\":null,\"permisionId\":300009102,\"isAppNode\":null,\"isActivated\":true,\"gmtCreate\":null,\"url\":null,\"modifyServicerId\":null,\"createServicerId\":null,\"name\":\"批量转交【按钮】\",\"outerId\":null,\"dataResourceTypes\":null},{\"gmtModified\":null,\"code\":\"xspace.permission.batchRemarks\",\"platformType\":0,\"orderNum\":null,\"description\":\"批量备注【按钮】\",\"pid\":300009005,\"appCode\":\"com.xixikf.ticket.TicketCenterApp\",\"type\":\"ACL\",\"platform\":0,\"rootNode\":false,\"isOnlyPreEnv\":null,\"children\":null,\"dataResourceConfigs\":null,\"serviceIntlTitleCode\":\"permission.xspace.permission.batchRemarks\",\"id\":null,\"class\":\"com.taobao.xspace.ops.dto.XspacePermisionDO\",\"buId\":null,\"ext\":null,\"permisionId\":300009103,\"isAppNode\":null,\"isActivated\":true,\"gmtCreate\":null,\"url\":null,\"modifyServicerId\":null,\"createServicerId\":null,\"name\":\"批量备注【按钮】\",\"outerId\":null,\"dataResourceTypes\":null},{\"gmtModified\":null,\"code\":\"xspace.permission.customActivity\",\"platformType\":0,\"orderNum\":null,\"description\":\"自定义活动【按钮】\",\"pid\":300009005,\"appCode\":\"com.xixikf.ticket.TicketCenterApp\",\"type\":\"ACL\",\"platform\":0,\"rootNode\":false,\"isOnlyPreEnv\":null,\"children\":null,\"dataResourceConfigs\":null,\"serviceIntlTitleCode\":\"permission.xspace.permission.customActivity\",\"id\":null,\"class\":\"com.taobao.xspace.ops.dto.XspacePermisionDO\",\"buId\":null,\"ext\":null,\"permisionId\":300009111,\"isAppNode\":null,\"isActivated\":true,\"gmtCreate\":null,\"url\":null,\"modifyServicerId\":null,\"createServicerId\":null,\"name\":\"自定义活动【按钮】\",\"outerId\":null,\"dataResourceTypes\":null},{\"gmtModified\":null,\"code\":\"xspace.permission.ownskillwork\",\"platformType\":0,\"orderNum\":null,\"description\":\"自选技能组上班【按钮】\",\"pid\":300009005,\"appCode\":\"com.xixikf.ticket.TicketCenterApp\",\"type\":\"ACL\",\"platform\":0,\"rootNode\":false,\"isOnlyPreEnv\":null,\"children\":null,\"dataResourceConfigs\":null,\"serviceIntlTitleCode\":\"permission.xspace.permission.ownskillwork\",\"id\":null,\"class\":\"com.taobao.xspace.ops.dto.XspacePermisionDO\",\"buId\":null,\"ext\":null,\"permisionId\":300009110,\"isAppNode\":null,\"isActivated\":true,\"gmtCreate\":null,\"url\":null,\"modifyServicerId\":null,\"createServicerId\":null,\"name\":\"自选技能组上班【按钮】\",\"outerId\":null,\"dataResourceTypes\":null},{\"gmtModified\":null,\"code\":\"xspace.permission.batchCommuting\",\"platformType\":0,\"orderNum\":null,\"description\":\"批量上下班【按钮】\",\"pid\":300009005,\"appCode\":\"com.xixikf.ticket.TicketCenterApp\",\"type\":\"ACL\",\"platform\":0,\"rootNode\":false,\"isOnlyPreEnv\":null,\"children\":null,\"dataResourceConfigs\":null,\"serviceIntlTitleCode\":\"permission.xspace.permission.batchCommuting\",\"id\":null,\"class\":\"com.taobao.xspace.ops.dto.XspacePermisionDO\",\"buId\":null,\"ext\":null,\"permisionId\":300009106,\"isAppNode\":null,\"isActivated\":true,\"gmtCreate\":null,\"url\":null,\"modifyServicerId\":null,\"createServicerId\":null,\"name\":\"批量上下班【按钮】\",\"outerId\":null,\"dataResourceTypes\":null},{\"gmtModified\":null,\"code\":\"xspace.permission.create.ticket\",\"platformType\":0,\"orderNum\":null,\"description\":\"创建工单【按钮】\",\"pid\":300009005,\"appCode\":\"com.xixikf.ticket.TicketCenterApp\",\"type\":\"ACL\",\"platform\":0,\"rootNode\":false,\"isOnlyPreEnv\":null,\"children\":null,\"dataResourceConfigs\":null,\"serviceIntlTitleCode\":\"permission.xspace.permission.create.ticket\",\"id\":null,\"class\":\"com.taobao.xspace.ops.dto.XspacePermisionDO\",\"buId\":null,\"ext\":null,\"permisionId\":300009107,\"isAppNode\":null,\"isActivated\":true,\"gmtCreate\":null,\"url\":null,\"modifyServicerId\":null,\"createServicerId\":null,\"name\":\"创建工单【按钮】\",\"outerId\":null,\"dataResourceTypes\":null},{\"gmtModified\":null,\"code\":\"xspace.permission.ticket.batch.import\",\"platformType\":0,\"orderNum\":null,\"description\":\"批量导入【按钮】\",\"pid\":300009005,\"appCode\":\"com.xixikf.ticket.TicketCenterApp\",\"type\":\"ACL\",\"platform\":0,\"rootNode\":false,\"isOnlyPreEnv\":null,\"children\":null,\"dataResourceConfigs\":null,\"serviceIntlTitleCode\":\"permission.xspace.permission.ticket.batch.import\",\"id\":null,\"class\":\"com.taobao.xspace.ops.dto.XspacePermisionDO\",\"buId\":null,\"ext\":null,\"permisionId\":300009108,\"isAppNode\":null,\"isActivated\":true,\"gmtCreate\":null,\"url\":null,\"modifyServicerId\":null,\"createServicerId\":null,\"name\":\"批量导入【按钮】\",\"outerId\":null,\"dataResourceTypes\":null},{\"gmtModified\":null,\"code\":\"xspace.permission.ticket.export\",\"platformType\":0,\"orderNum\":null,\"description\":\"导出【按钮】\",\"pid\":300009005,\"appCode\":\"com.xixikf.ticket.TicketCenterApp\",\"type\":\"ACL\",\"platform\":0,\"rootNode\":false,\"isOnlyPreEnv\":null,\"children\":null,\"dataResourceConfigs\":null,\"serviceIntlTitleCode\":\"permission.xspace.permission.ticket.export\",\"id\":null,\"class\":\"com.taobao.xspace.ops.dto.XspacePermisionDO\",\"buId\":null,\"ext\":null,\"permisionId\":300009109,\"isAppNode\":null,\"isActivated\":true,\"gmtCreate\":null,\"url\":null,\"modifyServicerId\":null,\"createServicerId\":null,\"name\":\"导出【按钮】\",\"outerId\":null,\"dataResourceTypes\":null}]},\"ext\":{\"traceId\":\"c0a820fc17873209285105718d0087\",\"unitType\":\"aliyun\",\"cluster\":\"one\",\"api\":\"mopen.xspace.opscommodityorderreadservice.selectpermissiontreebyappcodes\",\"requestId\":null}})"
+  },
+  {
+   "dt": 12126,
+   "method": "GET",
+   "url": "data:image/png;base64,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",
+   "type": "Image",
+   "status": 200,
+   "mimeType": "image/png"
+  },
+  {
+   "dt": 13027,
+   "method": "POST",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.xixi.hotline.graphql/1.0/?operationName=InitConfig&operationType=query&appKey=4272&t=1787320928402&sign=13ab083841d6a3bc961bb5fed4bee841&type=originaljson&api=mopen.xixi.hotline.graphql&v=1.0&dataType=json",
+   "postData": "data=%7B%22request%22%3A%7B%22query%22%3A%22%5Cn%20%20%20%20query%20InitConfig%20%7B%5Cn%20%20initConfig%20%7B%5Cn%20%20%20%20phone%20%7B%5Cn%20%20%20%20%20%20callOutList%20%7B%5Cn%20%20%20%20%20%20%20%20phoneNumber%5Cn%20%20%20%20%20%20%20%20desc%5Cn%20%20%20%20%20%20%7D%5Cn%20%20%20%20%20%20callOutGroupList%20%7B%5Cn%20%20%20%20%20%20%20%20id%5Cn%20%20%20%20%20%20%20%20name%5Cn%20%20%20%20%20%20%7D%5Cn%20%20%20%20%20%20autoAnswer%5Cn%20%20%20%20%20%20autoAnswerDuration%5Cn%20%20%20%20%20%20enableDialOut%5Cn%20%20%20%20%20%20enableHangUp%5Cn%20%20%20%20%20%20enableDialPanel%5Cn%20%20%20%20%20%20enableAudioDevice%5Cn%20%20%20%20%20%20agentAudioDeviceList%20%7B%5Cn%20%20%20%20%20%20%20%20audioDeviceStream%5Cn%20%20%20%20%20%20%20%20audioDeviceLabel%5Cn%20%20%20%20%20%20%20%20audioDeviceIndex%5Cn%20%20%20%20%20%20%7D%5Cn%20%20%20%20%7D%5Cn%20%20%20%20skillGroups%20%7B%5Cn%20%20%20%20%20%20id%5Cn%20%20%20%20%20%20name%5Cn%20%20%20%20%7D%5Cn%20%20%20%20useHotlineTransferTree%5Cn%20%20%20%20workChannels%20%7B%5Cn%20%20%20%20%20%20displayName%5Cn%20%20%20%20%20%20type%5Cn%20%20%20%20%7D%5Cn%20%20%20%20monitor%5Cn%20%20%7D%5Cn%7D%5Cn%20%20%20%20%22%7D%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "api": "mopen.xixi.hotline.graphql",
+    "v": "1.0",
+    "ret": [
+     "SUCCESS::接口调用成功"
+    ],
+    "success": true,
+    "errorCode": null,
+    "errorMessage": null,
+    "data": {
+     "initConfig": {
+      "phone": "***",
+      "skillGroups": [
+       {
+        "id": "1403431021",
+        "name": "热线技能组"
+       }
+      ],
+      "useHotlineTransferTree": false,
+      "workChannels": [
+       {
+        "displayName": "电脑接听",
+        "type": "PC"
+       }
+      ],
+      "monitor": true
+     },
+     "traceId": "c0a820fb17873209286375660d0088"
+    },
+    "ext": {
+     "traceId": "c0a820fb17873209286375660d0088",
+     "unitType": "aliyun",
+     "cluster": "one",
+     "api": "mopen.xixi.hotline.graphql",
+     "requestId": null
+    }
+   }
+  },
+  {
+   "dt": 20383,
+   "method": "POST",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.xixi.hotline.graphql/1.0/?operationName=ResourceRectify&operationType=mutation&appKey=4272&t=1787320928635&sign=809a1d5464d867e0ca34830e3ce267f0&type=originaljson&api=mopen.xixi.hotline.graphql&v=1.0&dataType=json",
+   "postData": "data=%7B%22request%22%3A%7B%22query%22%3A%22%5Cn%20%20%20%20mutation%20ResourceRectify%20%7B%5Cn%20%20resourceRectify%5Cn%7D%5Cn%20%20%20%20%22%7D%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "api": "mopen.xixi.hotline.graphql",
+    "v": "1.0",
+    "ret": [
+     "SUCCESS::接口调用成功"
+    ],
+    "success": true,
+    "errorCode": null,
+    "errorMessage": null,
+    "data": {
+     "resourceRectify": true,
+     "traceId": "c0a8209917873209288256318d0087"
+    },
+    "ext": {
+     "traceId": "c0a8209917873209288256318d0087",
+     "unitType": "aliyun",
+     "cluster": "one",
+     "api": "mopen.xixi.hotline.graphql",
+     "requestId": null
+    }
+   }
+  },
+  {
+   "dt": 20384,
+   "method": "POST",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.xixi.base.graphql/1.0/?operationName=OfflineNotices&operationType=query&appKey=4272&t=1787320928635&sign=c5667d999e3b73c493fdcf70ef71d697&type=originaljson&api=mopen.xixi.base.graphql&v=1.0&dataType=json",
+   "postData": "data=%7B%22request%22%3A%7B%22query%22%3A%22%5Cn%20%20%20%20query%20OfflineNotices(%24input%3A%20BASearchOfflineNoticeInput!)%20%7B%5Cn%20%20pageOfflineNotices(input%3A%20%24input)%20%7B%5Cn%20%20%20%20notices%20%7B%5Cn%20%20%20%20%20%20...ReceiveNoticeDetail%5Cn%20%20%20%20%7D%5Cn%20%20%20%20pageInfo%20%7B%5Cn%20%20%20%20%20%20...Page%5Cn%20%20%20%20%7D%5Cn%20%20%20%20type%5Cn%20%20%7D%5Cn%7D%5Cn%20%20%20%20%5Cn%20%20%20%20fragment%20ReceiveNoticeDetail%20on%20BAReceiveNoticeDetail%20%7B%5Cn%20%20content%5Cn%20%20id%5Cn%20%20invalidTime%5Cn%20%20level%5Cn%20%20needReceiptConfirm%5Cn%20%20needRingNotify%5Cn%20%20publishTime%5Cn%20%20scene%5Cn%20%20sceneName%5Cn%20%20type%5Cn%20%20tenantId%5Cn%20%20title%5Cn%20%20isCollect%5Cn%20%20readStatus%5Cn%7D%5Cn%20%20%20%20%5Cn%5Cn%20%20%20%20fragment%20Page%20on%20PageInfo%20%7B%5Cn%20%20current%5Cn%20%20pageSize%5Cn%20%20total%5Cn%7D%5Cn%20%20%20%20%22%2C%22variables%22%3A%7B%22input%22%3A%7B%22type%22%3A2%2C%22pageRequest%22%3A%7B%22current%22%3A1%2C%22pageSize%22%3A20%7D%7D%7D%7D%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "api": "mopen.xixi.base.graphql",
+    "v": "1.0",
+    "ret": [
+     "SUCCESS::接口调用成功"
+    ],
+    "success": true,
+    "errorCode": null,
+    "errorMessage": null,
+    "data": {
+     "pageOfflineNotices": {
+      "notices": [],
+      "pageInfo": {
+       "current": 1,
+       "pageSize": 20,
+       "total": 0
+      },
+      "type": 2
+     },
+     "traceId": "c0a8210317873209288523882d0088"
+    },
+    "ext": {
+     "traceId": "c0a8210317873209288523882d0088",
+     "unitType": "aliyun",
+     "cluster": "one",
+     "api": "mopen.xixi.base.graphql_OfflineNotices",
+     "requestId": null
+    }
+   }
+  },
+  {
+   "dt": 20384,
+   "method": "POST",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.xixi.base.graphql/1.0/?operationName=OfflineNotices&operationType=query&appKey=4272&t=1787320928635&sign=bf19757e7a3e452946fc66c26804903f&type=originaljson&api=mopen.xixi.base.graphql&v=1.0&dataType=json",
+   "postData": "data=%7B%22request%22%3A%7B%22query%22%3A%22%5Cn%20%20%20%20query%20OfflineNotices(%24input%3A%20BASearchOfflineNoticeInput!)%20%7B%5Cn%20%20pageOfflineNotices(input%3A%20%24input)%20%7B%5Cn%20%20%20%20notices%20%7B%5Cn%20%20%20%20%20%20...ReceiveNoticeDetail%5Cn%20%20%20%20%7D%5Cn%20%20%20%20pageInfo%20%7B%5Cn%20%20%20%20%20%20...Page%5Cn%20%20%20%20%7D%5Cn%20%20%20%20type%5Cn%20%20%7D%5Cn%7D%5Cn%20%20%20%20%5Cn%20%20%20%20fragment%20ReceiveNoticeDetail%20on%20BAReceiveNoticeDetail%20%7B%5Cn%20%20content%5Cn%20%20id%5Cn%20%20invalidTime%5Cn%20%20level%5Cn%20%20needReceiptConfirm%5Cn%20%20needRingNotify%5Cn%20%20publishTime%5Cn%20%20scene%5Cn%20%20sceneName%5Cn%20%20type%5Cn%20%20tenantId%5Cn%20%20title%5Cn%20%20isCollect%5Cn%20%20readStatus%5Cn%7D%5Cn%20%20%20%20%5Cn%5Cn%20%20%20%20fragment%20Page%20on%20PageInfo%20%7B%5Cn%20%20current%5Cn%20%20pageSize%5Cn%20%20total%5Cn%7D%5Cn%20%20%20%20%22%2C%22variables%22%3A%7B%22input%22%3A%7B%22type%22%3A1%2C%22pageRequest%22%3A%7B%22current%22%3A1%2C%22pageSize%22%3A20%7D%7D%7D%7D%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "api": "mopen.xixi.base.graphql",
+    "v": "1.0",
+    "ret": [
+     "SUCCESS::接口调用成功"
+    ],
+    "success": true,
+    "errorCode": null,
+    "errorMessage": null,
+    "data": {
+     "pageOfflineNotices": {
+      "notices": [],
+      "pageInfo": {
+       "current": 1,
+       "pageSize": 20,
+       "total": 0
+      },
+      "type": 1
+     },
+     "traceId": "c0a820fd17873209288476216d0087"
+    },
+    "ext": {
+     "traceId": "c0a820fd17873209288476216d0087",
+     "unitType": "aliyun",
+     "cluster": "one",
+     "api": "mopen.xixi.base.graphql_OfflineNotices",
+     "requestId": null
+    }
+   }
+  },
+  {
+   "dt": 20384,
+   "method": "POST",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.xixi.base.graphql/1.0/?operationName=MessageScenes&operationType=query&appKey=4272&t=1787320928635&sign=ca4bc61a32f0f7fa378ac566ca35c138&type=originaljson&api=mopen.xixi.base.graphql&v=1.0&dataType=json",
+   "postData": "data=%7B%22request%22%3A%7B%22query%22%3A%22%5Cn%20%20%20%20query%20MessageScenes%20%7B%5Cn%20%20messageScenes%20%7B%5Cn%20%20%20%20type%5Cn%20%20%20%20name%5Cn%20%20%20%20scenes%20%7B%5Cn%20%20%20%20%20%20...SceneDescription%5Cn%20%20%20%20%7D%5Cn%20%20%7D%5Cn%7D%5Cn%20%20%20%20%5Cn%20%20%20%20fragment%20SceneDescription%20on%20BANoticeSceneDescription%20%7B%5Cn%20%20code%5Cn%20%20iconUrl%5Cn%20%20name%5Cn%7D%5Cn%20%20%20%20%22%7D%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "api": "mopen.xixi.base.graphql",
+    "v": "1.0",
+    "ret": [
+     "SUCCESS::接口调用成功"
+    ],
+    "success": true,
+    "errorCode": null,
+    "errorMessage": null,
+    "data": {
+     "messageScenes": [
+      {
+       "type": 1,
+       "name": "公告",
+       "scenes": [
+        {
+         "code": "emergency-notice",
+         "iconUrl": "",
+         "name": "紧急公告"
+        },
+        {
+         "code": "common-notice",
+         "iconUrl": "",
+         "name": "普通公告"
+        }
+       ]
+      },
+      {
+       "type": 2,
+       "name": "系统消息",
+       "scenes": [
+        {
+         "code": "ticket_message",
+         "iconUrl": "",
+         "name": "工单动态"
+        },
+        {
+         "code": "custom_message",
+         "iconUrl": "",
+         "name": "自定义消息"
+        },
+        {
+         "code": "sensitive_word_notice",
+         "iconUrl": "",
+         "name": "敏感词拦截"
+        },
+        {
+         "code": "quality_inspection_warning",
+         "iconUrl": "",
+         "name": "质检预警"
+        },
+        {
+         "code": "uinsight_warning_message",
+         "iconUrl": "",
+         "name": "服务洞察预警通知"
+        },
+        {
+         "code": "rpa_offline_message",
+         "iconUrl": "",
+         "name": "企微掉线消息"
+        },
+        {
+         "code": "intelligent_center_dynamic",
+         "iconUrl": "",
+         "name": "智能中心动态"
+        }
+       ]
+      }
+     ],
+     "traceId": "c0a8210217873209288483438d0087"
+    },
+    "ext": {
+     "traceId": "c0a8210217873209288483438d0087",
+     "unitType": "aliyun",
+     "cluster": "one",
+     "api": "mopen.xixi.base.graphql",
+     "requestId": null
+    }
+   }
+  },
+  {
+   "dt": 20385,
+   "method": "POST",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.xixi.scheduler.graphql/1.0/?operationName=InitSeatStatus&operationType=query&appKey=4272&t=1787320928635&sign=4e36dd0c07c960bce116fc29868e0695&type=originaljson&api=mopen.xixi.scheduler.graphql&v=1.0&dataType=json",
+   "postData": "data=%7B%22request%22%3A%7B%22query%22%3A%22%5Cn%20%20%20%20query%20InitSeatStatus(%24channelType%3A%20SDChannelType!%2C%24clientType%3ASDClientType%2C%24workbenchTabToken%3AString)%20%7B%5Cn%20%20currentStatus(input%3A%20%7BchannelType%3A%20%24channelType%2CclientType%3A%24clientType%2CworkbenchTabToken%3A%24workbenchTabToken%7D)%20%7B%5Cn%20%20%20%20statusId%5Cn%20%20%20%20subStatusId%5Cn%20%20%20%20autoClose%5Cn%20%20%20%20countdownTime%5Cn%20%20%20%20countdownStart%5Cn%20%20%20%20statusChangeTime%5Cn%20%20%20%20workChannel%5Cn%20%20%20%20enableMultiTab%5Cn%20%20%20%20currentTabStatus%5Cn%20%20%20%20videoOnline%5Cn%20%20%7D%5Cn%20%20statusList(input%3A%20%7BchannelType%3A%20%24channelType%7D)%20%7B%5Cn%20%20%20%20...SeatStatusFragment%5Cn%20%20%7D%5Cn%7D%5Cn%20%20%20%20%5Cn%20%20%20%20fragment%20SeatStatusFragment%20on%20SDStatusPayload%20%7B%5Cn%20%20channelType%5Cn%20%20parentStatusId%5Cn%20%20statusCode%5Cn%20%20statusDesc%5Cn%20%20statusId%5Cn%20%20statusName%5Cn%20%20subStatusList%20%7B%5Cn%20%20%20%20parentStatusId%5Cn%20%20%20%20statusCode%5Cn%20%20%20%20statusDesc%5Cn%20%20%20%20statusId%5Cn%20%20%20%20statusName%5Cn%20%20%7D%5Cn%20%20visible%5Cn%7D%5Cn%20%20%20%20%22%2C%22variables%22%3A%7B%22channelType%22%3A%22ONLINE%22%2C%22clientType%22%3A%22PC%22%7D%7D%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "api": "mopen.xixi.scheduler.graphql",
+    "v": "1.0",
+    "ret": [
+     "SUCCESS::接口调用成功"
+    ],
+    "success": true,
+    "errorCode": null,
+    "errorMessage": null,
+    "data": {
+     "currentStatus": {
+      "statusId": "1",
+      "subStatusId": "-1",
+      "autoClose": false,
+      "countdownTime": null,
+      "countdownStart": null,
+      "statusChangeTime": null,
+      "workChannel": "PC",
+      "enableMultiTab": null,
+      "currentTabStatus": null,
+      "videoOnline": null
+     },
+     "statusList": [
+      {
+       "channelType": "ONLINE",
+       "parentStatusId": "0",
+       "statusCode": "online",
+       "statusDesc": "接线",
+       "statusId": "2",
+       "statusName": "接线",
+       "subStatusList": null,
+       "visible": true
+      },
+      {
+       "channelType": "ONLINE",
+       "parentStatusId": "0",
+       "statusCode": "request_rest",
+       "statusDesc": "申请中",
+       "statusId": "3",
+       "statusName": "申请中",
+       "subStatusList": null,
+       "visible": false
+      },
+      {
+       "channelType": "ONLINE",
+       "parentStatusId": "0",
+       "statusCode": "busy",
+       "statusDesc": "小休",
+       "statusId": "4",
+       "statusName": "小休",
+       "subStatusList": [
+        {
+         "parentStatusId": "4",
+         "statusCode": "rest",
+         "statusDesc": "休息",
+         "statusId": "7",
+         "statusName": "休息"
+        },
+        {
+         "parentStatusId": "4",
+         "statusCode": "dining",
+         "statusDesc": "就餐",
+         "statusId": "8",
+         "statusName": "就餐"
+        },
+        {
+         "parentStatusId": "4",
+         "statusCode": "train",
+         "statusDesc": "培训",
+         "statusId": "9",
+         "statusName": "培训"
+        },
+        {
+         "parentStatusId": "4",
+         "statusCode": "tutoring",
+         "statusDesc": "辅导",
+         "statusId": "10",
+         "statusName": "辅导"
+        },
+        {
+         "parentStatusId": "4",
+         "statusCode": "meeting",
+         "statusDesc": "会议",
+         "statusId": "11",
+         "statusName": "会议"
+        }
+       ],
+       "visible": true
+      },
+      {
+       "channelType": "ONLINE",
+       "parentStatusId": "0",
+       "statusCode": "request_offline",
+       "statusDesc": "申请中",
+       "statusId": "5",
+       "statusName": "申请中",
+       "subStatusList": null,
+       "visible": false
+      },
+      {
+       "channelType": "ONLINE",
+       "parentStatusId": "0",
+       "statusCode": "train",
+       "statusDesc": "培训",
+       "statusId": "6",
+       "statusName": "培训",
+       "subStatusList": null,
+       "visible": true
+      },
+      {
+       "channelType": "ONLINE",
+       "parentStatusId": "0",
+       "statusCode": "only_forward",
+       "statusDesc": "仅转交",
+       "statusId": "19",
+       "statusName": "仅转交",
+       "subStatusList": null,
+       "visible": true
+      },
+      {
+       "channelType": "ONLINE",
+       "parentStatusId": "0",
+       "statusCode": "active_session",
+       "statusDesc": "主动会话",
+       "statusId": "20",
+       "statusName": "主动会话",
+       "subStatusList": null,
+       "visible": true
+      },
+      {
+       "channelType": "ONLINE",
+       "parentStatusId": "0",
+       "statusCode": "offline",
+       "statusDesc": "离线",
+       "statusId": "1",
+       "statusName": "离线",
+       "subStatusList": null,
+       "visible": true
+      }
+     ],
+     "traceId": "c0a8209917873209288566320d0087"
+    },
+    "ext": {
+     "traceId": "c0a8209917873209288566320d0087",
+     "unitType": "aliyun",
+     "cluster": "one",
+     "api": "mopen.xixi.scheduler.graphql_InitSeatStatus",
+     "requestId": null
+    }
+   }
+  },
+  {
+   "dt": 20386,
+   "method": "POST",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.xspace.OpsCommodityOrderReadService.selectPermissionTreeByAppCode/1.0/?appKey=4272&t=1787320928635&sign=ed26cc3eef225a590b1ca42fb86d0d0f&type=originaljson&api=mopen.xspace.OpsCommodityOrderReadService.selectPermissionTreeByAppCode&v=1.0&dataType=json",
+   "postData": "data=%7B%22prodLineId%22%3A10552599%2C%22bizType%22%3A%22xp_commerce_aliyun%22%2C%22appCode%22%3A%22com.xixikf.imdesk.IMDeskApp%22%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "api": "mopen.xspace.OpsCommodityOrderReadService.selectPermissionTreeByAppCode",
+    "v": "1.0",
+    "ret": [
+     "SUCCESS::接口调用成功"
+    ],
+    "success": true,
+    "errorCode": null,
+    "errorMessage": null,
+    "data": {
+     "result": [
+      {
+       "gmtModified": null,
+       "code": "xspace.permission.IMDeskPage",
+       "platformType": 0,
+       "orderNum": null,
+       "description": "在线工作台【页面】",
+       "pid": 300009003,
+       "appCode": "com.xixikf.imdesk.IMDeskApp",
+       "type": "MENU",
+       "platform": 0,
+       "rootNode": false,
+       "isOnlyPreEnv": null,
+       "children": null,
+       "dataResourceConfigs": null,
+       "serviceIntlTitleCode": "permission.xspace.permission.IMDeskPage",
+       "id": null,
+       "class": "com.taobao.xspace.ops.dto.XspacePermisionDO",
+       "buId": null,
+       "ext": null,
+       "permisionId": 200044128,
+       "isAppNode": null,
+       "isActivated": true,
+       "gmtCreate": null,
+       "url": null,
+       "modifyServicerId": null,
+       "createServicerId": null,
+       "name": "在线工作台【页面】",
+       "outerId": null,
+       "dataResourceTypes": null
+      },
+      {
+       "gmtModified": null,
+       "code": "xspace.permission.onlyForward",
+       "platformType": 0,
+       "orderNum": null,
+       "description": "上下班-仅转交【按钮】",
+       "pid": 300009003,
+       "appCode": "com.xixikf.imdesk.IMDeskApp",
+       "type": "MENU",
+       "platform": 0,
+       "rootNode": false,
+       "isOnlyPreEnv": null,
+       "children": null,
+       "dataResourceConfigs": null,
+       "serviceIntlTitleCode": "permission.xspace.permission.onlyForward",
+       "id": null,
+       "class": "com.taobao.xspace.ops.dto.XspacePermisionDO",
+       "buId": null,
+       "ext": null,
+       "permisionId": 200044130,
+       "isAppNode": null,
+       "isActivated": true,
+       "gmtCreate": null,
+       "url": null,
+       "modifyServicerId": null,
+       "createServicerId": null,
+       "name": "上下班-仅转交【按钮】",
+       "outerId": null,
+       "dataResourceTypes": null
+      },
+      {
+       "gmtModified": null,
+       "code": "xspace.permission.online.batchCommuting",
+       "platformType": 0,
+       "orderNum": null,
+       "description": "批量上下班【按钮】",
+       "pid": 300009003,
+       "appCode": "com.xixikf.imdesk.IMDeskApp",
+       "type": "ACL",
+       "platform": 0,
+       "rootNode": false,
+       "isOnlyPreEnv": null,
+       "children": null,
+       "dataResourceConfigs": null,
+       "serviceIntlTitleCode": "permission.xspace.permission.online.batchCommuting",
+       "id": null,
+       "class": "com.taobao.xspace.ops.dto.XspacePermisionDO",
+       "buId": null,
+       "ext": null,
+       "permisionId": 200044129,
+       "isAppNode": null,
+       "isActivated": true,
+       "gmtCreate": null,
+       "url": null,
+       "modifyServicerId": null,
+       "createServicerId": null,
+       "name": "批量上下班【按钮】",
+       "outerId": null,
+       "dataResourceTypes": null
+      }
+     ]
+    },
+    "ext": {
+     "traceId": "c0a8210217873209288503439d0087",
+     "unitType": "aliyun",
+     "cluster": "one",
+     "api": "mopen.xspace.OpsCommodityOrderReadService.selectPermissionTreeByAppCode",
+     "requestId": null
+    }
+   }
+  },
+  {
+   "dt": 20386,
+   "method": "GET",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.xspace.OpsCommodityOrderReadService.selectPermissionTreeByAppCode/1.0/?appKey=4272&t=1787320928636&sign=22f3b6edec927c2040d2ad70d2e1d795&type=originaljson&api=mopen.xspace.OpsCommodityOrderReadService.selectPermissionTreeByAppCode&v=1.0&dataType=json&data=%7B%22prodLineId%22%3A10552599%2C%22bizType%22%3A%22xp_commerce_aliyun%22%2C%22appCode%22%3A%22com.xixikf.ticket.TicketCenterApp%22%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "api": "mopen.xspace.OpsCommodityOrderReadService.selectPermissionTreeByAppCode",
+    "v": "1.0",
+    "ret": [
+     "SUCCESS::接口调用成功"
+    ],
+    "success": true,
+    "errorCode": null,
+    "errorMessage": null,
+    "data": {
+     "result": [
+      {
+       "gmtModified": null,
+       "code": "com.xixikf.ticket.TicketCenterApp.page",
+       "platformType": 0,
+       "orderNum": null,
+       "description": "工单中心【页面】",
+       "pid": 300009005,
+       "appCode": "com.xixikf.ticket.TicketCenterApp",
+       "type": "MENU",
+       "platform": 0,
+       "rootNode": false,
+       "isOnlyPreEnv": null,
+       "children": null,
+       "dataResourceConfigs": null,
+       "serviceIntlTitleCode": "permission.com.xixikf.ticket.TicketCenterApp.page",
+       "id": null,
+       "class": "com.taobao.xspace.ops.dto.XspacePermisionDO",
+       "buId": null,
+       "ext": null,
+       "permisionId": 300009104,
+       "isAppNode": null,
+       "isActivated": true,
+       "gmtCreate": null,
+       "url": null,
+       "modifyServicerId": null,
+       "createServicerId": null,
+       "name": "工单中心【页面】",
+       "outerId": null,
+       "dataResourceTypes": null
+      },
+      {
+       "gmtModified": null,
+       "code": "xspace.permission.batchApplication",
+       "platformType": 0,
+       "orderNum": null,
+       "description": "批量申领【按钮】",
+       "pid": 300009005,
+       "appCode": "com.xixikf.ticket.TicketCenterApp",
+       "type": "ACL",
+       "platform": 0,
+       "rootNode": false,
+       "isOnlyPreEnv": null,
+       "children": null,
+       "dataResourceConfigs": null,
+       "serviceIntlTitleCode": "permission.xspace.permission.batchApplication",
+       "id": null,
+       "class": "com.taobao.xspace.ops.dto.XspacePermisionDO",
+       "buId": null,
+       "ext": null,
+       "permisionId": 300009100,
+       "isAppNode": null,
+       "isActivated": true,
+       "gmtCreate": null,
+       "url": null,
+       "modifyServicerId": null,
+       "createServicerId": null,
+       "name": "批量申领【按钮】",
+       "outerId": null,
+       "dataResourceTypes": null
+      },
+      {
+       "gmtModified": null,
+       "code": "xspace.permission.batchCompletion",
+       "platformType": 0,
+       "orderNum": null,
+       "description": "批量完结【按钮】",
+       "pid": 300009005,
+       "appCode": "com.xixikf.ticket.TicketCenterApp",
+       "type": "ACL",
+       "platform": 0,
+       "rootNode": false,
+       "isOnlyPreEnv": null,
+       "children": null,
+       "dataResourceConfigs": null,
+       "serviceIntlTitleCode": "permission.xspace.permission.batchCompletion",
+       "id": null,
+       "class": "com.taobao.xspace.ops.dto.XspacePermisionDO",
+       "buId": null,
+       "ext": null,
+       "permisionId": 300009101,
+       "isAppNode": null,
+       "isActivated": true,
+       "gmtCreate": null,
+       "url": null,
+       "modifyServicerId": null,
+       "createServicerId": null,
+       "name": "批量完结【按钮】",
+       "outerId": null,
+       "dataResourceTypes": null
+      },
+      {
+       "gmtModified": null,
+       "code": "xspace.permission.batchTransfer",
+       "platformType": 0,
+       "orderNum": null,
+       "description": "批量转交【按钮】",
+       "pid": 300009005,
+       "appCode": "com.xixikf.ticket.TicketCenterApp",
+       "type": "ACL",
+       "platform": 0,
+       "rootNode": false,
+       "isOnlyPreEnv": null,
+       "children": null,
+       "dataResourceConfigs": null,
+       "serviceIntlTitleCode": "permission.xspace.permission.batchTransfer",
+       "id": null,
+       "class": "com.taobao.xspace.ops.dto.XspacePermisionDO",
+       "buId": null,
+       "ext": null,
+       "permisionId": 300009102,
+       "isAppNode": null,
+       "isActivated": true,
+       "gmtCreate": null,
+       "url": null,
+       "modifyServicerId": null,
+       "createServicerId": null,
+       "name": "批量转交【按钮】",
+       "outerId": null,
+       "dataResourceTypes": null
+      },
+      {
+       "gmtModified": null,
+       "code": "xspace.permission.batchRemarks",
+       "platformType": 0,
+       "orderNum": null,
+       "description": "批量备注【按钮】",
+       "pid": 300009005,
+       "appCode": "com.xixikf.ticket.TicketCenterApp",
+       "type": "ACL",
+       "platform": 0,
+       "rootNode": false,
+       "isOnlyPreEnv": null,
+       "children": null,
+       "dataResourceConfigs": null,
+       "serviceIntlTitleCode": "permission.xspace.permission.batchRemarks",
+       "id": null,
+       "class": "com.taobao.xspace.ops.dto.XspacePermisionDO",
+       "buId": null,
+       "ext": null,
+       "permisionId": 300009103,
+       "isAppNode": null,
+       "isActivated": true,
+       "gmtCreate": null,
+       "url": null,
+       "modifyServicerId": null,
+       "createServicerId": null,
+       "name": "批量备注【按钮】",
+       "outerId": null,
+       "dataResourceTypes": null
+      },
+      {
+       "gmtModified": null,
+       "code": "xspace.permission.customActivity",
+       "platformType": 0,
+       "orderNum": null,
+       "description": "自定义活动【按钮】",
+       "pid": 300009005,
+       "appCode": "com.xixikf.ticket.TicketCenterApp",
+       "type": "ACL",
+       "platform": 0,
+       "rootNode": false,
+       "isOnlyPreEnv": null,
+       "children": null,
+       "dataResourceConfigs": null,
+       "serviceIntlTitleCode": "permission.xspace.permission.customActivity",
+       "id": null,
+       "class": "com.taobao.xspace.ops.dto.XspacePermisionDO",
+       "buId": null,
+       "ext": null,
+       "permisionId": 300009111,
+       "isAppNode": null,
+       "isActivated": true,
+       "gmtCreate": null,
+       "url": null,
+       "modifyServicerId": null,
+       "createServicerId": null,
+       "name": "自定义活动【按钮】",
+       "outerId": null,
+       "dataResourceTypes": null
+      },
+      {
+       "gmtModified": null,
+       "code": "xspace.permission.ownskillwork",
+       "platformType": 0,
+       "orderNum": null,
+       "description": "自选技能组上班【按钮】",
+       "pid": 300009005,
+       "appCode": "com.xixikf.ticket.TicketCenterApp",
+       "type": "ACL",
+       "platform": 0,
+       "rootNode": false,
+       "isOnlyPreEnv": null,
+       "children": null,
+       "dataResourceConfigs": null,
+       "serviceIntlTitleCode": "permission.xspace.permission.ownskillwork",
+       "id": null,
+       "class": "com.taobao.xspace.ops.dto.XspacePermisionDO",
+       "buId": null,
+       "ext": null,
+       "permisionId": 300009110,
+       "isAppNode": null,
+       "isActivated": true,
+       "gmtCreate": null,
+       "url": null,
+       "modifyServicerId": null,
+       "createServicerId": null,
+       "name": "自选技能组上班【按钮】",
+       "outerId": null,
+       "dataResourceTypes": null
+      },
+      {
+       "gmtModified": null,
+       "code": "xspace.permission.batchCommuting",
+       "platformType": 0,
+       "orderNum": null,
+       "description": "批量上下班【按钮】",
+       "pid": 300009005,
+       "appCode": "com.xixikf.ticket.TicketCenterApp",
+       "type": "ACL",
+       "platform": 0,
+       "rootNode": false,
+       "isOnlyPreEnv": null,
+       "children": null,
+       "dataResourceConfigs": null,
+       "serviceIntlTitleCode": "permission.xspace.permission.batchCommuting",
+       "id": null,
+       "class": "com.taobao.xspace.ops.dto.XspacePermisionDO",
+       "buId": null,
+       "ext": null,
+       "permisionId": 300009106,
+       "isAppNode": null,
+       "isActivated": true,
+       "gmtCreate": null,
+       "url": null,
+       "modifyServicerId": null,
+       "createServicerId": null,
+       "name": "批量上下班【按钮】",
+       "outerId": null,
+       "dataResourceTypes": null
+      },
+      {
+       "gmtModified": null,
+       "code": "xspace.permission.create.ticket",
+       "platformType": 0,
+       "orderNum": null,
+       "description": "创建工单【按钮】",
+       "pid": 300009005,
+       "appCode": "com.xixikf.ticket.TicketCenterApp",
+       "type": "ACL",
+       "platform": 0,
+       "rootNode": false,
+       "isOnlyPreEnv": null,
+       "children": null,
+       "dataResourceConfigs": null,
+       "serviceIntlTitleCode": "permission.xspace.permission.create.ticket",
+       "id": null,
+       "class": "com.taobao.xspace.ops.dto.XspacePermisionDO",
+       "buId": null,
+       "ext": null,
+       "permisionId": 300009107,
+       "isAppNode": null,
+       "isActivated": true,
+       "gmtCreate": null,
+       "url": null,
+       "modifyServicerId": null,
+       "createServicerId": null,
+       "name": "创建工单【按钮】",
+       "outerId": null,
+       "dataResourceTypes": null
+      },
+      {
+       "gmtModified": null,
+       "code": "xspace.permission.ticket.batch.import",
+       "platformType": 0,
+       "orderNum": null,
+       "description": "批量导入【按钮】",
+       "pid": 300009005,
+       "appCode": "com.xixikf.ticket.TicketCenterApp",
+       "type": "ACL",
+       "platform": 0,
+       "rootNode": false,
+       "isOnlyPreEnv": null,
+       "children": null,
+       "dataResourceConfigs": null,
+       "serviceIntlTitleCode": "permission.xspace.permission.ticket.batch.import",
+       "id": null,
+       "class": "com.taobao.xspace.ops.dto.XspacePermisionDO",
+       "buId": null,
+       "ext": null,
+       "permisionId": 300009108,
+       "isAppNode": null,
+       "isActivated": true,
+       "gmtCreate": null,
+       "url": null,
+       "modifyServicerId": null,
+       "createServicerId": null,
+       "name": "批量导入【按钮】",
+       "outerId": null,
+       "dataResourceTypes": null
+      },
+      {
+       "gmtModified": null,
+       "code": "xspace.permission.ticket.export",
+       "platformType": 0,
+       "orderNum": null,
+       "description": "导出【按钮】",
+       "pid": 300009005,
+       "appCode": "com.xixikf.ticket.TicketCenterApp",
+       "type": "ACL",
+       "platform": 0,
+       "rootNode": false,
+       "isOnlyPreEnv": null,
+       "children": null,
+       "dataResourceConfigs": null,
+       "serviceIntlTitleCode": "permission.xspace.permission.ticket.export",
+       "id": null,
+       "class": "com.taobao.xspace.ops.dto.XspacePermisionDO",
+       "buId": null,
+       "ext": null,
+       "permisionId": 300009109,
+       "isAppNode": null,
+       "isActivated": true,
+       "gmtCreate": null,
+       "url": null,
+       "modifyServicerId": null,
+       "createServicerId": null,
+       "name": "导出【按钮】",
+       "outerId": null,
+       "dataResourceTypes": null
+      }
+     ]
+    },
+    "ext": {
+     "traceId": "c0a820fc17873209288605732d0087",
+     "unitType": "aliyun",
+     "cluster": "one",
+     "api": "mopen.xspace.OpsCommodityOrderReadService.selectPermissionTreeByAppCode",
+     "requestId": null
+    }
+   }
+  },
+  {
+   "dt": 20387,
+   "method": "POST",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.xixi.base.graphql/1.0/?operationName=GetServicerType&operationType=query&__bundle=com.xixikf.config.system.settings&appKey=4272&t=1787320928636&sign=c78da2ae41358fcc5d384cacc55fd5ea&type=originaljson&api=mopen.xixi.base.graphql&v=1.0&dataType=json",
+   "postData": "data=%7B%22request%22%3A%7B%22query%22%3A%22%5Cn%20%20%20%20query%20GetServicerType(%24input%3A%20String!)%20%7B%5Cn%20%20getServicerType(input%3A%20%24input)%20%7B%5Cn%20%20%20%20hasHotlineServicerGroup%5Cn%20%20%20%20hasOnlineServicerGroup%5Cn%20%20%7D%5Cn%7D%5Cn%20%20%20%20%22%2C%22variables%22%3A%7B%22input%22%3A%221205440079%22%7D%7D%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "api": "mopen.xixi.base.graphql",
+    "v": "1.0",
+    "ret": [
+     "SUCCESS::接口调用成功"
+    ],
+    "success": true,
+    "errorCode": null,
+    "errorMessage": null,
+    "data": {
+     "getServicerType": {
+      "hasHotlineServicerGroup": true,
+      "hasOnlineServicerGroup": true
+     },
+     "traceId": "c0a820fc17873209288645733d0087"
+    },
+    "ext": {
+     "traceId": "c0a820fc17873209288645733d0087",
+     "unitType": "aliyun",
+     "cluster": "one",
+     "api": "mopen.xixi.base.graphql_GetServicerType",
+     "requestId": null
+    }
+   }
+  },
+  {
+   "dt": 20387,
+   "method": "POST",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.base.api.AuthorizationService.checkPermissions/1.0/?appKey=4272&t=1787320928636&sign=dfb49f30f756eeb6ff2b0f80099bc5e2&type=originaljson&api=mopen.base.api.AuthorizationService.checkPermissions&v=1.0&dataType=json",
+   "postData": "data=%7B%22codes%22%3A%5B%22xspace.permission.startup.AcquiredAssets%22%5D%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "api": "mopen.base.api.AuthorizationService.checkPermissions",
+    "v": "1.0",
+    "ret": [
+     "SUCCESS::接口调用成功"
+    ],
+    "success": true,
+    "errorCode": null,
+    "errorMessage": null,
+    "data": {
+     "traceId": null,
+     "errorKey": null,
+     "features": null,
+     "failedValue": null,
+     "success": true,
+     "errorMessage": null,
+     "errorCode": null,
+     "present": true,
+     "value": {
+      "xspace.permission.startup.AcquiredAssets": true
+     },
+     "retry": false
+    },
+    "ext": {
+     "traceId": "c0a8209417873209288835905d0088",
+     "unitType": "aliyun",
+     "cluster": "one",
+     "api": "mopen.base.api.AuthorizationService.checkPermissions",
+     "requestId": null
+    }
+   }
+  },
+  {
+   "dt": 20388,
+   "method": "POST",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.lingyang.xixi.base.helper.token/1.0/?appKey=4272&t=1787320928636&sign=91a79e28ec1bdaa4abc15ea20a190c3b&type=originaljson&api=mopen.lingyang.xixi.base.helper.token&v=1.0&dataType=json",
+   "postData": "data=%7B%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "api": "mopen.lingyang.xixi.base.helper.token",
+    "v": "1.0",
+    "ret": [
+     "SUCCESS::接口调用成功"
+    ],
+    "success": true,
+    "errorCode": null,
+    "errorMessage": null,
+    "data": {
+     "expires": 1818856928899,
+     "token": "***"
+    },
+    "ext": {
+     "traceId": "c0a8210317873209288613883d0088",
+     "unitType": "aliyun",
+     "cluster": "one",
+     "api": "mopen.lingyang.xixi.base.helper.token",
+     "requestId": null
+    }
+   }
+  },
+  {
+   "dt": 20388,
+   "method": "POST",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.xixi.base.graphql/1.0/?operationName=OfflineNotices&operationType=query&appKey=4272&t=1787320928636&sign=54594f4e8b91497e171e5859d602656a&type=originaljson&api=mopen.xixi.base.graphql&v=1.0&dataType=json",
+   "postData": "data=%7B%22request%22%3A%7B%22query%22%3A%22%5Cn%20%20%20%20query%20OfflineNotices(%24input%3A%20BASearchOfflineNoticeInput!)%20%7B%5Cn%20%20pageOfflineNotices(input%3A%20%24input)%20%7B%5Cn%20%20%20%20notices%20%7B%5Cn%20%20%20%20%20%20...ReceiveNoticeDetail%5Cn%20%20%20%20%7D%5Cn%20%20%20%20pageInfo%20%7B%5Cn%20%20%20%20%20%20...Page%5Cn%20%20%20%20%7D%5Cn%20%20%20%20type%5Cn%20%20%7D%5Cn%7D%5Cn%20%20%20%20%5Cn%20%20%20%20fragment%20ReceiveNoticeDetail%20on%20BAReceiveNoticeDetail%20%7B%5Cn%20%20content%5Cn%20%20id%5Cn%20%20invalidTime%5Cn%20%20level%5Cn%20%20needReceiptConfirm%5Cn%20%20needRingNotify%5Cn%20%20publishTime%5Cn%20%20scene%5Cn%20%20sceneName%5Cn%20%20type%5Cn%20%20tenantId%5Cn%20%20title%5Cn%20%20isCollect%5Cn%20%20readStatus%5Cn%7D%5Cn%20%20%20%20%5Cn%5Cn%20%20%20%20fragment%20Page%20on%20PageInfo%20%7B%5Cn%20%20current%5Cn%20%20pageSize%5Cn%20%20total%5Cn%7D%5Cn%20%20%20%20%22%2C%22variables%22%3A%7B%22input%22%3A%7B%22type%22%3A1%2C%22pageRequest%22%3A%7B%22current%22%3A1%2C%22pageSize%22%3A100%7D%7D%7D%7D%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "api": "mopen.xixi.base.graphql",
+    "v": "1.0",
+    "ret": [
+     "SUCCESS::接口调用成功"
+    ],
+    "success": true,
+    "errorCode": null,
+    "errorMessage": null,
+    "data": {
+     "pageOfflineNotices": {
+      "notices": [],
+      "pageInfo": {
+       "current": 1,
+       "pageSize": 100,
+       "total": 0
+      },
+      "type": 1
+     },
+     "traceId": "c0a820fd17873209288726218d0087"
+    },
+    "ext": {
+     "traceId": "c0a820fd17873209288726218d0087",
+     "unitType": "aliyun",
+     "cluster": "one",
+     "api": "mopen.xixi.base.graphql_OfflineNotices",
+     "requestId": null
+    }
+   }
+  },
+  {
+   "dt": 20600,
+   "method": "POST",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.xixi.base.graphql/1.0/?operationName=RuntimeSettings&operationType=query&appKey=4272&t=1787320929797&sign=5d1d2ec59fdd7a6175e54242393f0737&type=originaljson&api=mopen.xixi.base.graphql&v=1.0&dataType=json",
+   "postData": "data=%7B%22request%22%3A%7B%22query%22%3A%22%5Cn%20%20%20%20query%20RuntimeSettings(%24input%3A%20BARuntimeSettingInput!)%20%7B%5Cn%20%20runtimeSettings(input%3A%20%24input)%20%7B%5Cn%20%20%20%20name%5Cn%20%20%20%20ownerKey%5Cn%20%20%20%20ownerType%5Cn%20%20%20%20value%5Cn%20%20%7D%5Cn%7D%5Cn%20%20%20%20%22%2C%22variables%22%3A%7B%22input%22%3A%7B%22apps%22%3A%5B%22com.xixikf.intelligent.agent.IntelligentAgent%22%5D%2C%22extensions%22%3A%5B%5D%7D%7D%7D%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json"
+  },
+  {
+   "dt": 20605,
+   "method": "GET",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.com.xixikf.base.security.api.service.AuthorizationService/1.0/?appKey=4272&t=1787320929925&sign=e726455d27705e48f2a379cc04a80bf1&type=originaljson&api=mopen.com.xixikf.base.security.api.service.AuthorizationService&v=1.0&dataType=json&data=%7B%22appCodes%22%3A%5B%22com.xixikf.hotline.model.omni%22%5D%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json"
+  },
+  {
+   "dt": 20606,
+   "method": "GET",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.xspace.OpsCommodityOrderReadService.selectPermissionTreeByAppCode/1.0/?appKey=4272&t=1787320929925&sign=710acdcfa52db0031487ab17b74f9b44&type=originaljson&api=mopen.xspace.OpsCommodityOrderReadService.selectPermissionTreeByAppCode&v=1.0&dataType=json&data=%7B%22appCode%22%3A%22com.xixikf.intelligent.agent.IntelligentAgent%22%2C%22prodLineId%22%3A10552599%2C%22bizType%22%3A%22xp_commerce_aliyun%22%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json"
+  },
+  {
+   "dt": 20610,
+   "method": "GET",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.ly.ikb.agent.config.one.get/1.0/?appKey=4272&t=1787320930195&sign=30bfdbb4cacb3efa019f98211cff31df&type=originaljson&api=mopen.ly.ikb.agent.config.one.get&v=1.0&dataType=json&data=%7B%22systemAgentId%22%3A30%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json"
+  },
+  {
+   "dt": 20615,
+   "method": "POST",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.ly.ikb.agent.one.list/1.0/?appKey=4272&t=1787320930423&sign=cc08c15738fbe19f83f748225f4bbfbd&type=originaljson&api=mopen.ly.ikb.agent.one.list&v=1.0&dataType=json",
+   "postData": "data=%7B%22agentCodeList%22%3A%5B%22c5de2523-e4c9-47cf-a634-4955711a8751%22%5D%2C%22size%22%3A1%2C%22page%22%3A1%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json"
+  },
+  {
+   "dt": 41006,
+   "method": "GET",
+   "url": "https://config.quickservice.lydaas.com/ui/agent_store/blank/QuickExperience",
+   "type": "Document",
+   "status": 200,
+   "mimeType": "text/html",
+   "resBody": "<!doctype html>\n<html>\n<head>\n    <meta charset=\"utf-8\">\n    <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n    <meta name=\"spm-id\" content=\"epoch\" />\n    <title>快速体验</title>\n    <meta name=\"viewport\" content=\"width=device-width\">\n    <link rel=\"shortcut icon\" href=\"//img.alicdn.com/imgextra/i2/O1CN015f0klk1EHoFchECGb_!!6000000000327-73-tps-128-128.ico\" type=\"image/x-icon\"/>\n    <link rel=\"stylesheet\" href=\"https://g.alicdn.com/bizphin/antd-theme/0.1.4/static/css/main.css\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n    <link rel=\"stylesheet\" href=\"//gw.alipayobjects.com/os/lib/alife/dpl-halo/2.4.2/dist/next.min.css\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n    <link rel=\"stylesheet\" href=\"//g.alicdn.com/lattice/epoch-base-component/1.3.41/component.min.css\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n    <link rel=\"stylesheet\" href=\"https://g.alicdn.com/bizphin/base-components-antd-plugin/0.0.1/css/components.css\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n    <link rel=\"stylesheet\" href=\"https://g.alicdn.com/bizphin/base-components-antd/1.0.28/css/components.css\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n    <link rel=\"stylesheet\" href=\"https://g.alicdn.com/antelope-design/antelope-flow/1.0.32/index.css\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n    <link rel=\"stylesheet\" href=\"https://g.alicdn.com/ly-service/ly-chatui-core/5.0.3/index.css\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n    <link rel=\"stylesheet\" href=\"https://g.alicdn.com/bizphin/common-chat/0.6.19/dist/index.css\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n    <link rel=\"stylesheet\" href=\"https://g.alicdn.com/bizphin/ui-components-idaas/0.0.3/css/components.css\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n    <link rel=\"stylesheet\" href=\"https://g.alicdn.com/bizphin/ui-components-agentStore/0.1.138/css/components.css\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n    <link rel=\"stylesheet\" href=\"https://g.alicdn.com/bizphin/ui-components-flow/0.0.119/css/components.css\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n    <link rel=\"stylesheet\" href=\"https://g.alicdn.com/bizphin/ui-components-antelope/0.0.75/css/components.css\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n    <link rel=\"stylesheet\" href=\"https://g.alicdn.com/bizphin/ui-components-AI-agent/0.0.23/css/components.css\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n    <link rel=\"stylesheet\" href=\"https://g.alicdn.com/bizphin/ui-components-market/0.0.56/css/components.css\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n    <link rel=\"stylesheet\" href=\"https://gw.alipayobjects.com/os/lib/alifd/theme-21418/0.2.8/dist/next.var.min.css\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n    <link rel=\"stylesheet\" href=\"https://gw.alipayobjects.com/os/lib/alifd/theme-21418/0.2.8/variables.css\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n    <link rel=\"stylesheet\" href=\"//g.alicdn.com/aliretail/microfront-app/1.3.31/static/css/main.css\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n</head>\n<body data-spm=\"applist\">\n<div id=\"ice-container\"></div>\n<script type=\"text/javascript\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\">\n    window.assetUrlMapping = {}\n    var loginUserInfo = {\"accountId\":\"740855012736172050\",\"extProps\":{},\"phoneNumber\":\"1**********\",\"realName\":\"汇流\",\"tenantId\":\"25052416228933\",\"tenantName\":\"BSH Agent\",\"userCenterURL\":\"https://auth.lydaas.com\",\"userId\":\"856284099051554508\",\"userType\":2};\n    var epochPage = {\"cssList\":[\"//gw.alipayobjects.com/os/lib/alife/dpl-halo/2.4.2/dist/next.min.css\",\"https://g.alicdn.com/bizphin/base-components-antd-plugin/0.0.1/css/components.css\",\"https://g.alicdn.com/bizphin/base-components-antd/1.0.28/css/components.css\",\"https://g.alicdn.com/antelope-design/antelope-flow/1.0.32/index.css\",\"https://g.alicdn.com/ly-service/ly-chatui-core/5.0.3/index.css\",\"https://g.alicdn.com/bizphin/common-chat/0.6.19/dist/index.css\",\"https://g.alicdn.com/bizphin/ui-components-idaas/0.0.3/css/components.css\",\"https://g.alicdn.com/bizphin/ui-components-agentStore/0.1.138/css/components.css\",\"https://g.alicdn.com/bizphin/ui-components-flow/0.0.119/css/components.css\",\"https://g.alicdn.com/bizphin/ui-components-antelope/0.0.75/css/components.css\",\"https://g.alicdn.com/bizphin/ui-components-AI-agent/0.0.23/css/components.css\",\"https://g.alicdn.com/bizphin/ui-components-market/0.0.56/css/components.css\",\"https://gw.alipayobjects.com/os/lib/alifd/theme-21418/0.2.8/dist/next.var.min.css\",\"https://gw.alipayobjects.com/os/lib/alifd/theme-21418/0.2.8/variables.css\"],\"favicon\":\"//img.alicdn.com/imgextra/i2/O1CN015f0klk1EHoFchECGb_!!6000000000327-73-tps-128-128.ico\",\"jsList\":[\"https://g.alicdn.com/bizphin/base-components-antd-plugin/0.0.1/js/components.js\",\"https://g.alicdn.com/bizphin/base-components-antd/1.0.28/js/components.js\",\"https://g.alicdn.com/antelope-design/antelope-flow/1.0.32/index.js\",\"https://g.alicdn.com/antelope/phone-sdk/2.1.0/phone-client.js\",\"https://g.alicdn.com/ly-service/ly-chatui-core/5.0.3/index.js\\t\",\"https://g.alicdn.com/bizphin/common-chat/0.6.19/dist/index.umd.js\",\"https://g.alicdn.com/bizphin/ui-components-idaas/0.0.3/js/components.js\",\"https://g.alicdn.com/bizphin/ui-components-agentStore/0.1.138/js/components.js\",\"https://g.alicdn.com/bizphin/ui-components-flow/0.0.119/js/components.js\",\"https://g.alicdn.com/bizphin/ui-components-antelope/0.0.75/js/components.js\",\"https://g.alicdn.com/bizphin/ui-components-AI-agent/0.0.23/js/components.js\",\"\",\"https://g.alicdn.com/bizphin/ui-components-market/0.0.56/js/components.js\"],\"noPermission\":false,\"page\":{\"active\":\"1\",\"appCode\":\"agent_store\",\"appCss\":[\"//gw.alipayobjects.com/os/lib/alife/dpl-halo/2.4.2/dist/next.min.css\",\"https://g.alicdn.com/bizphin/base-components-antd-plugin/0.0.1/css/components.css\",\"https://g.alicdn.com/bizphin/base-components-antd/1.0.28/css/components.css\",\"https://g.alicdn.com/antelope-design/antelope-flow/1.0.32/index.css\",\"https://g.alicdn.com/ly-service/ly-chatui-core/5.0.3/index.css\",\"https://g.alicdn.com/bizphin/common-chat/0.6.19/dist/index.css\",\"https://g.alicdn.com/bizphin/ui-components-idaas/0.0.3/css/components.css\",\"https://g.alicdn.com/bizphin/ui-components-agentStore/0.1.138/css/components.css\",\"https://g.alicdn.com/bizphin/ui-components-flow/0.0.119/css/components.css\",\"https://g.alicdn.com/bizphin/ui-components-antelope/0.0.75/css/components.css\",\"https://g.alicdn.com/bizphin/ui-components-AI-agent/0.0.23/css/components.css\",\"https://g.alicdn.com/bizphin/ui-components-market/0.0.56/css/components.css\",\"https://gw.alipayobjects.com/os/lib/alifd/theme-21418/0.2.8/dist/next.var.min.css\",\"https://gw.alipayobjects.com/os/lib/alifd/theme-21418/0.2.8/variables.css\"],\"appJs\":[\"https://g.alicdn.com/bizphin/base-components-antd-plugin/0.0.1/js/components.js\",\"https://g.alicdn.com/bizphin/base-components-antd/1.0.28/js/components.js\",\"https://g.alicdn.com/antelope-design/antelope-flow/1.0.32/index.js\",\"https://g.alicdn.com/antelope/phone-sdk/2.1.0/phone-client.js\",\"https://g.alicdn.com/ly-service/ly-chatui-core/5.0.3/index.js\\t\",\"https://g.alicdn.com/bizphin/common-chat/0.6.19/dist/index.umd.js\",\"https://g.alicdn.com/bizphin/ui-components-idaas/0.0.3/js/components.js\",\"https://g.alicdn.com/bizphin/ui-components-agentStore/0.1.138/js/components.js\",\"https://g.alicdn.com/bizphin/ui-components-flow/0.0.119/js/components.js\",\"https://g.alicdn.com/bizphin/ui-components-antelope/0.0.75/js/components.js\",\"https://g.alicdn.com/bizphin/ui-components-AI-agent/0.0.23/js/components.js\",\"\",\"https://g.alicdn.com/bizphin/ui-components-market/0.0.56/js/components.js\"],\"code\":\"QuickExperience\",\"content\":{\"componentsMap\":[{\"package\":\"uiu-components-agentStoreQuickExperience\",\"componentName\":\"uiu-components-agentStoreQuickExperience\"},{\"package\":\"Page\",\"componentName\":\"Page\"}],\"componentName\":\"快速体验\",\"componentsTree\":[{\"fileName\":\"\",\"meshFlows\":[],\"children\":[{\"componentName\":\"uiu-components-agentStoreQuickExperience\",\"id\":\"node_ocmcvreecm1\",\"props\":{\"_context\":{\"variable\":\"this.utils.epochPolyfill(this)\",\"type\":\"variable\",\"value\":{\"type\":\"JSExpression\",\"value\":\"this.utils.epochPolyfill(this)\"}},\"_queryAgentDetail\":{\"mode\":\"service\",\"service\":\"node_ocmcvreecm1/AgentService_querySimpleAgent\",\"value\":{\"serviceType\":\"api\",\"output\":[],\"code\":\"AgentService_querySimpleAgent\",\"requestMethod\":[],\"name\":\"查询agent详情 (AgentService_querySimpleAgent)\",\"appCode\":\"agent_store\"}},\"_queryPageList\":{\"mode\":\"service\",\"service\":\"node_ocmcvreecm1/AgentService_queryPageList\",\"value\":{\"serviceType\":\"api\",\"output\":[],\"code\":\"AgentService_queryPageList\",\"requestMethod\":[],\"name\":\"分页查询agent列表 (AgentService_queryPageList)\",\"appCode\":\"agent_store\"}},\"_queryVariableList\":{\"mode\":\"service\",\"service\":\"node_ocmcvreecm1/AgentService_queryVariableList\",\"value\":{\"serviceType\":\"api\",\"output\":[],\"code\":\"AgentService_queryVariableList\",\"requestMethod\":[],\"name\":\"查询变量列表 (AgentService_queryVariableList)\",\"appCode\":\"agent_store\"}},\"_queryModelService\":{\"mode\":\"service\",\"service\":\"node_ocmcvreecm1/query_model_list\",\"value\":{\"serviceType\":\"api\",\"output\":[],\"code\":\"query_model_list\",\"requestMethod\":[],\"name\":\"查询模型列表 (query_model_list)\",\"appCode\":\"agent_store\"}},\"_queryApplicationService\":{\"mode\":\"service\",\"service\":\"node_ocmcvreecm1/query_page_asset_application\",\"value\":{\"serviceType\":\"api\",\"output\":[],\"code\":\"query_page_asset_application\",\"requestMethod\":[],\"name\":\"查询应用资产 (query_page_asset_application)\",\"appCode\":\"agent_store\"}}}}],\"componentName\":\"Page\",\"id\":\"root\",\"dataSource\":{\"list\":[{\"dataHandler\":{\"type\":\"JSExpression\",\"value\":\"function(data, err) { return data; }\"},\"options\":{\"headers\":{},\"method\":\"POST\",\"isCors\":true,\"uri\":\"\",\"timeout\":5000},\"_epoch\":{\"serviceType\":\"api\",\"output\":[],\"code\":\"query_model_list\",\"requestMethod\":[],\"name\":\"查询模型列表 (query_model_list)\",\"appCode\":\"agent_store\"},\"id\":\"node_ocmcvreecm1/query_model_list\",\"type\":\"service\"},{\"dataHandler\":{\"type\":\"JSExpression\",\"value\":\"function(data, err) { return data; }\"},\"options\":{\"headers\":{},\"method\":\"POST\",\"isCors\":true,\"uri\":\"\",\"timeout\":5000},\"_epoch\":{\"serviceType\":\"api\",\"output\":[],\"code\":\"AgentService_queryPageList\",\"requestMethod\":[],\"name\":\"分页查询agent列表 (AgentService_queryPageList)\",\"appCode\":\"agent_store\"},\"id\":\"node_ocmcvreecm1/AgentService_queryPageList\",\"type\":\"service\"},{\"dataHandler\":{\"type\":\"JSExpression\",\"value\":\"function(data, err) { return data; }\"},\"options\":{\"headers\":{},\"method\":\"POST\",\"isCors\":true,\"uri\":\"\",\"timeout\":5000},\"_epoch\":{\"serviceType\":\"api\",\"output\":[],\"code\":\"AgentService_querySimpleAgent\",\"requestMethod\":[],\"name\":\"查询agent详情 (AgentService_querySimpleAgent)\",\"appCode\":\"agent_store\"},\"id\":\"node_ocmcvreecm1/AgentService_querySimpleAgent\",\"type\":\"service\"},{\"dataHandler\":{\"type\":\"JSExpression\",\"value\":\"function(data, err) { return data; }\"},\"options\":{\"headers\":{},\"method\":\"POST\",\"isCors\":true,\"uri\":\"\",\"timeout\":5000},\"_epoch\":{\"serviceType\":\"api\",\"output\":[],\"code\":\"query_agent_config\",\"requestMethod\":[],\"name\":\"查询agent配置详情 (query_agent_config)\",\"appCode\":\"agent_store\"},\"id\":\"node_ocmcvreecm1/query_agent_config\",\"type\":\"service\"},{\"dataHandler\":{\"type\":\"JSExpression\",\"value\":\"function(data, err) { return data; }\"},\"options\":{\"headers\":{},\"method\":\"POST\",\"isCors\":true,\"uri\":\"\",\"timeout\":5000},\"_epoch\":{\"serviceType\":\"api\",\"output\":[],\"code\":\"queryAppList\",\"requestMethod\":[],\"name\":\"查询应用列表 (queryAppList)\",\"appCode\":\"agent_store\"},\"id\":\"node_ocmcvreecm1/queryAppList\",\"type\":\"service\"},{\"dataHandler\":{\"type\":\"JSExpression\",\"value\":\"function(data, err) { return data; }\"},\"options\":{\"headers\":{},\"method\":\"POST\",\"isCors\":true,\"uri\":\"\",\"timeout\":5000},\"_epoch\":{\"serviceType\":\"api\",\"output\":[],\"code\":\"query_page_asset_application\",\"requestMethod\":[],\"name\":\"查询应用资产 (query_page_asset_application)\",\"appCode\":\"agent_store\"},\"id\":\"node_ocmcvreecm1/query_page_asset_application\",\"type\":\"service\"},{\"dataHandler\":{\"type\":\"JSExpression\",\"value\":\"function(data, err) { return data; }\"},\"options\":{\"headers\":{},\"method\":\"POST\",\"isCors\":true,\"uri\":\"\",\"timeout\":5000},\"_epoch\":{\"serviceType\":\"api\",\"output\":[],\"code\":\"AgentService_queryVariableList\",\"requestMethod\":[],\"name\":\"查询变量列表 (AgentService_queryVariableList)\",\"appCode\":\"agent_store\"},\"id\":\"node_ocmcvreecm1/AgentService_queryVariableList\",\"type\":\"service\"}]},\"props\":{\"style\":{}},\"lifeCycles\":{}}],\"actions\":{\"module\":{\"compiled\":\"\",\"source\":\"\"},\"type\":\"FUNCTION\",\"list\":[]}},\"css\":[],\"extPoint\":{\"agent_knowledge_space_setting\":true,\"agent_develop_page\":\"/intelligent-agent/ui/agent_store/blank/QuickExperience\",\"agent_builder_publish\":true,\"agentone_domain_channel\":\"official\",\"agent_knowledge_db_datasource_hidden\":false,\"agent_referee_page\":\"/intelligent-agent/ui/EVAL_CENTER/blank/RefereeLibrary\",\"agent_builder_input_type_hidden\":true,\"agent_knowledge_authorization\":true,\"agent_knowledge_page\":\"/intelligent-agent/ui/agent_store/blank/knowledge_library\",\"agent_builder_on_boarding_hidden\":true,\"agent_builder_rating_hidden\":true,\"agent_builder_file_upload_hidden\":true,\"agent_other_plugin_market\":\"quick-service\",\"agent_builder_hidden_deep_plan\":true,\"agent_builder_template_hidden\":false,\"agent_builder_flow_to_sql_hidden\":false,\"agent_evaluation_page\":\"/intelligent-agent/ui/EVAL_CENTER/blank/ListEvaluationSet\",\"agent_builder_quick_access_hidden\":true,\"agent_professional_dictionary_page\":\"/knowledgeLibrary/globalVocabulary\",\"agent_knowledge_doc_search_type\":[{\"businessScene\":1,\"label\":\"标准问答\",\"value\":\"qa_pair\"},{\"businessScene\":1,\"label\":\"DOC文档\",\"value\":\"doc\"},{\"businessScene\":1,\"label\":\"DOCX文档\",\"value\":\"docx\"},{\"businessScene\":1,\"label\":\"PDF文档\",\"value\":\"pdf\"},{\"businessScene\":1,\"label\":\"文本文档\",\"value\":\"txt\"},{\"businessScene\":1,\"label\":\"Markdown文档\",\"value\":\"md\"},{\"businessScene\":1,\"label\":\"在线文档\",\"value\":\"online_doc\"},{\"businessScene\":1,\"label\":\"PPT文档\",\"value\":\"ppt\"},{\"businessScene\":1,\"label\":\"PPTX文档\",\"value\":\"pptx\"},{\"businessScene\":1,\"label\":\"语雀表格\",\"value\":\"yu_que_sheet\"},{\"businessScene\":1,\"label\":\"语雀文档\",\"value\":\"yu_que_doc\"},{\"businessScene\":1,\"label\":\"网页\",\"value\":\"url\"},{\"businessScene\":1,\"label\":\"JPG图片\",\"value\":\"jpg\"},{\"businessScene\":1,\"label\":\"PNG图片\",\"value\":\"png\"},{\"businessScene\":1,\"label\":\"飞书表格\",\"value\":\"fei_shu_sheet\"},{\"businessScene\":1,\"label\":\"飞书文档\",\"value\":\"fei_shu_doc\"},{\"businessScene\":1,\"label\":\"钉钉表格\",\"value\":\"ding_sheet\"},{\"businessScene\":1,\"label\":\"钉钉文档\",\"value\":\"ding_doc\"},{\"businessScene\":1,\"label\":\"XLSX表格\",\"value\":\"xlsx\"},{\"businessScene\":1,\"label\":\"XLS表格\",\"value\":\"xls\"},{\"businessScene\":1,\"label\":\"CSV表格\",\"value\":\"csv\"},{\"businessScene\":1,\"label\":\"音频-aac\",\"value\":\"aac\"},{\"businessScene\":1,\"label\":\"音频-flac\",\"value\":\"flac\"},{\"businessScene\":1,\"label\":\"音频-mp3\",\"value\":\"mp3\"},{\"businessScene\":1,\"label\":\"音频-mpeg\",\"value\":\"mp3\"},{\"businessScene\":1,\"label\":\"音频-ogg\",\"value\":\"ogg\"},{\"businessScene\":1,\"label\":\"音频-opus\",\"value\":\"opus\"},{\"businessScene\":1,\"label\":\"音频-wav\",\"value\":\"wav\"},{\"businessScene\":1,\"label\":\"音频-webm\",\"value\":\"webm\"},{\"businessScene\":1,\"label\":\"音频-wma\",\"value\":\"wma\"},{\"businessScene\":1,\"label\":\"视频-mp4\",\"value\":\"mp4\"},{\"businessScene\":1,\"label\":\"视频-avi\",\"value\":\"avi\"},{\"businessScene\":1,\"label\":\"视频-mkv\",\"value\":\"mkv\"},{\"businessScene\":1,\"label\":\"视频-mov\",\"value\":\"mov\"},{\"businessScene\":1,\"label\":\"视频-flv\",\"value\":\"flv\"},{\"businessScene\":1,\"label\":\"视频-wmv\",\"value\":\"wmv\"},{\"businessScene\":2,\"label\":\"企业数据库\",\"value\":\"db_table\"},{\"businessScene\":2,\"label\":\"表格数据类\",\"value\":\"xlsx\"}],\"agent_knowledge_doc_import_type\":[{\"label\":\"阿里钉文档\",\"status\":\"hidden\"}],\"agent_builder_show_avatar_hidden\":true,\"agent_quick_experience_jump_domain\":\"\",\"agent_multi_language_enable\":false,\"agent_knowledge_show_plugin\":true,\"agent_reviews_page\":\"/intelligent-agent/ui/EVAL_CENTER/blank/ListOfReviews\",\"agent_back_url_prefix\":\"/intelligent-agent\",\"agent_service_tools_enable\":true,\"agentone_portal_page\":\"https://dev.g.alicdn.com/antelope/portal-page/0.0.1/portal.html\",\"agent_builder_skin_select_hidden\":true,\"layout_workbench_hidden\":true,\"knowledge_card_hide\":false},\"filterCss\":[],\"filterJs\":[],\"globalPermissions\":[],\"js\":[],\"name\":\"快速体验\",\"relatedPermissions\":[],\"type\":\"page\"},\"title\":\"快速体验\"};\n    var epochUserType = '2';\n    var env = '';\n    var LatticeEngineLoaderConfig = {\n        \"page\": {\"pathVariable\": true, \"url\": \"\"}\n    };\n    var LatticeEngineConfig = {};\n    var epochTenantInfo = {\"code\": \"master_daily\", \"customerId\": \"master\"};\n    var workbenchConfig = {\"globalPermissions\":[{\"code\":\"app-quickService-permission\"}]};\n    var pageConfig = {\n        env: 'online',\n        urlPrefix: '',\n        APIUrlPrefix: '',\n        contextPath:'/',\n        computedVariable: true,\n        datasourceVariableParams: true,\n        templateType: 'page',\n        RE_VERSION: '7.1.7',\n        designerConfigs: {\n            modules: {\n                logicJS: {\n                    enableUpdateTableData: false,\n                    enableGlobalFunction: false,\n                },\n            },\n        },\n    };\n</script>\n<script src=\"https://g.alicdn.com/antelope/ly-kiwi-intl/0.0.1/kiwi-intl.bundle.min.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"https://g.alicdn.com/bizphin/i18n-langs/0.0.4/i18n.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"//polyfill.alicdn.com/polyfill.min.js?features=es6%2Ces7\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"//g.alicdn.com/lattice/base-front/1.1.1/lib/jquery/jquery.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"//g.alicdn.com/bizphin/base-front/0.0.1/lib/react/react.min.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"//g.alicdn.com/bizphin/base-front/0.0.1/lib/react-dom/react-dom.min.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"//g.alicdn.com/code/lib/prop-types/15.7.2/prop-types.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"//g.alicdn.com/platform/c/react15-polyfill/0.0.1/dist/index.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"//g.alicdn.com/code/lib/moment.js/2.24.0/moment-with-locales.min.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"https://g.alicdn.com/bizphin/antd-theme/0.0.2/antd/antd.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"//gw.alipayobjects.com/os/lib/alife/dpl-halo/2.4.2/dist/next.min.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"//g.alicdn.com/lattice/epoch-base-component/1.3.41/component.min.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"//g.alicdn.com/epoch/epoch-render-framework/1.4.4/js/app.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"//g.alicdn.com/epoch/epoch-render-framework/1.4.4/js/classic.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"https://g.alicdn.com/bizphin/base-components-antd-plugin/0.0.1/js/components.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"https://g.alicdn.com/bizphin/base-components-antd/1.0.28/js/components.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"https://g.alicdn.com/antelope-design/antelope-flow/1.0.32/index.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"https://g.alicdn.com/antelope/phone-sdk/2.1.0/phone-client.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"https://g.alicdn.com/ly-service/ly-chatui-core/5.0.3/index.js\t\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"https://g.alicdn.com/bizphin/common-chat/0.6.19/dist/index.umd.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"https://g.alicdn.com/bizphin/ui-components-idaas/0.0.3/js/components.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"https://g.alicdn.com/bizphin/ui-components-agentStore/0.1.138/js/components.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"https://g.alicdn.com/bizphin/ui-components-flow/0.0.119/js/components.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"https://g.alicdn.com/bizphin/ui-components-antelope/0.0.75/js/components.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"https://g.alicdn.com/bizphin/ui-components-AI-agent/0.0.23/js/components.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"https://g.alicdn.com/bizphin/ui-components-market/0.0.56/js/components.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"//g.alicdn.com/aliretail/microfront-app/1.3.31/static/js/main.js\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n<script src=\"https://s4.cnzz.com/z.js?id=1281410707&async=1\" nonce=\"dmVeoMIkx5B6wG1jYjhDQw==\"></script>\n</body>\n</html>"
+  },
+  {
+   "dt": 48348,
+   "method": "POST",
+   "url": "https://api.quickservice.lydaas.com/h5/mopen.xixi.base.graphql/1.0/?operationName=NetworkMonitor&operationType=query&__bundle=com.xixikf.config.system.settings&appKey=4272&t=1787320958518&sign=809ab360e840c90dfddc4083ce998ad2&type=originaljson&api=mopen.xixi.base.graphql&v=1.0&dataType=json",
+   "postData": "data=%7B%22request%22%3A%7B%22query%22%3A%22%5Cn%20%20%20%20query%20NetworkMonitor(%24input%3A%20BANetworkMonitorInput!)%20%7B%5Cn%20%20networkMonitor(input%3A%20%24input)%20%7B%5Cn%20%20%20%20clientRequestTime%5Cn%20%20%20%20serverReceiveTime%5Cn%20%20%20%20serverResponseTime%5Cn%20%20%7D%5Cn%7D%5Cn%20%20%20%20%22%2C%22variables%22%3A%7B%22input%22%3A%7B%22clientRequestTime%22%3A%221787320958212%22%7D%7D%7D%2C%22pvid%22%3A%22f36dcc4c-0528-4e17-a347-a5f79f2ce189%22%7D",
+   "type": "Fetch",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "api": "mopen.xixi.base.graphql",
+    "v": "1.0",
+    "ret": [
+     "SUCCESS::接口调用成功"
+    ],
+    "success": true,
+    "errorCode": null,
+    "errorMessage": null,
+    "data": {
+     "networkMonitor": {
+      "clientRequestTime": "1787320958212",
+      "serverReceiveTime": "1787320958716",
+      "serverResponseTime": "1787320958716"
+     },
+     "traceId": "c0a8209217873209586786297d0087"
+    },
+    "ext": {
+     "traceId": "c0a8209217873209586786297d0087",
+     "unitType": "aliyun",
+     "cluster": "one",
+     "api": "mopen.xixi.base.graphql_NetworkMonitor",
+     "requestId": null
+    }
+   }
+  },
+  {
+   "dt": 49065,
+   "method": "GET",
+   "url": "blob:https://config.quickservice.lydaas.com/ba630752-8911-4728-95c0-038180a4b031",
+   "type": "Script"
+  },
+  {
+   "dt": 49066,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/PlatformSignRecordAbilityService_isSigned",
+   "type": "XHR",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "businessFeatures": {},
+    "ext": {},
+    "header": {
+     "date": "2026-08-21 22:02:40",
+     "rpcId": "",
+     "traceId": "acb4a494a303c386d22fd9fc1007a1f5"
+    },
+    "platformFeatures": {
+     "appName": "agent-store"
+    },
+    "result": true,
+    "success": true,
+    "validateErrors": {}
+   }
+  },
+  {
+   "dt": 49073,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/PlatformSignRecordAbilityService_isSigned",
+   "type": "XHR",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "businessFeatures": {},
+    "ext": {},
+    "header": {
+     "date": "2026-08-21 22:02:40",
+     "rpcId": "",
+     "traceId": "4c4e321487c798b83f1730af533f5e70"
+    },
+    "platformFeatures": {
+     "appName": "agent-store"
+    },
+    "result": true,
+    "success": true,
+    "validateErrors": {}
+   }
+  },
+  {
+   "dt": 49075,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/ui/agent_store/blank/QuickExperience",
+   "postData": {},
+   "type": "XHR",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "page": {
+     "code": "QuickExperience",
+     "name": "快速体验",
+     "content": {
+      "componentsMap": [
+       {
+        "package": "uiu-components-agentStoreQuickExperience",
+        "componentName": "uiu-components-agentStoreQuickExperience"
+       },
+       {
+        "package": "Page",
+        "componentName": "Page"
+       }
+      ],
+      "componentName": "快速体验",
+      "componentsTree": [
+       {
+        "fileName": "",
+        "meshFlows": [],
+        "children": [
+         {
+          "componentName": "uiu-components-agentStoreQuickExperience",
+          "id": "node_ocmcvreecm1",
+          "props": {
+           "_context": {
+            "variable": "this.utils.epochPolyfill(this)",
+            "type": "variable",
+            "value": {
+             "type": "JSExpression",
+             "value": "this.utils.epochPolyfill(this)"
+            }
+           },
+           "_queryAgentDetail": {
+            "mode": "service",
+            "service": "node_ocmcvreecm1/AgentService_querySimpleAgent",
+            "value": {
+             "serviceType": "api",
+             "output": [],
+             "code": "AgentService_querySimpleAgent",
+             "requestMethod": [],
+             "name": "查询agent详情 (AgentService_querySimpleAgent)",
+             "appCode": "agent_store"
+            }
+           },
+           "_queryPageList": {
+            "mode": "service",
+            "service": "node_ocmcvreecm1/AgentService_queryPageList",
+            "value": {
+             "serviceType": "api",
+             "output": [],
+             "code": "AgentService_queryPageList",
+             "requestMethod": [],
+             "name": "分页查询agent列表 (AgentService_queryPageList)",
+             "appCode": "agent_store"
+            }
+           },
+           "_queryVariableList": {
+            "mode": "service",
+            "service": "node_ocmcvreecm1/AgentService_queryVariableList",
+            "value": {
+             "serviceType": "api",
+             "output": [],
+             "code": "AgentService_queryVariableList",
+             "requestMethod": [],
+             "name": "查询变量列表 (AgentService_queryVariableList)",
+             "appCode": "agent_store"
+            }
+           },
+           "_queryModelService": {
+            "mode": "service",
+            "service": "node_ocmcvreecm1/query_model_list",
+            "value": {
+             "serviceType": "api",
+             "output": [],
+             "code": "query_model_list",
+             "requestMethod": [],
+             "name": "查询模型列表 (query_model_list)",
+             "appCode": "agent_store"
+            }
+           },
+           "_queryApplicationService": {
+            "mode": "service",
+            "service": "node_ocmcvreecm1/query_page_asset_application",
+            "value": {
+             "serviceType": "api",
+             "output": [],
+             "code": "query_page_asset_application",
+             "requestMethod": [],
+             "name": "查询应用资产 (query_page_asset_application)",
+             "appCode": "agent_store"
+            }
+           }
+          }
+         }
+        ],
+        "componentName": "Page",
+        "id": "root",
+        "dataSource": {
+         "list": [
+          {
+           "dataHandler": {
+            "type": "JSExpression",
+            "value": "function(data, err) { return data; }"
+           },
+           "options": {
+            "headers": {},
+            "method": "POST",
+            "isCors": true,
+            "uri": "",
+            "timeout": 5000
+           },
+           "_epoch": {
+            "serviceType": "api",
+            "output": [],
+            "code": "query_model_list",
+            "requestMethod": [],
+            "name": "查询模型列表 (query_model_list)",
+            "appCode": "agent_store"
+           },
+           "id": "node_ocmcvreecm1/query_model_list",
+           "type": "service"
+          },
+          {
+           "dataHandler": {
+            "type": "JSExpression",
+            "value": "function(data, err) { return data; }"
+           },
+           "options": {
+            "headers": {},
+            "method": "POST",
+            "isCors": true,
+            "uri": "",
+            "timeout": 5000
+           },
+           "_epoch": {
+            "serviceType": "api",
+            "output": [],
+            "code": "AgentService_queryPageList",
+            "requestMethod": [],
+            "name": "分页查询agent列表 (AgentService_queryPageList)",
+            "appCode": "agent_store"
+           },
+           "id": "node_ocmcvreecm1/AgentService_queryPageList",
+           "type": "service"
+          },
+          {
+           "dataHandler": {
+            "type": "JSExpression",
+            "value": "function(data, err) { return data; }"
+           },
+           "options": {
+            "headers": {},
+            "method": "POST",
+            "isCors": true,
+            "uri": "",
+            "timeout": 5000
+           },
+           "_epoch": {
+            "serviceType": "api",
+            "output": [],
+            "code": "AgentService_querySimpleAgent",
+            "requestMethod": [],
+            "name": "查询agent详情 (AgentService_querySimpleAgent)",
+            "appCode": "agent_store"
+           },
+           "id": "node_ocmcvreecm1/AgentService_querySimpleAgent",
+           "type": "service"
+          },
+          {
+           "dataHandler": {
+            "type": "JSExpression",
+            "value": "function(data, err) { return data; }"
+           },
+           "options": {
+            "headers": {},
+            "method": "POST",
+            "isCors": true,
+            "uri": "",
+            "timeout": 5000
+           },
+           "_epoch": {
+            "serviceType": "api",
+            "output": [],
+            "code": "query_agent_config",
+            "requestMethod": [],
+            "name": "查询agent配置详情 (query_agent_config)",
+            "appCode": "agent_store"
+           },
+           "id": "node_ocmcvreecm1/query_agent_config",
+           "type": "service"
+          },
+          {
+           "dataHandler": {
+            "type": "JSExpression",
+            "value": "function(data, err) { return data; }"
+           },
+           "options": {
+            "headers": {},
+            "method": "POST",
+            "isCors": true,
+            "uri": "",
+            "timeout": 5000
+           },
+           "_epoch": {
+            "serviceType": "api",
+            "output": [],
+            "code": "queryAppList",
+            "requestMethod": [],
+            "name": "查询应用列表 (queryAppList)",
+            "appCode": "agent_store"
+           },
+           "id": "node_ocmcvreecm1/queryAppList",
+           "type": "service"
+          },
+          {
+           "dataHandler": {
+            "type": "JSExpression",
+            "value": "function(data, err) { return data; }"
+           },
+           "options": {
+            "headers": {},
+            "method": "POST",
+            "isCors": true,
+            "uri": "",
+            "timeout": 5000
+           },
+           "_epoch": {
+            "serviceType": "api",
+            "output": [],
+            "code": "query_page_asset_application",
+            "requestMethod": [],
+            "name": "查询应用资产 (query_page_asset_application)",
+            "appCode": "agent_store"
+           },
+           "id": "node_ocmcvreecm1/query_page_asset_application",
+           "type": "service"
+          },
+          {
+           "dataHandler": {
+            "type": "JSExpression",
+            "value": "function(data, err) { return data; }"
+           },
+           "options": {
+            "headers": {},
+            "method": "POST",
+            "isCors": true,
+            "uri": "",
+            "timeout": 5000
+           },
+           "_epoch": {
+            "serviceType": "api",
+            "output": [],
+            "code": "AgentService_queryVariableList",
+            "requestMethod": [],
+            "name": "查询变量列表 (AgentService_queryVariableList)",
+            "appCode": "agent_store"
+           },
+           "id": "node_ocmcvreecm1/AgentService_queryVariableList",
+           "type": "service"
+          }
+         ]
+        },
+        "props": {
+         "style": {}
+        },
+        "lifeCycles": {}
+       }
+      ],
+      "actions": {
+       "module": {
+        "compiled": "",
+        "source": ""
+       },
+       "type": "FUNCTION",
+       "list": []
+      }
+     },
+     "appCode": "agent_store",
+     "relatedPermissions": [],
+     "js": [],
+     "css": [],
+     "filterJs": [],
+     "filterCss": [],
+     "appJs": [
+      "https://g.alicdn.com/bizphin/base-components-antd-plugin/0.0.1/js/components.js",
+      "https://g.alicdn.com/bizphin/base-components-antd/1.0.28/js/components.js",
+      "https://g.alicdn.com/antelope-design/antelope-flow/1.0.32/index.js",
+      "https://g.alicdn.com/antelope/phone-sdk/2.1.0/phone-client.js",
+      "https://g.alicdn.com/ly-service/ly-chatui-core/5.0.3/index.js\t",
+      "https://g.alicdn.com/bizphin/common-chat/0.6.19/dist/index.umd.js",
+      "https://g.alicdn.com/bizphin/ui-components-idaas/0.0.3/js/components.js",
+      "https://g.alicdn.com/bizphin/ui-components-agentStore/0.1.138/js/components.js",
+      "https://g.alicdn.com/bizphin/ui-components-flow/0.0.119/js/components.js",
+      "https://g.alicdn.com/bizphin/ui-components-antelope/0.0.75/js/components.js",
+      "https://g.alicdn.com/bizphin/ui-components-AI-agent/0.0.23/js/components.js",
+      "",
+      "https://g.alicdn.com/bizphin/ui-components-market/0.0.56/js/components.js"
+     ],
+     "appCss": [
+      "//gw.alipayobjects.com/os/lib/alife/dpl-halo/2.4.2/dist/next.min.css",
+      "https://g.alicdn.com/bizphin/base-components-antd-plugin/0.0.1/css/components.css",
+      "https://g.alicdn.com/bizphin/base-components-antd/1.0.28/css/components.css",
+      "https://g.alicdn.com/antelope-design/antelope-flow/1.0.32/index.css",
+      "https://g.alicdn.com/ly-service/ly-chatui-core/5.0.3/index.css",
+      "https://g.alicdn.com/bizphin/common-chat/0.6.19/dist/index.css",
+      "https://g.alicdn.com/bizphin/ui-components-idaas/0.0.3/css/components.css",
+      "https://g.alicdn.com/bizphin/ui-components-agentStore/0.1.138/css/components.css",
+      "https://g.alicdn.com/bizphin/ui-components-flow/0.0.119/css/components.css",
+      "https://g.alicdn.com/bizphin/ui-components-antelope/0.0.75/css/components.css",
+      "https://g.alicdn.com/bizphin/ui-components-AI-agent/0.0.23/css/components.css",
+      "https://g.alicdn.com/bizphin/ui-components-market/0.0.56/css/components.css",
+      "https://gw.alipayobjects.com/os/lib/alifd/theme-21418/0.2.8/dist/next.var.min.css",
+      "https://gw.alipayobjects.com/os/lib/alifd/theme-21418/0.2.8/variables.css"
+     ],
+     "type": "page",
+     "pageType": null,
+     "permissionCode": null,
+     "extMap": null,
+     "overridable": null,
+     "override": null,
+     "active": "1",
+     "globalPermissions": [],
+     "extPoint": {
+      "agent_knowledge_space_setting": true,
+      "agent_develop_page": "/intelligent-agent/ui/agent_store/blank/QuickExperience",
+      "agent_builder_publish": true,
+      "agentone_domain_channel": "official",
+      "agent_knowledge_db_datasource_hidden": false,
+      "agent_referee_page": "/intelligent-agent/ui/EVAL_CENTER/blank/RefereeLibrary",
+      "agent_builder_input_type_hidden": true,
+      "agent_knowledge_authorization": "***",
+      "agent_knowledge_page": "/intelligent-agent/ui/agent_store/blank/knowledge_library",
+      "agent_builder_on_boarding_hidden": true,
+      "agent_builder_rating_hidden": true,
+      "agent_builder_file_upload_hidden": true,
+      "agent_other_plugin_market": "quick-service",
+      "agent_builder_hidden_deep_plan": true,
+      "agent_builder_template_hidden": false,
+      "agent_builder_flow_to_sql_hidden": false,
+      "agent_evaluation_page": "/intelligent-agent/ui/EVAL_CENTER/blank/ListEvaluationSet",
+      "agent_builder_quick_access_hidden": true,
+      "agent_professional_dictionary_page": "/knowledgeLibrary/globalVocabulary",
+      "agent_knowledge_doc_search_type": [
+       {
+        "businessScene": 1,
+        "label": "标准问答",
+        "value": "qa_pair"
+       },
+       {
+        "businessScene": 1,
+        "label": "DOC文档",
+        "value": "doc"
+       },
+       {
+        "businessScene": 1,
+        "label": "DOCX文档",
+        "value": "docx"
+       },
+       {
+        "businessScene": 1,
+        "label": "PDF文档",
+        "value": "pdf"
+       },
+       {
+        "businessScene": 1,
+        "label": "文本文档",
+        "value": "txt"
+       },
+       {
+        "businessScene": 1,
+        "label": "Markdown文档",
+        "value": "md"
+       },
+       {
+        "businessScene": 1,
+        "label": "在线文档",
+        "value": "online_doc"
+       },
+       {
+        "businessScene": 1,
+        "label": "PPT文档",
+        "value": "ppt"
+       },
+       {
+        "businessScene": 1,
+        "label": "PPTX文档",
+        "value": "pptx"
+       },
+       {
+        "businessScene": 1,
+        "label": "语雀表格",
+        "value": "yu_que_sheet"
+       },
+       {
+        "businessScene": 1,
+        "label": "语雀文档",
+        "value": "yu_que_doc"
+       },
+       {
+        "businessScene": 1,
+        "label": "网页",
+        "value": "url"
+       },
+       {
+        "businessScene": 1,
+        "label": "JPG图片",
+        "value": "jpg"
+       },
+       {
+        "businessScene": 1,
+        "label": "PNG图片",
+        "value": "png"
+       },
+       {
+        "businessScene": 1,
+        "label": "飞书表格",
+        "value": "fei_shu_sheet"
+       },
+       {
+        "businessScene": 1,
+        "label": "飞书文档",
+        "value": "fei_shu_doc"
+       },
+       {
+        "businessScene": 1,
+        "label": "钉钉表格",
+        "value": "ding_sheet"
+       },
+       {
+        "businessScene": 1,
+        "label": "钉钉文档",
+        "value": "ding_doc"
+       },
+       {
+        "businessScene": 1,
+        "label": "XLSX表格",
+        "value": "xlsx"
+       },
+       {
+        "businessScene": 1,
+        "label": "XLS表格",
+        "value": "xls"
+       },
+       {
+        "businessScene": 1,
+        "label": "CSV表格",
+        "value": "csv"
+       },
+       {
+        "businessScene": 1,
+        "label": "音频-aac",
+        "value": "aac"
+       },
+       {
+        "businessScene": 1,
+        "label": "音频-flac",
+        "value": "flac"
+       },
+       {
+        "businessScene": 1,
+        "label": "音频-mp3",
+        "value": "mp3"
+       },
+       {
+        "businessScene": 1,
+        "label": "音频-mpeg",
+        "value": "mp3"
+       },
+       {
+        "businessScene": 1,
+        "label": "音频-ogg",
+        "value": "ogg"
+       },
+       {
+        "businessScene": 1,
+        "label": "音频-opus",
+        "value": "opus"
+       },
+       {
+        "businessScene": 1,
+        "label": "音频-wav",
+        "value": "wav"
+       },
+       {
+        "businessScene": 1,
+        "label": "音频-webm",
+        "value": "webm"
+       },
+       {
+        "businessScene": 1,
+        "label": "音频-wma",
+        "value": "wma"
+       },
+       {
+        "businessScene": 1,
+        "label": "视频-mp4",
+        "value": "mp4"
+       },
+       {
+        "businessScene": 1,
+        "label": "视频-avi",
+        "value": "avi"
+       },
+       {
+        "businessScene": 1,
+        "label": "视频-mkv",
+        "value": "mkv"
+       },
+       {
+        "businessScene": 1,
+        "label": "视频-mov",
+        "value": "mov"
+       },
+       {
+        "businessScene": 1,
+        "label": "视频-flv",
+        "value": "flv"
+       },
+       {
+        "businessScene": 1,
+        "label": "视频-wmv",
+        "value": "wmv"
+       },
+       {
+        "businessScene": 2,
+        "label": "企业数据库",
+        "value": "db_table"
+       },
+       {
+        "businessScene": 2,
+        "label": "表格数据类",
+        "value": "xlsx"
+       }
+      ],
+      "agent_knowledge_doc_import_type": [
+       {
+        "label": "阿里钉文档",
+        "status": "hidden"
+       }
+      ],
+      "agent_builder_show_avatar_hidden": true,
+      "agent_quick_experience_jump_domain": "",
+      "agent_multi_language_enable": false,
+      "agent_knowledge_show_plugin": true,
+      "agent_reviews_page": "/intelligent-agent/ui/EVAL_CENTER/blank/ListOfReviews",
+      "agent_back_url_prefix": "/intelligent-agent",
+      "agent_service_tools_enable": true,
+      "agentone_portal_page": "https://dev.g.alicdn.com/antelope/portal-page/0.0.1/portal.html",
+      "agent_builder_skin_select_hidden": true,
+      "layout_workbench_hidden": true,
+      "knowledge_card_hide": false
+     }
+    },
+    "noPermission": false,
+    "debug": null,
+    "layout": null,
+    "schemaVersion": null,
+    "favicon": "//img.alicdn.com/imgextra/i2/O1CN015f0klk1EHoFchECGb_!!6000000000327-73-tps-128-128.ico",
+    "errorCode": null,
+    "errorMessage": null,
+    "jsList": [
+     "https://g.alicdn.com/bizphin/base-components-antd-plugin/0.0.1/js/components.js",
+     "https://g.alicdn.com/bizphin/base-components-antd/1.0.28/js/components.js",
+     "https://g.alicdn.com/antelope-design/antelope-flow/1.0.32/index.js",
+     "https://g.alicdn.com/antelope/phone-sdk/2.1.0/phone-client.js",
+     "https://g.alicdn.com/ly-service/ly-chatui-core/5.0.3/index.js\t",
+     "https://g.alicdn.com/bizphin/common-chat/0.6.19/dist/index.umd.js",
+     "https://g.alicdn.com/bizphin/ui-components-idaas/0.0.3/js/components.js",
+     "https://g.alicdn.com/bizphin/ui-components-agentStore/0.1.138/js/components.js",
+     "https://g.alicdn.com/bizphin/ui-components-flow/0.0.119/js/components.js",
+     "https://g.alicdn.com/bizphin/ui-components-antelope/0.0.75/js/components.js",
+     "https://g.alicdn.com/bizphin/ui-components-AI-agent/0.0.23/js/components.js",
+     "",
+     "https://g.alicdn.com/bizphin/ui-components-market/0.0.56/js/components.js"
+    ],
+    "cssList": [
+     "//gw.alipayobjects.com/os/lib/alife/dpl-halo/2.4.2/dist/next.min.css",
+     "https://g.alicdn.com/bizphin/base-components-antd-plugin/0.0.1/css/components.css",
+     "https://g.alicdn.com/bizphin/base-components-antd/1.0.28/css/components.css",
+     "https://g.alicdn.com/antelope-design/antelope-flow/1.0.32/index.css",
+     "https://g.alicdn.com/ly-service/ly-chatui-core/5.0.3/index.css",
+     "https://g.alicdn.com/bizphin/common-chat/0.6.19/dist/index.css",
+     "https://g.alicdn.com/bizphin/ui-components-idaas/0.0.3/css/components.css",
+     "https://g.alicdn.com/bizphin/ui-components-agentStore/0.1.138/css/components.css",
+     "https://g.alicdn.com/bizphin/ui-components-flow/0.0.119/css/components.css",
+     "https://g.alicdn.com/bizphin/ui-components-antelope/0.0.75/css/components.css",
+     "https://g.alicdn.com/bizphin/ui-components-AI-agent/0.0.23/css/components.css",
+     "https://g.alicdn.com/bizphin/ui-components-market/0.0.56/css/components.css",
+     "https://gw.alipayobjects.com/os/lib/alifd/theme-21418/0.2.8/dist/next.var.min.css",
+     "https://gw.alipayobjects.com/os/lib/alifd/theme-21418/0.2.8/variables.css"
+    ],
+    "title": "快速体验"
+   }
+  },
+  {
+   "dt": 49109,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/query_model_list",
+   "postData": {
+    "frontCategoryId": ""
+   },
+   "type": "XHR",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "value": [
+     {
+      "gmtModified": "2025-05-24 16:22:52",
+      "modelId": "1347",
+      "modelLogo": "https://img.alicdn.com/imgextra/i2/O1CN013YG3001nnsqCb3DtT_!!6000000005135-2-tps-40-40.png",
+      "modelAssetDesc": "均衡性能之选，140亿参数兼顾速度与深度，满足中等复杂度问答、文档生成及多轮对话需求",
+      "importType": "IMPORT",
+      "modelCode": "deepseek-r1-distill-qwen-14b",
+      "tag": "Third-party",
+      "id": "202504011143341797",
+      "modelAssetName": "Deepseek-R1-Distill-Qwen-14B",
+      "modelCommodityPic": "/file/get/f72e95ce-b19f-4a1a-9c5f-98dcdde38fc1/%E6%A8%A1%E5%9E%8B%E5%B8%82%E5%9C%BA+deepseek+logo.png",
+      "importTypeText": {
+       "borderColor": "rgba(153,60,248,1)",
+       "color": "rgba(153,60,248,0)",
+       "text": "引入模型",
+       "type": "success",
+       "fontColor": "rgba(153,60,248,1)"
+      },
+      "functionTypeName": "文本生成",
+      "userTagCodeList": [],
+      "artifactSource": "buy",
+      "modelName": "Deepseek-R1-Distill-Qwen-14B",
+      "statusText": {
+       "borderColor": "rgba(46,116,255,1)",
+       "color": "rgba(46,116,255,1)",
+       "text": "运行中",
+       "type": "success",
+       "fontColor": "rgba(255,255,255,1)"
+      },
+      "status": "running"
+     },
+     {
+      "gmtModified": "2025-05-24 16:22:52",
+      "modelId": "1348",
+      "modelLogo": "https://img.alicdn.com/imgextra/i2/O1CN013YG3001nnsqCb3DtT_!!6000000005135-2-tps-40-40.png",
+      "modelAssetDesc": "企业级深度模型，320亿参数逼近原版性能，专业领域推理、长文本解析与高精度代码生成专家",
+      "importType": "IMPORT",
+      "modelCode": "deepseek-r1-distill-qwen-32b",
+      "tag": "Third-party",
+      "id": "202504011144071799",
+      "modelAssetName": "Deepseek-R1-Distill-Qwen-32B",
+      "modelCommodityPic": "/file/get/e4b02681-7afa-4334-836b-7231dca30e14/%E6%A8%A1%E5%9E%8B%E5%B8%82%E5%9C%BA+deepseek+logo.png",
+      "importTypeText": {
+       "borderColor": "rgba(153,60,248,1)",
+       "color": "rgba(153,60,248,0)",
+       "text": "引入模型",
+       "type": "success",
+       "fontColor": "rgba(153,60,248,1)"
+      },
+      "functionTypeName": "文本生成",
+      "userTagCodeList": [],
+      "artifactSource": "buy",
+      "modelName": "Deepseek-R1-Distill-Qwen-32B",
+      "statusText": {
+       "borderColor": "rgba(46,116,255,1)",
+       "color": "rgba(46,116,255,1)",
+       "text": "运行中",
+       "type": "success",
+       "fontColor": "rgba(255,255,255,1)"
+      },
+      "status": "running"
+     },
+     {
+      "gmtModified": "2025-05-24 16:22:51",
+      "modelId": "1346",
+      "modelLogo": "https://img.alicdn.com/imgextra/i2/O1CN013YG3001nnsqCb3DtT_!!6000000005135-2-tps-40-40.png",
+      "modelAssetDesc": "轻量极速版，70亿参数精简内核，低资源环境流畅运行，实时交互与边缘计算场景利器",
+      "importType": "IMPORT",
+      "modelCode": "deepseek-r1-distill-qwen-7b",
+      "tag": "Third-party",
+      "id": "202504011142531796",
+      "modelAssetName": "Deepseek-R1-Distill-Qwen-7B",
+      "modelCommodityPic": "/file/get/bd47056e-38eb-4995-a9ce-47b167d4af2b/%E6%A8%A1%E5%9E%8B%E5%B8%82%E5%9C%BA+deepseek+logo.png",
+      "importTypeText": {
+       "borderColor": "rgba(153,60,248,1)",
+       "color": "rgba(153,60,248,0)",
+       "text": "引入模型",
+       "type": "success",
+       "fontColor": "rgba(153,60,248,1)"
+      },
+      "functionTypeName": "文本生成",
+      "userTagCodeList": [],
+      "artifactSource": "buy",
+      "modelName": "Deepseek-R1-Distill-Qwen-7B",
+      "statusText": {
+       "borderColor": "rgba(46,116,255,1)",
+       "color": "rgba(46,116,255,1)",
+       "text": "运行中",
+       "type": "success",
+       "fontColor": "rgba(255,255,255,1)"
+      },
+      "status": "running"
+     },
+     {
+      "gmtModified": "2025-05-24 16:22:51",
+      "modelId": "1342",
+      "modelLogo": "https://img.alicdn.com/imgextra/i2/O1CN013YG3001nnsqCb3DtT_!!6000000005135-2-tps-40-40.png",
+      "modelAssetDesc": "深度优化升级版，突破性能边界，高阶任务处理更从容",
+      "importType": "IMPORT",
+      "modelCode": "deepseek-v3",
+      "tag": "Third-party,fc,thinking",
+      "id": "202504011142161795",
+      "modelAssetName": "Deepseek-V3",
+      "modelCommodityPic": "/file/get/c6407242-73fc-4144-bb0b-8939c64f5713/%E6%A8%A1%E5%9E%8B%E5%B8%82%E5%9C%BA+deepseek+logo.png",
+      "importTypeText": {
+       "borderColor": "rgba(153,60,248,1)",
+       "color": "rgba(153,60,248,0)",
+       "text": "引入模型",
+       "type": "success",
+       "fontColor": "rgba(153,60,248,1)"
+      },
+      "functionTypeName": "文本生成",
+      "userTagCodeList": [],
+      "artifactSource": "buy",
+      "modelName": "Deepseek-V3",
+      "statusText": {
+       "borderColor": "rgba(46,116,255,1)",
+       "color": "rgba(46,116,255,1)",
+       "text": "运行中",
+       "type": "success",
+       "fontColor": "rgba(255,255,255,1)"
+      },
+      "status": "running"
+     },
+     {
+      "gmtModified": "2025-05-24 16:22:51",
+      "modelId": "1380",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "modelAssetDesc": "轻量级代码模型，快速响应基础编程需求，开发者友好入门款",
+      "importType": "IMPORT",
+      "modelCode": "qwen2.5-coder-7b-instruct",
+      "tag": "",
+      "id": "202504011141321794",
+      "modelAssetName": "Qwen2.5-Coder-7B-Instruct",
+      "modelCommodityPic": "/file/get/540d2134-d1bc-40c8-9df2-b37160a3d85d/%E6%A8%A1%E5%9E%8B%E5%B8%82%E5%9C%BA+%E9%80%9A%E4%B9%89%E5%8D%83%E9%97%AE+logo.png",
+      "importTypeText": {
+       "borderColor": "rgba(153,60,248,1)",
+       "color": "rgba(153,60,248,0)",
+       "text": "引入模型",
+       "type": "success",
+       "fontColor": "rgba(153,60,248,1)"
+      },
+      "functionTypeName": "文本生成",
+      "userTagCodeList": [],
+      "artifactSource": "buy",
+      "modelName": "Qwen2.5-Coder-7B-Instruct",
+      "statusText": {
+       "borderColor": "rgba(46,116,255,1)",
+       "color": "rgba(46,116,255,1)",
+       "text": "运行中",
+       "type": "success",
+       "fontColor": "rgba(255,255,255,1)"
+      },
+      "status": "running"
+     },
+     {
+      "gmtModified": "2025-05-24 16:22:50",
+      "modelId": "1378",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "modelAssetDesc": "顶级参数规模，复杂逻辑与多模态任务处理的巅峰性能之选",
+      "importType": "IMPORT",
+      "modelCode": "qwen2.5-72b-instruct",
+      "tag": "",
+      "id": "202504011139071792",
+      "modelAssetName": "Qwen2.5-72B-Instruct",
+      "modelCommodityPic": "/file/get/791c8385-95de-49bb-a732-2df1a14a5cad/%E6%A8%A1%E5%9E%8B%E5%B8%82%E5%9C%BA+%E9%80%9A%E4%B9%89%E5%8D%83%E9%97%AE+logo.png",
+      "importTypeText": {
+       "borderColor": "rgba(153,60,248,1)",
+       "color": "rgba(153,60,248,0)",
+       "text": "引入模型",
+       "type": "success",
+       "fontColor": "rgba(153,60,248,1)"
+      },
+      "functionTypeName": "文本生成",
+      "userTagCodeList": [],
+      "artifactSource": "buy",
+      "modelName": "Qwen2.5-72B-Instruct",
+      "statusText": {
+       "borderColor": "rgba(46,116,255,1)",
+       "color": "rgba(46,116,255,1)",
+       "text": "运行中",
+       "type": "success",
+       "fontColor": "rgba(255,255,255,1)"
+      },
+      "status": "running"
+     },
+     {
+      "gmtModified": "2025-05-24 16:22:50",
+      "modelId": "1379",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "modelAssetDesc": "代码生成与优化专家，助力开发效率跃升的智能编程伙伴",
+      "importType": "IMPORT",
+      "modelCode": "qwen2.5-coder-32b-instruct",
+      "tag": "",
+      "id": "202504011140241793",
+      "modelAssetName": "Qwen2.5-Coder-32B-Instruct",
+      "modelCommodityPic": "/file/get/dc521ecb-1afe-4620-8b89-ff506c6f0919/%E6%A8%A1%E5%9E%8B%E5%B8%82%E5%9C%BA+%E9%80%9A%E4%B9%89%E5%8D%83%E9%97%AE+logo.png",
+      "importTypeText": {
+       "borderColor": "rgba(153,60,248,1)",
+       "color": "rgba(153,60,248,0)",
+       "text": "引入模型",
+       "type": "success",
+       "fontColor": "rgba(153,60,248,1)"
+      },
+      "functionTypeName": "文本生成",
+      "userTagCodeList": [],
+      "artifactSource": "buy",
+      "modelName": "Qwen2.5-Coder-32B-Instruct",
+      "statusText": {
+       "borderColor": "rgba(46,116,255,1)",
+       "color": "rgba(46,116,255,1)",
+       "text": "运行中",
+       "type": "success",
+       "fontColor": "rgba(255,255,255,1)"
+      },
+      "status": "running"
+     },
+     {
+      "gmtModified": "2025-05-24 16:22:49",
+      "modelId": "1376",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "modelAssetDesc": "超长上下文解析专家，轻松驾驭文档分析、长对话等深度场景",
+      "importType": "IMPORT",
+      "modelCode": "qwen-long",
+      "tag": "",
+      "id": "202504011138051790",
+      "modelAssetName": "Qwen-Long",
+      "modelCommodityPic": "/file/get/e96dcae3-9473-4954-8716-7658c936e784/%E6%A8%A1%E5%9E%8B%E5%B8%82%E5%9C%BA+%E9%80%9A%E4%B9%89%E5%8D%83%E9%97%AE+logo.png",
+      "importTypeText": {
+       "borderColor": "rgba(153,60,248,1)",
+       "color": "rgba(153,60,248,0)",
+       "text": "引入模型",
+       "type": "success",
+       "fontColor": "rgba(153,60,248,1)"
+      },
+      "functionTypeName": "文本生成",
+      "userTagCodeList": [],
+      "artifactSource": "buy",
+      "modelName": "Qwen-Long",
+      "statusText": {
+       "borderColor": "rgba(46,116,255,1)",
+       "color": "rgba(46,116,255,1)",
+       "text": "运行中",
+       "type": "success",
+       "fontColor": "rgba(255,255,255,1)"
+      },
+      "status": "running"
+     },
+     {
+      "gmtModified": "2025-05-24 16:22:49",
+      "modelId": "1377",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "modelAssetDesc": "高精度指令理解，面向专业领域提供结构化输出与可控生成",
+      "importType": "IMPORT",
+      "modelCode": "qwen2.5-32b-instruct",
+      "tag": "",
+      "id": "202504011138361791",
+      "modelAssetName": "Qwen2.5-32B-Instruct",
+      "modelCommodityPic": "/file/get/6656b81e-419a-4b53-9b5d-dc27442d7f20/%E6%A8%A1%E5%9E%8B%E5%B8%82%E5%9C%BA+%E9%80%9A%E4%B9%89%E5%8D%83%E9%97%AE+logo.png",
+      "importTypeText": {
+       "borderColor": "rgba(153,60,248,1)",
+       "color": "rgba(153,60,248,0)",
+       "text": "引入模型",
+       "type": "success",
+       "fontColor": "rgba(153,60,248,1)"
+      },
+      "functionTypeName": "文本生成",
+      "userTagCodeList": [],
+      "artifactSource": "buy",
+      "modelName": "Qwen2.5-32B-Instruct",
+      "statusText": {
+       "borderColor": "rgba(46,116,255,1)",
+       "color": "rgba(46,116,255,1)",
+       "text": "运行中",
+       "type": "success",
+       "fontColor": "rgba(255,255,255,1)"
+      },
+      "status": "running"
+     },
+     {
+      "gmtModified": "2025-05-24 16:22:48",
+      "modelId": "1340",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "modelAssetDesc": "高效与精准兼备，平衡性能与成本，满足多样化场景需求",
+      "importType": "IMPORT",
+      "modelCode": "qwen-plus",
+      "tag": "Flagship,qwen3,web_search",
+      "id": "202504011131311787",
+      "modelAssetName": "Qwen-Plus",
+      "modelCommodityPic": "/file/get/92aa7f7d-ef5c-440d-8774-a1cada5a8532/%E6%A8%A1%E5%9E%8B%E5%B8%82%E5%9C%BA+%E9%80%9A%E4%B9%89%E5%8D%83%E9%97%AE+logo.png",
+      "importTypeText": {
+       "borderColor": "rgba(153,60,248,1)",
+       "color": "rgba(153,60,248,0)",
+       "text": "引入模型",
+       "type": "success",
+       "fontColor": "rgba(153,60,248,1)"
+      },
+      "functionTypeName": "文本生成",
+      "userTagCodeList": [],
+      "artifactSource": "buy",
+      "modelName": "Qwen-Plus",
+      "statusText": {
+       "borderColor": "rgba(46,116,255,1)",
+       "color": "rgba(46,116,255,1)",
+       "text": "运行中",
+       "type": "success",
+       "fontColor": "rgba(255,255,255,1)"
+      },
+      "status": "running"
+     },
+     {
+      "gmtModified": "2025-05-24 16:22:48",
+      "modelId": "1341",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "modelAssetDesc": "极速响应，轻量化设计，支持实时交互与高频任务处理",
+      "importType": "IMPORT",
+      "modelCode": "qwen-turbo",
+      "tag": "Older,qwen3",
+      "id": "202504011132211788",
+      "modelAssetName": "Qwen-Turbo",
+      "modelCommodityPic": "/file/get/3ddeeb6f-e31e-443b-b2e8-8b82eeb847b5/%E6%A8%A1%E5%9E%8B%E5%B8%82%E5%9C%BA+%E9%80%9A%E4%B9%89%E5%8D%83%E9%97%AE+logo.png",
+      "importTypeText": {
+       "borderColor": "rgba(153,60,248,1)",
+       "color": "rgba(153,60,248,0)",
+       "text": "引入模型",
+       "type": "success",
+       "fontColor": "rgba(153,60,248,1)"
+      },
+      "functionTypeName": "文本生成",
+      "userTagCodeList": [],
+      "artifactSource": "buy",
+      "modelName": "Qwen-Turbo",
+      "statusText": {
+       "borderColor": "rgba(46,116,255,1)",
+       "color": "rgba(46,116,255,1)",
+       "text": "运行中",
+       "type": "success",
+       "fontColor": "rgba(255,255,255,1)"
+      },
+      "status": "running"
+     },
+     {
+      "gmtModified": "2025-05-24 16:22:47",
+      "modelId": "1339",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "modelAssetDesc": "全能型大模型，卓越性能应对复杂任务与深度推理",
+      "importType": "IMPORT",
+      "modelCode": "qwen-max",
+      "tag": "Older,web_search",
+      "id": "202504011129211786",
+      "modelAssetName": "Qwen-Max",
+      "modelCommodityPic": "/file/get/1897e58f-ecd0-40a8-a1be-2ce0a2952d4e/%E6%A8%A1%E5%9E%8B%E5%B8%82%E5%9C%BA+%E9%80%9A%E4%B9%89%E5%8D%83%E9%97%AE+logo.png",
+      "importTypeText": {
+       "borderColor": "rgba(153,60,248,1)",
+       "color": "rgba(153,60,248,0)",
+       "text": "引入模型",
+       "type": "success",
+       "fontColor": "rgba(153,60,248,1)"
+      },
+      "functionTypeName": "文本生成",
+      "userTagCodeList": [],
+      "artifactSource": "buy",
+      "modelName": "Qwen-Max",
+      "statusText": {
+       "borderColor": "rgba(46,116,255,1)",
+       "color": "rgba(46,116,255,1)",
+       "text": "运行中",
+       "type": "success",
+       "fontColor": "rgba(255,255,255,1)"
+      },
+      "status": "running"
+     },
+     {
+      "gmtModified": "2025-05-24 16:22:46",
+      "modelId": "1343",
+      "modelLogo": "https://img.alicdn.com/imgextra/i2/O1CN013YG3001nnsqCb3DtT_!!6000000005135-2-tps-40-40.png",
+      "modelAssetDesc": "深度求索开发的超大规模语言模型，专注于中文理解与生成，适用于智能对话、文本创作等场景",
+      "importType": "IMPORT",
+      "modelCode": "deepseek-r1",
+      "tag": "Third-party,thinking,fc",
+      "id": "202503311920131775",
+      "modelAssetName": "DeepSeek-R1",
+      "modelCommodityPic": "/file/get/00bf570c-55b8-45e2-b462-d99253d48b9e/%E6%A8%A1%E5%9E%8B%E5%B8%82%E5%9C%BA+deepseek+logo.png",
+      "importTypeText": {
+       "borderColor": "rgba(153,60,248,1)",
+       "color": "rgba(153,60,248,0)",
+       "text": "引入模型",
+       "type": "success",
+       "fontColor": "rgba(153,60,248,1)"
+      },
+      "functionTypeName": "文本生成",
+      "userTagCodeList": [],
+      "artifactSource": "buy",
+      "modelName": "DeepSeek-R1",
+      "statusText": {
+       "borderColor": "rgba(46,116,255,1)",
+       "color": "rgba(46,116,255,1)",
+       "text": "运行中",
+       "type": "success",
+       "fontColor": "rgba(255,255,255,1)"
+      },
+      "status": "running"
+     }
+    ]
+   }
+  },
+  {
+   "dt": 49110,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/AgentService_queryPageList",
+   "postData": {
+    "page": 0,
+    "queryKeyword": "",
+    "orderByField": "gmt_modified",
+    "status": 0,
+    "isTemplate": 0,
+    "orderByType": "desc",
+    "limit": 500,
+    "scenarioType": "textConsult"
+   },
+   "type": "XHR",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "ext": {},
+    "result": [
+     {
+      "useUrl": "AgentGroup?agentId=4bfc4345-1f78-42c1-87a3-8fc44c75c5e0",
+      "gmtModified": "2026-08-21 20:38:49",
+      "scenarioType": "textConsult",
+      "agentType": "expert-group",
+      "statusStr": "draft",
+      "agentCode": "4bfc4345-1f78-42c1-87a3-8fc44c75c5e0",
+      "language": "zh_CN",
+      "id": "1011844",
+      "scenarioTypeText": "文本咨询",
+      "experienceUrl": "https://ai.lydaas.com/agent.htm?agentId=4bfc4345-1f78-42c1-87a3-8fc44c75c5e0",
+      "applicationAssetIconUrl": {
+       "url": "https://img.alicdn.com/imgextra/i4/O1CN01GBuTYw1LCxmQeRBtm_!!6000000001264-2-tps-182-180.png"
+      },
+      "applicationAssetName": "对话编排agent_wFMGapml1787315928280",
+      "productCode": "quickService",
+      "isTemplate": 0,
+      "statusText": {
+       "borderColor": "#FEECDE",
+       "color": "#FEECDE",
+       "text": "未发布",
+       "type": "success",
+       "fontColor": "#FF3A04"
+      },
+      "tenantId": "25052416228933",
+      "permissionRoleList": [
+       "manageRole"
+      ],
+      "status": 1
+     },
+     {
+      "useUrl": "AgentFlow?agentId=9ad01582-1a69-41c9-ab20-217fa899e4b1",
+      "gmtModified": "2026-08-21 20:26:30",
+      "scenarioType": "textConsult",
+      "agentType": "workflow",
+      "statusStr": "draft",
+      "agentCode": "9ad01582-1a69-41c9-ab20-217fa899e4b1",
+      "language": "zh_CN",
+      "id": "1011843",
+      "scenarioTypeText": "文本咨询",
+      "applicationAssetDesc": "",
+      "experienceUrl": "https://ai.lydaas.com/agent.htm?agentId=9ad01582-1a69-41c9-ab20-217fa899e4b1",
+      "applicationAssetIconUrl": {
+       "url": "https://img.alicdn.com/imgextra/i3/O1CN01wT30621hdSEgcCF1P_!!6000000004300-2-tps-180-180.png"
+      },
+      "applicationAssetName": "对话编排agent_HOJdSwxN1787314947698",
+      "productCode": "quickService",
+      "isTemplate": 0,
+      "statusText": {
+       "borderColor": "#FEECDE",
+       "color": "#FEECDE",
+       "text": "未发布",
+       "type": "success",
+       "fontColor": "#FF3A04"
+      },
+      "tenantId": "25052416228933",
+      "permissionRoleList": [
+       "manageRole"
+      ],
+      "status": 1
+     },
+     {
+      "useUrl": "AgentFlow?agentId=35e95ee1-607c-422c-8984-2f1864b402bd",
+      "gmtModified": "2026-08-21 20:22:27",
+      "scenarioType": "textConsult",
+      "agentType": "workflow",
+      "statusStr": "draft",
+      "agentCode": "35e95ee1-607c-422c-8984-2f1864b402bd",
+      "language": "zh_CN",
+      "id": "1011842",
+      "scenarioTypeText": "文本咨询",
+      "experienceUrl": "https://ai.lydaas.com/agent.htm?agentId=35e95ee1-607c-422c-8984-2f1864b402bd",
+      "applicationAssetIconUrl": {
+       "url": "https://img.alicdn.com/imgextra/i1/O1CN01uzWMbS1gkx6VcGnD0_!!6000000004181-2-tps-182-180.png"
+      },
+      "applicationAssetName": "对话编排agent_dOZzeSeu1787314946429",
+      "productCode": "quickService",
+      "isTemplate": 0,
+      "statusText": {
+       "borderColor": "#FEECDE",
+       "color": "#FEECDE",
+       "text": "未发布",
+       "type": "success",
+       "fontColor": "#FF3A04"
+      },
+      "tenantId": "25052416228933",
+      "permissionRoleList": [
+       "manageRole"
+      ],
+      "status": 1
+     },
+     {
+      "useUrl": "AgentFlow?agentId=18996eed-a5de-40bd-b782-70319f9bb40b",
+      "gmtModified": "2026-08-21 20:20:35",
+      "scenarioType": "textConsult",
+      "agentType": "workflow",
+      "statusStr": "draft",
+      "agentCode": "18996eed-a5de-40bd-b782-70319f9bb40b",
+      "language": "zh_CN",
+      "id": "1011841",
+      "scenarioTypeText": "文本咨询",
+      "experienceUrl": "https://ai.lydaas.com/agent.htm?agentId=18996eed-a5de-40bd-b782-70319f9bb40b",
+      "applicationAssetIconUrl": {
+       "url": "https://img.alicdn.com/imgextra/i1/O1CN01uzWMbS1gkx6VcGnD0_!!6000000004181-2-tps-182-180.png"
+      },
+      "applicationAssetName": "对话编排agent_HapIrsTp1787314834614",
+      "productCode": "quickService",
+      "isTemplate": 0,
+      "statusText": {
+       "borderColor": "#FEECDE",
+       "color": "#FEECDE",
+       "text": "未发布",
+       "type": "success",
+       "fontColor": "#FF3A04"
+      },
+      "tenantId": "25052416228933",
+      "permissionRoleList": [
+       "manageRole"
+      ],
+      "status": 1
+     },
+     {
+      "useUrl": "AgentFlow?agentId=51dee599-0b6e-4bc8-879e-2a1c7487ba13",
+      "gmtModified": "2026-08-21 19:57:50",
+      "scenarioType": "textConsult",
+      "agentType": "workflow",
+      "statusStr": "draft",
+      "agentCode": "51dee599-0b6e-4bc8-879e-2a1c7487ba13",
+      "language": "zh_CN",
+      "id": "1011840",
+      "scenarioTypeText": "文本咨询",
+      "applicationAssetDesc": "",
+      "experienceUrl": "https://ai.lydaas.com/agent.htm?agentId=51dee599-0b6e-4bc8-879e-2a1c7487ba13",
+      "applicationAssetIconUrl": {
+       "url": "https://img.alicdn.com/imgextra/i1/O1CN01z3RRrf26MNrsbr5Uh_!!6000000007647-2-tps-180-180.png"
+      },
+      "applicationAssetName": "对话编排agent_NiLjcwoz1787313458869",
+      "productCode": "quickService",
+      "isTemplate": 0,
+      "statusText": {
+       "borderColor": "#FEECDE",
+       "color": "#FEECDE",
+       "text": "未发布",
+       "type": "success",
+       "fontColor": "#FF3A04"
+      },
+      "tenantId": "25052416228933",
+      "permissionRoleList": [
+       "manageRole"
+      ],
+      "status": 1
+     },
+     {
+      "useUrl": "AgentFlow?agentId=e51410c6-40a7-41c3-8475-bfb297bea79b",
+      "gmtModified": "2026-08-21 15:14:56",
+      "scenarioType": "textConsult",
+      "agentType": "workflow",
+      "statusStr": "draft",
+      "agentCode": "e51410c6-40a7-41c3-8475-bfb297bea79b",
+      "language": "zh_CN",
+      "id": "1011825",
+      "scenarioTypeText": "文本咨询",
+      "applicationAssetDesc": "",
+      "experienceUrl": "https://ai.lydaas.com/agent.htm?agentId=e51410c6-40a7-41c3-8475-bfb297bea79b",
+      "applicationAssetIconUrl": {
+       "url": "https://img.alicdn.com/imgextra/i1/O1CN01RcZQQ31Rkkh78fPWc_!!6000000002150-2-tps-180-180.png"
+      },
+      "applicationAssetName": "对话编排agent_EaYEZxsR1787296458803",
+      "productCode": "quickService",
+      "isTemplate": 0,
+      "statusText": {
+       "borderColor": "#FEECDE",
+       "color": "#FEECDE",
+       "text": "未发布",
+       "type": "success",
+       "fontColor": "#FF3A04"
+      },
+      "tenantId": "25052416228933",
+      "permissionRoleList": [
+       "manageRole"
+      ],
+      "status": 1
+     },
+     {
+      "useUrl": "AgentGroup?agentId=d98b1ce9-58e4-4ac3-9eb1-e6ba10f99714",
+      "gmtModified": "2026-05-29 17:48:38",
+      "scenarioType": "textConsult",
+      "agentType": "expert-group",
+      "statusStr": "draft",
+      "agentCode": "d98b1ce9-58e4-4ac3-9eb1-e6ba10f99714",
+      "language": "zh_CN",
+      "id": "1006539",
+      "scenarioTypeText": "文本咨询",
+      "applicationAssetDesc": "",
+      "experienceUrl": "https://ai.lydaas.com/agent.htm?agentId=d98b1ce9-58e4-4ac3-9eb1-e6ba10f99714",
+      "applicationAssetIconUrl": {
+       "url": "https://img.alicdn.com/imgextra/i4/O1CN01GYaTtN20GzP3MV28a_!!6000000006823-2-tps-144-144.png",
+       "bgUrl": "https://img.alicdn.com/imgextra/i2/O1CN01JcNuhL1Yj6TRN4ucX_!!6000000003094-0-tps-216-216.jpg"
+      },
+      "applicationAssetName": "对话编排agent_igtptprl1776219545548",
+      "productCode": "quickService",
+      "isTemplate": 0,
+      "statusText": {
+       "borderColor": "#FEECDE",
+       "color": "#FEECDE",
+       "text": "未发布",
+       "type": "success",
+       "fontColor": "#FF3A04"
+      },
+      "tenantId": "25052416228933",
+      "permissionRoleList": [
+       "manageRole"
+      ],
+      "status": 1
+     },
+     {
+      "useUrl": "AgentGroup?agentId=cd04a917-1213-4239-aae1-0019a7ea3ce5",
+      "gmtModified": "2026-05-07 20:37:48",
+      "scenarioType": "textConsult",
+      "agentType": "expert-group",
+      "statusStr": "draft",
+      "agentCode": "cd04a917-1213-4239-aae1-0019a7ea3ce5",
+      "language": "zh_CN",
+      "id": "1005077",
+      "scenarioTypeText": "文本咨询",
+      "experienceUrl": "https://ai.lydaas.com/agent.htm?agentId=cd04a917-1213-4239-aae1-0019a7ea3ce5",
+      "applicationAssetIconUrl": {
+       "url": "https://img.alicdn.com/imgextra/i4/O1CN01GYaTtN20GzP3MV28a_!!6000000006823-2-tps-144-144.png",
+       "bgUrl": "https://img.alicdn.com/imgextra/i2/O1CN012rktdf22uxC85LjjX_!!6000000007181-0-tps-216-216.jpg"
+      },
+      "applicationAssetName": "对话编排agent_JicqNseT1772000881053",
+      "productCode": "quickService",
+      "isTemplate": 0,
+      "statusText": {
+       "borderColor": "#FEECDE",
+       "color": "#FEECDE",
+       "text": "未发布",
+       "type": "success",
+       "fontColor": "#FF3A04"
+      },
+      "tenantId": "25052416228933",
+      "permissionRoleList": [
+       "queryRole"
+      ],
+      "status": 1
+     },
+     {
+      "useUrl": "AgentFlow?agentId=1f87f241-33bf-4c16-a92d-4ab0946631d0",
+      "gmtModified": "2026-05-07 20:37:48",
+      "scenarioType": "textConsult",
+      "agentType": "workflow",
+      "statusStr": "draft",
+      "agentCode": "1f87f241-33bf-4c16-a92d-4ab0946631d0",
+      "language": "zh_CN",
+      "id": "1005078",
+      "scenarioTypeText": "文本咨询",
+      "experienceUrl": "https://ai.lydaas.com/agent.htm?agentId=1f87f241-33bf-4c16-a92d-4ab0946631d0",
+      "applicationAssetIconUrl": {
+       "url": "https://img.alicdn.com/imgextra/i4/O1CN01GYaTtN20GzP3MV28a_!!6000000006823-2-tps-144-144.png",
+       "bgUrl": "https://img.alicdn.com/imgextra/i2/O1CN012rktdf22uxC85LjjX_!!6000000007181-0-tps-216-216.jpg"
+      },
+      "applicationAssetName": "对话编排agent_KMdPYRfW1772000893793",
+      "productCode": "quickService",
+      "isTemplate": 0,
+      "statusText": {
+       "borderColor": "#FEECDE",
+       "color": "#FEECDE",
+       "text": "未发布",
+       "type": "success",
+       "fontColor": "#FF3A04"
+      },
+      "tenantId": "25052416228933",
+      "permissionRoleList": [
+       "queryRole"
+      ],
+      "status": 1
+     },
+     {
+      "useUrl": "AgentBuilder?agentId=a7ba8f61-d135-458f-939a-0f00f17b338f",
+      "gmtModified": "2026-05-07 20:37:48",
+      "scenarioType": "textConsult",
+      "agentType": "self-planning",
+      "statusStr": "published",
+      "agentCode": "a7ba8f61-d135-458f-939a-0f00f17b338f",
+      "language": "zh_CN",
+      "id": "1005098",
+      "scenarioTypeText": "文本咨询",
+      "applicationAssetDesc": "博西嵌入式洗碗机安装专家答疑",
+      "experienceUrl": "https://ai.lydaas.com/agent.htm?agentId=a7ba8f61-d135-458f-939a-0f00f17b338f",
+      "onlineVersion": "V1.0.1",
+      "applicationAssetIconUrl": {
+       "url": "https://img.alicdn.com/imgextra/i2/O1CN01g8hl6S1k9An8ZtWDr_!!6000000004640-2-tps-144-144.png",
+       "bgUrl": "https://img.alicdn.com/imgextra/i1/O1CN013IV1nA1aWr78uhRJJ_!!6000000003338-0-tps-216-216.jpg"
+      },
+      "applicationAssetName": "博西嵌入式洗碗机安装专家",
+      "productCode": "quickService",
+      "isTemplate": 0,
+      "statusText": {
+       "borderColor": "rgba(239,239,239,1)",
+       "color": "rgba(239,239,239,1)",
+       "text": "已发布",
+       "type": "success",
+       "fontColor": "rgba(102,107,121,1)"
+      },
+      "tenantId": "25052416228933",
+      "permissionRoleList": [
+       "queryRole"
+      ],
+      "status": 2
+     },
+     {
+      "useUrl": "AgentFlow?agentId=c5de2523-e4c9-47cf-a634-4955711a8751",
+      "gmtModified": "2026-05-07 20:37:48",
+      "scenarioType": "textConsult",
+      "agentType": "workflow",
+      "statusStr": "published",
+      "agentCode": "c5de2523-e4c9-47cf-a634-4955711a8751",
+      "language": "zh_CN",
+      "id": "1005099",
+      "scenarioTypeText": "文本咨询",
+      "applicationAssetDesc": "",
+      "experienceUrl": "https://ai.lydaas.com/agent.htm?agentId=c5de2523-e4c9-47cf-a634-4955711a8751",
+      "onlineVersion": "V1.0.2",
+      "applicationAssetIconUrl": {
+       "url": "https://img.alicdn.com/imgextra/i2/O1CN01FDfxyQ28AanVedoiz_!!6000000007892-2-tps-144-144.png",
+       "bgUrl": "https://img.alicdn.com/imgextra/i2/O1CN01vWdzWx1gZ2hRn6ch2_!!6000000004155-0-tps-216-216.jpg"
+      },
+      "applicationAssetName": "新版博西嵌入式洗碗机安装专家",
+      "productCode": "quickService",
+      "isTemplate": 0,
+      "statusText": {
+       "borderColor": "rgba(239,239,239,1)",
+       "color": "rgba(239,239,239,1)",
+       "text": "已发布",
+       "type": "success",
+       "fontColor": "rgba(102,107,121,1)"
+      },
+      "tenantId": "25052416228933",
+      "permissionRoleList": [
+       "queryRole"
+      ],
+      "status": 2
+     },
+     {
+      "useUrl": "AgentFlow?agentId=3890acc5-faac-47d1-b468-9efd82bd3d10",
+      "gmtModified": "2026-05-07 20:37:48",
+      "agentType": "workflow",
+      "statusStr": "draft",
+      "agentCode": "3890acc5-faac-47d1-b468-9efd82bd3d10",
+      "language": "zh_CN",
+      "id": "1002325",
+      "applicationAssetDesc": "",
+      "experienceUrl": "https://ai.lydaas.com/agent.htm?agentId=3890acc5-faac-47d1-b468-9efd82bd3d10",
+      "applicationAssetIconUrl": {
+       "url": "https://img.alicdn.com/imgextra/i2/O1CN01FDfxyQ28AanVedoiz_!!6000000007892-2-tps-144-144.png",
+       "bgUrl": "https://img.alicdn.com/imgextra/i3/O1CN01MAtbZO1FgNPu7PWT7_!!6000000000516-0-tps-216-216.jpg"
+      },
+      "applicationAssetName": "对话编排agent_XAqAtHFY1762159667979",
+      "isTemplate": 0,
+      "statusText": {
+       "borderColor": "#FEECDE",
+       "color": "#FEECDE",
+       "text": "未发布",
+       "type": "success",
+       "fontColor": "#FF3A04"
+      },
+      "tenantId": "25052416228933",
+      "permissionRoleList": [
+       "editRole"
+      ],
+      "status": 1
+     },
+     {
+      "useUrl": "AgentBuilder?agentId=0d95c761-bb99-40f8-bec7-43cf70ef7f3f",
+      "gmtModified": "2026-08-17 14:43:04",
+      "agentType": "self-planning",
+      "statusStr": "published",
+      "agentCode": "0d95c761-bb99-40f8-bec7-43cf70ef7f3f",
+      "language": "zh_CN",
+      "id": "1009662",
+      "applicationAssetDesc": "诊断会员经营机会与问题，围绕拉新扩量、复购提升，智能生成营销策略并匹配创意，支持一键托管执行、实时调优、效果日日更新",
+      "experienceUrl": "https://ai.lydaas.com/agent.htm?agentId=0d95c761-bb99-40f8-bec7-43cf70ef7f3f",
+      "onlineVersion": "V1.7.6",
+      "applicationAssetIconUrl": {
+       "url": "/file/get/6bec3559-bbbd-4d15-adfb-c6502ceec28e/1FA5AED9-8241-44F4-A6A4-688F35E45C44.png"
+      },
+      "applicationAssetName": "会员营销Agent",
+      "isTemplate": 0,
+      "statusText": {
+       "borderColor": "rgba(239,239,239,1)",
+       "color": "rgba(239,239,239,1)",
+       "text": "已发布",
+       "type": "success",
+       "fontColor": "rgba(102,107,121,1)"
+      },
+      "tenantId": "202305261109470058",
+      "permissionRoleList": [
+       "editRole"
+      ],
+      "status": 2
+     },
+     {
+      "useUrl": "AgentBuilder?agentId=5db04ccb-a552-485c-85b2-076c94522982",
+      "gmtModified": "2026-08-20 14:44:11",
+      "agentType": "self-planning",
+      "statusStr": "published",
+      "agentCode": "5db04ccb-a552-485c-85b2-076c94522982",
+      "language": "zh_CN",
+      "id": "1009930",
+      "applicationAssetDesc": "根据授权店铺，结合热销商品与会员权益，智能生成匹配营销目标及场景的图文创意，并自动组合制作适配不同渠道的模板内容。",
+      "experienceUrl": "https://ai.lydaas.com/agent.htm?agentId=5db04ccb-a552-485c-85b2-076c94522982",
+      "onlineVersion": "V1.3.6",
+      "applicationAssetIconUrl": {
+       "url": "/file/get/cbe4b581-9b58-4989-8e49-111a57487b88/%E8%90%A5%E9%94%80%E5%88%9B%E6%84%8F+%E6%95%B0%E5%AD%97%E5%91%98%E5%B7%A5%403x.jpg"
+      },
+      "applicationAssetName": "营销创意 Agent",
+      "isTemplate": 0,
+      "statusText": {
+       "borderColor": "rgba(239,239,239,1)",
+       "color": "rgba(239,239,239,1)",
+       "text": "已发布",
+       "type": "success",
+       "fontColor": "rgba(102,107,121,1)"
+      },
+      "tenantId": "202305261109470058",
+      "permissionRoleList": [
+       "editRole"
+      ],
+      "status": 2
+     },
+     {
+      "useUrl": "AgentBuilder?agentId=5e5de82c-4282-4224-8dd9-26200507f619",
+      "gmtModified": "2026-08-20 12:04:55",
+      "agentType": "self-planning",
+      "statusStr": "published",
+      "agentCode": "5e5de82c-4282-4224-8dd9-26200507f619",
+      "language": "zh_CN",
+      "id": "1007753",
+      "applicationAssetDesc": "面向品牌企划团队的新品企划专家，从模糊命题到可执行方向，一站式完成趋势洞察、品类/概念分析与行业研究。",
+      "experienceUrl": "https://ai.lydaas.com/agent.htm?agentId=5e5de82c-4282-4224-8dd9-26200507f619",
+      "onlineVersion": "V1.2.7",
+      "applicationAssetIconUrl": {
+       "url": "/file/get/db18bda8-d305-422b-b68c-2eef71775f32/%E6%96%B0%E5%93%81%E4%BC%81%E5%88%92.jpg"
+      },
+      "applicationAssetName": "新品企划Agent",
+      "isTemplate": 0,
+      "statusText": {
+       "borderColor": "rgba(239,239,239,1)",
+       "color": "rgba(239,239,239,1)",
+       "text": "已发布",
+       "type": "success",
+       "fontColor": "rgba(102,107,121,1)"
+      },
+      "tenantId": "202210251148327768",
+      "permissionRoleList": [
+       "editRole"
+      ],
+      "status": 2
+     },
+     {
+      "useUrl": "AgentBuilder?agentId=d7cc3f75-0018-4f77-ba25-f1294c23d26a",
+      "gmtModified": "2026-07-24 12:10:11",
+      "agentType": "self-planning",
+      "statusStr": "draftToPublish",
+      "agentCode": "d7cc3f75-0018-4f77-ba25-f1294c23d26a",
+      "language": "zh_CN",
+      "id": "1009524",
+      "applicationAssetDesc": "精通多平台店铺电商运营的数字员工，会总结、会改价、会投放",
+      "experienceUrl": "https://ai.lydaas.com/agent.htm?agentId=d7cc3f75-0018-4f77-ba25-f1294c23d26a",
+      "onlineVersion": "V1.1.5",
+      "applicationAssetIconUrl": {
+       "url": "/file/get/48378d80-8a6e-4f31-8ee4-958319671776/%E5%BA%97%E9%93%BA%E8%BF%90%E8%90%A5%403x.png"
+      },
+      "applicationAssetName": "电商运营Agent",
+      "isTemplate": 0,
+      "statusText": {
+       "borderColor": "#FEECDE",
+       "color": "#FEECDE",
+       "text": "有更新",
+       "type": "success",
+       "fontColor": "#FF3A04"
+      },
+      "tenantId": "202205301558000100",
+      "permissionRoleList": [
+       "editRole"
+      ],
+      "status": 3
+     }
+    ],
+    "total": 16,
+    "validateErrors": {},
+    "success": true,
+    "header": {
+     "traceId": "825ac6b29bf84f5cbe37b961d1ae8c31",
+     "date": "2026-08-21 22:02:41",
+     "rpcId": ""
+    },
+    "platformFeatures": {
+     "appName": "agent-store"
+    },
+    "businessFeatures": {}
+   }
+  },
+  {
+   "dt": 49113,
+   "method": "GET",
+   "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAFqADAAQAAAABAAAAFgAAAAAcITNaAAAEB0lEQVQ4EU2V3W4bNxCFZ0juSpaFukF9Y8Mx0su+QoG8aF+iQZ+i6Su0Nw1SBIhbVbb1uz9kv7OUahOguMsdnjlzZobynz/8UnIuVkq2nOscR62jvax6HmXTmdmDmf/tzjRfWfB/vZR1jPHRgj2zvwkWt8E9WAiYsNbpp3ftOTgvo+CftxHgnsfO3A7BbOcx7tjfgbQVaIy2TSEEmOhwZgqovodQYF0m8FcOBD3g74jbPcY7Tu2S+UZMIbZJqXkOIe9eAWN2GkXUiiKRJHCanE4fM757MYXEjnA3NXwDLDwhxxPrpm0vXjMW2xq6IqizgovxibXCks47ApWeTx58HTyuYbpOF83TPMZt2zZnxgKETMXlWePMuuag7k367gF7Lh7WHuIqeljNZumfpkmPl4vF83w+397e3h4S9JXtiVEpldk4nplLZ31TYvXNetZnL2GVYngg7K9xlr42i8XqzXL5eHd3R+Ji6LquOWmsQ5Whu4BGgUxDeqvUTlIoaasY/UsI8a/Z5fzzd1dXD9fX1+umaQK2LTPMZrNwYqyyqFWgKlHCtIqphurZXdLahtL8FGP6Y7n85vf7+5svgJa+79uUiIHR99RT6Stw1ZNCo8RqRchJtBgzs4Ifj0cbhv5z07S/vX17+/Hm5qaDWTsMg8jJSIyJ8xhSam1iLCoaAj2PFwette2sbpfy0/v3P/7KC8mPi773gEohZ3cqwWDuJBFSyaTxcAZjPSNrVWlpjvPZ7LC8XH76/t27b/dd/iEaHRdspIEyCmT4FJhjasiipbOkXxIzERRn3icwYhrpu45VHfZIif05juXejnsbInXrYW8xdSCNkBsBwEEd6F0SoJ1eBQgITaxatYGVQOmwbDv6Zk32DpjNSfqVEz+XRdPYcCjuPcyHjCoIDamUyUVJkBT5WmNWqOAwADC4LpkMsNtWrIlpLNQY1C6iBep5xDstUkpHrXN/JF4L7GUXc6rhKoypq/RxAKy3Qn0F21N4ByTsYJZJO/egtUDOQ4kU5UCYFKBY+0irhYHLdQzjkBOGXCoO06LrcKBPlAV12JFU6mrssVGHkCoVeCJ3pcmeW0jlqHvcowIImZb0kscBWWCssKuu0naatRt6safTtCfdkX3KMihUU/FE1TaqCOdPwSyiFjS4+TFwkuuEzcFJCoAlA85AAdBZiQS2zp1BBxmn9bcQsRO4EJHRUYrHoGCyD1BOCh1H7E4AyILGgGI6MYWCKgUTYKbOgjUZJumR0AHn0p7KVMKIH/HgX1L8z7ZKAiDsOTySFWqZ2sBIQWpwDBkLzW8R0Ig3NAAZx5zhA6b8SVBukp2wBYYTztWV62IChQ6YOjqFCj3U05aLKsE7rSdP5E4+kYx+sf8AV5aZ7yAju6MAAAAASUVORK5CYII=",
+   "type": "Image",
+   "status": 200,
+   "mimeType": "image/png"
+  },
+  {
+   "dt": 49114,
+   "method": "GET",
+   "url": "data:image/png;base64,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",
+   "type": "Image",
+   "status": 200,
+   "mimeType": "image/png"
+  },
+  {
+   "dt": 49134,
+   "method": "GET",
+   "url": "https://config.quickservice.lydaas.com/ui/agent_store/blank/undefined",
+   "type": "Image",
+   "status": 200,
+   "mimeType": "text/html"
+  },
+  {
+   "dt": 55639,
+   "method": "GET",
+   "url": "https://ai.lydaas.com/agent.htm?agentId=d7cc3f75-0018-4f77-ba25-f1294c23d26a",
+   "type": "Document",
+   "status": 200,
+   "mimeType": "text/html",
+   "resBody": "<!doctype html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/svg+xml\" href=\"https://img.alicdn.com/imgextra/i4/O1CN01WWTuqN1sKdd06K1m8_!!6000000005748-2-tps-64-64.png\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <title>电商运营Agent</title>\n    <link rel=\"stylesheet\" href=\"https://g.alicdn.com/ly-service/ly-chatui-core/5.0.3/index.css\">\n    <link rel=\"stylesheet\" href=\"https://g.alicdn.com/bizphin/antd-theme/0.0.2/static/css/main.css\">\n    <link rel=\"stylesheet\" href=\"https://g.alicdn.com/bizphin/common-chat/0.6.19/main.css\">\n\n</head>\n<body>\n<div id=\"root\"></div>\n<script nonce=\"Wm6/y+vxp6ewYApzbEll7g==\">\n    window.assetUrlMapping = {}\n    window.g_config={\n        \"config\": {\"quickAccess\":{\"enable\":false,\"accesses\":[{\"accessType\":\"\",\"accessName\":\"\",\"accessData\":\"\"}]},\"automaticAsk\":{\"enable\":true},\"agentType\":\"self-planning\",\"segmentConfig\":{\"enable\":false,\"frequency\":10},\"reasoning\":{\"enable\":true},\"voiceBroadcast\":{\"enable\":false},\"agentName\":\"电商运营Agent\",\"welcomeCardList\":[],\"enableChitchat\":true,\"advancedConfig\":{\"defaultInputType\":\"text\",\"rating\":false,\"skinConfig\":{\"enable\":false,\"skinCode\":\"\",\"skinName\":\"\",\"skinContent\":\"\"},\"fileUpload\":true,\"headPortrait\":{\"robotUrl\":\"\",\"enable\":false,\"userUrl\":\"\"},\"reGenerate\":false},\"onboarding\":{\"welcomeTitle\":\"欢迎语主标题\",\"enable\":true,\"welcomeMode\":\"card\",\"imageUrl\":{\"gifUrl\":\"https://img.alicdn.com/imgextra/i2/O1CN01xYAlfa1vacJyAvxQb_!!6000000006189-2-tps-13530-300.png\",\"avatar\":\"https://img.alicdn.com/imgextra/i4/O1CN01zt0jS728KfXCN5X3W_!!6000000007914-2-tps-216-216.png\"},\"welcomeSubTitle\":\"欢迎语副标题\",\"presetQuesions\":[{\"questionTitle\":\"帮我查看店铺优惠券现在是否足量，不够的话帮我续一些\",\"id\":\"VYOBuXZv\",\"source\":\"user-defined\"},{\"questionTitle\":\"生成一份店铺昨日的经营日报\",\"id\":\"YOfWMWkO\",\"source\":\"user-defined\"},{\"questionTitle\":\"帮我查询一下行业搜索词排行\",\"id\":\"UreyJVdA\",\"source\":\"user-defined\"}],\"displayMode\":\"all\",\"prologueConfig\":{\"prologueList\":\"\",\"enable\":false}},\"vocab\":{\"enable\":true},\"deepPlanConfig\":{\"deepPlan\":false,\"deepPlanTools\":[]}},\n                \"env\": \"\",\n        \"tenantId\": \"202205301558000100\",\n        \"userId\": \"856284099051554508\",\n        \"prefix\": \"/run\",\n        \"noAuth\":false,\n        \"loginUser\": {\"cookieValue\":\"fpwOOwJxKel_Z98IPQg82\",\"userId\":\"856284099051554508\",\"cookieDomain\":\".lydaas.com\",\"accountId\":\"740855012736172050\",\"realName\":\"汇流\",\"phoneNumber\":\"1**********\",\"tenantName\":\"BSH Agent\",\"tenantId\":\"25052416228933\",\"sessionExpiredTime\":259200,\"userType\":2,\"extProps\":{}}\n    }\n    window.loginInfo = {\"cookieValue\":\"fpwOOwJxKel_Z98IPQg82\",\"userId\":\"856284099051554508\",\"cookieDomain\":\".lydaas.com\",\"accountId\":\"740855012736172050\",\"realName\":\"汇流\",\"phoneNumber\":\"1**********\",\"tenantName\":\"BSH Agent\",\"tenantId\":\"25052416228933\",\"sessionExpiredTime\":259200,\"userType\":2,\"extProps\":{}}\n</script>\n<script src=\"https://g.alicdn.com/bizphin/requestProxy/1.0.0/request-proxy.umd.js\" nonce=\"Wm6/y+vxp6ewYApzbEll7g==\"></script>\n<script src=\"https://g.alicdn.com/code/lib/require.js/2.3.6/require.min.js\" nonce=\"Wm6/y+vxp6ewYApzbEll7g==\"></script>\n<script src=\"https://g.alicdn.com/antelope-design/antelope-markdown/0.0.14/index.js\" nonce=\"Wm6/y+vxp6ewYApzbEll7g==\"></script>\n<script nonce=\"Wm6/y+vxp6ewYApzbEll7g==\">\n    let paths = {};\n    const chatuiUrl = \"//g.alicdn.com/ly-service/ly-chatui-core/5.0.3/index\"\n    const windowRequire = window.require;\n    paths['react'] = \"https://g.alicdn.com/code/lib/react/17.0.2/umd/react.production.min\",\n            paths['react-dom'] = \"https://g.alicdn.com/code/lib/react-dom/17.0.2/umd/react-dom.production.min\",\n            paths['ChatUI'] = chatuiUrl;\n    paths['commonChat'] = \"https://g.alicdn.com/bizphin/common-chat/0.6.19/main\"\n\n            windowRequire.config({\n        paths: paths,\n        map: {\n            \"*\": {\n                React: \"react\",\n                ReactDOM: \"react-dom\",\n            },\n        },\n    });\n    windowRequire(['react', 'react-dom'], function (react, ReactDOM) {\n        if (!window.React) window.React = react;\n        if (!window.react) window.react = react;\n        if (!window.ReactDOM) window.ReactDOM = ReactDOM;\n        windowRequire([\"ChatUI\"], function (ChatUI) {\n            if (!window.ChatUI) window.ChatUI = ChatUI;\n            windowRequire([\"commonChat\"], function (test) {})\n        })\n    });\n</script>\n</body>\n</html>"
+  },
+  {
+   "dt": 84530,
+   "method": "POST",
+   "url": "https://ai.lydaas.com/v1/get_conversations",
+   "postData": {
+    "start": 0,
+    "limit": 100,
+    "foreign_key": "d7cc3f75-0018-4f77-ba25-f1294c23d26a"
+   },
+   "type": "XHR",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "result": [
+     {
+      "conversation_id": "f168662e-7bea-4b99-afdd-74ccef51740f",
+      "conversation_name": "默认会话",
+      "foreign_key": "d7cc3f75-0018-4f77-ba25-f1294c23d26a",
+      "gmt_create": "2026-08-21 21:58:01",
+      "gmt_modified": "2026-08-21 21:58:01",
+      "id": "59008916",
+      "status": 1,
+      "out_conversation_id": null,
+      "tenant_id": null,
+      "initiator": "agentone",
+      "parent_conversation_id": null,
+      "summary_text": null,
+      "features": null
+     }
+    ],
+    "message": null,
+    "errorMessage": null,
+    "errorCode": null,
+    "total": 1
+   }
+  },
+  {
+   "dt": 84534,
+   "method": "POST",
+   "url": "https://ai.lydaas.com/api/agent_store/AgentFeedbackElementService_queryList",
+   "postData": {
+    "agentId": "b63bff7d-d208-48e0-bb36-7b219e07aa8b",
+    "tenantCode": ""
+   },
+   "type": "XHR",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "value": [
+     {
+      "code": "1",
+      "word": "事实错误"
+     },
+     {
+      "code": "2",
+      "word": "与问题不相关"
+     },
+     {
+      "code": "3",
+      "word": "太冗长"
+     },
+     {
+      "code": "4",
+      "word": "太简略"
+     },
+     {
+      "code": "5",
+      "word": "语气生硬"
+     },
+     {
+      "code": "6",
+      "word": "无法解决问题"
+     },
+     {
+      "code": "7",
+      "word": "其他"
+     }
+    ]
+   }
+  },
+  {
+   "dt": 84542,
+   "method": "POST",
+   "url": "https://ai.lydaas.com/v1/query_conversation_history",
+   "postData": {
+    "conversation_id": "f168662e-7bea-4b99-afdd-74ccef51740f",
+    "agent_id": "d7cc3f75-0018-4f77-ba25-f1294c23d26a"
+   },
+   "type": "XHR",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "result": [],
+    "message": null,
+    "errorMessage": null,
+    "errorCode": null,
+    "total": null
+   }
+  }
+ ]
+}

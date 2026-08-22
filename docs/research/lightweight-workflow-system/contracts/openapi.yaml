@@ -1,0 +1,198 @@
+openapi: 3.1.0
+info:
+  title: Lightweight Workflow System API（候选契约，Designed）
+  version: 0.1.0
+  description: >
+  对齐 05–12 设计。错误体统一 {code,message,details?}；鉴权：SSO session 或 per-task bearer（API 触发）。
+  时间一律 UTC ISO-8601；列表统一 ?page&pageSize&sort（Implementation Spec §4/§6）。
+servers:
+  - url: /api/v1
+tags:
+  - name: workflows
+  - name: versions
+  - name: registry
+  - name: runs
+  - name: events
+  - name: schedules
+  - name: tasks
+  - name: tools
+  - name: models
+  - name: connections
+  - name: results
+paths:
+  /workflows:
+    get:
+      tags: [workflows]
+      summary: 工作流列表
+      parameters:
+        - { name: keyword, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, default: 20 } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/PageOfWorkflowSummary" } } } }
+    post:
+      tags: [workflows]
+      summary: 创建工作流（仅 name/description，Master §7.3）
+      requestBody: { content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string }, description: { type: string } } } } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Workflow" } } } }
+        "409": { $ref: "#/components/responses/NameConflict" }
+  /workflows/{id}:
+    get:
+      tags: [workflows]
+      summary: 详情（含 draft definition）
+      responses:
+        "200": { description: OK }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [workflows]
+      summary: 保存草稿（自动保存同接口，debounce）
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/SaveDraftRequest" } } } }
+      responses:
+        "200": { description: OK，返回 draftRevision+savedAt }
+        "409": { description: 草稿冲突（revision 不匹配） }
+    delete:
+      tags: [workflows]
+      summary: 删除（软删；存在 Published/活跃 Task 时 409）
+      responses: { "204": { description: No Content }, "409": { $ref: "#/components/responses/Conflict" } }
+  /workflows/{id}/copy:
+    post: { tags: [workflows], summary: 复制为新草稿, responses: { "201": { description: Created } } }
+  /workflows/{id}/validation:
+    get:
+      tags: [workflows]
+      summary: 校验草稿 → 检查清单（支撑顶栏红点）
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/ValidationReport" } } }
+  /workflows/{id}/publish:
+    post:
+      tags: [versions]
+      summary: 发布（Dependency Check 通过后；二次确认+versionNote）
+      requestBody: { content: { application/json: { schema: { type: object, required: [note], properties: { note: { type: string }, ackNoRecentRun: { type: boolean, description: 对应软警告"继续发布" } } } } } }
+      responses:
+        "201": { description: 版本创建并发布 }
+        "409": { description: 校验未通过，返回 ValidationReport }
+        "422": { description: 缺少最近成功运行且未 ack }
+  /workflows/{id}/versions:
+    get: { tags: [versions], summary: 版本历史（Sheet 数据源）, responses: { "200": { description: OK } } }
+  /workflows/{id}/versions/{versionId}:
+    get: { tags: [versions], summary: 版本详情（只读冻结 definition）, responses: { "200": { description: OK } } }
+  /workflows/{id}/versions/{versionId}/create-draft:
+    post:
+      tags: [versions]
+      summary: 基于历史版本创建草稿（已存在 Draft 时 409 提示，Master §7.4）
+      responses: { "201": { description: Created }, "409": { $ref: "#/components/responses/DraftExists" } }
+  /registry/node-definitions:
+    get: { tags: [registry], summary: 节点定义列表（前端 Palette/Inspector schema 源）, responses: { "200": { description: OK } } }
+  /registry/tools:
+    get: { tags: [registry], summary: Tool 列表（含版本状态）, responses: { "200": { description: OK } } }
+  /tools:
+    post: { tags: [tools], summary: 创建 Tool, responses: { "201": { description: Created } } }
+  /tools/{id}:
+    get: { tags: [tools], summary: Tool 详情, responses: { "200": { description: OK } } }
+    put: { tags: [tools], summary: 更新（生成新 Tool Version，旧版不可变）, responses: { "200": { description: OK } } }
+  /tools/{id}/test:
+    post:
+      tags: [tools]
+      summary: Tool 试运行（不进入 Workflow Run）
+      responses: { "200": { description: 调用结果（脱敏） } , "502": { description: 上游失败 } }
+  /tools/{id}/calls:
+    get: { tags: [tools], summary: 工具调用日志（quickservice 借鉴：时间窗+状态筛选）, responses: { "200": { description: OK } } }
+  /registry/models:
+    get: { tags: [registry], summary: 模型目录（provider+model+capabilities）, responses: { "200": { description: OK } } }
+  /connections:
+    get: { tags: [connections], summary: 列表（Secret 永不返回）, responses: { "200": { description: OK } } }
+    post: { tags: [connections], summary: 创建, responses: { "201": { description: Created } } }
+  /connections/{id}:
+    put: { tags: [connections], summary: 更新, responses: { "200": { description: OK } } }
+    delete:
+      tags: [connections]
+      summary: 删除（被 Tool/Version 引用时 409 并返回引用清单）
+      responses: { "204": { description: No Content }, "409": { $ref: "#/components/responses/Referenced" } }
+  /connections/{id}/test:
+    post: { tags: [connections], summary: 连接测试, responses: { "200": { description: 结果 }, "424": { description: 失败 } } }
+  /runs:
+    post:
+      tags: [runs]
+      summary: 创建 Run（mode=test 用 draft；manual 用 latest published 或指定 version）
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/CreateRunRequest" } } } }
+      responses:
+        "202": { description: 已入队，返回 runId }
+        "409": { description: 校验未通过（请先配置节点）, content: { application/json: { schema: { $ref: "#/components/schemas/ValidationReport" } } } }
+        "409-idem": { description: 幂等键重复，返回既有 Run }
+    get: { tags: [runs], summary: Run 列表（task/workflow 维度筛选）, responses: { "200": { description: OK } } }
+  /runs/{id}:
+    get: { tags: [runs], summary: Run 详情（含节点级摘要，刷新恢复用）, responses: { "200": { description: OK } } }
+  /runs/{id}/cancel:
+    post: { tags: [runs], summary: 取消（协作式，节点边界生效）, responses: { "202": { description: Accepted } } }
+  /runs/{id}/retry:
+    post:
+      tags: [runs]
+      summary: 重试（新建 Run，不原地重跑）
+      responses:
+        "202":
+          description: Accepted，返回新 Run；新 Run.originRunId=本 Run id（11 run 表需含 origin_run_id FK null）
+  /runs/{id}/node-runs/{nodeRunId}:
+    get: { tags: [runs], summary: 节点级输入/输出/错误/调用明细, responses: { "200": { description: OK } } }
+  /runs/{id}/events:
+    get:
+      tags: [events]
+      summary: SSE 事件流（Last-Event-ID 重放；?after=sequence 历史拉取）
+      parameters: [ { name: Last-Event-ID, in: header, schema: { type: integer } } ]
+      responses:
+        "200": { description: text/event-stream，data 为 run-event.schema.json }
+  /schedules:
+    post: { tags: [schedules], summary: 创建（cron+企业时区+valid 窗口）, responses: { "201": { description: Created } } }
+    get: { tags: [schedules], summary: 列表, responses: { "200": { description: OK } } }
+  /schedules/{id}:
+    put: { tags: [schedules], summary: 更新, responses: { "200": { description: OK } } }
+    delete: { tags: [schedules], summary: 删除, responses: { "204": { description: No Content } } }
+  /schedules/{id}/enable:
+    post: { tags: [schedules], summary: 启用, responses: { "200": { description: OK } } }
+  /schedules/{id}/disable:
+    post: { tags: [schedules], summary: 停用, responses: { "200": { description: OK } } }
+  /schedules/{id}/runs:
+    get: { tags: [schedules], summary: 执行历史, responses: { "200": { description: OK } } }
+  /tasks/{taskId}/runs:
+    get: { tags: [tasks], summary: 任务 Run 列表, responses: { "200": { description: OK } } }
+  /results:
+    get: { tags: [results], summary: 质检结果列表（业务层）, responses: { "200": { description: OK } } }
+  /results/{id}:
+    get: { tags: [results], summary: 结果详情+Evidence, responses: { "200": { description: OK } } }
+components:
+  responses:
+    NotFound: { description: 404, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Conflict: { description: 409, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    NameConflict: { description: 名称重复 }
+    DraftExists: { description: 已存在活动 Draft }
+    Referenced: { description: 被引用阻断 }
+  schemas:
+    Error: { type: object, required: [code, message], properties: { code: { type: string }, message: { type: string }, details: { type: object } } }
+    Workflow: { type: object, properties: { id: { type: string }, name: { type: string }, status: { type: string }, currentVersionId: { type: [string, "null"] }, draftRevision: { type: integer }, updatedAt: { type: string } } }
+    WorkflowSummary: { type: object, properties: { id: { type: string }, name: { type: string }, status: { type: string }, currentVersion: { type: integer }, updatedAt: { type: string } } }
+    PageOfWorkflowSummary: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/WorkflowSummary" } }, page: { type: integer }, pageSize: { type: integer }, total: { type: integer } } }
+    SaveDraftRequest: { type: object, required: [definition, baseRevision], properties: { definition: { type: object, description: 符合 workflow-definition.schema.json }, baseRevision: { type: integer } } }
+    ValidationReport:
+      type: object
+      properties:
+        ok: { type: boolean }
+        issues:
+          type: array
+          items:
+            type: object
+            required: [nodeId, kind, message]
+            properties:
+              nodeId: { type: string }
+              kind: { enum: [unconnected, unconfigured, dependency, graph] }
+              message: { type: string }
+    CreateRunRequest:
+      type: object
+      required: [workflowId, mode]
+      properties:
+        workflowId: { type: string }
+        mode: { enum: [test, manual, api] }
+        versionId: { type: [string, "null"], description: manual/api 可指定；缺省=latest published }
+        input: { type: object }
+        idempotencyKey: { type: [string, "null"] }

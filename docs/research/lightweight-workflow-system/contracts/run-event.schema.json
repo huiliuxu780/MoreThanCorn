@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://morethancorn.local/schemas/run-event/1.0",
+  "title": "RunEvent",
+  "description": "Run 事件协议 v1.0（Designed）。SSE 传输，data=本结构；id=sequence 供 Last-Event-ID 重放。见 10-logs-events-observability.md。",
+  "type": "object",
+  "required": ["eventId", "sequence", "timestamp", "runId", "type"],
+  "properties": {
+    "eventId": { "type": "string", "description": "ULID，全局唯一" },
+    "sequence": { "type": "integer", "minimum": 1, "description": "run 内单调递增，允许消费方检测缺口" },
+    "timestamp": { "type": "string", "format": "date-time", "description": "UTC" },
+    "runId": { "type": "string" },
+    "nodeRunId": { "type": ["string", "null"] },
+    "nodeId": { "type": ["string", "null"] },
+    "type": {
+      "enum": [
+        "workflow_queued",
+        "workflow_started",
+        "node_started",
+        "node_output",
+        "node_completed",
+        "node_failed",
+        "node_skipped",
+        "tool_call_started",
+        "tool_call_completed",
+        "tool_call_failed",
+        "model_call_started",
+        "model_call_completed",
+        "model_call_failed",
+        "workflow_completed",
+        "workflow_failed",
+        "workflow_cancelled",
+        "workflow_timed_out"
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "description": "按 type 约定：node_* 含 status/durationMs/tokenUsage；node_output 含 output（截断策略见 12）；*_failed 含 error",
+      "properties": {
+        "status": { "enum": ["pending", "running", "succeeded", "failed", "skipped", "cancelled", "timed_out"] },
+        "attempt": { "type": "integer", "minimum": 1 },
+        "durationMs": { "type": "integer" },
+        "tokenUsage": {
+          "type": "object",
+          "properties": { "promptTokens": { "type": "integer" }, "completionTokens": { "type": "integer" } }
+        },
+        "output": {},
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": { "type": "string" },
+            "message": { "type": "string" },
+            "retryable": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  }
+}

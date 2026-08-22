@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Bot,
+  ChevronDown,
   ClipboardList,
   Database,
   Plug,
@@ -9,6 +10,7 @@ import {
   ShieldCheck,
   UserRoundSearch,
   Wrench,
+  Workflow,
 } from "lucide-react"
 import * as React from "react"
 import { NavLink } from "react-router-dom"
@@ -32,7 +34,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { ChevronDown } from "lucide-react"
+
 
 interface NavItem {
   label: string
@@ -50,7 +52,7 @@ interface NavGroup {
 }
 
 /** 固定导航（Handoff §2）：不允许新增一级入口。 */
-const NAV_GROUPS: NavGroup[] = [
+export const NAV_GROUPS: NavGroup[] = [
   {
     label: UI_TERMS.navigation.quality,
     subLabel: UI_TERMS.navigation.agentQuality,
@@ -88,6 +90,12 @@ const NAV_GROUPS: NavGroup[] = [
         label: UI_TERMS.navigation.agents,
         to: "/config/agents",
         icon: Bot,
+        permission: "agent.view",
+      },
+      {
+        label: "工作流",
+        to: "/config/workflows",
+        icon: Workflow,
         permission: "agent.view",
       },
       {
@@ -169,13 +177,23 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
             return (
               <Collapsible key={group.label} defaultOpen className="group/collapsible">
                 <SidebarGroup>
+                  <SidebarMenu>
+                    <SidebarMenuItem className="hidden group-data-[collapsible=icon]:block">
+                      <SidebarMenuButton asChild tooltip={group.label}>
+                        <NavLink to={group.subItems![0].to}>
+                          <BarChart3 className="size-4" />
+                          <span>{group.label}</span>
+                        </NavLink>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
                   <CollapsibleTrigger asChild>
                     <SidebarGroupLabel className="cursor-pointer hover:bg-sidebar-accent/50">
                       {group.label}
                       <ChevronDown className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
                     </SidebarGroupLabel>
                   </CollapsibleTrigger>
-                  <CollapsibleContent>
+                  <CollapsibleContent className="group-data-[collapsible=icon]:hidden">
                     <SidebarGroupContent>
                       {group.subLabel ? (
                         <div className="px-2 pt-1 pb-1 text-[11px] font-medium text-muted-foreground/80">

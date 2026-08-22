@@ -14,6 +14,14 @@ const TaskEditPage = lazy(() => import("@/pages/task-edit"))
 const RunDetailPage = lazy(() => import("@/pages/run-detail"))
 const AgentsPage = lazy(() => import("@/pages/agents"))
 const AgentDesignerPage = lazy(() => import("@/pages/agent-designer"))
+// 真 API 模式（P0，VITE_WF_API=1）：同一冻结路由，切换实现（15-development-plan.md）
+const WfAgentsPage = lazy(() => import("@/pages/wf-agents-list"))
+const WfAgentEditorPage = lazy(() => import("@/pages/wf-agent-editor"))
+const WfWorkflowsPage = lazy(() => import("@/pages/wf-workflows-list"))
+const WfWorkflowEditorPage = lazy(() => import("@/pages/wf-designer"))
+const WfToolsPage = lazy(() => import("@/pages/wf-tools"))
+const WfConnectionsPage = lazy(() => import("@/pages/wf-connections"))
+const WF_API = import.meta.env.VITE_WF_API === "1"
 const ToolsPage = lazy(() => import("@/pages/tools"))
 const ToolEditorPage = lazy(() => import("@/pages/tool-editor"))
 const DataAssetsPage = lazy(() => import("@/pages/data-assets"))
@@ -63,11 +71,13 @@ export function App() {
           <Route path="/config/tasks/:taskId/runs/:runId" element={<RunDetailPage />} />
 
           {/* 配置管理：Agents */}
-          <Route path="/config/agents" element={<AgentsPage />} />
-          <Route path="/config/agents/:agentId" element={<AgentDesignerPage />} />
+          <Route path="/config/agents" element={WF_API ? <WfAgentsPage /> : <AgentsPage />} />
+          <Route path="/config/agents/:agentId" element={WF_API ? <WfAgentEditorPage /> : <AgentDesignerPage />} />
 
           {/* 配置管理：Tools */}
-          <Route path="/config/tools" element={<ToolsPage />} />
+          <Route path="/config/workflows" element={WF_API ? <WfWorkflowsPage /> : <WfWorkflowsPage />} />
+          <Route path="/config/workflows/:agentId" element={WF_API ? <WfWorkflowEditorPage /> : <WfWorkflowEditorPage />} />
+          <Route path="/config/tools" element={WF_API ? <WfToolsPage /> : <ToolsPage />} />
           <Route path="/config/tools/new" element={<ToolEditorPage />} />
           <Route path="/config/tools/:toolId" element={<ToolEditorPage />} />
 
@@ -81,7 +91,7 @@ export function App() {
           <Route path="/config/result-rules/:ruleSetId" element={<ResultRuleEditorPage />} />
 
           {/* 系统级设置 */}
-          <Route path="/settings/connections" element={<ConnectionsPage />} />
+          <Route path="/settings/connections" element={WF_API ? <WfConnectionsPage /> : <ConnectionsPage />} />
 
           <Route path="/403" element={<ForbiddenPage />} />
           <Route path="*" element={<NotFoundPage />} />

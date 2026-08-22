@@ -1,0 +1,1280 @@
+{
+ "nodes": [
+  {
+   "dragging": false,
+   "data": {
+    "nodeName": "开始",
+    "nodeDetail": {
+     "output": [
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "refInfoList": [],
+        "simpleHtml": "",
+        "text": "#97712577-95fc-45ba-80ac-daa4ac703ff2_$.userQuery",
+        "constantValue": ""
+       },
+       "code": "userQuery",
+       "type": "String",
+       "required": false,
+       "desc": "用户输入的原始问句"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "refInfoList": [],
+        "simpleHtml": "",
+        "text": "#97712577-95fc-45ba-80ac-daa4ac703ff2_$.chatHistory",
+        "constantValue": ""
+       },
+       "code": "chatHistory",
+       "type": "String",
+       "required": false,
+       "desc": "用户的历史对话"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "refInfoList": [],
+        "simpleHtml": "",
+        "text": "#97712577-95fc-45ba-80ac-daa4ac703ff2_$.userId",
+        "constantValue": ""
+       },
+       "code": "userId",
+       "type": "String",
+       "required": false,
+       "desc": "用户的唯一身份ID"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "refInfoList": [],
+        "simpleHtml": "",
+        "text": "#97712577-95fc-45ba-80ac-daa4ac703ff2_$.conversationId",
+        "constantValue": ""
+       },
+       "code": "conversationId",
+       "type": "String",
+       "required": false,
+       "desc": "会话一段时间内的对话ID"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "refInfoList": [],
+        "simpleHtml": "",
+        "text": "#97712577-95fc-45ba-80ac-daa4ac703ff2_$.chatId",
+        "constantValue": ""
+       },
+       "code": "chatId",
+       "type": "String",
+       "required": false,
+       "desc": "问答的唯一标识"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "isRef": false,
+        "dataType": "Object",
+        "refInfoList": [],
+        "simpleHtml": "",
+        "text": "#97712577-95fc-45ba-80ac-daa4ac703ff2_$.file",
+        "constantValue": ""
+       },
+       "code": "file",
+       "children": [
+        {
+         "isSystem": true,
+         "referInfo": {
+          "textHtml": "",
+          "answerHtml": "",
+          "isRef": false,
+          "dataType": "String",
+          "jsonPath": "",
+          "simpleHtml": "",
+          "text": "",
+          "constantValue": ""
+         },
+         "code": "fileType",
+         "id": "twvszlTi",
+         "type": "String",
+         "required": false,
+         "desc": "上传文件类型"
+        },
+        {
+         "isSystem": true,
+         "referInfo": {
+          "textHtml": "",
+          "answerHtml": "",
+          "isRef": false,
+          "dataType": "String",
+          "jsonPath": "",
+          "simpleHtml": "",
+          "text": "",
+          "constantValue": ""
+         },
+         "code": "fileUrl",
+         "id": "foddoNKV",
+         "type": "String",
+         "required": false,
+         "desc": "上传文件地址"
+        },
+        {
+         "isSystem": true,
+         "referInfo": {
+          "textHtml": "",
+          "answerHtml": "",
+          "isRef": false,
+          "dataType": "String",
+          "jsonPath": "",
+          "simpleHtml": "",
+          "text": "",
+          "constantValue": ""
+         },
+         "code": "fileName",
+         "id": "Qfoajynh",
+         "type": "String",
+         "required": false,
+         "desc": "上传文件名称"
+        }
+       ],
+       "id": "QCBCappr",
+       "type": "Object",
+       "required": false,
+       "desc": "文件上传对象"
+      }
+     ],
+     "input": [
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "userQuery",
+       "type": "String",
+       "required": false,
+       "desc": "用户输入的原始问句"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "chatHistory",
+       "type": "String",
+       "required": false,
+       "desc": "用户的历史对话"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "userId",
+       "type": "String",
+       "required": false,
+       "desc": "用户的唯一身份ID"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "conversationId",
+       "type": "String",
+       "required": false,
+       "desc": "会话一段时间内的对话ID"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "chatId",
+       "type": "String",
+       "required": false,
+       "desc": "问答的唯一标识"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "Object",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "file",
+       "children": [
+        {
+         "isSystem": true,
+         "referInfo": {
+          "textHtml": "",
+          "answerHtml": "",
+          "isRef": false,
+          "dataType": "String",
+          "jsonPath": "",
+          "simpleHtml": "",
+          "text": "",
+          "constantValue": ""
+         },
+         "code": "fileType",
+         "id": "twvszlTi",
+         "type": "String",
+         "required": false,
+         "desc": "上传文件类型"
+        },
+        {
+         "isSystem": true,
+         "referInfo": {
+          "textHtml": "",
+          "answerHtml": "",
+          "isRef": false,
+          "dataType": "String",
+          "jsonPath": "",
+          "simpleHtml": "",
+          "text": "",
+          "constantValue": ""
+         },
+         "code": "fileUrl",
+         "id": "foddoNKV",
+         "type": "String",
+         "required": false,
+         "desc": "上传文件地址"
+        },
+        {
+         "isSystem": true,
+         "referInfo": {
+          "textHtml": "",
+          "answerHtml": "",
+          "isRef": false,
+          "dataType": "String",
+          "jsonPath": "",
+          "simpleHtml": "",
+          "text": "",
+          "constantValue": ""
+         },
+         "code": "fileName",
+         "id": "Qfoajynh",
+         "type": "String",
+         "required": false,
+         "desc": "上传文件名称"
+        }
+       ],
+       "id": "QCBCappr",
+       "type": "Object",
+       "required": false,
+       "desc": "文件上传对象"
+      }
+     ]
+    },
+    "nodeType": "start",
+    "nodeId": "97712577-95fc-45ba-80ac-daa4ac703ff2",
+    "runData": {}
+   },
+   "width": 300,
+   "id": "97712577-95fc-45ba-80ac-daa4ac703ff2",
+   "position": {
+    "x": 0,
+    "y": 0
+   },
+   "type": "custom",
+   "selected": false,
+   "height": 86
+  },
+  {
+   "dragging": false,
+   "data": {
+    "nodeName": "结束",
+    "nodeDetail": {
+     "output": [
+      {
+       "isSystem": false,
+       "referInfo": {},
+       "code": "output",
+       "type": "String",
+       "required": true,
+       "desc": "输出结果"
+      }
+     ],
+     "outputMode": "param"
+    },
+    "nodeType": "end",
+    "nodeId": "41bd4d38-6229-459a-a2be-f0379e45a959",
+    "runData": {}
+   },
+   "width": 300,
+   "id": "41bd4d38-6229-459a-a2be-f0379e45a959",
+   "position": {
+    "x": 800,
+    "y": 0
+   },
+   "type": "custom",
+   "selected": false,
+   "height": 86
+  },
+  {
+   "dragging": false,
+   "data": {
+    "nodeIcon": "https://img.alicdn.com/imgextra/i1/O1CN01D4KYUR1Vj9fUfdrIz_!!6000000002688-2-tps-204-192.png",
+    "nodeName": "获取文件夹元信息",
+    "nodeDetail": {
+     "componentCode": "default",
+     "apiDocument": {
+      "summary": "获取文件夹元信息",
+      "request": "{\n\t\"folderToken\":\"\"\n}",
+      "method": "post",
+      "apiCode": "Feishu-Plugin-Integrate_B1SkNjbUMMh3nWcKBAquvw",
+      "languageExample": {
+       "Java": "import java.nio.charset.Charset;\nimport org.apache.hc.client5.http.impl.classic.CloseableHttpClient;\nimport org.apache.hc.client5.http.impl.classic.HttpClients;\nimport org.apache.hc.core5.http.ClassicHttpRequest;\nimport org.apache.hc.core5.http.io.entity.EntityUtils;\nimport org.apache.hc.core5.http.io.entity.StringEntity;\nimport org.apache.hc.core5.http.io.support.ClassicRequestBuilder;\n\npublic class HttpClientMain {\n    public static void main(String args[]) throws Exception {\n        try (CloseableHttpClient httpclient = HttpClients.createDefault()) {\n            /**\n             * 设置post body\n             */\n            Map<String, Object> postBody = new HashMap<>();\n            postBody.put(\"Authorization\", \"Bearer {{access_token}}\");\n            postBody.put(\"folderToken\", \"defaultStr\");\n            /**\n             * 设置header\n             */\n            ClassicHttpRequest httpPost = ClassicRequestBuilder.post(\"https://{gateway.domain}/Feishu-Plugin-Integrate/open-apis/drive/explorer/v2/folder/folderToken/meta\")\n                    .setEntity(new StringEntity(JSON.toJSONString(postBody), Charset.forName(\"UTF-8\")))\n                    .addHeader(\"Content-Type\", \"application/json\")\n                    .addHeader(\"Authorization\", \"Basic R3Zpc0cyTVBWRXhPRE5BN25rcXM4UHpCWWoxcTEyMzIxMzIxMzIxMzp1WXRYU09xMXAxV00xZVI0NFZBbjEyMzIxMzIxMzIxMw==\")\n                    .build();\n            httpclient.execute(httpPost, response -> {\n                System.out.println(response.getCode() + \" \" + response.getReasonPhrase());\n                final String body = EntityUtils.toString(response.getEntity());\n                System.out.println(body);\n                return null;\n            });\n        }\n    }\n}",
+       "CURL": "# {gateway.domain}替换为真实网关域名。\ncurl --location 'https://{gateway.domain}/Feishu-Plugin-Integrate/open-apis/drive/explorer/v2/folder/folderToken/meta' \\\n--header 'Authorization: Basic R3Zpc0cyTVBWRXhPRE5BN25rcXM4UHpCWWoxcTEyMzIxMzIxMzIxMzp1WXRYU09xMXAxV00xZVI0NFZBbjEyMzIxMzIxMzIxMw==' \\\n--header 'Content-Type: application/json' \\\n--data '{\n\t\"Authorization\":\"Bearer {{access_token}}\",\n\t\"folderToken\":\"defaultStr\"\n}'",
+       "Python": "import json\nimport requests\n\nif __name__ == '__main__':\n    url = \"https://{gateway.domain}/Feishu-Plugin-Integrate/open-apis/drive/explorer/v2/folder/folderToken/meta\"\n    headers = {'Content-Type': 'application/json', 'Authorization': 'Basic R3Zpc0cyTVBWRXhPRE5BN25rcXM4UHpCWWoxcTEyMzIxMzIxMzIxMzp1WXRYU09xMXAxV00xZVI0NFZBbjEyMzIxMzIxMzIxMw=='}\n    requestData = {\n\t\"Authorization\":\"Bearer {{access_token}}\",\n\t\"folderToken\":\"defaultStr\"\n}\n    ret = requests.post(url, json=requestData, headers=headers)\n    print(ret.status_code)\n    if 200 == ret.status_code:\n        text = json.loads(ret.text)\n        print(text)"
+      },
+      "gatewayDomain": "gateway.lydaas.com",
+      "description": "该接口用于根据 folderToken 获取该文件夹的元信息",
+      "errorCode": [],
+      "appCode": "Feishu-Plugin-Integrate",
+      "requestParam": "{}",
+      "timeout": 5,
+      "objectType": "api",
+      "auType": "ak",
+      "path": "/Feishu-Plugin-Integrate/open-apis/drive/explorer/v2/folder/folderToken/meta",
+      "apiStyle": "ROA",
+      "name": "meta",
+      "objectVersionId": "749390210398118595",
+      "responses": [
+       {
+        "visibility": true,
+        "in": "body",
+        "name": "msg",
+        "backendName": "msg",
+        "type": "string",
+        "required": true
+       },
+       {
+        "visibility": true,
+        "in": "body",
+        "name": "code",
+        "backendName": "code",
+        "type": "integer",
+        "required": true
+       },
+       {
+        "visibility": true,
+        "in": "body",
+        "children": [
+         {
+          "visibility": true,
+          "name": "ownUid",
+          "backendName": "ownUid",
+          "type": "string",
+          "title": "文件夹为个人文件夹时，为文件夹的所有者 id；文件夹为共享文件夹时，为文件夹树id",
+          "parentType": "object",
+          "required": true
+         },
+         {
+          "visibility": true,
+          "name": "editUid",
+          "backendName": "editUid",
+          "type": "string",
+          "title": "文件夹的最后编辑者 id",
+          "parentType": "object",
+          "required": true
+         },
+         {
+          "visibility": true,
+          "name": "name",
+          "backendName": "name",
+          "type": "string",
+          "title": "文件夹的标题",
+          "parentType": "object",
+          "required": true
+         },
+         {
+          "visibility": true,
+          "name": "id",
+          "backendName": "id",
+          "type": "string",
+          "title": "文件夹的 id",
+          "parentType": "object",
+          "required": true
+         },
+         {
+          "visibility": true,
+          "name": "createUid",
+          "backendName": "createUid",
+          "type": "string",
+          "title": "文件夹的创建者 id",
+          "parentType": "object",
+          "required": true
+         },
+         {
+          "visibility": true,
+          "name": "parentId",
+          "backendName": "parentId",
+          "type": "string",
+          "title": "文件夹的上级目录 id",
+          "parentType": "object",
+          "required": true
+         },
+         {
+          "visibility": true,
+          "name": "token",
+          "backendName": "token",
+          "type": "string",
+          "title": "文件夹的 token",
+          "parentType": "object",
+          "required": true
+         }
+        ],
+        "name": "data",
+        "backendName": "data",
+        "type": "object",
+        "required": true
+       }
+      ],
+      "requestHeader": "{\n\t\"Authorization\":\"Bearer {{access_token}}\"\n}",
+      "parameters": [
+       {
+        "visibility": true,
+        "in": "Header",
+        "name": "Authorization",
+        "backendName": "Authorization",
+        "type": "string",
+        "title": "tenant_access_token 或 user_access_token 值格式：\"Bearer access_token\"  示例值：\"Bearer u-7f1bcd13fc57d46bac21793a18e560\"",
+        "required": true,
+        "example": "Bearer {{access_token}}"
+       },
+       {
+        "visibility": true,
+        "in": "Body",
+        "name": "folderToken",
+        "backendName": "folderToken",
+        "type": "string",
+        "title": "文件夹 token，获取方式见如何获取云文档资源相关 token",
+        "required": true
+       }
+      ]
+     },
+     "icon": "https://img.alicdn.com/imgextra/i1/O1CN01D4KYUR1Vj9fUfdrIz_!!6000000002688-2-tps-204-192.png",
+     "appCode": "Feishu-Plugin-Integrate",
+     "output": [
+      {
+       "code": "msg",
+       "type": "String"
+      },
+      {
+       "code": "code",
+       "type": "Integer"
+      },
+      {
+       "code": "data",
+       "children": [
+        {
+         "code": "ownUid",
+         "type": "String"
+        },
+        {
+         "code": "editUid",
+         "type": "String"
+        },
+        {
+         "code": "name",
+         "type": "String"
+        },
+        {
+         "code": "id",
+         "type": "String"
+        },
+        {
+         "code": "createUid",
+         "type": "String"
+        },
+        {
+         "code": "parentId",
+         "type": "String"
+        },
+        {
+         "code": "token",
+         "type": "String"
+        }
+       ],
+       "type": "Object"
+      }
+     ],
+     "input": [
+      {
+       "referInfo": {},
+       "code": "Authorization",
+       "id": "OFaWyvMu",
+       "type": "String",
+       "required": true,
+       "desc": "tenant_access_token 或 user_access_token 值格式：\"Bearer access_token\"  示例值：\"Bearer u-7f1bcd13fc57d46bac21793a18e560\""
+      },
+      {
+       "referInfo": {},
+       "code": "folderToken",
+       "id": "GfggnTij",
+       "type": "String",
+       "required": true,
+       "desc": "文件夹 token，获取方式见如何获取云文档资源相关 token"
+      }
+     ],
+     "toolCode": "749390210398118595",
+     "apiPath": "/Feishu-Plugin-Integrate/open-apis/drive/explorer/v2/folder/folderToken/meta",
+     "relatedCommodityId": "202504022219183011",
+     "tenantId": "25052416228933",
+     "authAppVO": {
+      "gmtModified": 1762244368000,
+      "formConfig": "{\n    \"appScheme\": [],\n    \"authScheme\": [\n        {\n            \"name\": \"appId\",\n            \"code\": \"appId\",\n            \"type\": \"string\",\n            \"required\": true,\n            \"description\": \"appId\",\n            \"maxLength\": 1000\n        },\n        {\n            \"name\": \"appSecret\",\n            \"code\": \"appSecret\",\n            \"type\": \"string\",\n            \"required\": true,\n            \"description\": \"appSecret\",\n            \"maxLength\": 1000\n        }\n    ],\n    \"accountScheme\": [\n        {\n            \"name\": \"appId\",\n            \"code\": \"appId\",\n            \"type\": \"string\",\n            \"required\": true,\n            \"description\": \"appId\",\n            \"maxLength\": 1000\n        },\n        {\n            \"name\": \"appSecret\",\n            \"code\": \"appSecret\",\n            \"type\": \"string\",\n            \"required\": true,\n            \"description\": \"appSecret\",\n            \"maxLength\": 1000\n        }\n    ]\n}",
+      "modifier": "查向(王亚辉)",
+      "icon": "https://img.alicdn.com/imgextra/i1/O1CN01D4KYUR1Vj9fUfdrIz_!!6000000002688-2-tps-204-192.png",
+      "appCode": "Feishu-Plugin-Integrate",
+      "needRefreshTokenName": "是",
+      "title": "飞书（企业内应用-组织）",
+      "appMode": "service",
+      "authModeNameList": [
+       "静态表单"
+      ],
+      "needRefreshToken": 1,
+      "appConfig": {},
+      "limit": 10,
+      "statusName": "启用",
+      "authObjectType": "tenant",
+      "id": "1902252695250829313",
+      "value": "Feishu-Plugin-Integrate",
+      "groupCode": "default-202210251148327768-default-202210251148327768-namespace-auth-group",
+      "creator": "李天航",
+      "authAppType": "plugin",
+      "start": 0,
+      "authRouteRuleConfigItemList": [],
+      "label": "飞书（企业内应用-组织）",
+      "routeRuleCapacity": 0,
+      "gmtCreate": 1742367359000,
+      "uiStatus": {
+       "text": "启用",
+       "type": "success"
+      },
+      "routeRuleCapacityString": "否",
+      "authMode": [
+       "customer-static"
+      ],
+      "groupName": "默认授权应用",
+      "size": 10,
+      "messageMode": "webhook",
+      "page": 1,
+      "status": 1
+     },
+     "appSource": "market",
+     "toolName": "获取文件夹元信息"
+    },
+    "toolData": [
+     {
+      "relatedCommodityId": "202504022219183011",
+      "icon": "https://img.alicdn.com/imgextra/i1/O1CN01D4KYUR1Vj9fUfdrIz_!!6000000002688-2-tps-204-192.png",
+      "name": "飞书",
+      "description": "支持开发者基于飞书平台构建各种自定义应用和功能，以满足多样化的办公协同和业务管理需求\n",
+      "authObjectType": "tenant",
+      "isPlural": false,
+      "toolList": [
+       {
+        "code": "Feishu-Plugin-Integrate_B1SkNjbUMMh3nWcKBAquvw",
+        "name": "获取文件夹元信息",
+        "description": "该接口用于根据 folderToken 获取该文件夹的元信息",
+        "id": "749390210398118595"
+       }
+      ],
+      "appCode": "Feishu-Plugin-Integrate",
+      "appSource": "market",
+      "appMode": "service"
+     }
+    ],
+    "nodeType": "plugin-tool",
+    "nodeId": "d1aab5af-1dc8-4d87-bef0-8c938f10891a",
+    "runData": {}
+   },
+   "width": 300,
+   "positionAbsolute": {
+    "x": 398,
+    "y": 0
+   },
+   "id": "d1aab5af-1dc8-4d87-bef0-8c938f10891a",
+   "position": {
+    "x": 398,
+    "y": 0
+   },
+   "type": "custom",
+   "selected": false,
+   "height": 170
+  },
+  {
+   "dragging": false,
+   "data": {
+    "nodeName": "工作流执行",
+    "nodeDetail": {
+     "input": [
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "workflowCode",
+       "type": "String",
+       "required": false
+      }
+     ],
+     "executeType": "workflow"
+    },
+    "nodeType": "execution_workflow",
+    "nodeId": "3b773218-5b5e-4889-8166-305d53260ca4",
+    "runData": {}
+   },
+   "width": 300,
+   "positionAbsolute": {
+    "x": 291,
+    "y": 228
+   },
+   "id": "3b773218-5b5e-4889-8166-305d53260ca4",
+   "position": {
+    "x": 291,
+    "y": 228
+   },
+   "type": "custom",
+   "selected": false,
+   "height": 114
+  },
+  {
+   "dragging": false,
+   "data": {
+    "nodeIcon": "https://img.alicdn.com/imgextra/i1/O1CN01LPhll71SMlSN50Il7_!!6000000002233-0-tps-204-192.jpg",
+    "nodeName": "获取文档基础信息",
+    "nodeDetail": {
+     "componentCode": "default",
+     "apiDocument": {
+      "summary": "获取文档基础信息",
+      "request": "{\n\t\"docid\":\"\"\n}",
+      "method": "post",
+      "apiCode": "wework-biz_746836363878541219_get_doc_base_info",
+      "languageExample": {
+       "Java": "import java.nio.charset.Charset;\nimport org.apache.hc.client5.http.impl.classic.CloseableHttpClient;\nimport org.apache.hc.client5.http.impl.classic.HttpClients;\nimport org.apache.hc.core5.http.ClassicHttpRequest;\nimport org.apache.hc.core5.http.io.entity.EntityUtils;\nimport org.apache.hc.core5.http.io.entity.StringEntity;\nimport org.apache.hc.core5.http.io.support.ClassicRequestBuilder;\n\npublic class HttpClientMain {\n    public static void main(String args[]) throws Exception {\n        try (CloseableHttpClient httpclient = HttpClients.createDefault()) {\n            /**\n             * 设置post body\n             */\n            Map<String, Object> postBody = new HashMap<>();\n            /**\n             * 设置header\n             */\n            ClassicHttpRequest httpPost = ClassicRequestBuilder.post(\"https://{gateway.domain}/cgi-bin/wedoc/get_doc_base_info\")\n                    .setEntity(new StringEntity(JSON.toJSONString(postBody), Charset.forName(\"UTF-8\")))\n                    .addHeader(\"Content-Type\", \"application/json\")\n                    .addHeader(\"Authorization\", \"Basic R3Zpc0cyTVBWRXhPRE5BN25rcXM4UHpCWWoxcTEyMzIxMzIxMzIxMzp1WXRYU09xMXAxV00xZVI0NFZBbjEyMzIxMzIxMzIxMw==\")\n                    .build();\n            httpclient.execute(httpPost, response -> {\n                System.out.println(response.getCode() + \" \" + response.getReasonPhrase());\n                final String body = EntityUtils.toString(response.getEntity());\n                System.out.println(body);\n                return null;\n            });\n        }\n    }\n}",
+       "CURL": "# {gateway.domain}替换为真实网关域名。\ncurl --location 'https://{gateway.domain}/cgi-bin/wedoc/get_doc_base_info' \\\n--header 'Authorization: Basic R3Zpc0cyTVBWRXhPRE5BN25rcXM4UHpCWWoxcTEyMzIxMzIxMzIxMzp1WXRYU09xMXAxV00xZVI0NFZBbjEyMzIxMzIxMzIxMw==' \\\n--header 'Content-Type: application/json' \\\n--data '{}'",
+       "Python": "import json\nimport requests\n\nif __name__ == '__main__':\n    url = \"https://{gateway.domain}/cgi-bin/wedoc/get_doc_base_info\"\n    headers = {'Content-Type': 'application/json', 'Authorization': 'Basic R3Zpc0cyTVBWRXhPRE5BN25rcXM4UHpCWWoxcTEyMzIxMzIxMzIxMzp1WXRYU09xMXAxV00xZVI0NFZBbjEyMzIxMzIxMzIxMw=='}\n    requestData = {}\n    ret = requests.post(url, json=requestData, headers=headers)\n    print(ret.status_code)\n    if 200 == ret.status_code:\n        text = json.loads(ret.text)\n        print(text)"
+      },
+      "gatewayDomain": "gateway.lydaas.com",
+      "errorCode": [],
+      "appCode": "wework-biz",
+      "requestParam": "{}",
+      "version": "1.0.0",
+      "timeout": 5,
+      "objectType": "api",
+      "auType": "ak",
+      "path": "/cgi-bin/wedoc/get_doc_base_info",
+      "apiStyle": "ROA",
+      "name": "get_doc_base_info",
+      "objectVersionId": "1902553685056876545",
+      "responses": [
+       {
+        "visibility": true,
+        "name": "errcode",
+        "backendName": "errcode",
+        "type": "integer",
+        "required": false
+       },
+       {
+        "visibility": true,
+        "name": "errmsg",
+        "backendName": "errmsg",
+        "type": "string",
+        "required": false
+       },
+       {
+        "visibility": true,
+        "name": "version",
+        "backendName": "version",
+        "type": "integer",
+        "required": false
+       },
+       {
+        "visibility": true,
+        "name": "document",
+        "backendName": "document",
+        "type": "object",
+        "required": false
+       }
+      ],
+      "requestHeader": "{\n\t\"X-bizphin-authorization-recordId\":\"\"\n}",
+      "id": "1906892138981015554",
+      "parameters": [
+       {
+        "visibility": true,
+        "in": "Header",
+        "name": "X-bizphin-authorization-recordId",
+        "backendName": "X-bizphin-authorization-recordId",
+        "type": "string",
+        "required": false
+       },
+       {
+        "visibility": true,
+        "in": "Body",
+        "name": "docid",
+        "backendName": "docid",
+        "type": "string",
+        "required": false
+       }
+      ],
+      "status": 1
+     },
+     "icon": "https://img.alicdn.com/imgextra/i1/O1CN01LPhll71SMlSN50Il7_!!6000000002233-0-tps-204-192.jpg",
+     "appCode": "wework-biz",
+     "output": [
+      {
+       "code": "errcode",
+       "type": "Integer"
+      },
+      {
+       "code": "errmsg",
+       "type": "String"
+      },
+      {
+       "code": "version",
+       "type": "Integer"
+      },
+      {
+       "code": "document",
+       "type": "Object"
+      }
+     ],
+     "input": [
+      {
+       "referInfo": {},
+       "code": "X-bizphin-authorization-recordId",
+       "id": "lkRNPNzF",
+       "type": "String",
+       "required": false
+      },
+      {
+       "referInfo": {},
+       "code": "docid",
+       "id": "yUmYkxbi",
+       "type": "String",
+       "required": false
+      }
+     ],
+     "toolCode": "1902553685056876545",
+     "apiPath": "/cgi-bin/wedoc/get_doc_base_info",
+     "relatedCommodityId": "202504022222423012",
+     "tenantId": "25052416228933",
+     "authAppVO": {
+      "gmtModified": 1743583990000,
+      "formConfig": "{\n    \"appScheme\": [],\n    \"accountScheme\": [],\n    \"authScheme\": [\n        {\n            \"name\": \"corpid\",\n            \"code\": \"corpId\",\n            \"type\": \"string\",\n            \"optional\": false,\n            \"required\": true,\n            \"description\": \"企业ID\"\n        },\n        {\n            \"name\": \"AgentId\",\n            \"code\": \"agentId\",\n            \"type\": \"string\",\n            \"optional\": false,\n            \"required\": true,\n            \"description\": \"应用的ID\"\n        },\n        {\n            \"name\": \"corpsecret\",\n            \"code\": \"corpSecret\",\n            \"type\": \"string\",\n            \"optional\": false,\n            \"required\": true,\n            \"description\": \"应用的凭证密钥\"\n        },\n        {\n            \"name\": \"企业名称\",\n            \"code\": \"outerName\",\n            \"type\": \"string\",\n            \"optional\": false,\n            \"required\": true,\n            \"description\": \"XX企业(自建应用-XX应用)\"\n        }\n    ]\n}",
+      "modifier": "查向(王亚辉)",
+      "icon": "https://img.alicdn.com/imgextra/i1/O1CN01LPhll71SMlSN50Il7_!!6000000002233-0-tps-204-192.jpg",
+      "description": "企业微信提供了通讯录管理、客户联系、身份验证、应用管理、消息推送、素材管理、OA、效率工具、企业支付、企业互联、会话内容存档",
+      "appCode": "wework-biz",
+      "needRefreshTokenName": "是",
+      "title": "企业微信（企业内应用）",
+      "appMode": "service",
+      "authModeNameList": [
+       "静态表单"
+      ],
+      "needRefreshToken": 1,
+      "appConfig": {},
+      "limit": 10,
+      "statusName": "启用",
+      "authObjectType": "tenant",
+      "id": "1902558211692855297",
+      "value": "wework-biz",
+      "groupCode": "default-202210251148327768-default-202210251148327768-namespace-auth-group",
+      "creator": "查向(王亚辉)",
+      "authAppType": "plugin",
+      "start": 0,
+      "authRouteRuleConfigItemList": [],
+      "label": "企业微信（企业内应用）",
+      "routeRuleCapacity": 0,
+      "gmtCreate": 1742440200000,
+      "uiStatus": {
+       "text": "启用",
+       "type": "success"
+      },
+      "routeRuleCapacityString": "否",
+      "authMode": [
+       "customer-static"
+      ],
+      "groupName": "默认授权应用",
+      "size": 10,
+      "messageMode": "webhook",
+      "page": 1,
+      "status": 1
+     },
+     "appSource": "market",
+     "toolName": "获取文档基础信息"
+    },
+    "toolData": [
+     {
+      "relatedCommodityId": "202504022222423012",
+      "icon": "https://img.alicdn.com/imgextra/i1/O1CN01LPhll71SMlSN50Il7_!!6000000002233-0-tps-204-192.jpg",
+      "name": "企业微信",
+      "description": "具备丰富的办公协同和管理能力，支持在企业微信中集成第三方应用和服务",
+      "authObjectType": "tenant",
+      "isPlural": false,
+      "toolList": [
+       {
+        "code": "wework-biz_746836363878541219_get_doc_base_info",
+        "name": "获取文档基础信息",
+        "id": "1902553685056876545"
+       }
+      ],
+      "appCode": "wework-biz",
+      "appSource": "market",
+      "appMode": "service"
+     }
+    ],
+    "nodeType": "plugin-tool",
+    "nodeId": "c1a3a6ae-27ee-42a9-836d-ff9bc689e3c6",
+    "runData": {}
+   },
+   "width": 300,
+   "id": "c1a3a6ae-27ee-42a9-836d-ff9bc689e3c6",
+   "position": {
+    "x": 400,
+    "y": 0
+   },
+   "type": "custom",
+   "selected": false,
+   "height": 170
+  },
+  {
+   "dragging": false,
+   "data": {
+    "nodeName": "变量处理",
+    "nodeDetail": {
+     "output": [
+      {
+       "code": "Group1",
+       "type": "String"
+      }
+     ],
+     "input": [
+      {
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "refInfoList": [],
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "id": "JEwLPHIl"
+      }
+     ],
+     "groups": [
+      {
+       "groupName": "Group1",
+       "parameters": [
+        {
+         "referInfo": {
+          "textHtml": "",
+          "answerHtml": "",
+          "isRef": false,
+          "dataType": "String",
+          "refInfoList": [],
+          "jsonPath": "",
+          "simpleHtml": "",
+          "text": "",
+          "constantValue": ""
+         },
+         "id": "JEwLPHIl"
+        }
+       ]
+      }
+     ],
+     "dealType": "group"
+    },
+    "nodeType": "variable-handle",
+    "nodeId": "e5b72e1a-9d03-4285-959d-5261d1b64ee6",
+    "runData": {}
+   },
+   "width": 300,
+   "positionAbsolute": {
+    "x": 500,
+    "y": 471
+   },
+   "id": "e5b72e1a-9d03-4285-959d-5261d1b64ee6",
+   "position": {
+    "x": 500,
+    "y": 471
+   },
+   "type": "custom",
+   "selected": false,
+   "height": 114
+  },
+  {
+   "dragging": false,
+   "data": {
+    "nodeName": "代码编写",
+    "nodeDetail": {
+     "input": [
+      {
+       "isSystem": false,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "input",
+       "id": "HJglXYiQ",
+       "type": "String",
+       "required": false,
+       "desc": ""
+      }
+     ],
+     "codeType": "python",
+     "codeContent": "# 在这里，您可以通过 ‘args’  获取节点中的输入变量，并通过 'ret' 输出结果\n# 'args' 和 'ret' 已经被正确地注入到环境中\n# 下面是一个示例，首先获取节点的全部输入参数params，其次获取其中参数名为‘input’的值：\n# params = args.params; \n# input = params.input;\n# 下面是一个示例，输出一个包含多种数据类型的 'ret' 对象：\n# ret: Output =  { \"output\": ‘小明’, result:  };\n\nasync def main(args: Args) -> Output:\n    params = args.params\n    # 构建输出对象\n    ret: Output = {\n        \"output\": params['input'] + params['input'], # 拼接两次入参 input 的值\n        \"result\": \"hello world\",  # 输出一个字符串\n    }\n    return ret\n"
+    },
+    "nodeType": "code",
+    "nodeId": "75bc8ed3-b663-4fe1-b4be-6b679e03a917",
+    "runData": {}
+   },
+   "width": 300,
+   "positionAbsolute": {
+    "x": 784,
+    "y": 242
+   },
+   "id": "75bc8ed3-b663-4fe1-b4be-6b679e03a917",
+   "position": {
+    "x": 784,
+    "y": 242
+   },
+   "type": "custom",
+   "selected": false,
+   "height": 114
+  },
+  {
+   "dragging": false,
+   "data": {
+    "nodeName": "问题分类",
+    "nodeDetail": {
+     "output": [
+      {
+       "referInfo": {},
+       "code": "classificationTitle",
+       "type": "String",
+       "required": false,
+       "desc": "分类名称"
+      },
+      {
+       "referInfo": {},
+       "code": "classificationId",
+       "type": "String",
+       "required": false,
+       "desc": "分类的序号"
+      }
+     ],
+     "input": [
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "query",
+       "type": "String",
+       "required": true,
+       "desc": ""
+      }
+     ],
+     "classifications": [
+      {
+       "currentPortId": "eKqLrbqd",
+       "classificationDesc": "",
+       "classificationTitle": "",
+       "classificationId": "qlxKgmTz"
+      }
+     ],
+     "otherClassification": {
+      "currentPortId": "rdSoHLhm",
+      "classificationDesc": "",
+      "classificationTitle": "其他分类",
+      "classificationId": "mnLitefC"
+     }
+    },
+    "nodeType": "question-classifier",
+    "nodeId": "7643bddb-a144-4b05-9880-898246b0b095",
+    "runData": {}
+   },
+   "width": 300,
+   "positionAbsolute": {
+    "x": -277,
+    "y": 247
+   },
+   "id": "7643bddb-a144-4b05-9880-898246b0b095",
+   "position": {
+    "x": -277,
+    "y": 247
+   },
+   "type": "custom",
+   "selected": false,
+   "height": 198
+  },
+  {
+   "dragging": false,
+   "data": {
+    "nodeName": "大模型",
+    "nodeDetail": {
+     "output": [
+      {
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "simpleHtml": "",
+        "text": "#641aa87f-323b-4c8c-b767-6db77e714366_$.output#",
+        "constantValue": ""
+       },
+       "code": "output",
+       "id": "alqTqZYq",
+       "type": "String",
+       "key": "1",
+       "desc": "大模型的全部输出"
+      },
+      {
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "simpleHtml": "",
+        "text": "#641aa87f-323b-4c8c-b767-6db77e714366_$.thought#",
+        "constantValue": ""
+       },
+       "code": "thought",
+       "id": "XtVaNBde",
+       "type": "String",
+       "key": "2",
+       "desc": "大模型的思考过程"
+      },
+      {
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "simpleHtml": "",
+        "text": "#641aa87f-323b-4c8c-b767-6db77e714366_$.answer#",
+        "constantValue": ""
+       },
+       "code": "answer",
+       "id": "MYizJNxb",
+       "type": "String",
+       "key": "3",
+       "desc": "大模型的回复答案"
+      }
+     ],
+     "input": [],
+     "llmOutputType": "Markdown",
+     "llmConfig": {
+      "modelLogo": "https://img.alicdn.com/imgextra/i2/O1CN013YG3001nnsqCb3DtT_!!6000000005135-2-tps-40-40.png",
+      "modelName": "Deepseek-R1-Distill-Qwen-14B",
+      "serialVersionUID": 0,
+      "diversity": "1",
+      "modelCode": "deepseek-r1-distill-qwen-14b",
+      "isDelete": false,
+      "modelAssetName": "Deepseek-R1-Distill-Qwen-14B",
+      "enableSearch": false,
+      "enableThinking": false,
+      "historyChat": "1"
+     },
+     "executionMode": "single",
+     "llmOutputExamples": []
+    },
+    "nodeType": "llm",
+    "nodeId": "641aa87f-323b-4c8c-b767-6db77e714366",
+    "runData": {}
+   },
+   "width": 300,
+   "positionAbsolute": {
+    "x": -28,
+    "y": 449
+   },
+   "id": "641aa87f-323b-4c8c-b767-6db77e714366",
+   "position": {
+    "x": -28,
+    "y": 449
+   },
+   "type": "custom",
+   "selected": false,
+   "height": 174
+  }
+ ],
+ "edges": [
+  {
+   "sourceHandle": "source",
+   "updatable": true,
+   "source": "97712577-95fc-45ba-80ac-daa4ac703ff2",
+   "id": "reactflow__edge-97712577-95fc-45ba-80ac-daa4ac703ff2source-d1aab5af-1dc8-4d87-bef0-8c938f10891atarget",
+   "type": "custom",
+   "targetHandle": "target",
+   "target": "d1aab5af-1dc8-4d87-bef0-8c938f10891a"
+  },
+  {
+   "sourceHandle": "source",
+   "updatable": true,
+   "source": "d1aab5af-1dc8-4d87-bef0-8c938f10891a",
+   "id": "reactflow__edge-d1aab5af-1dc8-4d87-bef0-8c938f10891asource-41bd4d38-6229-459a-a2be-f0379e45a959target",
+   "type": "custom",
+   "targetHandle": "target",
+   "target": "41bd4d38-6229-459a-a2be-f0379e45a959"
+  }
+ ],
+ "checkList": [
+  {
+   "flowError": [
+    {
+     "errorType": "nodeConnectIncomplete",
+     "tips": "节点未连接完整"
+    }
+   ],
+   "customError": [],
+   "nodeId": "3b773218-5b5e-4889-8166-305d53260ca4"
+  },
+  {
+   "flowError": [
+    {
+     "errorType": "nodeConnectIncomplete",
+     "tips": "节点未连接完整"
+    }
+   ],
+   "customError": [],
+   "nodeId": "c1a3a6ae-27ee-42a9-836d-ff9bc689e3c6"
+  },
+  {
+   "flowError": [
+    {
+     "errorType": "nodeConnectIncomplete",
+     "tips": "节点未连接完整"
+    }
+   ],
+   "customError": [],
+   "nodeId": "e5b72e1a-9d03-4285-959d-5261d1b64ee6"
+  },
+  {
+   "flowError": [
+    {
+     "errorType": "nodeConnectIncomplete",
+     "tips": "节点未连接完整"
+    }
+   ],
+   "customError": [
+    {
+     "errorType": "formDataIncomplete",
+     "tips": "节点未完整配置"
+    }
+   ],
+   "nodeId": "75bc8ed3-b663-4fe1-b4be-6b679e03a917"
+  },
+  {
+   "flowError": [
+    {
+     "errorType": "nodeConnectIncomplete",
+     "tips": "节点未连接完整"
+    }
+   ],
+   "customError": [
+    {
+     "errorType": "formDataIncomplete",
+     "tips": "节点未完整配置"
+    }
+   ],
+   "nodeId": "7643bddb-a144-4b05-9880-898246b0b095"
+  },
+  {
+   "flowError": [
+    {
+     "errorType": "nodeConnectIncomplete",
+     "tips": "节点未连接完整"
+    }
+   ],
+   "customError": [
+    {
+     "errorType": "formDataIncomplete",
+     "tips": "节点未完整配置"
+    }
+   ],
+   "nodeId": "641aa87f-323b-4c8c-b767-6db77e714366"
+  }
+ ]
+}

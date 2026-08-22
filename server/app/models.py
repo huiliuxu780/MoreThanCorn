@@ -1,0 +1,265 @@
+"""SQLAlchemy models — 对应 11-data-model.md（Kernel + 执行基础设施）。"""
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+
+from .db import Base
+
+
+def new_id() -> str:
+    return uuid.uuid4().hex
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class Workflow(Base):
+    __tablename__ = "workflow"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(16), default="draft")  # draft|testing|published|deprecated
+    current_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    draft_definition: Mapped[dict] = mapped_column(JSONB, default=dict)
+    draft_revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class WorkflowVersion(Base):
+    __tablename__ = "workflow_version"
+    __table_args__ = (UniqueConstraint("workflow_id", "version_no", name="uq_version_no"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id"), index=True)
+    version_no: Mapped[int] = mapped_column(Integer)
+    definition: Mapped[dict] = mapped_column(JSONB)  # 不可变快照
+    tool_version_refs: Mapped[dict] = mapped_column(JSONB, default=list)
+    model_refs: Mapped[dict] = mapped_column(JSONB, default=list)
+    input_schema: Mapped[dict] = mapped_column(JSONB, default=dict)
+    structured_output_schemas: Mapped[dict] = mapped_column(JSONB, default=list)
+    note: Mapped[str] = mapped_column(Text, default="")
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    published_by: Mapped[str] = mapped_column(String(64), default="")
+
+
+class NodeDefinition(Base):
+    __tablename__ = "node_definition"
+
+    type_key: Mapped[str] = mapped_column(String(32), primary_key=True)
+    family: Mapped[str] = mapped_column(String(32))
+    label: Mapped[str] = mapped_column(String(32))
+    icon: Mapped[str] = mapped_column(String(32), default="")
+    accent: Mapped[str] = mapped_column(String(16), default="")
+    schema_: Mapped[dict] = mapped_column("schema", JSONB, default=dict)
+    io: Mapped[dict] = mapped_column(JSONB, default=dict)
+    executor_key: Mapped[str] = mapped_column(String(32))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class Connection(Base):
+    __tablename__ = "connection"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(16))  # api_key|basic|bearer
+    provider_hint: Mapped[str] = mapped_column(String(64), default="")
+    secret_ref: Mapped[str] = mapped_column(String(128))  # Secret Store 引用，不存明文
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    last_test_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Tool(Base):
+    __tablename__ = "tool"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(Text, default="")
+    kind: Mapped[str] = mapped_column(String(16))  # http|builtin
+    status: Mapped[str] = mapped_column(String(16), default="ready")
+    connection_id: Mapped[str | None] = mapped_column(ForeignKey("connection.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ToolVersion(Base):
+    __tablename__ = "tool_version"
+    __table_args__ = (UniqueConstraint("tool_id", "version_no", name="uq_tool_version"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    tool_id: Mapped[str] = mapped_column(ForeignKey("tool.id"), index=True)
+    version_no: Mapped[int] = mapped_column(Integer)
+    input_schema: Mapped[dict] = mapped_column(JSONB, default=dict)
+    output_schema: Mapped[dict] = mapped_column(JSONB, default=dict)
+    spec: Mapped[dict] = mapped_column(JSONB, default=dict)  # request 配方/transform/builtin key
+    status: Mapped[str] = mapped_column(String(16), default="ready")
+
+
+class ModelProvider(Base):
+    __tablename__ = "model_provider"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    base_url: Mapped[str] = mapped_column(String(256), default="")
+    auth_connection_id: Mapped[str | None] = mapped_column(ForeignKey("connection.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="active")
+
+
+class Model(Base):
+    __tablename__ = "model"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    provider_id: Mapped[str] = mapped_column(ForeignKey("model_provider.id"), index=True)
+    model_key: Mapped[str] = mapped_column(String(64))
+    display_name: Mapped[str] = mapped_column(String(64))
+    capabilities: Mapped[dict] = mapped_column(JSONB, default=list)  # ["text","thinking"]
+    default_params: Mapped[dict] = mapped_column(JSONB, default=dict)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class Schedule(Base):
+    __tablename__ = "schedule"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    task_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    workflow_id: Mapped[str | None] = mapped_column(ForeignKey("workflow.id"), nullable=True)
+    cron_expr: Mapped[str] = mapped_column(String(64))
+    timezone: Mapped[str] = mapped_column(String(48), default="Asia/Shanghai")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    window_params: Mapped[dict] = mapped_column(JSONB, default=dict)
+    pinned_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_ran_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0)
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class JobQueue(Base):
+    __tablename__ = "job_queue"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    type: Mapped[str] = mapped_column(String(32))
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    locked_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Run(Base):
+    __tablename__ = "run"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workflow_version_id: Mapped[str | None] = mapped_column(ForeignKey("workflow_version.id"), nullable=True, index=True)
+    workflow_id: Mapped[str | None] = mapped_column(ForeignKey("workflow.id"), nullable=True, index=True)
+    trigger: Mapped[str] = mapped_column(String(16), default="manual")  # manual|api|schedule|test
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
+    origin_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
+    input: Mapped[dict] = mapped_column(JSONB, default=dict)
+    output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    token_usage: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class NodeRun(Base):
+    __tablename__ = "node_run"
+    __table_args__ = (UniqueConstraint("run_id", "node_id", "attempt", name="uq_node_run"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(ForeignKey("run.id"), index=True)
+    node_id: Mapped[str] = mapped_column(String(64))
+    node_type: Mapped[str] = mapped_column(String(32))
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    input: Mapped[dict] = mapped_column(JSONB, default=dict)
+    output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    token_usage: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+
+class RunEvent(Base):
+    __tablename__ = "run_event"
+    __table_args__ = (UniqueConstraint("run_id", "sequence", name="uq_run_seq"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(ForeignKey("run.id"), index=True)
+    sequence: Mapped[int] = mapped_column(BigInteger)
+    type: Mapped[str] = mapped_column(String(40))
+    node_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    node_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class CallRecord(Base):
+    __tablename__ = "call_record"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    node_run_id: Mapped[str | None] = mapped_column(ForeignKey("node_run.id"), nullable=True, index=True)
+    kind: Mapped[str] = mapped_column(String(16))  # tool|model
+    target_id: Mapped[str] = mapped_column(String(64), default="")
+    request: Mapped[dict] = mapped_column(JSONB, default=dict)  # 脱敏后
+    response: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    status: Mapped[str] = mapped_column(String(16))
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    token_usage: Mapped[dict] = mapped_column(JSONB, default=dict)
+    error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Agent(Base):
+    """Agent 层对象（三型）：自主规划/对话编排/编排Agent专家组。"""
+    __tablename__ = "agent"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    type: Mapped[str] = mapped_column(String(16))  # autonomous|dialogue|expert-group
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(16), default="draft")
+    workflow_id: Mapped[str | None] = mapped_column(ForeignKey("workflow.id"), nullable=True)
+    avatar: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class ResourceLock(Base):
+    """编辑锁（真实操作人展示）。"""
+    __tablename__ = "resource_lock"
+
+    resource_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    ws_id: Mapped[str] = mapped_column(String(16))
+    user_name: Mapped[str] = mapped_column(String(64), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

@@ -1,0 +1,1288 @@
+/** Agent Designer — quickservice 1:1 复刻版（16-ui-replication-spec.md）。
+ *  后端契约不变（server/ :8100）。运行态为客户端 demo-run（P1 换真 SSE）。 */
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useNavigate, useParams } from "react-router-dom"
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  CircleAlert,
+  Clock,
+  Crosshair,
+  ZoomIn,
+  ZoomOut,
+  History,
+  Inbox,
+  LayoutTemplate,
+  ListChecks,
+  LockKeyhole,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings2,
+  MessageSquare,
+  Info,
+  FolderOpen,
+  Map as MapIcon,
+  MoreHorizontal,
+  Play,
+  Plus,
+  Search,
+  Settings,
+  Wrench,
+  X,
+  Zap,
+  Activity,
+  CalendarDays,
+  Download,
+  RotateCw,
+  Bot,
+  GitBranch,
+  Network,
+  Braces,
+  Flag,
+  FilePlus2,
+  Bell,
+} from "lucide-react"
+import {
+  Background,
+  Handle,
+  MiniMap,
+  Position,
+  Panel,
+  ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
+  type Edge,
+  type Node,
+  type NodeProps,
+} from "@xyflow/react"
+import "@xyflow/react/dist/style.css"
+
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+  WF_BASE,
+  runApi,
+  runExportUrl,
+  runRetry,
+  scheduleApi,
+  wfApi,
+  type NodeDefinition,
+  type RunDetail,
+  type ScheduleInfo,
+  type ValidationIssue,
+  type WfDefinition,
+  type WfNode,
+} from "@/services/wf-api"
+
+/* ============ 视觉令牌（16 §1） ============ */
+const C = {
+  canvas: "#EEF1F6",
+  dot: "#D9DEE7",
+  primary: "#3D6BFF",
+  orange: "#F97E2B",
+  tagBg: "#FFF4EA",
+  ink: "#1F2329",
+  ink2: "#5A6472",
+  ink3: "#B9C2CF",
+  chipBg: "#F1F3F7",
+  chipInk: "#7A8699",
+  cardBorder: "#EDF0F4",
+  danger: "#F56C6C",
+}
+
+/* Design Spec §8.5：黑白灰中性基底，禁止彩虹画布；icon 区分类型，颜色仅用于状态 */
+const NEUTRAL = "#1F2329"
+const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  input: Play, llm: Bot, tool: Wrench, condition: GitBranch, transform: Braces,
+  end: Flag, "create-record": FilePlus2, notification: Bell, "workflow-exec": Network,
+}
+const TypeIcon = ({ type, className }: { type: string; className?: string }) => {
+  const I = TYPE_ICON[type] ?? Braces
+  return <I className={className} />
+}
+
+/* ============ Toast（16 §9：顶居中，红/绿边白底，2.5s 自隐） ============ */
+let toastFn: ((kind: "error" | "success", msg: string) => void) | null = null
+const toast = {
+  error: (msg: string, _opts?: unknown) => toastFn?.("error", msg),
+  success: (msg: string, _opts?: unknown) => toastFn?.("success", msg),
+}
+function ToastHost() {
+  const [t, setT] = useState<{ kind: "error" | "success"; msg: string; key: number } | null>(null)
+  useEffect(() => {
+    toastFn = (kind, msg) => setT({ kind, msg, key: Date.now() })
+    return () => { toastFn = null }
+  }, [])
+  useEffect(() => {
+    if (!t) return
+    const h = window.setTimeout(() => setT(null), 2500)
+    return () => window.clearTimeout(h)
+  }, [t])
+  if (!t) return null
+  const err = t.kind === "error"
+  return (
+    <div className="pointer-events-none fixed left-1/2 top-4 z-[100] -translate-x-1/2">
+      <div className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs shadow-sm"
+        style={{ borderColor: err ? C.danger : "#67C23A", background: err ? "#FEF0F0" : "#F0F9EB", color: err ? C.danger : "#67C23A" }}>
+        {err ? <CircleAlert className="size-3.5" /> : <CheckCircle2 className="size-3.5" />} {t.msg}
+      </div>
+    </div>
+  )
+}
+
+/* 模型目录（P0 下拉选项；P2 接 registry models） */
+const MODELS = [
+  { id: "Deepseek-R1-Distill-Qwen-14B", caps: ["文本生成", "推理"] },
+  { id: "Qwen-Max", caps: ["文本生成"] },
+  { id: "GPT-4o", caps: ["文本生成", "视觉"] },
+]
+
+function TypeChip({ t }: { t: string }) {
+  return (
+    <span className="rounded px-1 text-[10px] leading-4" style={{ background: C.chipBg, color: C.chipInk }}>
+      {t}.
+    </span>
+  )
+}
+
+/* ============ 节点卡（16 §3） ============ */
+interface WfNodeData extends Record<string, unknown> {
+  wf: WfNode
+  def?: NodeDefinition
+  issues: ValidationIssue[]
+  run?: "running" | "success" | "failed" | "skipped"
+  onRunNode?: (id: string) => void
+  onDelete?: (id: string) => void
+}
+
+function SummaryRows({ n }: { n: WfNode }) {
+  const cfg = n.config as Record<string, unknown>
+  const rows: { label: string; body: React.ReactNode }[] = []
+  const un = <span style={{ color: C.ink3 }}>未配置</span>
+  if (n.type === "input") {
+    rows.push({
+      label: "输入",
+      body: (
+        <span className="flex flex-wrap gap-1">
+          {["userQuery", "chatHistory", "userId"].map((k) => (
+            <span key={k} className="text-xs" style={{ color: C.ink }}>{k} <TypeChip t="Str" /></span>
+          ))}
+        </span>
+      ),
+    })
+  }
+  if (n.type === "llm") {
+    rows.push({ label: "输入", body: (n.inputs?.length ? <span className="text-xs">{n.inputs.map((i) => i.name).join("、")}</span> : un) })
+    const model = (cfg.modelRef as { modelId?: string })?.modelId
+    rows.push({ label: "模型", body: model ? <span className="text-xs">{model}</span> : un })
+    rows.push({ label: "提示词", body: cfg.prompt ? <span className="max-w-40 truncate text-xs">{String(cfg.prompt)}</span> : un })
+    rows.push({ label: "输出", body: <span className="flex gap-1 text-xs">output <TypeChip t="Str" /> thought <TypeChip t="Str" /></span> })
+  }
+  if (n.type === "tool") {
+    rows.push({ label: "工具", body: cfg.toolVersionId ? <span className="text-xs">已绑定</span> : un })
+  }
+  if (n.type === "condition") {
+    rows.push({ label: "如果", body: (cfg.branches as unknown[])?.length ? <span className="text-xs">已配置</span> : <span style={{ color: C.ink3 }} className="text-xs">未完成条件配置</span> })
+    rows.push({ label: "否则", body: <span className="text-xs" style={{ color: C.ink2 }}>默认分支</span> })
+  }
+  if (n.type === "transform") rows.push({ label: "表达式", body: cfg.expression ? <span className="text-xs">已配置</span> : un })
+  if (n.type === "end") {
+    rows.push({ label: "输出", body: <span className="text-xs">output <TypeChip t="Str" /></span> })
+  }
+  return (
+    <div className="mt-2 space-y-1.5">
+      {rows.map((r) => (
+        <div key={r.label} className="flex items-start gap-2 text-xs">
+          <span className="w-11 shrink-0" style={{ color: C.ink3 }}>{r.label}</span>
+          <div className="min-w-0 flex-1" style={{ color: C.ink }}>{r.body}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function WfNodeCard({ data, selected }: NodeProps) {
+  const d = data as WfNodeData
+  const n = d.wf
+  const [collapsed, setCollapsed] = useState(false)
+  const ring =
+    d.run === "running" ? `ring-[1.5px] ring-[#525252]` :
+    d.run === "success" ? `ring-[1.5px] ring-emerald-500/70` :
+    d.run === "failed" ? `ring-[1.5px] ring-red-500` :
+    d.run === "skipped" ? `ring-[1.5px] ring-neutral-300` :
+    selected ? `ring-[1.5px] ring-[#3D6BFF]` : ""
+  return (
+    <div className={`relative w-[300px] rounded-lg border bg-white p-3 shadow-sm ${ring}`} style={{ borderColor: selected ? C.primary : C.cardBorder }}>
+      {n.type !== "input" && <Handle type="target" position={Position.Left} style={{ width: 7, height: 7, background: C.primary, border: "none" }} />}
+      {n.type !== "end" && <Handle type="source" position={Position.Right} style={{ width: 7, height: 7, background: C.primary, border: "none" }} />}
+      <div className="flex items-center gap-2">
+        <span className="flex size-6 shrink-0 items-center justify-center rounded-md" style={{ background: NEUTRAL }}>
+          <TypeIcon type={n.type} className="size-3.5 text-white" />
+        </span>
+        <span className="flex-1 truncate text-sm font-medium" style={{ color: C.ink }}>{n.name}</span>
+        {d.run === "running" && <span className="size-3 animate-spin rounded-full border-2 border-neutral-400 border-t-transparent" />}
+        {selected && (
+          <>
+            <button className="flex size-5 items-center justify-center rounded-full border bg-white" style={{ borderColor: C.cardBorder }} onClick={() => d.onRunNode?.(n.id)} title="运行此节点">
+              <Play className="size-2.5" style={{ color: C.ink }} />
+            </button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="flex size-5 items-center justify-center rounded-full border bg-white" style={{ borderColor: C.cardBorder }} title="更多">
+                  <MoreHorizontal className="size-2.5 text-neutral-500" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-24 p-1">
+                <button className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-neutral-50" style={{ color: C.danger }} onClick={() => d.onDelete?.(n.id)}>
+                  删除节点
+                </button>
+              </PopoverContent>
+            </Popover>
+          </>
+        )}
+        <button onClick={() => setCollapsed((v) => !v)} className="text-neutral-400 hover:text-neutral-600">
+          {collapsed ? <ChevronRight className="size-4" /> : <ChevronDown className="size-4" />}
+        </button>
+      </div>
+      {!collapsed && <SummaryRows n={n} />}
+    </div>
+  )
+}
+const nodeTypes = { wf: WfNodeCard }
+
+/* ============ 变量级联（16 §6） ============ */
+function VarCascader({ nodes, selfId, onPick }: { nodes: WfNode[]; selfId: string; onPick: (v: string) => void }) {
+  const [group, setGroup] = useState<string>("开始")
+  const groups = ["开始", ...nodes.filter((n) => n.id !== selfId && n.type !== "end").map((n) => n.name)]
+  const itemsFor = (g: string) => {
+    if (g === "开始") return ["userQuery", "chatHistory", "userId", "conversationId", "chatId"]
+    const node = nodes.find((n) => n.name === g)
+    if (!node) return []
+    if (node.type === "llm") return ["output", "thought", "answer"]
+    if (node.type === "condition") return ["classificationTitle", "classificationId"]
+    return ["output"]
+  }
+  const gid = (g: string) => (g === "开始" ? nodes.find((n) => n.type === "input")?.id ?? "start" : nodes.find((n) => n.name === g)?.id ?? g)
+  return (
+    <div className="flex text-xs">
+      <div className="w-28 border-r py-1" style={{ borderColor: C.cardBorder }}>
+        {groups.map((g) => (
+          <button key={g} className={`flex w-full items-center justify-between px-2 py-1 hover:bg-neutral-50 ${group === g ? "bg-neutral-100" : ""}`} onClick={() => setGroup(g)}>
+            {g} <ChevronRight className="size-3 text-neutral-400" />
+          </button>
+        ))}
+      </div>
+      <div className="w-40 py-1">
+        {itemsFor(group).map((it) => (
+          <button key={it} className="flex w-full items-center gap-1 px-2 py-1 hover:bg-neutral-50" onClick={() => onPick(`{{${gid(group)}.outputs.${it}}}`)}>
+            {it} <TypeChip t="Str" />
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/* ============ 配置抽屉（16 §6） ============ */
+function Section({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="border-b py-3" style={{ borderColor: C.cardBorder }}>
+      <button className="flex items-center gap-1 text-[13px] font-medium" style={{ color: C.ink }} onClick={() => setOpen((v) => !v)}>
+        {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />} {title}
+      </button>
+      {open && <div className="pt-2">{children}</div>}
+    </div>
+  )
+}
+
+function ConfigDrawer(props: {
+  node: WfNode | null
+  defs: NodeDefinition[]
+  nodes: WfNode[]
+  onClose: () => void
+  onChange: (n: WfNode) => void
+}) {
+  const { node, defs, nodes, onClose, onChange } = props
+  const [varTarget, setVarTarget] = useState<"prompt" | string | null>(null)
+  const [mode, setMode] = useState<"单次" | "批处理">("单次")
+  const [openBr, setOpenBr] = useState<Record<number, boolean>>({})
+  if (!node) return null
+  const def = defs.find((d) => d.type_key === node.type)
+  const [models, setModels] = useState<{ id: string; caps: string[] }[]>(MODELS)
+  useEffect(() => { wfApi.models().then((ms) => setModels(ms.map((m) => ({ id: m.modelKey, caps: m.capabilities ?? [] })))).catch(() => undefined) }, [])
+  const cfg = node.config as Record<string, any>
+  const set = (k: string, v: unknown) => onChange({ ...node, config: { ...cfg, [k]: v } })
+  const setBranch = (i: number, patch: Record<string, unknown>) => {
+    const bs = [...(cfg.branches ?? [])]
+    bs[i] = { ...bs[i], ...patch }
+    set("branches", bs)
+  }
+  const insertVar = (v: string) => {
+    if (varTarget === "prompt") set("prompt", `${cfg.prompt ?? ""}${v}`)
+    else if (varTarget?.startsWith("__brv")) setBranch(Number(varTarget.slice(5)), { value: v })
+    else if (varTarget?.startsWith("__br")) setBranch(Number(varTarget.slice(4)), { variable: v })
+    else if (varTarget) {
+      const inputs = (node.inputs ?? []).map((b) => (b.name === varTarget ? { ...b, source: { kind: "fixed" as const, value: v } } : b))
+      onChange({ ...node, inputs })
+    }
+    setVarTarget(null)
+  }
+  return (
+    <div className="absolute inset-y-0 right-0 z-20 w-[360px] max-w-[92vw] overflow-y-auto border-l bg-white px-4" style={{ borderColor: C.cardBorder }}>
+      <div className="sticky top-0 z-10 flex items-center gap-2 bg-white py-3">
+        <span className="flex size-6 items-center justify-center rounded-md" style={{ background: NEUTRAL }}>
+          <TypeIcon type={node.type} className="size-3.5 text-white" />
+        </span>
+        <span className="flex-1 text-[15px] font-semibold" style={{ color: C.ink }}>{node.name}</span>
+        <MoreHorizontal className="size-4 text-neutral-400" />
+        <button onClick={onClose}><X className="size-4 text-neutral-500" /></button>
+      </div>
+      <p className="pb-2 text-xs leading-5" style={{ color: C.ink2 }}>
+        {def?.family === "智能" ? "大模型节点可调用大语言模型，根据输入参数与提示词生成指定格式的回复" :
+         node.type === "end" ? "工作流的结束节点，在工作流完成运行后将相关信息通过Agent回答或通过API输入到其余工作流或外部系统中" :
+         node.type === "condition" ? "条件判断节点可定义多个判断条件，对应多个流程分支。实现不同业务规则的分流" :
+         "节点配置"}
+      </p>
+      {node.type === "llm" && (
+        <>
+          <div className="mb-3 grid grid-cols-2 rounded-md border p-0.5 text-xs" style={{ borderColor: C.cardBorder, background: "#F7F9FC" }}>
+            {(["单次", "批处理"] as const).map((m) => (
+              <button key={m} className="rounded py-1" style={mode === m ? { background: "#fff", color: C.ink, boxShadow: "0 1px 3px rgba(31,35,41,.12)" } : { color: C.ink2 }}
+                onClick={() => setMode(m)}>
+                {m}
+              </button>
+            ))}
+          </div>
+          <Section title="模型">
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="flex w-full items-center gap-2 rounded-md border bg-white px-2 py-1.5 text-left text-xs" style={{ borderColor: C.cardBorder, color: C.ink }}>
+                  <span className="flex size-4 items-center justify-center rounded" style={{ background: "#5B8DEF" }}><Zap className="size-2.5 text-white" /></span>
+                  <span className="flex-1 truncate">{cfg.modelRef?.modelId || "请选择模型"}</span>
+                  <ChevronDown className="size-3.5 text-neutral-400" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 p-1" align="start">
+                {models.map((m) => (
+                  <button key={m.id} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-neutral-50" style={{ color: C.ink }}
+                    onClick={() => set("modelRef", { ...cfg.modelRef, modelId: m.id })}>
+                    <span className="flex size-4 items-center justify-center rounded" style={{ background: "#5B8DEF" }}><Zap className="size-2.5 text-white" /></span>
+                    <span className="flex-1 truncate text-left">{m.id}</span>
+                    {m.caps.map((c) => <span key={c} className="rounded px-1 text-[10px]" style={{ background: C.chipBg, color: C.chipInk }}>{c}</span>)}
+                    {cfg.modelRef?.modelId === m.id && <CheckCircle2 className="size-3.5" style={{ color: C.primary }} />}
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
+          </Section>
+          <Section title="输入">
+            <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2 pb-1 text-xs" style={{ color: C.ink3 }}>
+              <span>变量名</span><span>类型</span><span className="w-24">变量值</span>
+            </div>
+            {(node.inputs ?? []).length === 0 && (
+              <div className="flex flex-col items-center gap-1 py-6" style={{ color: C.ink3 }}>
+                <Inbox className="size-8" />
+                <span className="text-[11px]">No data</span>
+              </div>
+            )}
+            {(node.inputs ?? []).map((b) => (
+              <div key={b.name} className="grid grid-cols-[1fr_auto_auto] items-center gap-2 py-1 text-xs">
+                <span style={{ color: C.ink }}>{b.name}</span>
+                <TypeChip t={b.type === "string" ? "Str" : b.type} />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className="w-24 truncate rounded border px-1 py-0.5 text-left" style={{ borderColor: C.cardBorder, color: C.ink2 }}
+                      onClick={() => setVarTarget(b.name)}>
+                      {b.source.kind === "fixed" ? String(b.source.value || "请输入或引用变量值") : "引用"}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent><VarCascader nodes={nodes} selfId={node.id} onPick={insertVar} /></PopoverContent>
+                </Popover>
+              </div>
+            ))}
+            <button className="flex items-center gap-1 pt-1 text-xs" style={{ color: C.primary }}
+              onClick={() => onChange({ ...node, inputs: [...(node.inputs ?? []), { name: `var${(node.inputs ?? []).length + 1}`, type: "string", source: { kind: "fixed", value: "" } }] })}>
+              <Plus className="size-3" /> 添加
+            </button>
+          </Section>
+          <Section title="提示词">
+            <div className="relative">
+              <textarea
+                className="min-h-24 w-full rounded-md border p-2 text-xs outline-none focus:border-neutral-400"
+                style={{ borderColor: C.cardBorder }}
+                placeholder="请输入提示词"
+                value={cfg.prompt ?? ""}
+                onChange={(e) => {
+                  set("prompt", e.target.value)
+                  if (e.target.value.endsWith("#")) setVarTarget("prompt")
+                }}
+              />
+              {varTarget === "prompt" && (
+                <div className="absolute left-0 top-full z-30 rounded-md border bg-white shadow-lg" style={{ borderColor: C.cardBorder }}>
+                  <VarCascader nodes={nodes} selfId={node.id} onPick={(v) => { set("prompt", `${(cfg.prompt ?? "").replace(/#$/, "")}${v}`); setVarTarget(null) }} />
+                </div>
+              )}
+            </div>
+            <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>输入 “#” 唤起变量选择器，支持插入变量</p>
+          </Section>
+          <Section title="输出">
+            <div className="flex items-center gap-2 text-xs"><span style={{ color: C.ink2 }}>输出格式 :</span>
+              <select className="rounded border px-1 py-0.5" style={{ borderColor: C.cardBorder }} value={cfg.outputFormat ?? "Markdown"} onChange={(e) => set("outputFormat", e.target.value)}>
+                <option>Markdown</option><option>JSON</option>
+              </select>
+            </div>
+            <p className="py-1 text-[11px]" style={{ color: C.ink3 }}>大模型将以{cfg.outputFormat ?? "Markdown"}形式输出最终答案</p>
+            <div className="space-y-1 py-1 text-xs">
+              {[["output", "大模型的全部输出"], ["thought", "大模型的思考过程"], ["answer", "大模型的回复答案"]].map(([k, dsc]) => (
+                <div key={k} className="grid grid-cols-[1fr_auto_1.4fr] gap-1"><span style={{ color: C.ink }}>{k}</span><TypeChip t="Str" /><span style={{ color: C.ink3 }}>{dsc}</span></div>
+              ))}
+            </div>
+            <Button variant="outline" size="sm" className="h-7 rounded-md bg-white text-xs" onClick={() => toast.success("输出示例已生成")}>输出示例</Button>
+            <p className="pt-1 text-[11px] leading-4" style={{ color: C.ink3 }}>用于定义预期输出结果的数据示例，帮助大模型更准确的输出Json参数</p>
+          </Section>
+        </>
+      )}
+      {node.type === "condition" && (
+        <Section title="条件分支">
+          {(cfg.branches ?? []).map((b: any, i: number) => (
+            <div key={i} className="mb-2 rounded-md p-2" style={{ background: "#F7F9FC" }}>
+              <button className="flex items-center gap-1 pb-1 text-xs" style={{ color: C.ink2 }} onClick={() => setOpenBr((s) => ({ ...s, [i]: !(s[i] ?? true) }))}>
+                {openBr[i] ?? true ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+                {i === 0 ? "如果" : `否则如果 ${i}`}
+              </button>
+              {(openBr[i] ?? true) && (
+                <div className="grid grid-cols-[1fr_auto] gap-1">
+                  <Popover>
+                    <PopoverTrigger asChild><button className="truncate rounded border bg-white px-1 py-0.5 text-left text-xs" style={{ borderColor: (b as any).variable ? C.cardBorder : C.danger }} onClick={() => setVarTarget(`__br${i}`)}>{(b as any).variable ? "已引用" : "引用变量"}</button></PopoverTrigger>
+                    <PopoverContent><VarCascader nodes={nodes} selfId={node.id} onPick={insertVar} /></PopoverContent>
+                  </Popover>
+                  <select className="rounded border bg-white px-1 py-0.5 text-xs" style={{ borderColor: C.cardBorder }} value={(b as any).operator ?? ""} onChange={(e) => setBranch(i, { operator: e.target.value })}>
+                    <option value="">条件关系</option><option value="eq">等于</option><option value="contains">包含</option><option value="neq">不等于</option>
+                  </select>
+                  <Input className="h-6 text-xs" placeholder="比较变量" value={(b as any).value ?? ""} onChange={(e) => setBranch(i, { value: e.target.value })} />
+                  <Popover>
+                    <PopoverTrigger asChild><button className="flex size-6 items-center justify-center rounded border bg-white" style={{ borderColor: C.cardBorder }} title="引用变量" onClick={() => setVarTarget(`__brv${i}`)}><Settings className="size-3 text-neutral-500" /></button></PopoverTrigger>
+                    <PopoverContent><VarCascader nodes={nodes} selfId={node.id} onPick={insertVar} /></PopoverContent>
+                  </Popover>
+                </div>
+              )}
+            </div>
+          ))}
+          <div className="flex gap-3">
+            <button className="flex items-center gap-1 text-xs" style={{ color: C.primary }} onClick={() => set("branches", [...(cfg.branches ?? []), { handle: `b${(cfg.branches ?? []).length + 1}` }])}>
+              <Plus className="size-3" /> 添加条件
+            </button>
+            <button className="flex items-center gap-1 text-xs" style={{ color: C.primary }} onClick={() => set("branches", [...(cfg.branches ?? []), { handle: `b${(cfg.branches ?? []).length + 1}` }])}>
+              <Plus className="size-3" /> 添加分支
+            </button>
+          </div>
+          <div className="pt-1 text-xs" style={{ color: C.ink2 }}>否则</div>
+        </Section>
+      )}
+      {node.type === "end" && (
+        <Section title="输出">
+          <div className="grid grid-cols-[1fr_auto_1.2fr] items-center gap-2 pb-1 text-xs" style={{ color: C.ink3 }}><span>变量名</span><span>类型</span><span>变量值</span></div>
+          {(node.inputs ?? []).map((b) => (
+            <div key={b.name} className="grid grid-cols-[1fr_auto_1.2fr] items-center gap-2 py-1 text-xs">
+              <span style={{ color: C.ink }}>{b.name}</span><TypeChip t="Str" />
+              <Input className="h-6 text-xs" placeholder="请输入或引用变量值" value={b.source.kind === "fixed" ? String(b.source.value ?? "") : ""}
+                onChange={(e) => onChange({ ...node, inputs: (node.inputs ?? []).map((x) => (x.name === b.name ? { ...x, source: { kind: "fixed", value: e.target.value } } : x)) })} />
+            </div>
+          ))}
+          <button className="flex items-center gap-1 pt-1 text-xs" style={{ color: C.primary }}
+            onClick={() => onChange({ ...node, inputs: [...(node.inputs ?? []), { name: `out${(node.inputs ?? []).length + 1}`, type: "string", source: { kind: "fixed", value: "" } }] })}>
+            <Plus className="size-3" /> 添加
+          </button>
+        </Section>
+      )}
+      {node.type === "workflow-exec" && <WorkflowPicker value={(cfg.workflowCode as string) ?? ""} onPick={(v) => set("workflowCode", v)} />}
+      {node.type !== "llm" && node.type !== "condition" && node.type !== "end" && node.type !== "workflow-exec" && (
+        <Section title="配置">
+          <p className="text-xs" style={{ color: C.ink3 }}>该节点暂无专项配置区</p>
+        </Section>
+      )}
+    </div>
+  )
+}
+
+/* ============ 调试配置抽屉（16 §7） ============ */
+function DebugDrawer(props: { def: WfDefinition; onClose: () => void; onRun: (vals: Record<string, string>) => void }) {
+  const { onClose, onRun } = props
+  const [vals, setVals] = useState<Record<string, string>>({})
+  const [chat, setChat] = useState([{ u: "user: 你好", a: "answer: 你好，有什么可以帮助你的吗？" }])
+  return (
+    <div className="absolute inset-y-0 right-0 z-20 flex w-[380px] max-w-[92vw] flex-col border-l bg-white" style={{ borderColor: C.cardBorder }}>
+      <div className="flex items-center justify-between px-4 py-3">
+        <span className="text-[15px] font-semibold" style={{ color: C.ink }}>调试配置</span>
+        <button onClick={onClose}><X className="size-4 text-neutral-500" /></button>
+      </div>
+      <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4">
+        {["userQuery", "userId", "conversationId", "chatId"].map((k) => (
+          <div key={k}>
+            <div className="pb-1 text-[13px]" style={{ color: C.ink }}>{k} <span className="text-[11px]" style={{ color: C.ink3 }}>String</span></div>
+            <Input placeholder="系统内置参数，按需填写" value={vals[k] ?? ""} onChange={(e) => setVals({ ...vals, [k]: e.target.value })} />
+          </div>
+        ))}
+        <div>
+          <div className="pb-1 text-[13px]" style={{ color: C.ink }}>chatHistory <span className="text-[11px]" style={{ color: C.ink3 }}>String</span></div>
+          {chat.map((c, i) => (
+            <div key={i} className="mb-1 rounded-md px-2 py-1 text-xs" style={{ background: "#F7F9FC", color: C.ink }}>
+              <Input className="mb-1 h-6 border-0 bg-transparent p-0" value={c.u} onChange={(e) => { const n = [...chat]; n[i] = { ...n[i], u: e.target.value }; setChat(n) }} />
+              <Input className="h-6 border-0 bg-transparent p-0" value={c.a} onChange={(e) => { const n = [...chat]; n[i] = { ...n[i], a: e.target.value }; setChat(n) }} />
+            </div>
+          ))}
+          <button className="flex items-center gap-1 text-xs" style={{ color: C.primary }} onClick={() => setChat([...chat, { u: "user: ", a: "answer: " }])}>
+            <Plus className="size-3" /> 添加一组对话
+          </button>
+        </div>
+      </div>
+      <div className="p-4">
+        <Button className="w-full bg-black text-white hover:bg-neutral-800" onClick={() => onRun(vals)}>开始运行</Button>
+      </div>
+    </div>
+  )
+}
+
+
+
+
+
+/* ============ 工作流资源选择器（引用资源对象） ============ */
+function WorkflowPicker({ value, onPick }: { value: string; onPick: (v: string) => void }) {
+  const [list, setList] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => { wfApi.list({ pageSize: 100 }).then((r) => setList(r.items as { id: string; name: string }[])).catch(() => undefined) }, [])
+  return (
+    <Section title="工作流">
+      <select className="w-full rounded-md border p-2 text-xs" value={value} onChange={(e) => onPick(e.target.value)}>
+        <option value="">请选择工作流资源</option>
+        {list.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+      </select>
+    </Section>
+  )
+}
+
+/* ============ Agent 配置信息抽屉（对话编排型，quickservice 同款） ============ */
+function AddInline({ onAdd, label = "添加" }: { onAdd: (v: string) => void; label?: string }) {
+  const [v, setV] = useState("")
+  return (
+    <span className="flex items-center gap-1">
+      <Input className="h-6 w-24 text-xs" value={v} onChange={(e) => setV(e.target.value)} placeholder="名称" />
+      <button className="flex items-center gap-0.5 text-xs" style={{ color: C.primary }} onClick={() => { if (v.trim()) { onAdd(v.trim()); setV("") } }}>
+        <Plus className="size-3" /> {label}
+      </button>
+    </span>
+  )
+}
+const WF_BASE2 = WF_BASE
+
+function AgentConfigDrawer({ agentId, inline, avatar, onAvatar, onClose }: { agentId: string; onClose?: () => void; inline?: boolean; avatar?: string; onAvatar?: (v: string) => void }) {
+  const [avatarOpen, setAvatarOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
+  const [agent, setAgent] = useState<{ name: string; description: string; config: Record<string, any>; workflowId?: string | null } | null>(null)
+  useEffect(() => {
+    fetch(`${WF_BASE2}/api/agents/${agentId}`).then((r) => r.json()).then(setAgent)
+  }, [agentId])
+  if (!agent) return null
+  const cfg = agent.config ?? {}
+  const setCfg = (k: string, v: unknown) => setAgent({ ...agent, config: { ...cfg, [k]: v } })
+  const save = async () => {
+    await fetch(`${WF_BASE2}/api/agents/${agentId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: cfg, workflowId: agent.workflowId, name: agent.name, description: agent.description }) })
+    toast.success("Agent 配置已保存")
+  }
+  const EmptyBox = ({ text }: { text: string }) => (
+    <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-lg border" style={{ borderColor: C.cardBorder, background: "#FAFBFC" }}>
+      <FolderOpen className="size-8 text-neutral-300" />
+      <span className="px-4 text-center text-xs" style={{ color: C.ink3 }}>{text}</span>
+    </div>
+  )
+  const ListAdd = ({ k, label, empty }: { k: string; label: string; empty: string }) => (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[13px] font-medium" style={{ color: C.ink }}>| {label} <Info className="ml-0.5 inline size-3 text-neutral-400" /></span>
+        <AddInline onAdd={(v) => setCfg(k, [...(cfg[k] ?? []), v])} label={`添加${label.slice(-2)}`} />
+      </div>
+      {(cfg[k] ?? []).length === 0 ? <EmptyBox text={empty} /> : (
+        <div className="space-y-1">
+          {(cfg[k] ?? []).map((v: string, i: number) => (
+            <div key={i} className="flex items-center gap-1 text-xs">
+              <span className="flex-1 truncate rounded border px-1 py-0.5" style={{ borderColor: C.cardBorder }}>{v}</span>
+              <button onClick={() => setCfg(k, (cfg[k] ?? []).filter((_: string, j: number) => j !== i))}><X className="size-3 text-neutral-400" /></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+  if (collapsed) {
+    return (
+      <div className="flex h-full w-10 shrink-0 flex-col items-center border-r bg-white py-2" style={{ borderColor: C.cardBorder }}>
+        <button className="rounded p-1 hover:bg-neutral-100" title="展开配置" onClick={() => setCollapsed(false)}>
+          <PanelLeftOpen className="size-4" style={{ color: C.ink2 }} />
+        </button>
+      </div>
+    )
+  }
+  return (
+    <div className={inline ? "flex h-full w-[360px] max-w-[92vw] shrink-0 flex-col border-r bg-white" : "absolute inset-y-0 right-0 z-20 flex w-[360px] max-w-[92vw] flex-col border-l bg-white"} style={{ borderColor: C.cardBorder }}>
+      <div className="flex items-center justify-between px-4 py-3">
+        <span className="text-[15px] font-semibold" style={{ color: C.ink }}>Agent 配置信息</span>
+        <span className="flex items-center gap-2">
+          <button className="rounded p-1 hover:bg-neutral-100" title="收起配置" onClick={() => setCollapsed(true)}>
+            <PanelLeftClose className="size-4" style={{ color: C.ink2 }} />
+          </button>
+          {!inline && <button onClick={onClose}><X className="size-4 text-neutral-500" /></button>}
+        </span>
+      </div>
+<div className="flex-1 space-y-4 overflow-y-auto p-4">
+        <div className="space-y-2">
+          <span className="text-[13px] font-medium" style={{ color: C.ink }}>| 基本信息</span>
+          <div className="flex items-start gap-3">
+            <div className="flex-1 space-y-3">
+              <div className="relative">
+                <Input value={agent.name} maxLength={20} placeholder="请输入Agent名称" className="pr-12"
+                  onChange={(e) => setAgent({ ...agent, name: e.target.value })} />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px]" style={{ color: C.ink3 }}>{agent.name.length}/20</span>
+              </div>
+              <div className="relative">
+                <Textarea value={agent.description} maxLength={20000} placeholder="请输入该Agent描述介绍文案（仅在管理平台展示）" className="min-h-24 pb-6"
+                  onChange={(e) => setAgent({ ...agent, description: e.target.value })} />
+                <span className="absolute bottom-2 right-2 text-[11px]" style={{ color: C.ink3 }}>{(agent.description ?? "").length}/20000</span>
+              </div>
+            </div>
+            <button className="shrink-0 overflow-hidden rounded-lg border bg-white p-1" style={{ borderColor: C.cardBorder }} title="选择头像"
+              onClick={() => setAvatarOpen(true)}>
+              <img src={avatar ?? "/avatars/avatar-0.png"} alt="agent头像" className="size-24 rounded-md object-cover" />
+            </button>
+            <Dialog open={avatarOpen} onOpenChange={setAvatarOpen}>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader><DialogTitle>推荐头像</DialogTitle></DialogHeader>
+                <div className="text-xs" style={{ color: C.ink2 }}>推荐图形</div>
+                <div className="grid grid-cols-6 gap-3 pt-2">
+                  {Array.from({ length: 20 }, (_, i) => `/avatars/avatar-${i}.png`).map((src) => (
+                    <button key={src} className={`overflow-hidden rounded-lg ${avatar === src ? "ring-2 ring-primary" : ""}`}
+                      onClick={() => { onAvatar?.(src); setAvatarOpen(false) }}>
+                      <img src={src} alt="头像" className="size-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+                <div className="pt-3 text-xs" style={{ color: C.ink2 }}>自定义上传</div>
+                <input type="file" accept="image/*" className="pt-1 text-xs"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (!f) return
+                    const r = new FileReader()
+                    r.onload = () => { onAvatar?.(String(r.result)); setAvatarOpen(false) }
+                    r.readAsDataURL(f)
+                  }} />
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+        <div className="flex items-center justify-between rounded-lg border p-3" style={{ borderColor: C.cardBorder }}>
+          <span className="flex items-center gap-2 text-[13px]" style={{ color: C.ink }}><MessageSquare className="size-4" style={{ color: C.primary }} /> 闲聊兜底</span>
+          <span className="flex items-center gap-2 text-xs" style={{ color: C.primary }}>配置信息
+            <input type="checkbox" checked={!!cfg.dialogue?.chitchat} onChange={(e) => setCfg("dialogue", { ...cfg.dialogue, chitchat: e.target.checked })} />
+          </span>
+        </div>
+        <div className="flex items-center justify-between rounded-lg border p-3" style={{ borderColor: C.cardBorder }}>
+          <span className="flex items-center gap-2 text-[13px]" style={{ color: C.ink }}><Settings2 className="size-4" style={{ color: C.primary }} /> 高级设置</span>
+          <span className="text-xs" style={{ color: C.primary }}>配置信息</span>
+        </div>
+        <ListAdd k="knowledges" label="Agent 知识兜底" empty="添加知识文件，让Agent具备知识信息大脑" />
+        <ListAdd k="terms" label="专业词库" empty="暂未添加任何专业词库" />
+        <ListAdd k="experiences" label="问答经验库" empty="暂未添加任何问答经验库" />
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[13px] font-medium" style={{ color: C.ink }}>| Agent 记忆</span>
+            <AddInline onAdd={(v) => setCfg("memories", [...(cfg.memories ?? []), v])} label="添加记忆" />
+          </div>
+          <p className="text-[11px] leading-5" style={{ color: C.ink3 }}>请先配置该Agent的记忆变量，然后在工作流中配置记忆变量节点来写入和读取记忆变量的值。</p>
+        </div>
+        <Button size="sm" className="bg-black text-white hover:bg-neutral-800" onClick={save}>保存配置</Button>
+      </div>
+    </div>
+  )
+}
+
+function ScheduleDrawer({ workflowId, onClose }: { workflowId: string; onClose: () => void }) {
+  const [list, setList] = useState<ScheduleInfo[]>([])
+  const [cron, setCron] = useState("0 9 * * *")
+  const [tz, setTz] = useState("Asia/Shanghai")
+  const load = useCallback(() => { scheduleApi.list(workflowId).then(setList) }, [workflowId])
+  useEffect(() => { load() }, [load])
+  return (
+    <div className="absolute inset-y-0 right-0 z-20 flex w-[380px] max-w-[92vw] flex-col border-l bg-white" style={{ borderColor: C.cardBorder }}>
+      <div className="flex items-center justify-between px-4 py-3">
+        <span className="text-[15px] font-semibold" style={{ color: C.ink }}>定时任务</span>
+        <button onClick={onClose}><X className="size-4 text-neutral-500" /></button>
+      </div>
+      <div className="flex-1 space-y-3 overflow-y-auto px-4">
+        <div className="space-y-2 rounded-md p-2" style={{ background: "#F7F9FC" }}>
+          <div className="text-xs" style={{ color: C.ink2 }}>Cron 表达式</div>
+          <Input className="h-7 text-xs" value={cron} onChange={(e) => setCron(e.target.value)} />
+          <div className="text-xs" style={{ color: C.ink2 }}>时区</div>
+          <Input className="h-7 text-xs" value={tz} onChange={(e) => setTz(e.target.value)} />
+          <Button size="sm" className="bg-black text-white hover:bg-neutral-800"
+            onClick={async () => { try { await scheduleApi.create(workflowId, cron, tz); load() } catch (e) { toast.error((e as Error).message) } }}>
+            创建定时任务
+          </Button>
+        </div>
+        {list.map((sc) => (
+          <div key={sc.id} className="rounded-md border p-2 text-xs" style={{ borderColor: C.cardBorder }}>
+            <div className="flex items-center gap-2">
+              <span className="font-medium" style={{ color: C.ink }}>{sc.cron}</span>
+              <span style={{ color: C.ink3 }}>{sc.timezone}</span>
+              <span className={sc.enabled ? "text-emerald-600" : ""} style={{ color: sc.enabled ? undefined : C.ink3 }}>
+                {sc.enabled ? "启用" : "停用"}
+              </span>
+              <div className="ml-auto flex gap-1">
+                <Button variant="outline" size="sm" className="h-6 text-[11px]"
+                  onClick={async () => { await (sc.enabled ? scheduleApi.disable(sc.id) : scheduleApi.enable(sc.id)); load() }}>
+                  {sc.enabled ? "停用" : "启用"}
+                </Button>
+                <Button variant="outline" size="sm" className="h-6 text-[11px]"
+                  onClick={async () => { await scheduleApi.remove(sc.id); load() }}>删除</Button>
+              </div>
+            </div>
+            <div className="pt-1" style={{ color: C.ink3 }}>
+              下次执行：{sc.nextRunAt ? new Date(sc.nextRunAt).toLocaleString() : "—"}
+              {sc.lastRanAt ? ` · 上次：${new Date(sc.lastRanAt).toLocaleString()}` : ""}
+            </div>
+          </div>
+        ))}
+        {list.length === 0 && <div className="py-8 text-center text-xs" style={{ color: C.ink3 }}>暂无定时任务</div>}
+      </div>
+    </div>
+  )
+}
+
+/* ============ 运行观测抽屉（P1） ============ */
+function RunsDrawer({ workflowId, lastRunId, onClose }: { workflowId: string; lastRunId: string | null; onClose: () => void }) {
+  const [runs, setRuns] = useState<RunDetail[]>([])
+  const [sel, setSel] = useState<RunDetail | null>(null)
+  const [filter, setFilter] = useState("")
+  const load = useCallback(async () => {
+    const list = await runApi.list(workflowId)
+    const details = await Promise.all(list.slice(0, 10).map((r) => runApi.detail(r.runId)))
+    setRuns(details)
+    setSel((cur) => details.find((d) => d.runId === (cur?.runId ?? lastRunId)) ?? details[0] ?? null)
+  }, [workflowId, lastRunId])
+  useEffect(() => { load(); const t = setInterval(load, 3000); return () => clearInterval(t) }, [load])
+  const STATUS_COLOR: Record<string, string> = { succeeded: "#188F00", failed: "#F56C6C", running: "#3D6BFF", queued: "#B9C2CF", cancelled: "#B9C2CF" }
+  return (
+    <div className="absolute inset-y-0 right-0 z-20 flex w-[400px] max-w-[92vw] flex-col border-l bg-white" style={{ borderColor: C.cardBorder }}>
+      <div className="flex items-center justify-between px-4 py-3">
+        <span className="text-[15px] font-semibold" style={{ color: C.ink }}>运行观测</span>
+        <button onClick={onClose}><X className="size-4 text-neutral-500" /></button>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4">
+        <div className="flex items-center gap-2 pb-2">
+          <select className="rounded border px-1 py-0.5 text-xs" style={{ borderColor: C.cardBorder }} value={filter} onChange={(e) => setFilter(e.target.value)}>
+            <option value="">全部状态</option><option value="succeeded">succeeded</option>
+            <option value="failed">failed</option><option value="running">running</option>
+          </select>
+        </div>
+        <div className="space-y-1 pb-3">
+          {runs.filter((r) => !filter || r.status === filter).length === 0 && <div className="py-10 text-center text-xs" style={{ color: C.ink3 }}>暂无运行记录</div>}
+          {runs.filter((r) => !filter || r.status === filter).map((r) => (
+            <Fragment key={r.runId}><button className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-xs ${sel?.runId === r.runId ? "border-neutral-400" : ""}`} style={{ borderColor: sel?.runId === r.runId ? undefined : C.cardBorder }} onClick={() => setSel(r)}>
+              <span className="size-2 rounded-full" style={{ background: STATUS_COLOR[r.status] ?? "#B9C2CF" }} />
+              <span style={{ color: C.ink }}>{r.trigger}</span>
+              <span style={{ color: C.ink3 }}>{r.status}</span>
+              <span className="ml-auto" style={{ color: C.ink3 }}>{r.durationMs != null ? `${r.durationMs}ms` : ""}</span>
+            </button>
+            <div className="flex gap-1 pl-4">
+              {r.status === "failed" && (
+                <button className="flex items-center gap-1 text-[11px]" style={{ color: C.primary }}
+                  onClick={async () => { await runRetry(r.runId); load() }}>
+                  <RotateCw className="size-3" /> 重试
+                </button>
+              )}
+              <a className="flex items-center gap-1 text-[11px]" style={{ color: C.ink2 }} href={runExportUrl(r.runId)} target="_blank" rel="noreferrer">
+                <Download className="size-3" /> 导出
+              </a>
+            </div>
+            </Fragment>
+          ))}
+        </div>
+        {sel && (
+          <div className="space-y-1 border-t pt-2" style={{ borderColor: C.cardBorder }}>
+            <div className="pb-1 text-xs font-medium" style={{ color: C.ink2 }}>节点执行顺序</div>
+            {sel.nodeRuns.map((n) => (
+              <div key={n.nodeRunId} className="rounded-md px-2 py-1.5 text-xs" style={{ background: "#F7F9FC" }}>
+                <div className="flex items-center gap-2">
+                  <span className="size-2 rounded-full" style={{ background: STATUS_COLOR[n.status] ?? "#B9C2CF" }} />
+                  <span style={{ color: C.ink }}>{n.nodeId}</span>
+                  <span style={{ color: C.ink3 }}>{n.nodeType}</span>
+                  <span className="ml-auto" style={{ color: C.ink3 }}>{n.durationMs != null ? `${n.durationMs}ms` : n.status}</span>
+                </div>
+                {n.output && <div className="truncate pt-1" style={{ color: C.ink2 }}>{JSON.stringify(n.output).slice(0, 90)}</div>}
+                {n.error && <div className="pt-1" style={{ color: C.danger }}>{n.error.message}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ============ 主页面 ============ */
+function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avatar }: { workflowId?: string; agentId?: string; agentMeta?: { name: string; typeLabel: string }; avatar?: string }) {
+  const params = useParams()
+  const workflowId = wfProp ?? params.agentId ?? ""
+  const agentId = agentProp ?? ""
+  const navigate = useNavigate()
+  const rf = useReactFlow()
+  const [def, setDef] = useState<WfDefinition | null>(null)
+  const [defs, setDefs] = useState<NodeDefinition[]>([])
+  const [issues, setIssues] = useState<ValidationIssue[]>([])
+  const [savedAt, setSavedAt] = useState("")
+  const [revision, setRevision] = useState(1)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [drawer, setDrawer] = useState<"config" | "debug" | "history" | "runs" | "schedule" | "agent" | null>(null)
+  const [showMiniMap, setShowMiniMap] = useState(true)
+  const [runState, setRunState] = useState<Record<string, "running" | "success" | "failed" | "skipped">>({})
+  const [lastRunId, setLastRunId] = useState<string | null>(null)
+  const [publishOpen, setPublishOpen] = useState(false)
+  const [pop, setPop] = useState<null | "add" | "zoom" | "search">(null)
+  const [versions, setVersions] = useState<{ versionNo: number; publishedAt: string }[]>([])
+  const [zoom, setZoom] = useState(1)
+  const [lockUser, setLockUser] = useState("")
+  const [agentAvatar, setAgentAvatar] = useState<string | undefined>(undefined)
+  const wsIdRef = useRef(Math.random().toString(36).slice(2, 8))
+  const saveTimer = useRef<number | null>(null)
+  const defRef = useRef<WfDefinition | null>(null)
+  defRef.current = def
+
+  /* 真实编辑锁与操作人（后端 resource_lock） */
+  useEffect(() => {
+    const wsId = wsIdRef.current
+    fetch(`${WF_BASE}/api/locks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resourceId: workflowId, wsId, user: "质量管理员" }) })
+      .then((r) => r.json()).then((r) => setLockUser(r.user ?? "")).catch(() => undefined)
+    return () => { fetch(`${WF_BASE}/api/locks/${workflowId}?wsId=${wsId}`, { method: "DELETE" }).catch(() => undefined) }
+  }, [workflowId])
+
+  useEffect(() => {
+    let alive = true
+    Promise.all([wfApi.get(workflowId), wfApi.nodeDefinitions()]).then(([d, nd]) => {
+      if (!alive) return
+      setDef(d.definition); setRevision(d.draftRevision); setDefs(nd); setSavedAt(d.updatedAt)
+      wfApi.validate(agentId).then((r) => alive && setIssues(r.issues))
+    })
+    return () => { alive = false }
+  }, [workflowId])
+
+  const doSave = useCallback(async (next: WfDefinition) => {
+    try {
+      const res = await wfApi.saveDraft(workflowId, next, revision)
+      setRevision((r) => r + 1); setSavedAt(res.savedAt)
+      setIssues((await wfApi.validate(agentId)).issues)
+    } catch (e) { toast.error(`保存失败：${(e as Error).message}`) }
+  }, [workflowId, revision])
+
+  const mutate = useCallback((next: WfDefinition) => {
+    setDef(next)
+    if (saveTimer.current) window.clearTimeout(saveTimer.current)
+    saveTimer.current = window.setTimeout(() => doSave(next), 1200)
+  }, [doSave])
+
+  const nodes: Node[] = useMemo(() => (def?.graph.nodes ?? []).map((n) => ({
+    id: n.id, type: "wf",
+    position: def!.ui.positions[n.id] ?? { x: 120, y: 160 },
+    data: {
+      wf: n, def: defs.find((d) => d.type_key === n.type),
+      issues: issues.filter((i) => i.nodeId === n.id),
+      run: runState[n.id],
+      onRunNode: (id: string) => demoRun([id]),
+      onDelete: (id: string) => {
+        const d2 = defRef.current!
+        mutate({ ...d2, graph: { nodes: d2.graph.nodes.filter((x) => x.id !== id), edges: d2.graph.edges.filter((e) => e.source !== id && e.target !== id) } })
+        setSelectedId(null)
+      },
+    } satisfies WfNodeData,
+  })), [def, defs, issues, runState, mutate])
+
+  const edges: Edge[] = useMemo(() => (def?.graph.edges ?? []).map((e) => ({
+    id: e.id, source: e.source, target: e.target,
+    style: { stroke: "#A8B3C5", strokeWidth: 1.5 },
+  })), [def])
+
+  const families = useMemo(() => {
+    const m = new Map<string, NodeDefinition[]>()
+    for (const d of defs) m.set(d.family, [...(m.get(d.family) ?? []), d])
+    return [...m.entries()]
+  }, [defs])
+
+  /* demo-run（16 §7，P1 换真 SSE） */
+  /* P1：真执行 — POST /api/runs + SSE 事件驱动画布状态 */
+  const subscribeRun = useCallback((runId: string) => {
+    const es = new EventSource(runApi.eventsUrl(runId))
+    const onNode = (e: MessageEvent) => {
+      const d = JSON.parse(e.data)
+      const st = e.type === "node_started" ? "running" : e.type === "node_completed" ? "success" : e.type === "node_skipped" ? "skipped" : "failed"
+      if (d.nodeId) setRunState((s) => ({ ...s, [d.nodeId]: st as "running" }))
+    }
+    for (const t of ["node_started", "node_completed", "node_failed", "node_skipped"]) es.addEventListener(t, onNode)
+    es.addEventListener("workflow_completed", () => { toast.success("运行成功"); es.close() })
+    es.addEventListener("workflow_failed", (e) => { const d = JSON.parse((e as MessageEvent).data); toast.error(`运行失败：${d.payload?.error ?? ""}`); es.close() })
+  }, [])
+
+  const startRealRun = useCallback(async (input: Record<string, unknown>) => {
+    const rep = await wfApi.validate(workflowId)
+    setIssues(rep.issues)
+    if (!rep.ok) { setDrawer(null); toast.error("请先配置节点"); return }
+    setDrawer(null)
+    try {
+      const r = await runApi.start(workflowId, input)
+      setRunState({})
+      setLastRunId(r.runId)
+      subscribeRun(r.runId)
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
+  }, [workflowId, subscribeRun])
+  const startDebugRun = startRealRun
+  const demoRun = (_only?: string[]) => startRealRun({})
+
+  if (!def) return <div className="p-8 text-sm" style={{ color: C.ink2 }}>加载中…</div>
+
+  const selected = def.graph.nodes.find((n) => n.id === selectedId) ?? null
+
+  const onConnect = (conn: { source: string | null; target: string | null }) => {
+    if (!conn.source || !conn.target) return
+    if (def.graph.edges.some((e) => e.source === conn.source && e.target === conn.target)) {
+      toast.error("不能重复连线", { position: "top-center" })
+      return
+    }
+    mutate({ ...def, graph: { ...def.graph, edges: [...def.graph.edges, { id: `e_${Date.now() % 100000}`, source: conn.source, target: conn.target }] } })
+  }
+
+  const addNode = (typeKey: string) => {
+    const d = defs.find((x) => x.type_key === typeKey)
+    const id = `n_${typeKey}_${Date.now() % 100000}`
+    const node: WfNode = {
+      id, type: typeKey, name: d?.label ?? typeKey,
+      config: typeKey === "condition" ? { branches: [{ handle: "b1" }] } : {},
+      inputs: [], branches: typeKey === "condition" ? ["yes", "no"] : undefined,
+    }
+    mutate({
+      ...def,
+      ui: { ...def.ui, positions: { ...def.ui.positions, [id]: { x: 260 + def.graph.nodes.length * 30, y: 140 + def.graph.nodes.length * 24 } } },
+      graph: { ...def.graph, nodes: [...def.graph.nodes, node] },
+    })
+    setSelectedId(id); setDrawer("config"); setPop(null)
+  }
+
+  const autoLayout = () => {
+    const depth: Record<string, number> = {}
+    const adj: Record<string, string[]> = {}
+    def.graph.edges.forEach((e) => (adj[e.source] = [...(adj[e.source] ?? []), e.target]))
+    const start = def.graph.nodes.find((n) => n.type === "input")
+    if (start) {
+      depth[start.id] = 0
+      const q = [start.id]
+      while (q.length) {
+        const u = q.shift()!
+        for (const v of adj[u] ?? []) if (depth[v] === undefined) { depth[v] = (depth[u] ?? 0) + 1; q.push(v) }
+      }
+    }
+    const perDepth: Record<number, number> = {}
+    const positions: Record<string, { x: number; y: number }> = {}
+    for (const n of def.graph.nodes) {
+      const dpt = depth[n.id] ?? 0
+      const idx = perDepth[dpt] = (perDepth[dpt] ?? 0) + 1
+      positions[n.id] = { x: 80 + dpt * 360, y: 80 + idx * 180 }
+    }
+    mutate({ ...def, ui: { ...def.ui, positions } })
+  }
+
+  const tryRun = () => setDrawer("debug")
+
+  const onPublish = async () => {
+    try {
+      const res = await wfApi.publish(agentId, "replica publish")
+      toast.success(`已发布 V${res.versionNo}`, { position: "top-center" })
+      setPublishOpen(false)
+      setDef((d) => d && { ...d, workflow: { ...d.workflow, status: "published" } })
+    } catch (e) {
+      toast.error((e as Error).message.includes("409") ? "发布前校验未通过" : (e as Error).message, { position: "top-center" })
+    }
+  }
+
+  return (
+    <div className="relative flex h-full flex-col" style={{ background: C.canvas }}>
+      {/* 顶栏（16 §2） */}
+      <div className="z-30 flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1 border-b bg-white px-4 py-1" style={{ borderColor: C.cardBorder }}>
+        <button onClick={() => navigate(agentMeta ? "/config/agents" : "/config/workflows")}><ArrowLeft className="size-4" style={{ color: C.ink2 }} /></button>
+        {agentMeta && avatar ? (
+          <img src={avatar} alt={agentMeta.name} className="size-8 shrink-0 rounded-md object-cover" />
+        ) : (
+          <span className="flex size-7 items-center justify-center rounded-lg" style={{ background: NEUTRAL }}>
+            <Zap className="size-4 text-white" />
+          </span>
+        )}
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-[15px] font-semibold" style={{ color: C.ink }}>{agentMeta ? agentMeta.name : def.workflow.name}</span>
+            {agentMeta ? (
+              <button className="flex items-center gap-1 rounded border bg-white px-1.5 py-0.5 text-[11px]" style={{ borderColor: C.cardBorder, color: C.ink2 }} onClick={() => setDrawer("history")}>
+                V1.0.{revision} <ChevronDown className="size-3" />
+              </button>
+            ) : null}
+            <span className="rounded px-1.5 py-0.5 text-[11px]" style={{ background: C.tagBg, color: C.orange }}>
+              {agentMeta ? agentMeta.typeLabel : def.workflow.status === "published" ? "已发布" : "待发布"}
+            </span>
+          </div>
+          <div className="text-[11px]" style={{ color: C.ink3 }}>
+            自动保存于 {savedAt ? new Date(savedAt).toLocaleString() : "—"}
+          </div>
+        </div>
+        {agentMeta && (
+          <div className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg p-0.5" style={{ background: "#F1F3F7" }}>
+            {[["Agent搭建", () => setDrawer(null)], ["运行观测", () => setDrawer("runs")], ["效果评测", () => toast.success("规划中")], ["进化", () => toast.success("规划中")]].map(([label, fn], i) => (
+              <button key={label as string} className="rounded-md px-3 py-1 text-[13px]" style={i === 0 ? { background: "#fff", color: C.ink, boxShadow: "0 1px 3px rgba(31,35,41,.12)" } : { color: C.ink2 }} onClick={() => (fn as () => void)()}>{label as string}</button>
+            ))}
+          </div>
+        )}
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          <button className="rounded p-1.5 hover:bg-neutral-100" title="设置"><Settings className="size-4" style={{ color: C.ink2 }} /></button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="relative rounded p-1.5 hover:bg-neutral-100" title="检查">
+                <ListChecks className="size-4" style={{ color: C.ink2 }} />
+                {issues.length > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-0.5 text-[9px] text-white" style={{ background: C.danger }}>
+                    {issues.length}
+                  </span>
+                )}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-72" align="end">
+              <div className="pb-1 text-[13px] font-medium" style={{ color: C.ink }}>检查({issues.length})</div>
+              <div className="max-h-56 space-y-1 overflow-y-auto">
+                {issues.length === 0 && <div className="text-xs" style={{ color: C.ink3 }}>暂无问题</div>}
+                {issues.map((i, k) => {
+                  const nd = def.graph.nodes.find((n) => n.id === i.nodeId)
+                  return (
+                    <button key={k} className="flex w-full items-start gap-2 rounded px-1 py-1 text-left text-xs hover:bg-neutral-50" style={{ color: C.danger }}
+                      onClick={() => {
+                        const p = def.ui.positions[i.nodeId]
+                        if (p) rf.setCenter(p.x + 150, p.y + 60, { zoom: 1, duration: 300 })
+                        setSelectedId(i.nodeId); setDrawer("config")
+                      }}>
+                      <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded" style={{ background: NEUTRAL }}>
+                        <TypeIcon type={nd?.type ?? ""} className="size-2.5 text-white" />
+                      </span>
+                      <span>{i.message}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </PopoverContent>
+          </Popover>
+          <button className="rounded p-1.5 hover:bg-neutral-100" title="历史版本"
+            onClick={async () => { setVersions(await wfApi.versions(workflowId)); setDrawer("history") }}>
+            <Clock className="size-4" style={{ color: C.ink2 }} />
+          </button>
+          <button className="rounded p-1.5 hover:bg-neutral-100" title="运行观测"
+            onClick={() => setDrawer("runs")}>
+            <Activity className="size-4" style={{ color: C.ink2 }} />
+          </button>
+          <button className="rounded p-1.5 hover:bg-neutral-100" title="定时任务"
+            onClick={() => setDrawer("schedule")}>
+            <CalendarDays className="size-4" style={{ color: C.ink2 }} />
+          </button>
+          {lockUser && (
+            <span className="flex items-center gap-1 text-xs" style={{ color: C.ink2 }}>
+              {lockUser} <LockKeyhole className="size-3.5" style={{ color: "#34C759" }} />
+            </span>
+          )}
+          <Button variant="outline" size="sm" className="rounded-md" onClick={() => doSave(defRef.current!)}>保存</Button>
+          <Button size="sm" className="rounded-md bg-black text-white hover:bg-neutral-800"
+            onClick={() => (issues.length ? setPublishOpen(true) : onPublish())}>发布</Button>
+        </div>
+      </div>
+
+      {/* 画布 */}
+      <div className="flex min-h-0 flex-1">
+      {agentMeta && agentId && <AgentConfigDrawer agentId={agentId} onClose={() => undefined} inline avatar={agentAvatar} onAvatar={(v) => { setAgentAvatar(v); fetch(`${WF_BASE}/api/agents/${agentId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ avatar: v }) }).catch(() => undefined) }} />}
+      <div className="relative flex-1">
+        <ReactFlow
+          nodes={nodes} edges={edges} nodeTypes={nodeTypes}
+          onNodesChange={(chs) => {
+            const positions = { ...def.ui.positions }
+            let changed = false
+            for (const ch of chs) if (ch.type === "position" && ch.position) { positions[ch.id] = { x: ch.position.x, y: ch.position.y }; changed = true }
+            if (changed) mutate({ ...def, ui: { ...def.ui, positions } })
+          }}
+          onConnect={onConnect}
+          onNodeClick={(_, n) => { setSelectedId(n.id); setDrawer("config"); setPop(null) }}
+          onPaneClick={() => { setSelectedId(null); setPop(null) }}
+          onMoveStart={() => setPop(null)}
+          onNodeDragStart={() => setPop(null)}
+          onMove={(_, vp) => setZoom(vp.zoom)}
+          fitView
+          fitViewOptions={{ padding: 0.25, maxZoom: 0.9 }}
+          minZoom={0.4}
+          maxZoom={1.5}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background gap={16} color={C.dot} />
+          {showMiniMap && <MiniMap pannable zoomable nodeColor={() => "#A8B3C5"} nodeStrokeColor={() => "#A8B3C5"} maskColor="rgba(238,241,246,0.6)" className="!bottom-16 !left-1/2 !-translate-x-1/2 !rounded-md !border !bg-white" style={{ width: 180, height: 110 }} />}
+        </ReactFlow>
+
+        <Panel position="bottom-left" className="!bottom-4 !left-4 flex items-center gap-1 rounded-lg border bg-white px-1.5 py-1 shadow-sm" style={{ borderColor: C.cardBorder }}>
+          <button className="rounded p-1 hover:bg-neutral-100" title="适应画布" onClick={() => rf.fitView({ padding: 0.25, maxZoom: 0.9 })}><Crosshair className="size-4" style={{ color: C.ink2 }} /></button>
+          <button className="rounded p-1 hover:bg-neutral-100" title="放大" onClick={() => rf.zoomIn()}><ZoomIn className="size-4" style={{ color: C.ink2 }} /></button>
+          <button className="rounded p-1 hover:bg-neutral-100" title="缩小" onClick={() => rf.zoomOut()}><ZoomOut className="size-4" style={{ color: C.ink2 }} /></button>
+          <span className="px-1 text-[11px]" style={{ color: C.ink3 }}>{Math.round(zoom * 100)}%</span>
+        </Panel>
+        {/* 底部工具条（16 §4） */}
+        <div className="absolute bottom-4 left-1/2 z-10 flex max-w-[95%] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-lg border bg-white px-2 py-1.5 shadow-sm" style={{ borderColor: C.cardBorder }}>
+          <Popover open={pop === "add"} onOpenChange={(o) => setPop(o ? "add" : null)}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="border-0 shadow-none" style={{ color: C.primary }}>
+                <Plus className="size-4" /> 添加节点
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent side="top" className="w-56">
+              {families.map(([fam, list]) => (
+                <div key={fam} className="py-1">
+                  <div className="px-1 pb-1 text-xs" style={{ color: C.ink2 }}>{fam}</div>
+                  {list.map((d) => (
+                    <button key={d.type_key} className="flex w-full items-center gap-2 rounded px-2 py-1 text-[13px] hover:bg-neutral-50" style={{ color: C.ink }} onClick={() => addNode(d.type_key)}>
+                      <span className="flex size-4 items-center justify-center rounded" style={{ background: NEUTRAL }}>
+                        <TypeIcon type={d.type_key} className="size-2.5 text-white" />
+                      </span>
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </PopoverContent>
+          </Popover>
+          <span className="mx-1 h-4 w-px bg-neutral-200" />
+          <button className="rounded p-1.5 hover:bg-neutral-100" title="缩略图" onClick={() => setShowMiniMap((v) => !v)}>
+            <MapIcon className="size-4" style={{ color: showMiniMap ? C.primary : C.ink2 }} />
+          </button>
+          <button className="rounded p-1.5 hover:bg-neutral-100" title="优化布局" onClick={autoLayout}>
+            <LayoutTemplate className="size-4" style={{ color: C.ink2 }} />
+          </button>
+          <button className="rounded p-1.5 hover:bg-neutral-100" title="适应画布" onClick={() => rf.fitView()}>
+            <Crosshair className="size-4" style={{ color: C.ink2 }} />
+          </button>
+          <Popover open={pop === "zoom"} onOpenChange={(o) => setPop(o ? "zoom" : null)}>
+            <PopoverTrigger asChild><button className="px-1 text-xs" style={{ color: C.ink2 }}>{Math.round(zoom * 100)}% ⌄</button></PopoverTrigger>
+            <PopoverContent className="w-20 p-1">
+              {[0.5, 0.75, 1, 1.25, 1.5].map((z) => (
+                <button key={z} className="block w-full rounded px-2 py-0.5 text-xs hover:bg-neutral-50" onClick={() => { rf.zoomTo(z); setPop(null) }}>{z * 100}%</button>
+              ))}
+            </PopoverContent>
+          </Popover>
+          <Popover open={pop === "search"} onOpenChange={(o) => setPop(o ? "search" : null)}>
+            <PopoverTrigger asChild><button className="rounded p-1.5 hover:bg-neutral-100" title="节点搜索"><Search className="size-4" style={{ color: C.ink2 }} /></button></PopoverTrigger>
+            <PopoverContent className="w-56 p-2">
+              <NodeSearch nodes={def.graph.nodes} onPick={(id) => {
+                const p = def.ui.positions[id]
+                if (p) rf.setCenter(p.x + 150, p.y + 60, { zoom: 1, duration: 300 })
+                setSelectedId(id); setPop(null)
+              }} />
+            </PopoverContent>
+          </Popover>
+          <button className="rounded p-1.5 hover:bg-neutral-100" title="工具"><Wrench className="size-4" style={{ color: C.ink2 }} /></button>
+          <Button size="sm" className="rounded-md" style={{ background: C.primary }} onClick={tryRun}>
+            <Play className="size-3.5" /> 试运行
+          </Button>
+        </div>
+
+        {/* 抽屉层 */}
+        {drawer === "config" && selected && (
+          <ConfigDrawer node={selected} defs={defs} nodes={def.graph.nodes} onClose={() => setDrawer(null)}
+            onChange={(n) => mutate({ ...def, graph: { ...def.graph, nodes: def.graph.nodes.map((x) => (x.id === n.id ? n : x)) } })} />
+        )}
+        {drawer === "debug" && <DebugDrawer def={def} onClose={() => setDrawer(null)} onRun={startDebugRun} />}
+        {drawer === "schedule" && <ScheduleDrawer workflowId={workflowId} onClose={() => setDrawer(null)} />}
+        {drawer === "runs" && <RunsDrawer workflowId={workflowId} lastRunId={lastRunId} onClose={() => setDrawer(null)} />}
+        {drawer === "history" && (
+          <div className="absolute inset-y-0 right-0 z-20 w-[320px] border-l bg-white px-4" style={{ borderColor: C.cardBorder }}>
+            <div className="flex items-center justify-between py-3">
+              <span className="text-[15px] font-semibold" style={{ color: C.ink }}>历史版本</span>
+              <button onClick={() => setDrawer(null)}><X className="size-4 text-neutral-500" /></button>
+            </div>
+            {versions.length === 0 && (
+              <div className="flex flex-col items-center gap-2 pt-24 text-xs" style={{ color: C.ink3 }}>
+                <History className="size-8" /> 暂无历史版本
+              </div>
+            )}
+            {versions.map((v) => (
+              <div key={v.versionNo} className="flex justify-between border-b py-2 text-xs" style={{ borderColor: C.cardBorder, color: C.ink2 }}>
+                <span>V{v.versionNo}</span><span>{new Date(v.publishedAt).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      </div>
+
+      {/* 发布软警告（16 §9） */}
+      <Dialog open={publishOpen} onOpenChange={setPublishOpen}>
+        <DialogContent className="rounded-xl">
+          <DialogHeader className="flex-row items-start gap-2 space-y-0">
+            <CircleAlert className="mt-0.5 size-5 shrink-0" style={{ color: C.orange }} />
+            <div className="space-y-1.5">
+              <DialogTitle>发布前未试运行</DialogTitle>
+              <DialogDescription>发布前未进行试运行，建议确认工作流正常运行后再发布。</DialogDescription>
+            </div>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setPublishOpen(false); tryRun() }}>试运行</Button>
+            <Button className="bg-black text-white hover:bg-neutral-800" onClick={onPublish}>继续发布</Button>
+            <Button variant="outline" onClick={() => setPublishOpen(false)}>取消</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+function NodeSearch({ nodes, onPick }: { nodes: WfNode[]; onPick: (id: string) => void }) {
+  const [q, setQ] = useState("")
+  const hits = nodes.filter((n) => n.name.includes(q))
+  return (
+    <div>
+      <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索节点" />
+      <div className="pt-1">
+        {hits.map((n) => (
+          <button key={n.id} className="flex w-full items-center gap-2 rounded px-2 py-1 text-[13px] hover:bg-neutral-50" onClick={() => onPick(n.id)}>
+            <span className="size-2 rounded-full" style={{ background: C.primary }} /> {n.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export default function WfDesignerPage({ workflowId, agentId, agentMeta, avatar }: { workflowId?: string; agentId?: string; agentMeta?: { name: string; typeLabel: string }; avatar?: string }) {
+  return (
+    <ReactFlowProvider>
+      <div className="h-[calc(100dvh-3.5rem)] min-h-0">
+        <DesignerInner workflowId={workflowId} agentId={agentId} agentMeta={agentMeta} avatar={avatar} />
+      </div>
+      <ToastHost />
+    </ReactFlowProvider>
+  )
+}

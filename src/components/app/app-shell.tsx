@@ -1,14 +1,10 @@
-import { PanelLeft } from "lucide-react"
+import { PanelLeft, ShieldCheck } from "lucide-react"
 import { Outlet, useLocation } from "react-router-dom"
 import { UI_TERMS } from "@/config/ui-terms"
 import { Toaster } from "@/components/ui/sonner"
-import { Separator } from "@/components/ui/separator"
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar"
-import { AppSidebar } from "@/components/app/app-sidebar"
+import { NAV_GROUPS } from "@/components/app/app-sidebar"
+import { rbac } from "@/services/rbac"
+import { NavLink } from "react-router-dom"
 import { Breadcrumbs, type BreadcrumbEntry } from "@/components/app/page"
 
 /** 工作区级路由自带全高 Header，不使用全局顶栏。 */
@@ -105,30 +101,72 @@ export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
  * Application Shell（Design Spec §8.1 冻结：shadcn sidebar-03）。
  * 固定左侧导航 + 顶部面包屑 Header + 内容区。
  */
+
+
+/** 单层窄轨导航（shadcn studio dashboard-sidebar-04 同构：icon+label 竖排，组间分隔线）。 */
+const RAIL_SHORT: Record<string, string> = {
+  Connections: "连接",
+  数据定义: "数据",
+  结果规则: "规则",
+  坐席分析: "坐席",
+  分析任务: "任务",
+}
+
+function AppRail() {
+  return (
+    <aside className="flex w-20 shrink-0 flex-col items-stretch border-r bg-sidebar py-3" data-testid="app-rail">
+      <div className="mb-2 flex justify-center">
+        <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <ShieldCheck className="size-4.5" />
+        </div>
+      </div>
+      {NAV_GROUPS.map((group, gi) => {
+        const items = (group.items ?? group.subItems ?? []).filter((i) => rbac.can(i.permission))
+        if (items.length === 0) return null
+        return (
+          <div key={group.label} className={gi > 0 ? "mt-2 border-t pt-2" : ""} style={{ borderColor: "var(--sidebar-border)" }}>
+            {items.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                title={item.label}
+                className={({ isActive }) =>
+                  `mx-1.5 flex flex-col items-center gap-1 rounded-lg py-2 text-[11px] transition-colors ${
+                    isActive ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "text-muted-foreground hover:bg-sidebar-accent/60"
+                  }`
+                }
+              >
+                <item.icon className="size-4.5" />
+                <span className="max-w-full truncate px-0.5">{RAIL_SHORT[item.label] ?? item.label}</span>
+              </NavLink>
+            ))}
+          </div>
+        )
+      })}
+    </aside>
+  )
+}
+
 export function AppShell() {
   const { pathname } = useLocation()
   const workspace = isWorkspaceRoute(pathname)
   const breadcrumbs = useRouteBreadcrumbs()
 
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset className="min-h-dvh">
-        {!workspace ? (
-          <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="h-4" />
-            <Breadcrumbs items={breadcrumbs} />
-            <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-              <PanelLeft className="hidden size-4" aria-hidden />
-            </div>
-          </header>
-        ) : null}
+    <div className="flex min-h-svh w-full">
+      <AppRail />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+          {!workspace && <Breadcrumbs items={breadcrumbs} />}
+          <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+            <PanelLeft className="hidden size-4" aria-hidden />
+          </div>
+        </header>
         <div className="flex min-h-0 flex-1 flex-col">
           <Outlet />
         </div>
         <Toaster position="bottom-right" richColors />
-      </SidebarInset>
-    </SidebarProvider>
+      </div>
+    </div>
   )
 }

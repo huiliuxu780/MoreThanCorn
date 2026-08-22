@@ -1,0 +1,2259 @@
+{
+ "steps": [
+  {
+   "t": 9280,
+   "step": "drawer-知识检索",
+   "info": "开始|输入|userQuery|Str.chatHistory|Str.userId|Str.conversationId|Str.chatId|Str.file|Obj.reference|Str.|结束|输出|output|Str.|大模型|输入|未配置|模型|Deepseek-R1-Distill-Qwen-14B|提示词|​你是测试助手，请用#一句中文回复用户。用户说：#|输出|output|Str.thought|Str.answer|Str.|知识检索|输入|query|Str.|输出|outputAnswer|Str.|知识库|未配置知识库|数据查询|输入|未配置|输出|outputAnswer|Str.|查询条件|未配置查询条件|数据表|未配置数据表|Query改写|输入|query|Str.chatHistory|Str.|输出|queryList|Arr.|变量处理|Group1|未配置|输出|Group1|Str.|工作流执行|输入|workflowCode|Str.|输出|未配置"
+  },
+  {
+   "t": 15528,
+   "step": "drawer-数据查询",
+   "info": "开始|输入|userQuery|Str.chatHistory|Str.userId|Str.conversationId|Str.chatId|Str.file|Obj.reference|Str.|结束|输出|output|Str.|大模型|输入|未配置|模型|Deepseek-R1-Distill-Qwen-14B|提示词|​你是测试助手，请用#一句中文回复用户。用户说：#|输出|output|Str.thought|Str.answer|Str.|知识检索|输入|query|Str.|输出|outputAnswer|Str.|知识库|未配置知识库|数据查询|输入|未配置|输出|outputAnswer|Str.|查询条件|未配置查询条件|数据表|未配置数据表|Query改写|输入|query|Str.chatHistory|Str.|输出|queryList|Arr.|变量处理|Group1|未配置|输出|Group1|Str.|工作流执行|输入|workflowCode|Str.|输出|未配置"
+  },
+  {
+   "t": 21813,
+   "step": "drawer-Query改写",
+   "info": "开始|输入|userQuery|Str.chatHistory|Str.userId|Str.conversationId|Str.chatId|Str.file|Obj.reference|Str.|结束|输出|output|Str.|大模型|输入|未配置|模型|Deepseek-R1-Distill-Qwen-14B|提示词|​你是测试助手，请用#一句中文回复用户。用户说：#|输出|output|Str.thought|Str.answer|Str.|知识检索|输入|query|Str.|输出|outputAnswer|Str.|知识库|未配置知识库|数据查询|输入|未配置|输出|outputAnswer|Str.|查询条件|未配置查询条件|数据表|未配置数据表|Query改写|输入|query|Str.chatHistory|Str.|输出|queryList|Arr.|变量处理|Group1|未配置|输出|Group1|Str.|工作流执行|输入|workflowCode|Str.|输出|未配置"
+  },
+  {
+   "t": 28136,
+   "step": "drawer-图像生成",
+   "info": "No|data"
+  },
+  {
+   "t": 30806,
+   "step": "drawer-对话回复",
+   "info": "开始|输入|userQuery|Str.chatHistory|Str.userId|Str.conversationId|Str.chatId|Str.file|Obj.reference|Str.|结束|输出|output|Str.|大模型|输入|未配置|模型|Deepseek-R1-Distill-Qwen-14B|提示词|​你是测试助手，请用#一句中文回复用户。用户说：#|输出|output|Str.thought|Str.answer|Str.|知识检索|输入|query|Str.|输出|outputAnswer|Str.|知识库|未配置知识库|数据查询|输入|未配置|输出|outputAnswer|Str.|查询条件|未配置查询条件|数据表|未配置数据表|Query改写|输入|query|Str.chatHistory|Str.|输出|queryList|Arr.|变量处理|Group1|未配置|输出|Group1|Str.|工作流执行|输入|workflowCode|Str.|输出|未配置|图像生成|输入|未配置|输出|image1|Img.|模型|未配置|原图|未配置"
+  },
+  {
+   "t": 33478,
+   "step": "drawer-信息收集",
+   "info": "开始|输入|userQuery|Str.chatHistory|Str.userId|Str.conversationId|Str.chatId|Str.file|Obj.reference|Str.|结束|输出|output|Str.|大模型|输入|未配置|模型|Deepseek-R1-Distill-Qwen-14B|提示词|​你是测试助手，请用#一句中文回复用户。用户说：#|输出|output|Str.thought|Str.answer|Str.|知识检索|输入|query|Str.|输出|outputAnswer|Str.|知识库|未配置知识库|数据查询|输入|未配置|输出|outputAnswer|Str.|查询条件|未配置查询条件|数据表|未配置数据表|Query改写|输入|query|Str.chatHistory|Str.|输出|queryList|Arr.|变量处理|Group1|未配置|输出|Group1|Str.|工作流执行|输入|workflowCode|Str.|输出|未配置|图像生成|输入|未配置|输出|image1|Img.|模型|未配置|原图|未配置"
+  },
+  {
+   "t": 36122,
+   "step": "drawer-Agent",
+   "info": "开始|输入|userQuery|Str.chatHistory|Str.userId|Str.conversationId|Str.chatId|Str.file|Obj.reference|Str.|结束|输出|output|Str.|大模型|输入|未配置|模型|Deepseek-R1-Distill-Qwen-14B|提示词|​你是测试助手，请用#一句中文回复用户。用户说：#|输出|output|Str.thought|Str.answer|Str.|知识检索|输入|query|Str.|输出|outputAnswer|Str.|知识库|未配置知识库|数据查询|输入|未配置|输出|outputAnswer|Str.|查询条件|未配置查询条件|数据表|未配置数据表|Query改写|输入|query|Str.chatHistory|Str.|输出|queryList|Arr.|变量处理|Group1|未配置|输出|Group1|Str.|工作流执行|输入|workflowCode|Str.|输出|未配置|图像生成|输入|未配置|输出|image1|Img.|模型|未配置|原图|未配置"
+  },
+  {
+   "t": 38763,
+   "step": "drawer-记忆变量",
+   "info": "开始|输入|userQuery|Str.chatHistory|Str.userId|Str.conversationId|Str.chatId|Str.file|Obj.reference|Str.|结束|输出|output|Str.|大模型|输入|未配置|模型|Deepseek-R1-Distill-Qwen-14B|提示词|​你是测试助手，请用#一句中文回复用户。用户说：#|输出|output|Str.thought|Str.answer|Str.|知识检索|输入|query|Str.|输出|outputAnswer|Str.|知识库|未配置知识库|数据查询|输入|未配置|输出|outputAnswer|Str.|查询条件|未配置查询条件|数据表|未配置数据表|Query改写|输入|query|Str.chatHistory|Str.|输出|queryList|Arr.|变量处理|Group1|未配置|输出|Group1|Str.|工作流执行|输入|workflowCode|Str.|输出|未配置|图像生成|输入|未配置|输出|image1|Img.|模型|未配置|原图|未配置"
+  },
+  {
+   "t": 45133,
+   "step": "drawer-工作流执行",
+   "info": ""
+  },
+  {
+   "t": 48910,
+   "step": "endval",
+   "info": "set"
+  },
+  {
+   "t": 66805,
+   "step": "shot",
+   "info": "parallel-run"
+  }
+ ],
+ "entries": [
+  {
+   "dt": 392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 1392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 2392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 3392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 4393,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 5392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 6392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 7392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 8392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 9392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 10391,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 11390,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 12392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 13391,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 14392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 15392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 16390,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 17392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 17795,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/agent_param_list",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": [
+     {
+      "variableType": "String",
+      "code": "tenantId",
+      "name": "租户ID",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "userId",
+      "name": "用户ID",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "userName",
+      "name": "用户帐号名称",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "sysTime",
+      "name": "系统时间",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "language",
+      "name": "多语言标识",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "memberId",
+      "name": "进线会员的账号ID",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "formId",
+      "name": "网页渠道ID",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "robotCode",
+      "name": "机器人code",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "nick",
+      "name": "进线会员的昵称",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "serviceId",
+      "name": "客服人员账号ID",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "serviceName",
+      "name": "客服人员账号名称",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "phoneNum",
+      "name": "进线会员的手机号",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "onlineChannelSource",
+      "name": "在线渠道",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "initContext",
+      "name": "渠道上下文参数(JSON)",
+      "type": "system_param"
+     }
+    ],
+    "retry": false
+   }
+  },
+  {
+   "dt": 17950,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/flow_saveOrUpdate",
+   "postData": {
+    "childWorkflowEnable": true,
+    "description": "默认描述",
+    "source": "agent-default",
+    "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "features": {
+     "isHasChildWorkflowNode": false,
+     "isHasFrontInteractionNode": false,
+     "language": "zh_CN",
+     "dynamicVersion": 1787322599428
+    },
+    "base64Data": "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",
+    "name": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "draftVersion": "V1.0.1",
+    "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "agentCode": null
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+     "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+     "workflowDesc": "默认描述",
+     "draftVersion": "V1.0.1"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 18392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 19391,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 20392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 21392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 22104,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/flow_saveOrUpdate",
+   "postData": {
+    "childWorkflowEnable": true,
+    "description": "默认描述",
+    "source": "agent-default",
+    "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "features": {
+     "isHasChildWorkflowNode": false,
+     "isHasFrontInteractionNode": false,
+     "language": "zh_CN",
+     "dynamicVersion": 1787322599428
+    },
+    "base64Data": "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",
+    "name": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "draftVersion": "V1.0.1",
+    "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "agentCode": null
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+     "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+     "workflowDesc": "默认描述",
+     "draftVersion": "V1.0.1"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 22390,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 23392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 24095,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/flow_saveOrUpdate",
+   "postData": {
+    "childWorkflowEnable": true,
+    "description": "默认描述",
+    "source": "agent-default",
+    "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "features": {
+     "isHasChildWorkflowNode": false,
+     "isHasFrontInteractionNode": false,
+     "language": "zh_CN",
+     "dynamicVersion": 1787322599428
+    },
+    "base64Data": "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",
+    "name": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "draftVersion": "V1.0.1",
+    "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "agentCode": null
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+     "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+     "workflowDesc": "默认描述",
+     "draftVersion": "V1.0.1"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 24392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 25391,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 26305,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/MODEL_CENTER/getImageModelList",
+   "postData": {},
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "ext": {},
+    "header": {
+     "date": "2026-08-21 22:40:17",
+     "rpcId": "",
+     "traceId": "a40b457ec175f3c8e232bbfa5b424cb2"
+    },
+    "result": [
+     {
+      "generateNumShow": false,
+      "guideDensityValueShow": false,
+      "imageModelType": 1,
+      "modelAssetName": "wanx2.1-t2i-turbo(文生图模型)",
+      "modelCode": "wanx2.1-t2i-turbo",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "negativePromptShow": false,
+      "picRatioShow": false,
+      "randomSeedShow": false,
+      "referencePicShow": false,
+      "stepsShow": false,
+      "trial": false
+     },
+     {
+      "generateNumShow": false,
+      "guideDensityValueShow": false,
+      "imageModelType": 1,
+      "modelAssetName": "wan2.2-t2i-flash(文生图模型)",
+      "modelCode": "wan2.2-t2i-flash",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "negativePromptShow": false,
+      "picRatioShow": false,
+      "randomSeedShow": false,
+      "referencePicShow": false,
+      "stepsShow": false,
+      "trial": false
+     },
+     {
+      "generateNumShow": false,
+      "guideDensityValueShow": false,
+      "imageModelType": 1,
+      "modelAssetName": "wan2.2-t2i-plus(文生图模型)",
+      "modelCode": "wan2.2-t2i-plus",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "negativePromptShow": false,
+      "picRatioShow": false,
+      "randomSeedShow": false,
+      "referencePicShow": false,
+      "stepsShow": false,
+      "trial": false
+     },
+     {
+      "generateNumShow": false,
+      "guideDensityValueShow": false,
+      "imageModelType": 2,
+      "modelAssetName": "wanx-background-generation-v2(背景生成模型)",
+      "modelCode": "wanx-background-generation-v2",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "negativePromptShow": false,
+      "picRatioShow": false,
+      "randomSeedShow": false,
+      "referencePicShow": false,
+      "stepsShow": false,
+      "trial": false
+     },
+     {
+      "generateNumShow": false,
+      "guideDensityValueShow": false,
+      "imageModelType": 3,
+      "modelAssetName": "image-out-painting(扩图模型)",
+      "modelCode": "image-out-painting",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "negativePromptShow": false,
+      "picRatioShow": false,
+      "randomSeedShow": false,
+      "referencePicShow": false,
+      "stepsShow": false,
+      "trial": false
+     }
+    ],
+    "success": true,
+    "total": 5,
+    "validateErrors": {}
+   }
+  },
+  {
+   "dt": 26389,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 26526,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/flow_saveOrUpdate",
+   "postData": {
+    "childWorkflowEnable": true,
+    "description": "默认描述",
+    "source": "agent-default",
+    "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "features": {
+     "isHasChildWorkflowNode": false,
+     "isHasFrontInteractionNode": false,
+     "language": "zh_CN",
+     "dynamicVersion": 1787322599428
+    },
+    "base64Data": "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",
+    "name": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "draftVersion": "V1.0.1",
+    "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "agentCode": null
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+     "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+     "workflowDesc": "默认描述",
+     "draftVersion": "V1.0.1"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 27393,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 28389,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 29392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 30391,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 30418,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/flow_saveOrUpdate",
+   "postData": {
+    "childWorkflowEnable": true,
+    "description": "默认描述",
+    "source": "agent-default",
+    "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "features": {
+     "isHasChildWorkflowNode": false,
+     "isHasFrontInteractionNode": false,
+     "language": "zh_CN",
+     "dynamicVersion": 1787322599428
+    },
+    "base64Data": "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",
+    "name": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "draftVersion": "V1.0.1",
+    "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "agentCode": null
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+     "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+     "workflowDesc": "默认描述",
+     "draftVersion": "V1.0.1"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 31392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 32392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 33392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 34391,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 35392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 36391,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 37392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 38392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 39392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 40391,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 40996,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/MODEL_CENTER/getImageModelList",
+   "postData": {},
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "ext": {},
+    "header": {
+     "date": "2026-08-21 22:40:31",
+     "rpcId": "",
+     "traceId": "760085af4039c5bab3671109f272636e"
+    },
+    "result": [
+     {
+      "generateNumShow": false,
+      "guideDensityValueShow": false,
+      "imageModelType": 1,
+      "modelAssetName": "wanx2.1-t2i-turbo(文生图模型)",
+      "modelCode": "wanx2.1-t2i-turbo",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "negativePromptShow": false,
+      "picRatioShow": false,
+      "randomSeedShow": false,
+      "referencePicShow": false,
+      "stepsShow": false,
+      "trial": false
+     },
+     {
+      "generateNumShow": false,
+      "guideDensityValueShow": false,
+      "imageModelType": 1,
+      "modelAssetName": "wan2.2-t2i-flash(文生图模型)",
+      "modelCode": "wan2.2-t2i-flash",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "negativePromptShow": false,
+      "picRatioShow": false,
+      "randomSeedShow": false,
+      "referencePicShow": false,
+      "stepsShow": false,
+      "trial": false
+     },
+     {
+      "generateNumShow": false,
+      "guideDensityValueShow": false,
+      "imageModelType": 1,
+      "modelAssetName": "wan2.2-t2i-plus(文生图模型)",
+      "modelCode": "wan2.2-t2i-plus",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "negativePromptShow": false,
+      "picRatioShow": false,
+      "randomSeedShow": false,
+      "referencePicShow": false,
+      "stepsShow": false,
+      "trial": false
+     },
+     {
+      "generateNumShow": false,
+      "guideDensityValueShow": false,
+      "imageModelType": 2,
+      "modelAssetName": "wanx-background-generation-v2(背景生成模型)",
+      "modelCode": "wanx-background-generation-v2",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "negativePromptShow": false,
+      "picRatioShow": false,
+      "randomSeedShow": false,
+      "referencePicShow": false,
+      "stepsShow": false,
+      "trial": false
+     },
+     {
+      "generateNumShow": false,
+      "guideDensityValueShow": false,
+      "imageModelType": 3,
+      "modelAssetName": "image-out-painting(扩图模型)",
+      "modelCode": "image-out-painting",
+      "modelLogo": "https://img.alicdn.com/imgextra/i1/O1CN011Ipez31bKJss23gLg_!!6000000003446-2-tps-40-40.png",
+      "negativePromptShow": false,
+      "picRatioShow": false,
+      "randomSeedShow": false,
+      "referencePicShow": false,
+      "stepsShow": false,
+      "trial": false
+     }
+    ],
+    "success": true,
+    "total": 5,
+    "validateErrors": {}
+   }
+  },
+  {
+   "dt": 41217,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/flow_saveOrUpdate",
+   "postData": {
+    "childWorkflowEnable": true,
+    "description": "默认描述",
+    "source": "agent-default",
+    "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "features": {
+     "isHasChildWorkflowNode": false,
+     "isHasFrontInteractionNode": false,
+     "language": "zh_CN",
+     "dynamicVersion": 1787322599428
+    },
+    "base64Data": "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",
+    "name": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "draftVersion": "V1.0.1",
+    "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "agentCode": null
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+     "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+     "workflowDesc": "默认描述",
+     "draftVersion": "V1.0.1"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 41392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 42391,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 43344,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/flow_saveOrUpdate",
+   "postData": {
+    "childWorkflowEnable": true,
+    "description": "默认描述",
+    "source": "agent-default",
+    "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "features": {
+     "isHasChildWorkflowNode": false,
+     "isHasFrontInteractionNode": false,
+     "language": "zh_CN",
+     "dynamicVersion": 1787322599428
+    },
+    "base64Data": "H4sIAAAAAAACA+1a63PT2BX/V7pKPyKwZPkhf6OEgZRXISxtp2WYK+nKFpGlRJLzWMYzWR4JECDpLJQt7+ySgXYHwnZgeQX4X7aRbD7tv9Bzr2TZcuQgOwaSGZjMIEv3nnvO77yPdIoxTAXbTOFvpxjFQsWiZhSZgop0G29jFOQgpnCKLjmIypgpMO7KtPtgjtlG7w1iB2k6WaEZoxWHEtHs4SnbwWWm4FgVoGFhFVtDhmqSZQ6edPY6ZdjCAAlk2BPYav7W7CNYjRx+dGqUHDrsWIStbcxJ2zT+hJySv97WyqM6bu4n1P0r2TRsBxnOMaRXCAGmSu4p5LJiY+twBVtTZEMbeQuPVTQLK00esC3DgtrVh9755/W337nnlmo3zrpX7gIG768/dueXgPLml1kuIWevZjtmD1JTeWfc+f+6yy/ry7e3hLxEx0NKT6JeXV59MV1/9dPq6zdDg1tDuaYxji0bOZppdCX06soNUCiI6z1+5l3/5f31p+7MOYIBVfRWkR5MuyupwW1rj66GqvbuzdaXZz6aqIekk1h2+iOqqumYrChpumJhY0tEW8IzJduFWb64uLpyz/vn7OrrX2o/v3bvzG0JQySSfm3pPQrq3nri3p7eMoLSYqBHSRcu1x48YarHw+2hj3Ta7m/0iZDg9PPilgCK8oMNuRuk3JVrkItW3y163y5TjMyK00Nl1YHfgZyQxplsLsfKoqSwQlrBbF4QMSvIakqV83mFz6VO/H57a40UB04UvjUQUNYIY/uh5gDWj2+a6muDuETrqP4i8xlrtD5YC03B/TeVz1HEbdRG2suxPpvJZqn2+uBKHwOez1IObhCLoLCLKxt7R+JLtfilWvxSLfZULW7QnVvrvv5Gtz5UlFV/chfwBCdbTjDMg7BZYJKISA6rGIP+bLAKBCc0hdhIOpUC4bqgMmraGsljRAOTTIHLw/4ppsAL6Woon1yBkqhMlIJ10HuLfCWsFUsAkJAl6k0yu6y9/s67fXfN7DK2xA6o9NWd2vQa8a+AiY7Gp5gGjvE0ertpICEVHY9jIMARtoYr0kH6OGCNqmjymL5PKpZH17Uk31MCQyIF+OwrguGdW9Qh42a+X2D7AGxR/8OG0up9AkqrSi4vgctgxAoZlWdRLqeyWM2itJiV4Ie4rvc1PGqnZJt6xcGBZ4ErUs9i05lqIEjCo9pcVEz15KL5xC7q3n/gPVwkWXwdL+2rdXUK9mksKiIPMSyf5nOswAmIzYtShk2JssgpeTGnZjkI9j5bA+snwdC+KPTOH8d37xnURmJsaAQDuAzHNKN3Aw9SoZ57+P7MQ9+eaErbTDg4JbMCuv4AEMGqBhL7Jyt/PnmseLIjEnw8Et707fr0mfq72drDuU2HhH/gB4DwFzVwGD0waFVG9uzsiEO6g0XcvOPevwz9i7d4nobk7nEIi6FoiO2Awa/Tc6tv7nnfL3vP5urL19yL//YuzP22cqm+/ByKjAFooNz5pdUXj6AGC3ijPfn/pk8HQ5zlp7+t3Pi7MUCgaOQPOE7Xy4eojwS6OICsEcWcMBj6aJdpqFqRiFQG9PT9ZhHkY0qOM2oXduzQysXtSNdkxYDeu0x+Aq8W2qHxOw5xuw6muPRf90Bw5AzDHtslpQedoye++iqbCv5luHSG5VkgxQop+Ns+SmGnBwUxaRDjURvjEfYIxw4CQpqus4cnsMFywh9o1LM0pB+Dphzi5NfQSBcgRioa6dI1p+HOlN4uX/dKg57FsUpAb8ynJ1HFDEIcdZqJh+7dadvYScYQNpCk42GMLLkUEvFvHi1pxkhrCC75E6dd0DZTTkEteBLLFRLzD/js2rBep9myJXGBVloTVxLX+HDZmJBKW07KCH5OSmdT3eQkLifQtoAcLAIPqXwesXBuGpKhLLCiyHOsJKdEXhTyCpflmbW0W/NXgMuIYU7oWCli1sLgwngc6a04JTwomvlsqslAG6UpydKUUMtHUKBP34/LaPIIlpEOplYxQMgM3NKMYdm0YG9qe2YbNT7IwyEcfmoCD3Ow0fC+MDi15NxIJtvZWNAerRot2I/Ttac/tMSlZqkY0BkLZsBrupZ2is2KLKBNDABBE+RQQKm/JC8++zUXH+jQ2sU0c5E42x6Eo3H3VGtlG53Ck4Xd9GdYDWJFG5HBGKa7bf7ivgaRtG8a+oBTYip4cvCwWbFk3P5wPMyO0dLeN5Hq2lKcrGuKlVjHSXwPdEyPHfhdjHIaOkjoxE0d+LkveGPRUQ0R3Tf8o9vI0S89rFMtVAkdGtvwfiRh3d5NI1GzTyqjYpB92p4oUwYqa/K+Roz0Hzd8vxrJDxEzq91dqi/P+FGFWERbBhCCriTVllTCUC/wYahHagYSRp5jeayqrCBxWcg2WZGV0nkspwQ5I0m5ZKGe3GLX6Ckh/bjeJhqEW0qgnsMwge2H1tazE8DetSfe5cf++jiA+aDt64hwLh8inFMhXeclsNQsyrCCksGsyKkci3kO57O8lEK5TDKEKbiQSCcszcGRQJXsiCjI3e7umLM6oH14TUrzY/7GB49dJ5vA36JOXCUa6vJl42aTgLY41ByABnJwcYrW0yqq6E6so1Cd0QgeirnTstBUi5NcfenO/MtduAL9FPQvtddng8Sznr9QXfs749wlqEiFju7CNWtPLiNDTcapLK8IENhTco5FAlijxGdklMlDhM1lk7nLOIJGBAIqW0KGokccJuEhUYdRMNID0kXLrJCZF/3f/1iUXgZw7CHXnF+ZwR0HWh9/LkjOrhw+eUTeM7mP6cpwoq8eNmhGa9rbNXbV9qlFYD2hXFEPaRt+bh0hOxu0O//9+9l59/7Z2sJMnEVnfYvOrmPRMb1W28QvtHk1K/JZEYlsik9x0OghzCIun2GVnCCJopzKpNNKMpsPm9UTE6Y1ourmRKvZJzyn06fMgRU0KNP2PcGLlw2Ey74aREzw9OFqgBdCtp5hPF9afXPLe/atd+FBffFSnG0Er23yCW0jmI53MA1R5iUljbKsmlegfhJBb2Ja8OtcxOfkdJ5LJzMNWoeyRWxgi34tEammk53S+T0RIWJ/c2xqbOgvMhNO9eiRLfFiiPyOHevefFu7MBu8xu2pY00iQWQ83WJCDba6t6D1DOXmW/fMfO3qXe/8QoyVZIIanUt1riH5BCGEGDG0Dn5+sWkjs9dPd4XgJ0hRGSXS0tbDt7bgSeIWl+rXwkh2iH+cOEEnOkn2+gexSd6uOMgqYifGlv0HoVTNdf5Fwnc3xKM2LT5JJn2945NojtgbPglHlLH4JNm7ieznOPl4CMsj4fyj21kEEX23ZZkW3Y3JVRCACCXodg1w9SFDNkmEow2eo5HikqlfPF07/dK79Z/6uzvelSX38SXv2lOfISpjg+hxosNuO+9PzFXCZvMTc5WwH/jEXCUs1z4xVwlrhY/OVZSoalplkofjKHqPfnQX/uHNL9Tuv6ovX1598cp9d85d/On94kvS1h6v/h+ifghH9TcAAA==",
+    "name": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "draftVersion": "V1.0.1",
+    "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "agentCode": null
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+     "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+     "workflowDesc": "默认描述",
+     "draftVersion": "V1.0.1"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 43363,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/agent_param_list",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": [
+     {
+      "variableType": "String",
+      "code": "tenantId",
+      "name": "租户ID",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "userId",
+      "name": "用户ID",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "userName",
+      "name": "用户帐号名称",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "sysTime",
+      "name": "系统时间",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "language",
+      "name": "多语言标识",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "memberId",
+      "name": "进线会员的账号ID",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "formId",
+      "name": "网页渠道ID",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "robotCode",
+      "name": "机器人code",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "nick",
+      "name": "进线会员的昵称",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "serviceId",
+      "name": "客服人员账号ID",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "serviceName",
+      "name": "客服人员账号名称",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "phoneNum",
+      "name": "进线会员的手机号",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "onlineChannelSource",
+      "name": "在线渠道",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "initContext",
+      "name": "渠道上下文参数(JSON)",
+      "type": "system_param"
+     }
+    ],
+    "retry": false
+   }
+  },
+  {
+   "dt": 43389,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 44392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 45391,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 46126,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/flow_saveOrUpdate",
+   "postData": {
+    "childWorkflowEnable": true,
+    "description": "默认描述",
+    "source": "agent-default",
+    "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "features": {
+     "isHasChildWorkflowNode": false,
+     "isHasFrontInteractionNode": false,
+     "language": "zh_CN",
+     "dynamicVersion": 1787322599428
+    },
+    "base64Data": "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",
+    "name": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "draftVersion": "V1.0.1",
+    "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "agentCode": null
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+     "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+     "workflowDesc": "默认描述",
+     "draftVersion": "V1.0.1"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 46150,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/agent_param_list",
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": [
+     {
+      "variableType": "String",
+      "code": "tenantId",
+      "name": "租户ID",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "userId",
+      "name": "用户ID",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "userName",
+      "name": "用户帐号名称",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "sysTime",
+      "name": "系统时间",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "language",
+      "name": "多语言标识",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "memberId",
+      "name": "进线会员的账号ID",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "formId",
+      "name": "网页渠道ID",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "robotCode",
+      "name": "机器人code",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "nick",
+      "name": "进线会员的昵称",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "serviceId",
+      "name": "客服人员账号ID",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "serviceName",
+      "name": "客服人员账号名称",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "phoneNum",
+      "name": "进线会员的手机号",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "onlineChannelSource",
+      "name": "在线渠道",
+      "type": "system_param"
+     },
+     {
+      "variableType": "String",
+      "code": "initContext",
+      "name": "渠道上下文参数(JSON)",
+      "type": "system_param"
+     }
+    ],
+    "retry": false
+   }
+  },
+  {
+   "dt": 46391,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 47391,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 48392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 49128,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/flow_saveOrUpdate",
+   "postData": {
+    "childWorkflowEnable": true,
+    "description": "默认描述",
+    "source": "agent-default",
+    "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "features": {
+     "isHasChildWorkflowNode": false,
+     "isHasFrontInteractionNode": false,
+     "language": "zh_CN",
+     "dynamicVersion": 1787322599428
+    },
+    "base64Data": "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",
+    "name": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "draftVersion": "V1.0.1",
+    "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+    "agentCode": null
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "workflowCode": "4fd01e184ce449a6bb63cac87c6f8dd9",
+     "workflowName": "对话编排agent_HOJdSwxN1787314947698的工作流",
+     "workflowDesc": "默认描述",
+     "draftVersion": "V1.0.1"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 49392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 50390,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 51392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 52392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 53391,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 54391,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 55392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 56392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 57392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 58392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 59392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 60392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 61391,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 62392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 63393,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 64392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 65392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  },
+  {
+   "dt": 66392,
+   "method": "POST",
+   "url": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+   "postData": {
+    "code": "4fd01e184ce449a6bb63cac87c6f8dd9",
+    "dataType": "workflow",
+    "wsId": "DqgSxbJg"
+   },
+   "status": 200,
+   "mimeType": "application/json",
+   "resBody": {
+    "success": true,
+    "present": true,
+    "value": {
+     "isLockedSuccess": true,
+     "userName": "汇流"
+    },
+    "retry": false
+   }
+  }
+ ]
+}
