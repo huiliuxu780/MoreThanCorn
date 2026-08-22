@@ -1,4 +1,4 @@
-import { ArrowLeft, MoreHorizontal } from "lucide-react"
+import { ArrowLeft, Copy, MoreHorizontal, RotateCw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -45,7 +45,7 @@ import { useListQuery } from "@/hooks/use-list-query"
 import { formatDateTime } from "@/lib/time"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
 import { getRun, listExecutions } from "@/services/mock-service"
-import { realRunDetail, wfEnabled } from "@/services/wf-api"
+import { realRunDetail, wfEnabled, WF_BASE } from "@/services/wf-api"
 import type { InteractionExecution } from "@/domain/types"
 
 export default function RunDetailPage() {
@@ -54,6 +54,13 @@ export default function RunDetailPage() {
   const { data: run, loading, error, retry } = useAsyncData(() => (wfEnabled() ? realRunDetail(runId).then((r) => r.run) : getRun(runId)), [runId])
   const { params, update } = useListQuery(50)
   const filters = useMemo(() => parseListFilters(params.filters), [params.filters])
+  const [events, setEvents] = useState<{ sequence: number; type: string; nodeId: string | null; at: string }[]>([])
+  useEffect(() => {
+    if (wfEnabled() && runId) {
+      fetch(`${WF_BASE}/api/runs/${runId}/events-list`).then((r) => r.json()).then((r) => setEvents(r.items ?? [])).catch(() => undefined)
+    }
+  }, [runId])
+
   const { data: executions, loading: execLoading } = useAsyncData(
     () => (wfEnabled() ? realRunDetail(runId).then((r) => r.executions) : listExecutions(runId, params)),
     [runId, params.search, params.page, params.pageSize, params.filters],
@@ -97,6 +104,18 @@ export default function RunDetailPage() {
               ) : run.status === "FAILED" || run.status === "PARTIAL_SUCCESS" ? (
                 <Button variant="outline" size="sm" onClick={() => setRerunOpen(true)}>重新运行</Button>
               ) : null}
+                  {wfEnabled() && run?.status === "FAILED" && (
+                    <Button variant="outline" size="sm" className="gap-1" onClick={async () => {
+                      const r = await fetch(`${WF_BASE}/api/runs/${runId}/retry`, { method: "POST" })
+                      if (r.ok) { toast.success("已创建重试 Run"); retry() } else toast.error("重试失败")
+                    }}><RotateCw className="size-3.5" /> 重试</Button>
+                  )}
+                  {wfEnabled() && (
+                    <Button variant="outline" size="sm" className="gap-1" onClick={async () => {
+                      await navigator.clipboard.writeText(JSON.stringify(run, null, 2))
+                      toast.success("Run JSON 已复制")
+                    }}><Copy className="size-3.5" /> 复制</Button>
+                  )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button>
@@ -179,6 +198,46 @@ export default function RunDetailPage() {
           </DefinitionRow>
         </div>
       </div>
+
+      {/* 节点时间线 */}
+      {executions && executions.items.length > 0 && (
+        <div className="space-y-2">
+          <SectionHeader title="节点时间线" description="按执行顺序与耗时展示" />
+          <div className="space-y-1.5 rounded-lg border bg-card px-4 py-3">
+            {(() => {
+              const max = Math.max(...executions.items.map((e) => parseInt(e.duration ?? "0") || 1), 1)
+              return executions.items.map((e) => (
+                <div key={e.id} className="flex items-center gap-3 text-xs">
+                  <span className="w-28 truncate" style={{ color: "#1F2329" }}>{e.interactionId}</span>
+                  <span className="w-14" style={{ color: "#B9C2CF" }}>{e.agentName}</span>
+                  <div className="h-2 flex-1 rounded bg-neutral-100">
+                    <div className={`h-2 rounded ${e.status === "ERROR" ? "bg-red-400" : e.status === "SKIPPED" ? "bg-neutral-300" : "bg-emerald-400"}`}
+                      style={{ width: `${Math.max(4, Math.round((parseInt(e.duration ?? "0") || 1) / max * 100))}%` }} />
+                  </div>
+                  <span className="w-16 text-right" style={{ color: "#5A6472" }}>{e.duration ?? "—"}</span>
+                </div>
+              ))
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* 事件流 */}
+      {events.length > 0 && (
+        <div className="space-y-2">
+          <SectionHeader title="事件流" description="run_event 序列（SSE 同源）" />
+          <div className="max-h-64 overflow-y-auto rounded-lg border bg-card px-4 py-2">
+            {events.map((e) => (
+              <div key={e.sequence} className="flex items-center gap-3 border-b py-1 text-xs last:border-0" style={{ borderColor: "#EDF0F4" }}>
+                <span className="w-8 text-right" style={{ color: "#B9C2CF" }}>#{e.sequence}</span>
+                <span className="w-40 font-mono" style={{ color: "#1F2329" }}>{e.type}</span>
+                <span className="flex-1 truncate" style={{ color: "#5A6472" }}>{e.nodeId ?? ""}</span>
+                <span style={{ color: "#B9C2CF" }}>{new Date(e.at).toLocaleTimeString()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Interaction Executions */}
       <div className="space-y-2">

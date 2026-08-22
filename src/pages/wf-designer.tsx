@@ -855,7 +855,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const [savedAt, setSavedAt] = useState("")
   const [revision, setRevision] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [drawer, setDrawer] = useState<"config" | "debug" | "history" | "runs" | "schedule" | "agent" | null>(null)
+  const [drawer, setDrawer] = useState<"config" | "debug" | "history" | "runs" | "schedule" | "agent" | "eval" | "evo" | null>(null)
   const [showMiniMap, setShowMiniMap] = useState(true)
   const [runState, setRunState] = useState<Record<string, "running" | "success" | "failed" | "skipped">>({})
   const [lastRunId, setLastRunId] = useState<string | null>(null)
@@ -1098,7 +1098,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
         </div>
         {agentMeta && (
           <div className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg p-0.5" style={{ background: "#F1F3F7" }}>
-            {[["Agent搭建", () => setDrawer(null)], ["运行观测", () => setDrawer("runs")], ["效果评测", () => toast.success("规划中")], ["进化", () => toast.success("规划中")]].map(([label, fn], i) => (
+            {[["Agent搭建", () => setDrawer(null)], ["运行观测", () => setDrawer("runs")], ["效果评测", () => setDrawer("eval")], ["进化", () => setDrawer("evo")]].map(([label, fn], i) => (
               <button key={label as string} className="rounded-md px-3 py-1 text-[13px]" style={i === 0 ? { background: "#fff", color: C.ink, boxShadow: "0 1px 3px rgba(31,35,41,.12)" } : { color: C.ink2 }} onClick={() => (fn as () => void)()}>{label as string}</button>
             ))}
           </div>
@@ -1164,6 +1164,8 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
 
       {/* 画布 */}
       <div className="flex min-h-0 flex-1">
+      {drawer === "eval" && <EvalPanel workflowId={workflowId} onClose={() => setDrawer(null)} />}
+      {drawer === "evo" && <EvoPanel workflowId={workflowId} onClose={() => setDrawer(null)} />}
       {agentMeta && agentId && <AgentConfigDrawer agentId={agentId} onClose={() => undefined} inline avatar={agentAvatar} onAvatar={(v) => { setAgentAvatar(v); fetch(`${WF_BASE}/api/agents/${agentId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ avatar: v }) }).catch(() => undefined) }} />}
       <div className="relative flex-1">
         <ReactFlow
@@ -1318,6 +1320,113 @@ function NodeSearch({ nodes, onPick }: { nodes: WfNode[]; onPick: (id: string) =
             <span className="size-2 rounded-full" style={{ background: C.primary }} /> {n.name}
           </button>
         ))}
+      </div>
+    </div>
+  )
+}
+
+
+/* ============ 效果评测面板 ============ */
+function EvalPanel({ workflowId, onClose }: { workflowId: string; onClose: () => void }) {
+  const [samples, setSamples] = useState<{ id: string; name: string; input: Record<string, unknown> }[]>([])
+  const [summary, setSummary] = useState<Record<string, any> | null>(null)
+  const [name, setName] = useState("")
+  const [inputJson, setInputJson] = useState('{ "userQuery": "你好" }')
+  const load = () => {
+    fetch(`${WF_BASE}/api/eval-samples?workflowId=${workflowId}`).then((r) => r.json()).then((r) => setSamples(r.items)).catch(() => undefined)
+    fetch(`${WF_BASE}/api/workflows/${workflowId}/eval-summary`).then((r) => r.json()).then(setSummary).catch(() => undefined)
+  }
+  useEffect(() => { load() }, [workflowId])
+  return (
+    <div className="absolute inset-y-0 right-0 z-20 flex w-[420px] max-w-[92vw] flex-col border-l bg-white" style={{ borderColor: C.cardBorder }}>
+      <div className="flex items-center justify-between px-4 py-3">
+        <span className="text-[15px] font-semibold" style={{ color: C.ink }}>效果评测</span>
+        <button onClick={onClose}><X className="size-4 text-neutral-500" /></button>
+      </div>
+      <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4">
+        {summary && (
+          <div className="grid grid-cols-4 gap-2 text-center">
+            {[["总数", summary.total], ["成功", summary.succeeded], ["失败", summary.failed], ["成功率", `${Math.round((summary.successRate ?? 0) * 100)}%`]].map(([l, v]) => (
+              <div key={l as string} className="rounded-lg border px-2 py-2" style={{ borderColor: C.cardBorder }}>
+                <div className="text-[11px]" style={{ color: C.ink3 }}>{l}</div>
+                <div className="text-sm font-semibold" style={{ color: C.ink }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="space-y-2">
+          <div className="text-[13px] font-medium" style={{ color: C.ink }}>| 评测集</div>
+          {samples.map((sp) => (
+            <div key={sp.id} className="flex items-center gap-2 rounded border px-2 py-1 text-xs" style={{ borderColor: C.cardBorder }}>
+              <span className="flex-1 truncate" style={{ color: C.ink }}>{sp.name}</span>
+              <button className="text-neutral-400" onClick={async () => { await fetch(`${WF_BASE}/api/eval-samples/${sp.id}`, { method: "DELETE" }); load() }}><X className="size-3" /></button>
+            </div>
+          ))}
+          <Input className="h-7 text-xs" placeholder="样本名称" value={name} onChange={(e) => setName(e.target.value)} />
+          <Textarea className="min-h-16 text-xs" value={inputJson} onChange={(e) => setInputJson(e.target.value)} />
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={async () => {
+              try {
+                await fetch(`${WF_BASE}/api/eval-samples`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workflowId, name: name || "样本", input: JSON.parse(inputJson || "{}") }) })
+                setName(""); load()
+              } catch { toast.error("输入 JSON 非法") }
+            }}>添加样本</Button>
+            <Button size="sm" className="bg-black text-white hover:bg-neutral-800" onClick={async () => {
+              await fetch(`${WF_BASE}/api/workflows/${workflowId}/eval-run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+              toast.success("评测已启动"); setTimeout(load, 4000)
+            }}>运行评测</Button>
+          </div>
+        </div>
+        {summary && summary.samples?.length > 0 && (
+          <div className="space-y-1">
+            <div className="text-[13px] font-medium" style={{ color: C.ink }}>| 评测结果</div>
+            {summary.samples.map((r: any) => (
+              <div key={r.runId} className="flex items-center gap-2 rounded border px-2 py-1 text-xs" style={{ borderColor: C.cardBorder }}>
+                <span className={`size-2 rounded-full ${r.status === "succeeded" ? "bg-emerald-400" : "bg-red-400"}`} />
+                <span className="w-24 font-mono" style={{ color: C.ink3 }}>{r.runId.slice(0, 8)}</span>
+                <span className="flex-1 truncate" style={{ color: C.ink2 }}>{r.output || "-"}</span>
+                <span style={{ color: C.ink3 }}>{r.durationMs != null ? `${r.durationMs}ms` : ""}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ============ 进化面板 ============ */
+function EvoPanel({ workflowId, onClose }: { workflowId: string; onClose: () => void }) {
+  const [data, setData] = useState<{ versions: any[]; failedCases: any[] } | null>(null)
+  useEffect(() => {
+    fetch(`${WF_BASE}/api/workflows/${workflowId}/version-metrics`).then((r) => r.json()).then(setData).catch(() => undefined)
+  }, [workflowId])
+  return (
+    <div className="absolute inset-y-0 right-0 z-20 flex w-[420px] max-w-[92vw] flex-col border-l bg-white" style={{ borderColor: C.cardBorder }}>
+      <div className="flex items-center justify-between px-4 py-3">
+        <span className="text-[15px] font-semibold" style={{ color: C.ink }}>进化</span>
+        <button onClick={onClose}><X className="size-4 text-neutral-500" /></button>
+      </div>
+      <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4">
+        <div className="space-y-1">
+          <div className="text-[13px] font-medium" style={{ color: C.ink }}>| 版本指标</div>
+          {data?.versions.length ? data.versions.map((v: any) => (
+            <div key={v.versionNo} className="flex items-center gap-2 rounded border px-2 py-1 text-xs" style={{ borderColor: C.cardBorder }}>
+              <span className="w-12 font-medium" style={{ color: C.ink }}>V{v.versionNo}</span>
+              <span style={{ color: C.ink3 }}>{v.runs} 次运行</span>
+              <span className="flex-1 text-right" style={{ color: C.ink2 }}>成功率 {Math.round(v.successRate * 100)}%</span>
+            </div>
+          )) : <div className="text-xs" style={{ color: C.ink3 }}>暂无发布版本</div>}
+        </div>
+        <div className="space-y-1">
+          <div className="text-[13px] font-medium" style={{ color: C.ink }}>| 进化建议（失败案例）</div>
+          {data?.failedCases.length ? data.failedCases.map((f: any) => (
+            <div key={f.runId} className="rounded border px-2 py-1 text-xs" style={{ borderColor: C.cardBorder }}>
+              <div className="font-mono" style={{ color: C.ink3 }}>{f.runId.slice(0, 8)}</div>
+              <div style={{ color: C.danger }}>{f.error || "-"}</div>
+            </div>
+          )) : <div className="text-xs" style={{ color: C.ink3 }}>暂无失败案例</div>}
+        </div>
       </div>
     </div>
   )

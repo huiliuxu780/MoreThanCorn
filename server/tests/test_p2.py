@@ -97,7 +97,7 @@ def test_models_registry_roundtrip():
     client.post("/api/models", json={"providerId": p["id"], "modelKey": "qwen-test",
                                      "capabilities": ["text"]})
     models = client.get("/api/registry/models").json()
-    assert any(m["modelKey"] == "qwen-test" for m in models)
+    assert any(m["modelKey"] == "qwen-test" for m in models["items"])
 
 
 def test_auth_middleware_optional():

@@ -418,3 +418,82 @@ def get_quality_result(rid: str, db: Session = Depends(get_db)):
             "structuredOutput": r.structured_output, "score": r.score, "risk": r.risk,
             "critical": r.critical, "issueCount": r.issue_count, "review": r.review_status,
             "evidence": [{"id": e.id, "kind": e.kind, "locator": e.locator, "text": e.text, "sourceRef": e.source_ref} for e in evs]}
+
+
+# ---------- 效果评测 / 进化 ----------
+
+@router.get("/api/eval-samples")
+def list_eval_samples(workflowId: str = "", db: Session = Depends(get_db)):
+    from ..models import EvalSample
+    q = db.query(EvalSample)
+    if workflowId:
+        q = q.filter(EvalSample.workflow_id == workflowId)
+    return {"items": [{"id": s.id, "workflowId": s.workflow_id, "name": s.name,
+                       "input": s.input, "expected": s.expected} for s in q.all()]}
+
+
+@router.post("/api/eval-samples", status_code=201)
+def create_eval_sample(payload: dict, db: Session = Depends(get_db)):
+    from ..models import EvalSample
+    s = EvalSample(workflow_id=payload["workflowId"], name=payload["name"],
+                   input=payload.get("input", {}), expected=payload.get("expected"))
+    db.add(s)
+    db.commit()
+    return {"id": s.id, "name": s.name}
+
+
+@router.delete("/api/eval-samples/{sid}")
+def delete_eval_sample(sid: str, db: Session = Depends(get_db)):
+    from ..models import EvalSample
+    s = db.get(EvalSample, sid)
+    if not s:
+        raise HTTPException(404, "样本不存在")
+    db.delete(s)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/api/workflows/{wid}/eval-run")
+def eval_run(wid: str, payload: dict | None = None, db: Session = Depends(get_db)):
+    from ..models import EvalSample
+    samples = db.query(EvalSample).filter_by(workflow_id=wid).all()
+    ids = (payload or {}).get("sampleIds") or [s.id for s in samples]
+    run_ids = []
+    for s in samples:
+        if s.id not in ids:
+            continue
+        run = create_run(db, wid, "eval", s.input or {})
+        run_ids.append(run.id)
+    return {"runIds": run_ids}
+
+
+@router.get("/api/workflows/{wid}/eval-summary")
+def eval_summary(wid: str, db: Session = Depends(get_db)):
+    runs = db.query(Run).filter(Run.workflow_id == wid, Run.trigger == "eval").all()
+    total = len(runs)
+    succeeded = sum(1 for r in runs if r.status == "succeeded")
+    failed = sum(1 for r in runs if r.status == "failed")
+    durs = [r.duration_ms for r in runs if r.duration_ms is not None]
+    return {"total": total, "succeeded": succeeded, "failed": failed,
+            "successRate": round(succeeded / total, 3) if total else 0,
+            "avgDurationMs": int(sum(durs) / len(durs)) if durs else 0,
+            "samples": [{"runId": r.id, "status": r.status, "durationMs": r.duration_ms,
+                         "output": (r.output or {}).get("output", "")[:120]} for r in runs]}
+
+
+@router.get("/api/workflows/{wid}/version-metrics")
+def version_metrics(wid: str, db: Session = Depends(get_db)):
+    from ..models import WorkflowVersion
+    vers = db.query(WorkflowVersion).filter_by(workflow_id=wid).order_by(WorkflowVersion.version_no).all()
+    out = []
+    for v in vers:
+        runs = db.query(Run).filter_by(workflow_version_id=v.id).all()
+        total = len(runs)
+        succeeded = sum(1 for r in runs if r.status == "succeeded")
+        out.append({"versionNo": v.version_no, "note": v.note, "runs": total,
+                    "succeeded": succeeded,
+                    "successRate": round(succeeded / total, 3) if total else 0,
+                    "publishedAt": v.published_at.isoformat()})
+    failed_cases = [{"runId": r.id, "error": (r.error or {}).get("message", "")[:160]}
+                    for r in db.query(Run).filter(Run.workflow_id == wid, Run.status == "failed").order_by(Run.created_at.desc()).limit(10)]
+    return {"versions": out, "failedCases": failed_cases}

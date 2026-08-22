@@ -295,3 +295,15 @@ class Evidence(Base):
     text: Mapped[str] = mapped_column(Text, default="")
     source_ref: Mapped[str] = mapped_column(String(128), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class EvalSample(Base):
+    """效果评测样本：固定输入+可选期望输出。"""
+    __tablename__ = "eval_sample"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(64))
+    input: Mapped[dict] = mapped_column(JSONB, default=dict)
+    expected: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

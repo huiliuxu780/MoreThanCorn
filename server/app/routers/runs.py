@@ -94,3 +94,10 @@ async def run_events(run_id: str, request: Request,
             await asyncio.sleep(0.5)
             idle += 1
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.get("/{run_id}/events-list")
+def events_list(run_id: str, db: Session = Depends(get_db)):
+    evs = db.query(RunEvent).filter_by(run_id=run_id).order_by(RunEvent.sequence).all()
+    return {"items": [{"sequence": e.sequence, "type": e.type, "nodeId": e.node_id,
+                       "at": e.created_at.isoformat(), "payload": e.payload} for e in evs]}
