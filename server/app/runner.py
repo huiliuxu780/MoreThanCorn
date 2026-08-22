@@ -119,15 +119,16 @@ def _call_model(db: Session, model_id: str, prompt: str) -> tuple[str, dict]:
     import os
     base = os.environ.get("WF_LLM_BASE_URL", "")
     secret = os.environ.get("WF_LLM_API_KEY", "")
-    m = db.execute(select(Model).where(Model.model_key == model_id)).scalars().first()
-    if not base and m:
-        prov = db.get(ModelProvider, m.provider_id)
-        if prov and prov.base_url.startswith(("http://", "https://")):
-            base = prov.base_url
-            if not secret and prov.auth_connection_id:
-                conn = db.get(Connection, prov.auth_connection_id)
-                if conn:
-                    secret = _decrypt(conn.secret_ref)
+    if not base:
+        for m in db.execute(select(Model).where(Model.model_key == model_id)).scalars().all():
+            prov = db.get(ModelProvider, m.provider_id)
+            if prov and prov.base_url.startswith(("http://", "https://")):
+                base = prov.base_url
+                if not secret and prov.auth_connection_id:
+                    conn = db.get(Connection, prov.auth_connection_id)
+                    if conn:
+                        secret = _decrypt(conn.secret_ref)
+                break
     if not base or not base.startswith(("http://", "https://")):
         return f"[mock:{model_id}] 已处理：{prompt[:120]}", {
             "promptTokens": len(prompt) // 2, "completionTokens": 60}

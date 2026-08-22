@@ -104,12 +104,15 @@ def create_model(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.get("/api/registry/models")
-def list_models(db: Session = Depends(get_db)):
+def list_models(page: int = 1, pageSize: int = 20, db: Session = Depends(get_db)):
+    total = db.execute(select(func.count(Model.id))).scalar() or 0
     rows = db.execute(select(Model, ModelProvider).join(
-        ModelProvider, Model.provider_id == ModelProvider.id, isouter=True)).all()
-    return [{"modelKey": m.model_key, "displayName": m.display_name,
-             "provider": p.name if p else "", "baseUrl": p.base_url if p else "",
-             "capabilities": m.capabilities or []} for m, p in rows]
+        ModelProvider, Model.provider_id == ModelProvider.id, isouter=True)
+        .offset((page - 1) * pageSize).limit(pageSize)).all()
+    return {"items": [{"modelKey": m.model_key, "displayName": m.display_name,
+                       "provider": p.name if p else "", "baseUrl": p.base_url if p else "",
+                       "capabilities": m.capabilities or []} for m, p in rows],
+            "total": total, "page": page, "pageSize": pageSize}
 
 
 # ---------- Tools ----------
