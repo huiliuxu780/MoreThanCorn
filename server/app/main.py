@@ -9,6 +9,19 @@ from .routers import admin, agents, registry, runs, workflows
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    from .db import SessionLocal
+    from .models import Model, ModelProvider
+    db = SessionLocal()
+    try:
+        if db.query(Model).count() == 0:
+            prov = ModelProvider(name="platform", base_url="mock://")
+            db.add(prov)
+            db.commit()
+            for key, caps in [("deepseek-r1-distill-qwen-14b", ["text"]), ("qwen-max", ["text"]), ("qwen-plus", ["text", "thinking"])]:
+                db.add(Model(provider_id=prov.id, model_key=key, display_name=key, capabilities=caps))
+            db.commit()
+    finally:
+        db.close()
     stop = start_worker()
     yield
     stop.set()

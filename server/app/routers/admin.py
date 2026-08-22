@@ -68,6 +68,12 @@ def delete_connection(cid: str, db: Session = Depends(get_db)):
 
 # ---------- Models / Providers ----------
 
+@router.get("/api/model-providers")
+def list_providers(db: Session = Depends(get_db)):
+    return [{"id": p.id, "name": p.name, "baseUrl": p.base_url, "connectionId": p.auth_connection_id}
+            for p in db.query(ModelProvider).all()]
+
+
 @router.post("/api/model-providers", status_code=201)
 def create_provider(payload: dict, db: Session = Depends(get_db)):
     p = ModelProvider(name=payload["name"], base_url=payload.get("baseUrl", ""),
@@ -331,5 +337,37 @@ def delete_workflow(wid: str, db: Session = Depends(get_db)):
     if not wf:
         raise HTTPException(404, "工作流不存在")
     db.delete(wf)
+    db.commit()
+    return {"ok": True}
+
+
+def delete_provider(pid: str, db: Session = Depends(get_db)):
+    from ..models import Model as M
+    if db.query(M).filter_by(provider_id=pid).count():
+        raise HTTPException(409, "该 Provider 下仍有模型，无法删除")
+    p = db.get(ModelProvider, pid)
+    if not p:
+        raise HTTPException(404, "Provider 不存在")
+    db.delete(p)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/api/models", status_code=201)
+def create_model(payload: dict, db: Session = Depends(get_db)):
+    m = Model(provider_id=payload["providerId"], model_key=payload["modelKey"],
+              display_name=payload.get("displayName", payload["modelKey"]),
+              capabilities=payload.get("capabilities", ["text"]))
+    db.add(m)
+    db.commit()
+    return {"id": m.id, "modelKey": m.model_key}
+
+
+@router.delete("/api/models/{mid}")
+def delete_model(mid: str, db: Session = Depends(get_db)):
+    m = db.get(Model, mid)
+    if not m:
+        raise HTTPException(404, "模型不存在")
+    db.delete(m)
     db.commit()
     return {"ok": True}

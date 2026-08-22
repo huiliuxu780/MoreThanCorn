@@ -1,4 +1,4 @@
-import {
+import { Cpu, 
   BarChart3,
   Bot,
   ChevronDown,
@@ -125,6 +125,12 @@ export const NAV_GROUPS: NavGroup[] = [
         label: UI_TERMS.navigation.connections,
         to: "/settings/connections",
         icon: Plug,
+        permission: "connection.view",
+      },
+      {
+        label: "Models",
+        to: "/settings/models",
+        icon: Cpu,
         permission: "connection.view",
       },
     ],

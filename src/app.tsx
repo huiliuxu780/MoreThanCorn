@@ -21,6 +21,7 @@ const WfWorkflowsPage = lazy(() => import("@/pages/wf-workflows-list"))
 const WfWorkflowEditorPage = lazy(() => import("@/pages/wf-designer"))
 const WfToolsPage = lazy(() => import("@/pages/wf-tools"))
 const WfConnectionsPage = lazy(() => import("@/pages/wf-connections"))
+const WfModelsPage = lazy(() => import("@/pages/wf-models"))
 const WF_API = import.meta.env.VITE_WF_API === "1"
 const ToolsPage = lazy(() => import("@/pages/tools"))
 const ToolEditorPage = lazy(() => import("@/pages/tool-editor"))
@@ -92,6 +93,7 @@ export function App() {
 
           {/* 系统级设置 */}
           <Route path="/settings/connections" element={WF_API ? <WfConnectionsPage /> : <ConnectionsPage />} />
+          <Route path="/settings/models" element={<WfModelsPage />} />
 
           <Route path="/403" element={<ForbiddenPage />} />
           <Route path="*" element={<NotFoundPage />} />

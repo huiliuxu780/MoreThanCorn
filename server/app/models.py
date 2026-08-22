@@ -174,8 +174,8 @@ class Run(Base):
     __tablename__ = "run"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
-    workflow_version_id: Mapped[str | None] = mapped_column(ForeignKey("workflow_version.id"), nullable=True, index=True)
-    workflow_id: Mapped[str | None] = mapped_column(ForeignKey("workflow.id"), nullable=True, index=True)
+    workflow_version_id: Mapped[str | None] = mapped_column(ForeignKey("workflow_version.id", ondelete="SET NULL"), nullable=True, index=True)
+    workflow_id: Mapped[str | None] = mapped_column(ForeignKey("workflow.id", ondelete="SET NULL"), nullable=True, index=True)
     trigger: Mapped[str] = mapped_column(String(16), default="manual")  # manual|api|schedule|test
     idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
     origin_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -195,7 +195,7 @@ class NodeRun(Base):
     __table_args__ = (UniqueConstraint("run_id", "node_id", "attempt", name="uq_node_run"),)
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
-    run_id: Mapped[str] = mapped_column(ForeignKey("run.id"), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), index=True)
     node_id: Mapped[str] = mapped_column(String(64))
     node_type: Mapped[str] = mapped_column(String(32))
     attempt: Mapped[int] = mapped_column(Integer, default=1)
@@ -214,7 +214,7 @@ class RunEvent(Base):
     __table_args__ = (UniqueConstraint("run_id", "sequence", name="uq_run_seq"),)
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
-    run_id: Mapped[str] = mapped_column(ForeignKey("run.id"), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), index=True)
     sequence: Mapped[int] = mapped_column(BigInteger)
     type: Mapped[str] = mapped_column(String(40))
     node_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)

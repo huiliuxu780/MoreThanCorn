@@ -114,18 +114,21 @@ def exec_llm(node, ctx) -> dict:
 
 
 def _call_model(db: Session, model_id: str, prompt: str) -> tuple[str, dict]:
-    """P2：Model/Provider 表配置了 http(s) base_url 时走 OpenAI 兼容协议，否则 mock。"""
+    """真实 LLM 联调：OpenAI 兼容协议。
+    优先级：env WF_LLM_BASE_URL/WF_LLM_API_KEY > Model/Provider 表配置；无 http base 时 mock 回落。"""
+    import os
+    base = os.environ.get("WF_LLM_BASE_URL", "")
+    secret = os.environ.get("WF_LLM_API_KEY", "")
     m = db.execute(select(Model).where(Model.model_key == model_id)).scalars().first()
-    base, secret = None, ""
-    if m:
+    if not base and m:
         prov = db.get(ModelProvider, m.provider_id)
         if prov and prov.base_url.startswith(("http://", "https://")):
             base = prov.base_url
-            if prov.auth_connection_id:
+            if not secret and prov.auth_connection_id:
                 conn = db.get(Connection, prov.auth_connection_id)
                 if conn:
                     secret = _decrypt(conn.secret_ref)
-    if not base:
+    if not base or not base.startswith(("http://", "https://")):
         return f"[mock:{model_id}] 已处理：{prompt[:120]}", {
             "promptTokens": len(prompt) // 2, "completionTokens": 60}
     with httpx.Client(timeout=60) as client:
