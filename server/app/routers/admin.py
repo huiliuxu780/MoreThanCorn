@@ -385,3 +385,33 @@ def delete_model(mid: str, db: Session = Depends(get_db)):
     db.delete(m)
     db.commit()
     return {"ok": True}
+
+
+# ---------- 质检业务层：quality_result / evidence ----------
+
+@router.get("/api/quality-results")
+def list_quality_results(page: int = 1, pageSize: int = 20, db: Session = Depends(get_db)):
+    from ..models import QualityResult
+    q = db.query(QualityResult)
+    total = q.count()
+    rows = q.order_by(QualityResult.created_at.desc()).offset((page - 1) * pageSize).limit(pageSize).all()
+    return {"items": [{"id": r.id, "runId": r.run_id, "interactionId": r.interaction_ref,
+                       "interactionTime": r.interaction_time.isoformat(), "score": r.score,
+                       "risk": r.risk, "critical": r.critical, "issueCount": r.issue_count,
+                       "issueSummary": r.issue_summary, "review": r.review_status,
+                       "execution": {"runId": r.run_id or "-", "taskId": "-", "status": "SUCCESS", "agentVersion": "-"}}
+                      for r in rows],
+            "total": total, "page": page, "pageSize": pageSize}
+
+
+@router.get("/api/quality-results/{rid}")
+def get_quality_result(rid: str, db: Session = Depends(get_db)):
+    from ..models import Evidence, QualityResult
+    r = db.get(QualityResult, rid)
+    if not r:
+        raise HTTPException(404, "质检结果不存在")
+    evs = db.query(Evidence).filter_by(result_id=rid).all()
+    return {"id": r.id, "runId": r.run_id, "interactionId": r.interaction_ref,
+            "structuredOutput": r.structured_output, "score": r.score, "risk": r.risk,
+            "critical": r.critical, "issueCount": r.issue_count, "review": r.review_status,
+            "evidence": [{"id": e.id, "kind": e.kind, "locator": e.locator, "text": e.text, "sourceRef": e.source_ref} for e in evs]}

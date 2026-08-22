@@ -270,14 +270,67 @@ def exec_end(node, ctx) -> dict:
     return resolve_bindings(node.get("inputs", []), ctx.outputs, ctx.run_input)
 
 
+def exec_create_record(node, ctx) -> dict:
+    from .models import Evidence, QualityResult
+    inputs = resolve_bindings(node.get("inputs", []), ctx.outputs, ctx.run_input)
+    out = inputs or dict(ctx.outputs)
+    qr = QualityResult(run_id=ctx.run.id, interaction_ref=str(ctx.run_input.get("interactionId", "")),
+                       structured_output=out if isinstance(out, dict) else {"value": out},
+                       score=out.get("score") if isinstance(out, dict) else None,
+                       risk=out.get("risk") if isinstance(out, dict) else None,
+                       critical=bool(out.get("critical")) if isinstance(out, dict) else False,
+                       issue_count=int(out.get("issueCount") or 0) if isinstance(out, dict) else 0,
+                       issue_summary=out.get("issueSummary") if isinstance(out, dict) else None)
+    ctx.db.add(qr)
+    ctx.db.commit()
+    evs = out.get("evidence", []) if isinstance(out, dict) else []
+    for e in evs if isinstance(evs, list) else []:
+        if isinstance(e, dict):
+            ctx.db.add(Evidence(result_id=qr.id, kind=str(e.get("kind", "field")),
+                                locator=e.get("locator") if isinstance(e.get("locator"), dict) else {},
+                                text=str(e.get("text", "")), source_ref=str(e.get("sourceRef", ""))))
+    ctx.db.commit()
+    return {"qualityResultId": qr.id, "evidenceCount": len(evs) if isinstance(evs, list) else 0}
+
+
+def exec_workflow_exec(node, ctx) -> dict:
+    code = (node.get("config") or {}).get("workflowCode")
+    if not code:
+        raise RunError("workflowCode missing")
+    sub = create_run(ctx.db, code, "manual", ctx.run_input, enqueue=False)
+    execute_run(sub.id, call_chain=list(ctx.call_chain))
+    from .db import SessionLocal as _SL
+    fresh = _SL()
+    try:
+        r = fresh.get(Run, sub.id)
+        status = r.status
+        err = r.error
+    finally:
+        fresh.close()
+    class _R:  # 轻量包装
+        pass
+    r = _R(); r.status = status; r.error = err; r.output = None
+    if status == "succeeded":
+        fresh = _SL()
+        try:
+            r.output = fresh.get(Run, sub.id).output
+        finally:
+            fresh.close()
+    if r.status != "succeeded":
+        raise RunError(f"sub workflow failed: {(r.error or {}).get('message', r.status)}")
+    return r.output or {}
+
+
 EXECUTORS = {
     "input": exec_input, "llm": exec_llm, "condition": exec_condition,
     "transform": exec_transform, "tool": exec_tool, "end": exec_end,
-    "create-record": exec_end, "notification": exec_end,
+    "create-record": exec_create_record, "notification": exec_end, "workflow-exec": exec_workflow_exec,
 }
 
 
 class Ctx:
+    call_chain: list[str] = []
+
     def __init__(self, db: Session, run: Run, outputs: dict[str, dict]):
         self.db = db
         self.run = run
@@ -295,12 +348,26 @@ class Ctx:
 # ---------- runner ----------
 
 
-def execute_run(run_id: str) -> None:
+def execute_run(run_id: str, call_chain: list[str] | None = None) -> None:
     db = SessionLocal()
     try:
         run = db.get(Run, run_id)
         if not run:
             return
+        chain = list(call_chain or [])
+        if run.workflow_id in chain:
+            run.status = "failed"
+            run.error = {"message": f"检测到工作流递归调用：{' -> '.join(chain + [run.workflow_id])}"}
+            db.commit()
+            emit(db, run_id, "workflow_failed", payload={"error": "workflow recursion detected"})
+            return
+        if len(chain) >= 5:
+            run.status = "failed"
+            run.error = {"message": "子工作流嵌套深度超过 5 层"}
+            db.commit()
+            emit(db, run_id, "workflow_failed", payload={"error": "workflow depth limit exceeded"})
+            return
+        chain.append(run.workflow_id)
         wf = db.get(Workflow, run.workflow_id)
         defn = WorkflowDefinition.model_validate(wf.draft_definition)
         nodes = [n.model_dump() for n in defn.graph.nodes]
@@ -313,6 +380,7 @@ def execute_run(run_id: str) -> None:
 
         outputs: dict[str, dict] = {}
         ctx = Ctx(db, run, outputs)
+        ctx.call_chain = chain
         succ: dict[str, list[tuple[str, str | None]]] = {}
         indeg: dict[str, int] = {n["id"]: 0 for n in nodes}
         for e in edges:
@@ -322,6 +390,8 @@ def execute_run(run_id: str) -> None:
         ready = [n["id"] for n in nodes if indeg.get(n["id"], 0) == 0]
         done: set[str] = set()
         skipped: set[str] = set()
+        failed_ids: set[str] = set()
+        first_error = ""
         active_handle: dict[str, str | None] = {}  # source -> selected handle (condition)
         failed = False
 
@@ -368,9 +438,12 @@ def execute_run(run_id: str) -> None:
                 nr.ended_at = datetime.now(timezone.utc)
                 db.commit()
                 emit(db, run_id, "node_failed", nid, nr.id, {"error": str(exc), "name": node["name"]})
+                failed_ids.add(nid)
+                if not first_error:
+                    first_error = str(exc)
                 failed = True
 
-        for nid in [n["id"] for n in nodes if nid_not_done(n["id"], done, skipped, ready)]:
+        for nid in [n["id"] for n in nodes if nid_not_done(n["id"], done, skipped, ready) and nid not in failed_ids]:
             nr = NodeRun(run_id=run_id, node_id=nid, node_type=by_id[nid]["type"], status="skipped")
             db.add(nr)
             db.commit()
@@ -379,7 +452,7 @@ def execute_run(run_id: str) -> None:
         end_nodes = [n for n in nodes if n["type"] in TERMINAL and n["id"] in done]
         if failed:
             run.status = "failed"
-            run.error = {"message": "node failed"}
+            run.error = {"message": first_error or "node failed"}
             emit(db, run_id, "workflow_failed", payload={"error": "node failed"})
         elif end_nodes:
             run.status = "succeeded"
@@ -465,7 +538,7 @@ def start_worker() -> threading.Event:
 
 
 def create_run(db: Session, workflow_id: str, trigger: str, run_input: dict,
-               idempotency_key: str | None = None) -> Run:
+               idempotency_key: str | None = None, enqueue: bool = True) -> Run:
     wf = db.get(Workflow, workflow_id)
     if not wf:
         raise RunError("workflow not found")
@@ -477,6 +550,7 @@ def create_run(db: Session, workflow_id: str, trigger: str, run_input: dict,
               idempotency_key=idempotency_key)
     db.add(run)
     db.commit()
-    db.add(JobQueue(type="workflow-execution", payload={"run_id": run.id}))
-    db.commit()
+    if enqueue:
+        db.add(JobQueue(type="workflow-execution", payload={"run_id": run.id}))
+        db.commit()
     return run

@@ -18,6 +18,8 @@ import {
   ListChecks,
   LockKeyhole,
   PanelLeftClose,
+  Redo2,
+  Undo2,
   PanelLeftOpen,
   Settings2,
   MessageSquare,
@@ -863,6 +865,8 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const [zoom, setZoom] = useState(1)
   const [lockUser, setLockUser] = useState("")
   const [agentAvatar, setAgentAvatar] = useState<string | undefined>(undefined)
+  const historyRef = useRef<WfDefinition[]>([])
+  const pointerRef = useRef(-1)
   const wsIdRef = useRef(Math.random().toString(36).slice(2, 8))
   const saveTimer = useRef<number | null>(null)
   const defRef = useRef<WfDefinition | null>(null)
@@ -880,6 +884,8 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
     let alive = true
     Promise.all([wfApi.get(workflowId), wfApi.nodeDefinitions()]).then(([d, nd]) => {
       if (!alive) return
+      historyRef.current = [JSON.parse(JSON.stringify(d.definition))]
+      pointerRef.current = 0
       setDef(d.definition); setRevision(d.draftRevision); setDefs(nd); setSavedAt(d.updatedAt)
       wfApi.validate(agentId).then((r) => alive && setIssues(r.issues))
     })
@@ -895,10 +901,49 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   }, [workflowId, revision])
 
   const mutate = useCallback((next: WfDefinition) => {
+    const h = historyRef.current.slice(0, pointerRef.current + 1)
+    h.push(JSON.parse(JSON.stringify(next)))
+    if (h.length > 50) h.shift()
+    historyRef.current = h
+    pointerRef.current = h.length - 1
+    defRef.current = next
     setDef(next)
     if (saveTimer.current) window.clearTimeout(saveTimer.current)
     saveTimer.current = window.setTimeout(() => doSave(next), 1200)
   }, [doSave])
+
+  const applyHistory = useCallback((defn: WfDefinition) => {
+    setDef(defn)
+    doSave(defn)
+  }, [doSave])
+
+  const undo = useCallback(() => {
+    if (pointerRef.current > 0) {
+      pointerRef.current -= 1
+      applyHistory(JSON.parse(JSON.stringify(historyRef.current[pointerRef.current])))
+    }
+  }, [applyHistory])
+
+  const redo = useCallback(() => {
+    if (pointerRef.current < historyRef.current.length - 1) {
+      pointerRef.current += 1
+      applyHistory(JSON.parse(JSON.stringify(historyRef.current[pointerRef.current])))
+    }
+  }, [applyHistory])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault()
+        if (e.shiftKey) redo()
+        else undo()
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [undo, redo])
 
   const nodes: Node[] = useMemo(() => (def?.graph.nodes ?? []).map((n) => ({
     id: n.id, type: "wf",
@@ -1176,6 +1221,8 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
             </PopoverContent>
           </Popover>
           <span className="mx-1 h-4 w-px bg-neutral-200" />
+          <button className="rounded p-1.5 hover:bg-neutral-100" title="撤销 (⌘Z)" onClick={undo}><Undo2 className="size-4" style={{ color: C.ink2 }} /></button>
+          <button className="rounded p-1.5 hover:bg-neutral-100" title="重做 (⌘⇧Z)" onClick={redo}><Redo2 className="size-4" style={{ color: C.ink2 }} /></button>
           <button className="rounded p-1.5 hover:bg-neutral-100" title="缩略图" onClick={() => setShowMiniMap((v) => !v)}>
             <MapIcon className="size-4" style={{ color: showMiniMap ? C.primary : C.ink2 }} />
           </button>

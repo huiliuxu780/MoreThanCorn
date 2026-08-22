@@ -263,3 +263,35 @@ class ResourceLock(Base):
     ws_id: Mapped[str] = mapped_column(String(16))
     user_name: Mapped[str] = mapped_column(String(64), default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class QualityResult(Base):
+    """质检业务层：AI 结构化结果（Master §6 业务对象）。"""
+    __tablename__ = "quality_result"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    run_id: Mapped[str | None] = mapped_column(ForeignKey("run.id", ondelete="SET NULL"), nullable=True, index=True)
+    workflow_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    interaction_ref: Mapped[str] = mapped_column(String(128), default="")
+    interaction_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    structured_output: Mapped[dict] = mapped_column(JSONB, default=dict)
+    score: Mapped[float | None] = mapped_column(nullable=True)
+    risk: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    critical: Mapped[bool] = mapped_column(default=False)
+    issue_count: Mapped[int] = mapped_column(default=0)
+    issue_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    review_status: Mapped[str] = mapped_column(String(16), default="AI")  # AI|REVIEWED|EFFECTIVE
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Evidence(Base):
+    """证据：支撑质检结论的片段/调用事实。"""
+    __tablename__ = "evidence"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    result_id: Mapped[str] = mapped_column(ForeignKey("quality_result.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(32), default="transcript_span")  # transcript_span|tool_call|field
+    locator: Mapped[dict] = mapped_column(JSONB, default=dict)
+    text: Mapped[str] = mapped_column(Text, default="")
+    source_ref: Mapped[str] = mapped_column(String(128), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

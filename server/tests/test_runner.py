@@ -4,10 +4,11 @@ import json
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.runner import execute_run, create_run
+from app.runner import execute_run, create_run, start_worker
 from app.db import SessionLocal
 
 client = TestClient(app)
+_worker_stop = start_worker()
 
 
 def make_wf(nodes_extra, edges_extra, branches=None):
@@ -99,3 +100,45 @@ def test_run_list_and_cancel_404():
     r = client.get("/api/runs?workflowId=nope")
     assert r.status_code == 200 and r.json() == []
     assert client.post("/api/runs/nope/cancel").status_code == 404
+
+
+def test_workflow_exec_recursion_guard():
+    c = client
+    wf = c.post("/api/workflows", json={"name": "rec-self"}).json()
+    d = c.get(f"/api/workflows/{wf['id']}").json()["definition"]
+    d["graph"]["nodes"].append({"id": "n_we", "type": "workflow-exec", "name": "自调用",
+                                "config": {"workflowCode": wf["id"]}, "inputs": []})
+    d["graph"]["edges"].append({"id": "e_w", "source": d["graph"]["nodes"][0]["id"], "target": "n_we"})
+    c.put(f"/api/workflows/{wf['id']}/draft", json={"definition": d, "baseRevision": d["workflow"]["draftRevision"]})
+    r = c.post("/api/runs", json={"workflowId": wf["id"], "trigger": "test", "input": {}})
+    import time; time.sleep(2)
+    run = c.get(f"/api/runs/{r.json()['runId']}").json()
+    assert run["status"] == "failed"
+    assert "递归" in run["error"]["message"]
+
+
+def test_create_record_sink_persists_quality_result():
+    c = client
+    wf = c.post("/api/workflows", json={"name": "sink-wf"}).json()
+    d = c.get(f"/api/workflows/{wf['id']}").json()["definition"]
+    start = next(n for n in d["graph"]["nodes"] if n["type"] == "input")
+    end = next(n for n in d["graph"]["nodes"] if n["type"] == "end")
+    d["graph"]["nodes"].append({"id": "n_cr", "type": "create-record", "name": "落质检",
+                                "config": {}, "inputs": [
+                                    {"name": "score", "type": "number", "source": {"kind": "fixed", "value": 88}},
+                                    {"name": "risk", "type": "string", "source": {"kind": "fixed", "value": "High"}},
+                                    {"name": "evidence", "type": "array", "source": {"kind": "fixed", "value": [
+                                        {"kind": "transcript_span", "text": "我们一定会当天给您回电", "locator": {"start": 0, "end": 12}}]}}]})
+    d["graph"]["edges"] = [e for e in d["graph"]["edges"] if not (e["source"] == start["id"] and e["target"] == end["id"])]
+    d["graph"]["edges"] += [{"id": "e1", "source": start["id"], "target": "n_cr"},
+                            {"id": "e2", "source": "n_cr", "target": end["id"]}]
+    c.put(f"/api/workflows/{wf['id']}/draft", json={"definition": d, "baseRevision": d["workflow"]["draftRevision"]})
+    r = c.post("/api/runs", json={"workflowId": wf["id"], "trigger": "test", "input": {"interactionId": "IX-1"}})
+    import time; time.sleep(2)
+    run = c.get(f"/api/runs/{r.json()['runId']}").json()
+    assert run["status"] == "succeeded"
+    qrs = c.get("/api/quality-results").json()
+    row = next(q for q in qrs["items"] if q["runId"] == run["runId"])
+    assert row["score"] == 88 and row["risk"] == "High"
+    det = c.get(f"/api/quality-results/{row['id']}").json()
+    assert det["evidence"][0]["text"] == "我们一定会当天给您回电"

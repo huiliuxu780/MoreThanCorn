@@ -44,10 +44,16 @@ def default_config(t: str) -> dict:
 
 
 @router.get("")
-def list_agents(db: Session = Depends(get_db)):
-    return [{"id": a.id, "name": a.name, "type": a.type, "typeLabel": TYPE_LABEL[a.type],
-             "status": a.status, "workflowId": a.workflow_id, "avatar": a.avatar,
-             "updatedAt": a.updated_at.isoformat()} for a in db.query(Agent).all()]
+def list_agents(page: int = 1, pageSize: int = 20, search: str = "", db: Session = Depends(get_db)):
+    q = db.query(Agent)
+    if search:
+        q = q.filter(Agent.name.ilike(f"%{search}%"))
+    total = q.count()
+    rows = q.order_by(Agent.updated_at.desc()).offset((page - 1) * pageSize).limit(pageSize).all()
+    return {"items": [{"id": a.id, "name": a.name, "type": a.type, "typeLabel": TYPE_LABEL[a.type],
+                       "status": a.status, "workflowId": a.workflow_id, "avatar": a.avatar,
+                       "updatedAt": a.updated_at.isoformat()} for a in rows],
+            "total": total, "page": page, "pageSize": pageSize}
 
 
 @router.get("/{aid}")

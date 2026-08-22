@@ -200,7 +200,6 @@ const RUN_STATUS: Record<string, RunStatus> = {
   failed: "FAILED", cancelled: "CANCELLED", timed_out: "FAILED",
 }
 const EX_STATUS: Record<string, ExecutionStatus> = { success: "SUCCESS", failed: "ERROR", skipped: "SKIPPED", running: "SKIPPED", pending: "SKIPPED" }
-const BC = { brand: "-", productCategory: "-", serviceType: "-", issueTopic: "-" }
 
 export async function realRunDetail(runId: string): Promise<{ run: Run; executions: { items: InteractionExecution[]; total: number; page: number; pageSize: number } }> {
   const d = await req<Record<string, any>>(`/api/runs/${runId}`)
@@ -224,7 +223,7 @@ export async function realRunDetail(runId: string): Promise<{ run: Run; executio
   }
   const executions: InteractionExecution[] = (d.nodeRuns ?? []).map((n: any) => ({
     id: n.nodeRunId, runId, interactionId: n.nodeId, agentName: n.nodeType, teamName: "-",
-    businessContext: BC, status: EX_STATUS[n.status] ?? "SKIPPED",
+    businessContext: BC_Q, status: EX_STATUS[n.status] ?? "SKIPPED",
     duration: n.durationMs != null ? `${n.durationMs}ms` : undefined,
     errorType: n.error?.message, attempts: [{ no: n.attempt ?? 1, status: EX_STATUS[n.status] ?? "SKIPPED", error: n.error?.message }],
   }))
@@ -248,3 +247,32 @@ export const pagedApi = {
 export const wfApiToken = () =>
   (typeof localStorage !== "undefined" && localStorage.getItem("wf_api_token")) ||
   (import.meta as any).env?.VITE_WF_API_TOKEN || ""
+
+/* ---------- 质检业务层联调：quality_result/evidence ---------- */
+import type { ListResponse, QualityResult } from "@/domain/types"
+
+const REVIEW_MAP: Record<string, "NONE" | "PENDING" | "IN_REVIEW" | "COMPLETED" | "REOPENED"> = {
+  AI: "PENDING", REVIEWED: "IN_REVIEW", EFFECTIVE: "COMPLETED",
+}
+const ORG = { agentId: "-", agentName: "-", teamId: "-", teamName: "-", departmentId: "-", departmentName: "-" }
+const BC_Q = { brand: "-", productCategory: "-", serviceType: "-", issueTopic: "-" }
+
+export async function realQualityResults(params: { page?: number; pageSize?: number }): Promise<ListResponse<QualityResult>> {
+  const r = await req<Paged<Record<string, any>>>(
+    `/api/quality-results?page=${params.page ?? 1}&pageSize=${params.pageSize ?? 20}`)
+  return {
+    items: r.items.map((q) => ({
+      interactionId: q.interactionId || q.id, interactionTime: q.interactionTime,
+      org: ORG, businessContext: BC_Q, requestType: "-", requestSummary: q.issueSummary ?? "-",
+      score: q.score ?? undefined, risk: q.risk ?? undefined, critical: !!q.critical,
+      issueCount: q.issueCount ?? 0, issueSummary: q.issueSummary ?? undefined,
+      review: { status: REVIEW_MAP[q.review] ?? "PENDING" }, hasAudio: false,
+      execution: { runId: q.execution?.runId ?? "-", taskId: "-", status: q.execution?.status ?? "SUCCESS", agentVersion: "-" },
+    })),
+    total: r.total, page: r.page, pageSize: r.pageSize,
+  }
+}
+
+export async function realQualityResultDetail(id: string) {
+  return req<Record<string, any>>(`/api/quality-results/${id}`)
+}
