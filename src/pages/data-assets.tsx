@@ -21,13 +21,14 @@ import { useListQuery } from "@/hooks/use-list-query"
 import { formatDateTime } from "@/lib/time"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
 import { listDataAssets } from "@/services/mock-service"
+import { bizApi, wfEnabled } from "@/services/wf-api"
 import { rbac } from "@/services/rbac"
 
 export default function DataAssetsPage() {
   const navigate = useNavigate()
   const { params, update } = useListQuery(20)
   const filters = parseListFilters(params.filters)
-  const { data, loading, error, retry } = useAsyncData(() => listDataAssets(params), [
+  const { data, loading, error, retry } = useAsyncData(() => (wfEnabled() ? bizApi.assets().then((items) => ({ items, total: items.length, page: 1, pageSize: 50 })) : listDataAssets(params)), [
     params.search,
     params.page,
     params.pageSize,

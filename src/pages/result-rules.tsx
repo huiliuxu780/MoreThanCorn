@@ -31,13 +31,14 @@ import { useAsyncData } from "@/hooks/use-async-data"
 import { useListQuery } from "@/hooks/use-list-query"
 import { formatDateTime } from "@/lib/time"
 import { listResultRules } from "@/services/mock-service"
+import { bizApi, wfEnabled } from "@/services/wf-api"
 import { agents } from "@/mocks/data"
 import { rbac } from "@/services/rbac"
 
 export default function ResultRulesPage() {
   const navigate = useNavigate()
   const { params, update } = useListQuery(20)
-  const { data, loading, error, retry } = useAsyncData(() => listResultRules(params), [params.search, params.page, params.pageSize])
+  const { data, loading, error, retry } = useAsyncData(() => (wfEnabled() ? bizApi.rules().then((items) => ({ items, total: items.length, page: 1, pageSize: 50 })) : listResultRules(params)), [params.search, params.page, params.pageSize])
 
   const [searchInput, setSearchInput] = useState(params.search ?? "")
   useEffect(() => {

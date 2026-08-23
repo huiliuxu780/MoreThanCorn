@@ -49,7 +49,7 @@ def make_wf(nodes_extra, edges_extra, branches=None):
 def test_branch_yes_and_skip_downstream():
     wid = make_wf([], [])
     db = SessionLocal()
-    run = create_run(db, wid, "test", {"userQuery": "hello"})
+    run = create_run(db, wid, "test", {"userQuery": "hello"}, enqueue=False)
     db.close()
     execute_run(run.id)
     detail = client.get(f"/api/runs/{run.id}").json()
@@ -110,7 +110,7 @@ def test_workflow_exec_recursion_guard():
                                 "config": {"workflowCode": wf["id"]}, "inputs": []})
     d["graph"]["edges"].append({"id": "e_w", "source": d["graph"]["nodes"][0]["id"], "target": "n_we"})
     c.put(f"/api/workflows/{wf['id']}/draft", json={"definition": d, "baseRevision": d["workflow"]["draftRevision"]})
-    r = c.post("/api/runs", json={"workflowId": wf["id"], "trigger": "test", "input": {}})
+    r = c.post("/api/runs", json={"workflowId": wf["id"], "trigger": "test", "input": {}})  # via API enqueues; worker consumes
     import time; time.sleep(2)
     run = c.get(f"/api/runs/{r.json()['runId']}").json()
     assert run["status"] == "failed"
@@ -119,6 +119,12 @@ def test_workflow_exec_recursion_guard():
 
 def test_create_record_sink_persists_quality_result():
     c = client
+    from app.db import SessionLocal
+    from app.models import ResultRuleSet
+    _db = SessionLocal()
+    _db.query(ResultRuleSet).delete()
+    _db.commit()
+    _db.close()
     wf = c.post("/api/workflows", json={"name": "sink-wf"}).json()
     d = c.get(f"/api/workflows/{wf['id']}").json()["definition"]
     start = next(n for n in d["graph"]["nodes"] if n["type"] == "input")

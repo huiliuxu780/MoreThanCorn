@@ -18,9 +18,11 @@ import { StatusBadge } from "@/components/app/status-badge"
 import { TableFrame } from "@/components/app/table-frame"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { useListQuery } from "@/hooks/use-list-query"
-import { formatCompactDateTime } from "@/lib/time"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
 import { listTasks } from "@/services/mock-service"
+import { bizApi, wfEnabled } from "@/services/wf-api"
+import { formatCompactDateTime } from "@/lib/time"
+import { toast } from "sonner"
 import { agents, dataAssets } from "@/mocks/data"
 import { rbac } from "@/services/rbac"
 
@@ -28,7 +30,7 @@ export default function TasksPage() {
   const navigate = useNavigate()
   const { params, update } = useListQuery(20)
   const filters = useMemo(() => parseListFilters(params.filters), [params.filters])
-  const { data, loading, error, retry } = useAsyncData(() => listTasks(params), [
+  const { data, loading, error, retry } = useAsyncData(() => (wfEnabled() ? bizApi.tasks().then((items) => ({ items, total: items.length, page: 1, pageSize: 50 })) : listTasks(params)), [
     params.search,
     params.page,
     params.pageSize,
@@ -158,7 +160,22 @@ export default function TasksPage() {
                         "—"
                       )}
                     </TableCell>
-                  </TableRow>
+                    <TableCell>
+                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                        {wfEnabled() && (
+                          <>
+                            <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={async () => {
+                              const r = await bizApi.batchRun(task.id)
+                              toast.success(`批跑已启动 ${r.runIds.length} 个 Run`)
+                            }}>批跑</Button>
+                            <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={async () => {
+                              const r = await bizApi.taskSchedule(task.id, "0 9 * * *")
+                              toast.success(`周期已设置：${new Date(r.nextRunAt).toLocaleString()}`)
+                            }}>周期</Button>
+                          </>
+                        )}
+                      </div>
+                    </TableCell></TableRow>
                 ))}
               </TableBody>
             </Table>

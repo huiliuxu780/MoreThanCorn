@@ -188,10 +188,17 @@ def schedule_tick() -> int:
                 db.commit()
                 continue
             try:
-                create_run(db, sch.workflow_id, "schedule",
-                           {"window": {"start": (now - __import__("datetime").timedelta(minutes=5)).isoformat(),
-                                      "end": now.isoformat()}})
-                fired += 1
+                if sch.task_id:
+                    from .routers.business import batch_run_task
+                    from .models import AnalysisTask
+                    task = db.get(AnalysisTask, sch.task_id)
+                    if task:
+                        fired += len(batch_run_task(db, task))
+                else:
+                    create_run(db, sch.workflow_id, "schedule",
+                               {"window": {"start": (now - __import__("datetime").timedelta(minutes=5)).isoformat(),
+                                          "end": now.isoformat()}})
+                    fired += 1
                 sch.last_ran_at = now
                 sch.failed_count = 0
             except RunError:
@@ -277,6 +284,7 @@ def exec_create_record(node, ctx) -> dict:
     out = inputs or dict(ctx.outputs)
     qr = QualityResult(run_id=ctx.run.id, interaction_ref=str(ctx.run_input.get("interactionId", "")),
                        structured_output=out if isinstance(out, dict) else {"value": out},
+                       transcript=out.get("transcript") if isinstance(out, dict) and isinstance(out.get("transcript"), list) else [],
                        score=out.get("score") if isinstance(out, dict) else None,
                        risk=out.get("risk") if isinstance(out, dict) else None,
                        critical=bool(out.get("critical")) if isinstance(out, dict) else False,
@@ -284,6 +292,8 @@ def exec_create_record(node, ctx) -> dict:
                        issue_summary=out.get("issueSummary") if isinstance(out, dict) else None)
     ctx.db.add(qr)
     ctx.db.commit()
+    from .routers.business import apply_rules_to_result
+    apply_rules_to_result(ctx.db, qr)
     evs = out.get("evidence", []) if isinstance(out, dict) else []
     for e in evs if isinstance(evs, list) else []:
         if isinstance(e, dict):

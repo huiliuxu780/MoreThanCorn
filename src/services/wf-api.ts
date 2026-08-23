@@ -276,3 +276,62 @@ export async function realQualityResults(params: { page?: number; pageSize?: num
 export async function realQualityResultDetail(id: string) {
   return req<Record<string, any>>(`/api/quality-results/${id}`)
 }
+
+/* ---------- 业务深化适配器 ---------- */
+import type { AnalysisTask, DataAsset, ResultRuleSet } from "@/domain/types"
+
+export const bizApi = {
+  rules: () => req<Paged<Record<string, any>>>("/api/result-rules").then((r) => r.items as ResultRuleSet[]),
+  rule: (id: string) => req<Record<string, any>>(`/api/result-rules/${id}`),
+  createRule: (body: { name: string; description?: string; rules?: Record<string, unknown> }) =>
+    req<{ id: string }>("/api/result-rules", { method: "POST", body: JSON.stringify(body) }),
+  updateRule: (id: string, body: Record<string, unknown>) =>
+    req<Record<string, any>>(`/api/result-rules/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  publishRule: (id: string) => req<{ version: number; recalculated: number }>(`/api/result-rules/${id}/publish`, { method: "POST" }),
+  review: (id: string, body: Record<string, unknown>) =>
+    req<Record<string, any>>(`/api/quality-results/${id}/review`, { method: "POST", body: JSON.stringify(body) }),
+  qualityDetail: (id: string) => req<Record<string, any>>(`/api/quality-results/${id}`),
+  assets: () => req<Paged<Record<string, any>>>("/api/data-assets").then((r) => r.items as DataAsset[]),
+  createAsset: (body: { name: string; rows?: unknown[] }) =>
+    req<{ id: string }>("/api/data-assets", { method: "POST", body: JSON.stringify(body) }),
+  asset: (id: string) => req<Record<string, any>>(`/api/data-assets/${id}`),
+  appendRows: (id: string, rows: unknown[]) =>
+    req<Record<string, any>>(`/api/data-assets/${id}/rows`, { method: "POST", body: JSON.stringify({ rows }) }),
+  tasks: () => req<Paged<Record<string, any>>>("/api/tasks").then((r) => r.items as AnalysisTask[]),
+  createTask: (body: Record<string, unknown>) => req<{ id: string }>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
+  batchRun: (id: string, limit?: number) =>
+    req<{ runIds: string[] }>(`/api/tasks/${id}/batch-run`, { method: "POST", body: JSON.stringify({ limit }) }),
+  taskSchedule: (id: string, cron: string, timezone = "Asia/Shanghai") =>
+    req<{ id: string; nextRunAt: string }>(`/api/tasks/${id}/schedule`, { method: "POST", body: JSON.stringify({ cron, timezone }) }),
+}
+
+export async function realQualityDetail(id: string) {
+  const q = await req<Record<string, any>>(`/api/quality-results/${id}`)
+  const hist = q.reviewHistory ?? q.review_history ?? []
+  const last = hist[hist.length - 1]
+  return {
+    interactionId: q.interactionId || q.id,
+    interactionTime: q.interactionTime ?? new Date().toISOString(),
+    org: ORG, businessContext: BC_Q, requestType: "-", requestSummary: q.issueSummary ?? "-",
+    score: q.score ?? undefined, risk: q.risk ?? undefined, critical: !!q.critical,
+    issueCount: q.issueCount ?? 0, issueSummary: q.issueSummary ?? undefined,
+    review: { status: REVIEW_MAP[q.review] ?? "PENDING", reviewer: last?.reviewer },
+    hasAudio: false,
+    execution: { runId: q.runId ?? "-", taskId: "-", status: "SUCCESS", agentVersion: "-" },
+    transcript: (q.transcript ?? []).map((t: any, i: number) => ({
+      id: `seg${i}`, speaker: t.speaker ?? "agent", speakerLabel: t.speaker ?? "agent",
+      startSeconds: t.start ?? 0, text: t.text ?? "", criterionRefs: [],
+    })),
+    sections: [{
+      section: "规则派生",
+      criteria: [{
+        id: "c1", section: "规则派生",
+        criterion: q.issueSummary ?? "承诺兑现检查",
+        result: (q.issueCount ?? 0) > 0 ? "FAIL" : "PASS",
+        severity: q.risk ?? undefined,
+        reason: q.issueSummary ?? undefined,
+      }],
+    }],
+    reviewHistory: hist,
+  }
+}

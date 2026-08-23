@@ -281,6 +281,9 @@ class QualityResult(Base):
     issue_count: Mapped[int] = mapped_column(default=0)
     issue_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     review_status: Mapped[str] = mapped_column(String(16), default="AI")  # AI|REVIEWED|EFFECTIVE
+    transcript: Mapped[dict] = mapped_column(JSONB, default=list)  # [{start,end,speaker,text}]
+    rules_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    review_history: Mapped[dict] = mapped_column(JSONB, default=list)  # [{at,action,reviewer,note}]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -306,4 +309,55 @@ class EvalSample(Base):
     name: Mapped[str] = mapped_column(String(64))
     input: Mapped[dict] = mapped_column(JSONB, default=dict)
     expected: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ResultRuleSet(Base):
+    """结果规则：版本化；对 structured_output 求值派生 score/risk/issueCount。"""
+    __tablename__ = "result_rule_set"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(Text, default="")
+    agent_id: Mapped[str] = mapped_column(String(64), default="")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(16), default="draft")  # draft|published
+    rules: Mapped[dict] = mapped_column(JSONB, default=dict)  # {scoreRules:[], issueRules:[]}
+    evaluation_priority: Mapped[str] = mapped_column(String(32), default="Most Recent Completed")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class DataAsset(Base):
+    """数据资产：按行批量质检的输入数据集。"""
+    __tablename__ = "data_asset"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(Text, default="")
+    source: Mapped[str] = mapped_column(String(64), default="manual")
+    record_meaning: Mapped[str] = mapped_column(String(128), default="一通客服对话")
+    record_id_field: Mapped[str] = mapped_column(String(64), default="interactionId")
+    time_field: Mapped[str] = mapped_column(String(64), default="interactionTime")
+    lifecycle: Mapped[str] = mapped_column(String(16), default="Ready")
+    health: Mapped[str] = mapped_column(String(16), default="Healthy")
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    rows: Mapped[dict] = mapped_column(JSONB, default=list)  # list of row dicts
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AnalysisTask(Base):
+    """分析任务：workflow × 数据资产 × schedule。"""
+    __tablename__ = "analysis_task"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(Text, default="")
+    workflow_id: Mapped[str] = mapped_column(String(64))
+    version_policy: Mapped[str] = mapped_column(String(16), default="Latest Published")
+    data_asset_id: Mapped[str] = mapped_column(String(64))
+    scope: Mapped[str] = mapped_column(String(128), default="all")
+    sampling: Mapped[str] = mapped_column(String(64), default="all")
+    data_window: Mapped[str] = mapped_column(String(64), default="last_7d")
+    status: Mapped[str] = mapped_column(String(16), default="Active")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

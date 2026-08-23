@@ -56,6 +56,7 @@ import { ReviewBadge, RiskBadge, StatusBadge } from "@/components/app/status-bad
 import { useAsyncData } from "@/hooks/use-async-data"
 import { formatDateTime, formatSeconds } from "@/lib/time"
 import { getQualityResult, listQualityResults } from "@/services/mock-service"
+import { bizApi, realQualityDetail, wfEnabled } from "@/services/wf-api"
 import type { CriterionResult } from "@/domain/types"
 import { cn } from "@/lib/utils"
 
@@ -70,7 +71,7 @@ export default function QualityResultDetailPage() {
   const fromQuery = searchParams.get("from") ?? ""
 
   const { data: detail, loading, error, retry } = useAsyncData(
-    () => getQualityResult(interactionId),
+    () => (wfEnabled() ? (realQualityDetail(interactionId) as unknown as ReturnType<typeof getQualityResult>) : getQualityResult(interactionId)),
     [interactionId],
   )
   const { data: siblingList } = useAsyncData(
@@ -483,10 +484,14 @@ export default function QualityResultDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setCompleteOpen(false)}>取消</Button>
             <Button
-              onClick={() => {
+              onClick={async () => {
                 setCompleteOpen(false)
                 setReviewMode(false)
+                if (wfEnabled()) {
+                  await bizApi.review(interactionId, { action: "effective", reviewer: "reviewer" })
+                }
                 toast.success("复核完成，Effective Result 已更新")
+                retry()
               }}
             >
               完成复核
