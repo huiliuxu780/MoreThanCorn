@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .runner import start_worker
-from .routers import admin, agents, business, registry, runs, workflows
+from .routers import admin, agents, business, registry, resources, runs, workflows
 
 
 @asynccontextmanager
@@ -53,6 +53,7 @@ app.include_router(workflows.router)
 app.include_router(registry.router)
 app.include_router(runs.router)
 app.include_router(business.router)
+app.include_router(resources.router)
 app.include_router(admin.router)
 app.include_router(agents.router)
 

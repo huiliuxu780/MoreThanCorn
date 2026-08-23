@@ -3,6 +3,7 @@ import json
 import os
 from datetime import datetime, timezone
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -31,22 +32,30 @@ def _encrypt(secret: str) -> str:
 @router.post("/api/connections", status_code=201)
 def create_connection(payload: dict, db: Session = Depends(get_db)):
     c = Connection(name=payload["name"], kind=payload.get("kind", "api_key"),
+                   protocol=payload.get("protocol", "http-api"),
+                   endpoint=payload.get("endpoint", {}),
                    provider_hint=payload.get("providerHint", ""),
                    secret_ref=_encrypt(payload.get("secret", "")))
     db.add(c)
     db.commit()
-    return {"id": c.id, "name": c.name, "kind": c.kind, "status": c.status}
+    return {"id": c.id, "name": c.name, "kind": c.kind, "protocol": c.protocol, "status": c.status}
 
 
 @router.get("/api/connections")
-def list_connections(page: int = 1, pageSize: int = 20, search: str = "", db: Session = Depends(get_db)):
+def list_connections(page: int = 1, pageSize: int = 20, search: str = "", type: str = "",
+                     db: Session = Depends(get_db)):
     q = db.query(Connection)
     if search:
         q = q.filter(Connection.name.ilike(f"%{search}%"))
+    if type:
+        q = q.filter(Connection.protocol == type)
     total = q.count()
     rows = q.offset((page - 1) * pageSize).limit(pageSize).all()
-    return {"items": [{"id": c.id, "name": c.name, "kind": c.kind, "status": c.status,
-                       "providerHint": c.provider_hint} for c in rows],
+    return {"items": [{"id": c.id, "name": c.name, "kind": c.kind, "protocol": c.protocol,
+                       "endpoint": c.endpoint, "status": c.status,
+                       "secretConfigured": bool(c.secret_ref),
+                       "providerHint": c.provider_hint,
+                       "updatedAt": c.created_at.isoformat()} for c in rows],
             "total": total, "page": page, "pageSize": pageSize}
 
 
@@ -55,21 +64,46 @@ def test_connection(cid: str, db: Session = Depends(get_db)):
     c = db.get(Connection, cid)
     if not c:
         raise HTTPException(404, "connection not found")
+    ok, err = _probe_connection(c)
     c.last_test_at = datetime.now(timezone.utc)
-    c.status = "active"
+    c.status = "active" if ok else "failed"
     db.commit()
-    return {"ok": True, "testedAt": c.last_test_at.isoformat()}
+    return {"ok": ok, "error": err, "testedAt": c.last_test_at.isoformat()}
+
+
+def _probe_connection(c) -> tuple[bool, str]:
+    """按 protocol 分发连通性探测；无真实 endpoint 时 mock 通过。"""
+    base = (c.endpoint or {}).get("base_url", "")
+    host = (c.endpoint or {}).get("host", "")
+    if c.protocol in ("mysql", "postgresql") and host:
+        return True, ""  # 驱动探测在 datasource 测试层；连接层校验配置完整
+    if base.startswith(("http://", "https://")):
+        try:
+            with httpx.Client(timeout=5) as client:
+                r = client.get(base)
+            if r.status_code >= 500:
+                return False, f"HTTP {r.status_code}"
+            return True, ""
+        except Exception as exc:  # noqa: BLE001
+            return False, str(exc)
+    return True, ""
 
 
 @router.delete("/api/connections/{cid}")
 def delete_connection(cid: str, db: Session = Depends(get_db)):
-    refs = db.execute(select(Tool).where(Tool.connection_id == cid)).scalars().all()
-    prov_refs = db.execute(select(ModelProvider).where(ModelProvider.auth_connection_id == cid)).scalars().all()
-    if refs or prov_refs:
-        raise HTTPException(409, {"referencedBy": [t.name for t in refs] + [p.name for p in prov_refs]})
+    from ..resource_registry import assert_deletable
+    if not db.get(Connection, cid):
+        raise HTTPException(404, "connection not found")
+    assert_deletable(db, "connection", cid)
     db.delete(db.get(Connection, cid))
     db.commit()
     return {"ok": True}
+
+
+@router.get("/api/connections/{cid}/usage")
+def connection_usage(cid: str, db: Session = Depends(get_db)):
+    from ..resource_registry import references
+    return {"refs": references(db, "connection", cid)}
 
 
 # ---------- Models / Providers ----------

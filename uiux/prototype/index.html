@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>资源管理原型 · 首页</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .hero { padding: 28px 0 8px; }
+  .page-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .page-card {
+    border: 1px solid var(--border); border-radius: 10px; padding: 16px; display: block;
+    transition: border-color .12s, transform .12s; background: #fff;
+  }
+  .page-card:hover { border-color: rgba(115,115,115,.5); transform: translateY(-1px); }
+  .page-card .t { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .page-card .p { font-size: 12px; color: var(--muted-fg); margin-top: 6px; line-height: 1.55; }
+  .page-card .route { font-size: 11px; color: var(--muted-fg); margin-top: 8px; }
+  .ia { display: grid; grid-template-columns: 1fr auto 1fr; gap: 18px; align-items: start; max-width: 980px; }
+  @media (max-width: 800px) { .ia { grid-template-columns: 1fr; } .ia-arrow { transform: rotate(90deg); justify-self: center; } }
+  .ia-box { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; background: #fff; }
+  .ia-box h4 { font-size: 13px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+  .ia-tree { font-size: 12.5px; line-height: 2.0; color: #404040; }
+  .ia-tree .grp { color: var(--muted-fg); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; line-height: 1.8; margin-top: 6px; }
+  .ia-tree .new { background: var(--emerald-bg); border-radius: 4px; padding: 0 5px; color: var(--emerald-tx); font-weight: 500; }
+  .ia-tree .gone { text-decoration: line-through; color: #b5b5b5; }
+  .ia-arrow { align-self: center; color: var(--muted-fg); display: flex; }
+</style>
+</head>
+<body data-active="" data-crumbs='[{"label":"AI 质量平台"},{"label":"资源管理原型"}]'>
+<div id="content">
+<div class="page">
+
+  <div class="hero">
+    <div class="page-title" style="font-size:22px">资源管理前端原型 <span class="proto-tag">V0.1 可交互</span></div>
+    <div class="page-desc" style="max-width:760px">
+      依据《AI Resources & Data Resources Requirement V0.1》（Frozen）与《Resource Management Design Spec V1.4》（Design Baseline）产出的前端原型。
+      完整复刻现有产品 shadcn 中性主题与窄轨导航壳，所有页面可直接点击交互（菜单 / 测试 / 删除防护 / 向导全流程）。
+    </div>
+  </div>
+
+  <!-- ============ 页面索引 ============ -->
+  <div class="section">
+    <div class="section-title">原型页面</div>
+    <div class="page-grid">
+      <a class="page-card" href="ai-resources.html">
+        <div class="t"><i data-ic="cpu"></i> AI Resources 列表 <span class="badge b-success" style="font-size:10px">核心</span></div>
+        <div class="p">Header + Toolbar + Tabs + Card Grid。4 个类型 Tab、操作菜单、测试对话框、停用切换、删除防护演示。</div>
+        <div class="route mono">/config/ai-resources</div>
+      </a>
+      <a class="page-card" href="data-resources.html">
+        <div class="t"><i data-ic="database"></i> Data Resources 列表 <span class="badge b-success" style="font-size:10px">核心</span></div>
+        <div class="p">Datasources / Data Assets 两个 Tab，含数据链路边界说明、健康度巡检、下游依赖口径。</div>
+        <div class="route mono">/config/data-resources</div>
+      </a>
+      <a class="page-card" href="wizard.html">
+        <div class="t"><i data-ic="sparkles"></i> 创建资源向导</div>
+        <div class="p">Select Type → Configure → Test → Complete 全流程。六类表单切换、测试失败重试、完成摘要。</div>
+        <div class="route mono">列表页「创建资源」触发</div>
+      </a>
+      <a class="page-card" href="detail-tool.html">
+        <div class="t"><i data-ic="wrench"></i> 详情页 · 有版本类型</div>
+        <div class="p">Tool 详情：Overview / Configuration / Usage（引用表 + 调用统计）/ Versions 时间线。</div>
+        <div class="route mono">/config/ai-resources/tool/:id</div>
+      </a>
+      <a class="page-card" href="detail-datasource.html">
+        <div class="t"><i data-ic="layers"></i> 详情页 · 无版本类型</div>
+        <div class="p">Datasource 详情：凭证掩码、巡检健康度、下游依赖表、「变更记录」替代 Versions。</div>
+        <div class="route mono">/config/data-resources/datasource/:id</div>
+      </a>
+      <a class="page-card" href="components.html">
+        <div class="t"><i data-ic="package"></i> 组件规范</div>
+        <div class="p">ResourceCard 解剖、状态体系、空态/加载、操作菜单、测试对话框四态、删除防护、表单清单。</div>
+        <div class="route mono">SPEC</div>
+      </a>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ============ IA 对比 ============ -->
+  <div class="section">
+    <div class="section-title">导航（IA）调整：现状 → 目标</div>
+    <div class="section-desc">保持现有单层窄轨（icon + 短标签）结构不变，仅调整「配置管理」与「系统设置」分组下的条目。</div>
+    <div class="ia">
+      <div class="ia-box">
+        <h4><span class="badge b-neutral">现状</span> 当前导航</h4>
+        <div class="ia-tree">
+          <div class="grp">智能质检</div>
+          质量概览 / 质检结果 / 坐席分析
+          <div class="grp">配置管理</div>
+          分析任务 · Agents · 工作流<br>
+          <span class="gone">Tools</span> · <span class="gone">数据定义</span> · 结果规则
+          <div class="grp">系统设置</div>
+          连接 · <span class="gone">Models</span>
+        </div>
+      </div>
+      <div class="ia-arrow"><i data-ic="arrow-right" data-cls="ic" style="width:22px;height:22px"></i></div>
+      <div class="ia-box">
+        <h4><span class="badge b-success">目标</span> 需求 V0.1 导航树</h4>
+        <div class="ia-tree">
+          <div class="grp">智能质检</div>
+          质量概览 / 质检结果 / 坐席分析
+          <div class="grp">配置管理</div>
+          分析任务 · Agents · 工作流<br>
+          <span class="new">AI Resources</span>（Models / Tools / MCP / Knowledge）<br>
+          <span class="new">Data Resources</span>（Datasources / Data Assets）<br>
+          数据定义 · 结果规则
+          <div class="grp">系统设置</div>
+          连接
+        </div>
+      </div>
+    </div>
+    <p class="spec-note" style="max-width:980px;margin-top:14px">
+      收敛说明：原「配置管理 › Tools」与「系统设置 › Models」入口收敛进 AI Resources 页内 Tab（需求文档导航树未列出二者）；
+      「数据定义」「工作流」「结果规则」不在需求树中但为现有功能，原型暂保留（开放问题，见 00-requirement-understanding.md §6）。
+    </p>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ============ 关键设计决策 ============ -->
+  <div class="section">
+    <div class="section-title">关键设计决策</div>
+    <div class="frame" style="max-width:980px">
+      <table class="tbl">
+        <thead><tr><th style="width:220px">决策</th><th>依据与取舍</th></tr></thead>
+        <tbody>
+          <tr><td class="cell-main">两个列表页 + 页内 Tabs，而非六个独立页</td><td class="cell-sub">Spec V1.4 明确「Header + Toolbar + Tabs + Card Grid」；Tabs 携带计数，类型切换不丢筛选上下文。</td></tr>
+          <tr><td class="cell-main">六类资源共用 ResourceCard 骨架</td><td class="cell-sub">强类型体现在副标题、Metadata 与表单字段；骨架统一降低认知与维护成本。</td></tr>
+          <tr><td class="cell-main">生命周期与健康度正交双状态</td><td class="cell-sub">文档未定义状态机；沿用现有 Health 语义（Healthy/Degraded/Error），测试失败只降健康度、不自动停用。</td></tr>
+          <tr><td class="cell-main">删除 = 拦截对话框 + 引用清单</td><td class="cell-sub">需求要求「使用中不可删除」；列出引用方并给出解决路径，优于静默置灰。</td></tr>
+          <tr><td class="cell-main">无版本类型详情用「变更记录」</td><td class="cell-sub">MCP/Knowledge/Datasource/Asset 不设版本机制（需求 §版本策略），审计诉求由变更记录承接。</td></tr>
+          <tr><td class="cell-main">向导第 3 步测试强制通过</td><td class="cell-sub">创建方式「选择类型 → 表单 → 测试 → 保存」中测试是必经环节；失败可回改，保证入库资源即可用。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+  <p class="spec-note">需求理解与开放问题详见 <span class="mono">uiux/00-requirement-understanding.md</span>。原型数据均为示意；「演示」标注处为刻意安排的交互分支（删除拦截 / 测试失败 / 无引用删除）。</p>
+
+</div>
+<script src="assets/app.js"></script>
+</div>
+</body>
+</html>

@@ -111,6 +111,29 @@ def validate(defn: WorkflowDefinition) -> ValidationReport:
         if n.type == "tool" and not n.config.get("toolVersionId"):
             issues.append(ValidationIssue(nodeId=n.id, kind="dependency", message="Tool 引用无效"))
 
+    # R5b: knowledge-retrieval / mcp-call 资源存在且 Enabled
+    from .db import SessionLocal
+    from .models import KnowledgeSource, McpServer
+    db = SessionLocal()
+    try:
+        for n in nodes:
+            if n.type == "knowledge-retrieval":
+                ks = db.get(KnowledgeSource, n.config.get("knowledgeSourceId", ""))
+                if not ks or ks.status != "enabled":
+                    issues.append(ValidationIssue(nodeId=n.id, kind="dependency",
+                                                  message="Knowledge Source 不存在或已停用"))
+            if n.type == "mcp-call":
+                srv = db.get(McpServer, n.config.get("mcpServerId", ""))
+                if not srv or srv.status != "enabled":
+                    issues.append(ValidationIssue(nodeId=n.id, kind="dependency",
+                                                  message="MCP Server 不存在或已停用"))
+                elif n.config.get("toolName") and (srv.discovered_tools or []) and \
+                        n.config["toolName"] not in [t.get("name") for t in srv.discovered_tools]:
+                    issues.append(ValidationIssue(nodeId=n.id, kind="dependency",
+                                                  message=f"MCP 工具 {n.config['toolName']} 不在已发现工具列表"))
+    finally:
+        db.close()
+
     # R6: structuredOutputs 每个 key 恰被一个节点产出
     producers: dict[str, int] = {}
     for n in nodes:

@@ -114,7 +114,8 @@ def publish_workflow(wf_id: str, note: str = "", db: Session = Depends(get_db)):
     version_no = (db.query(WorkflowVersion)
                   .filter_by(workflow_id=wf_id).count()) + 1
     ver = WorkflowVersion(workflow_id=wf_id, version_no=version_no,
-                          definition=wf.draft_definition, note=note)
+                          definition=wf.draft_definition, note=note,
+                          **_collect_refs(wf.draft_definition))
     db.add(ver)
     wf.status = "published"
     db.commit()
@@ -122,6 +123,25 @@ def publish_workflow(wf_id: str, note: str = "", db: Session = Depends(get_db)):
     wf.current_version_id = ver.id
     db.commit()
     return {"versionId": ver.id, "versionNo": ver.version_no}
+
+
+def _collect_refs(defn: dict) -> dict:
+    """发布快照：收集节点对 tool/model/mcp/knowledge 的引用，供引用扫描/删除防护。"""
+    tool_refs, model_refs, mcp_refs, knowledge_refs = [], [], [], []
+    for n in (defn or {}).get("graph", {}).get("nodes", []):
+        cfg = n.get("config") or {}
+        if n.get("type") == "tool" and cfg.get("toolVersionId"):
+            tool_refs.append({"nodeId": n.get("id"), "ref": cfg["toolVersionId"]})
+        if n.get("type") == "llm":
+            mid = (cfg.get("modelRef") or {}).get("modelId")
+            if mid:
+                model_refs.append({"nodeId": n.get("id"), "ref": mid})
+        if n.get("type") == "mcp-call" and cfg.get("mcpServerId"):
+            mcp_refs.append({"nodeId": n.get("id"), "ref": cfg["mcpServerId"]})
+        if n.get("type") == "knowledge-retrieval" and cfg.get("knowledgeSourceId"):
+            knowledge_refs.append({"nodeId": n.get("id"), "ref": cfg["knowledgeSourceId"]})
+    return {"tool_version_refs": tool_refs, "model_refs": model_refs,
+            "mcp_refs": mcp_refs, "knowledge_refs": knowledge_refs}
 
 
 @router.get("/{wf_id}/versions")

@@ -270,7 +270,7 @@ def exec_tool(node, ctx) -> dict:
         with httpx.Client(timeout=10) as client:
             r = client.request(req.get("method", "GET"), url, json=inputs if req.get("method", "GET") != "GET" else None)
         out = {"status": r.status_code, "body": r.text[:2000]}
-    ctx.call("tool", tv_id, {"inputs": inputs}, out, int((time.time() - t0) * 1000), {})
+    ctx.call("tool", tv.tool_id, {"toolVersionId": tv_id, "inputs": inputs}, out, int((time.time() - t0) * 1000), {})
     return out
 
 
@@ -332,10 +332,37 @@ def exec_workflow_exec(node, ctx) -> dict:
     return r.output or {}
 
 
+def exec_knowledge_retrieval(node, ctx) -> dict:
+    from .resource_tests import search_knowledge
+    cfg = node.get("config", {})
+    query = render_refs(cfg.get("query", ""), ctx.outputs, ctx.run_input)
+    top_k = int(cfg.get("topK", 5) or 5)
+    t0 = time.time()
+    slices = search_knowledge(ctx.db, cfg.get("knowledgeSourceId"), query, top_k)
+    latency = int((time.time() - t0) * 1000)
+    ctx.call("knowledge", cfg.get("knowledgeSourceId"), {"query": query, "topK": top_k},
+             {"slices": len(slices)}, latency, {})
+    return {"slices": json.dumps(slices, ensure_ascii=False),
+            "sources": json.dumps([s.get("text", "")[:80] for s in slices], ensure_ascii=False)}
+
+
+def exec_mcp_call(node, ctx) -> dict:
+    from .resource_tests import mcp_call_tool
+    cfg = node.get("config", {})
+    inputs = resolve_bindings(node.get("inputs", []), ctx.outputs, ctx.run_input)
+    args = {**(cfg.get("args") or {}), **inputs}
+    t0 = time.time()
+    out = mcp_call_tool(ctx.db, cfg.get("mcpServerId"), cfg.get("toolName"), args)
+    ctx.call("mcp", cfg.get("mcpServerId"), {"tool": cfg.get("toolName"), "args": args},
+             out, int((time.time() - t0) * 1000), {})
+    return {"result": json.dumps(out, ensure_ascii=False)[:2000]}
+
+
 EXECUTORS = {
     "input": exec_input, "llm": exec_llm, "condition": exec_condition,
     "transform": exec_transform, "tool": exec_tool, "end": exec_end,
     "create-record": exec_create_record, "notification": exec_end, "workflow-exec": exec_workflow_exec,
+    "knowledge-retrieval": exec_knowledge_retrieval, "mcp-call": exec_mcp_call,
 }
 
 

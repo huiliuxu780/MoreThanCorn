@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react"
-import { Navigate, Route, Routes } from "react-router-dom"
+import { Navigate, Route, Routes, useParams } from "react-router-dom"
 import { AppShell } from "@/components/app/app-shell"
 import { TableSkeleton } from "@/components/app/list-state"
 
@@ -19,23 +19,30 @@ const WfAgentsPage = lazy(() => import("@/pages/wf-agents-list"))
 const WfAgentEditorPage = lazy(() => import("@/pages/wf-agent-editor"))
 const WfWorkflowsPage = lazy(() => import("@/pages/wf-workflows-list"))
 const WfWorkflowEditorPage = lazy(() => import("@/pages/wf-designer"))
-const WfToolsPage = lazy(() => import("@/pages/wf-tools"))
 const WfConnectionsPage = lazy(() => import("@/pages/wf-connections"))
-const WfModelsPage = lazy(() => import("@/pages/wf-models"))
 const WF_API = import.meta.env.VITE_WF_API === "1"
-const ToolsPage = lazy(() => import("@/pages/tools"))
-const ToolEditorPage = lazy(() => import("@/pages/tool-editor"))
-const DataAssetsPage = lazy(() => import("@/pages/data-assets"))
-const DataAssetEditorPage = lazy(() => import("@/pages/data-asset-editor"))
 const ResultRulesPage = lazy(() => import("@/pages/result-rules"))
 const ResultRuleEditorPage = lazy(() => import("@/pages/result-rule-editor"))
 const ConnectionsPage = lazy(() => import("@/pages/connections"))
+// 资源管理一期（uiux/01–03）：AI Resources / Data Resources 统一资源域
+const ResAiResourcesPage = lazy(() => import("@/pages/res-list"))
+const ResDataResourcesPage = lazy(() => import("@/pages/res-list").then((m) => ({ default: m.ResDataResourcesPage })))
+const ResWizardPage = lazy(() => import("@/pages/res-wizard"))
+const ResDetailPage = lazy(() => import("@/pages/res-detail"))
+const DataDefinitionsPage = lazy(() => import("@/pages/data-definitions"))
+const DataDefinitionEditorPage = lazy(() => import("@/pages/data-definition-editor"))
 const ForbiddenPage = lazy(() =>
   import("@/pages/system-pages").then((m) => ({ default: m.ForbiddenPage })),
 )
 const NotFoundPage = lazy(() =>
   import("@/pages/system-pages").then((m) => ({ default: m.NotFoundPage })),
 )
+
+/** 旧 Tools 详情路由 → AI Resources Tool 详情。 */
+function ToolRedirect() {
+  const { toolId } = useParams()
+  return <Navigate to={`/config/ai-resources/tool/${toolId}`} replace />
+}
 
 function RouteFallback() {
   return (
@@ -75,17 +82,26 @@ export function App() {
           <Route path="/config/agents" element={WF_API ? <WfAgentsPage /> : <AgentsPage />} />
           <Route path="/config/agents/:agentId" element={WF_API ? <WfAgentEditorPage /> : <AgentDesignerPage />} />
 
-          {/* 配置管理：Tools */}
+          {/* 配置管理：工作流 */}
           <Route path="/config/workflows" element={WF_API ? <WfWorkflowsPage /> : <WfWorkflowsPage />} />
           <Route path="/config/workflows/:agentId" element={WF_API ? <WfWorkflowEditorPage /> : <WfWorkflowEditorPage />} />
-          <Route path="/config/tools" element={WF_API ? <WfToolsPage /> : <ToolsPage />} />
-          <Route path="/config/tools/new" element={<ToolEditorPage />} />
-          <Route path="/config/tools/:toolId" element={<ToolEditorPage />} />
 
-          {/* 配置管理：数据定义 */}
-          <Route path="/config/data-assets" element={<DataAssetsPage />} />
-          <Route path="/config/data-assets/new" element={<DataAssetEditorPage />} />
-          <Route path="/config/data-assets/:assetId" element={<DataAssetEditorPage />} />
+          {/* 配置管理：AI Resources / Data Resources（资源管理一期） */}
+          <Route path="/config/ai-resources" element={<ResAiResourcesPage />} />
+          <Route path="/config/ai-resources/new" element={<ResWizardPage scope="ai" />} />
+          <Route path="/config/ai-resources/:type/:id" element={<ResDetailPage />} />
+          <Route path="/config/data-resources" element={<ResDataResourcesPage />} />
+          <Route path="/config/data-resources/new" element={<ResWizardPage scope="data" />} />
+          <Route path="/config/data-resources/:type/:id" element={<ResDetailPage />} />
+
+          {/* 旧入口收敛：Tools / Models → AI Resources（重定向） */}
+          <Route path="/config/tools" element={<Navigate to="/config/ai-resources?tab=tools" replace />} />
+          <Route path="/config/tools/new" element={<Navigate to="/config/ai-resources/new" replace />} />
+          <Route path="/config/tools/:toolId" element={<ToolRedirect />} />
+
+          {/* 配置管理：数据定义（Data Definition 实体迭代） */}
+          <Route path="/config/data-assets" element={<DataDefinitionsPage />} />
+          <Route path="/config/data-assets/:defId" element={<DataDefinitionEditorPage />} />
 
           {/* 配置管理：结果规则 */}
           <Route path="/config/result-rules" element={<ResultRulesPage />} />
@@ -93,7 +109,7 @@ export function App() {
 
           {/* 系统级设置 */}
           <Route path="/settings/connections" element={WF_API ? <WfConnectionsPage /> : <ConnectionsPage />} />
-          <Route path="/settings/models" element={<WfModelsPage />} />
+          <Route path="/settings/models" element={<Navigate to="/config/ai-resources?tab=models" replace />} />
 
           <Route path="/403" element={<ForbiddenPage />} />
           <Route path="*" element={<NotFoundPage />} />

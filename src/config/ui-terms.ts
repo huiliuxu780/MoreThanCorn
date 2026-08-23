@@ -14,6 +14,8 @@ export const UI_TERMS = {
     tasks: "分析任务",
     agents: "Agents",
     tools: "Tools",
+    aiResources: "AI Resources",
+    dataResources: "Data Resources",
     dataAssets: "数据定义",
     resultRules: "结果规则",
     settings: "Settings",

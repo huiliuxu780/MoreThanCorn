@@ -221,7 +221,8 @@ def list_tasks(db: Session = Depends(get_db)):
     rows = db.query(AnalysisTask).all()
     return {"items": [{"id": t.id, "name": t.name, "description": t.description,
                        "agentId": t.workflow_id, "agentVersionPolicy": t.version_policy,
-                       "dataAssetId": t.data_asset_id, "scope": t.scope,
+                       "dataAssetId": t.data_asset_id, "dataDefinitionId": t.data_definition_id,
+                       "scope": t.scope,
                        "sampling": t.sampling, "schedule": t.data_window,
                        "dataWindow": t.data_window, "status": t.status} for t in rows]}
 
@@ -230,6 +231,7 @@ def list_tasks(db: Session = Depends(get_db)):
 def create_task(payload: dict, db: Session = Depends(get_db)):
     t = AnalysisTask(name=payload["name"], description=payload.get("description", ""),
                      workflow_id=payload["workflowId"], data_asset_id=payload["dataAssetId"],
+                     data_definition_id=payload.get("dataDefinitionId"),
                      scope=payload.get("scope", "all"), sampling=payload.get("sampling", "all"),
                      data_window=payload.get("dataWindow", "last_7d"))
     db.add(t)
@@ -237,11 +239,24 @@ def create_task(payload: dict, db: Session = Depends(get_db)):
     return {"id": t.id, "name": t.name}
 
 
-def batch_run_task(db: Session, task: AnalysisTask, limit: int | None = None) -> list[str]:
+def _resolve_rows(db: Session, task: AnalysisTask) -> list[dict]:
+    """rows 解析：Definition→Asset；有 Datasource 且无内联 rows 时按 schema mock 抽样。"""
+    from ..models import DataDefinition
     asset = db.get(DataAsset, task.data_asset_id)
     if not asset:
         raise HTTPException(404, "数据资产不存在")
     rows = list(asset.rows or [])
+    if not rows and asset.datasource_id:
+        defn = db.get(DataDefinition, task.data_definition_id) if task.data_definition_id else None
+        schema = (defn.field_schema if defn and defn.field_schema else
+                  [{"key": "interactionId"}, {"key": "interactionTime"}, {"key": "text"}])
+        rows = [{f.get("key", f"col{i}"): f"mock-{i}" for i, f in enumerate(schema)}
+                for _ in range(5)]
+    return rows
+
+
+def batch_run_task(db: Session, task: AnalysisTask, limit: int | None = None) -> list[str]:
+    rows = _resolve_rows(db, task)
     if task.sampling.startswith("first_"):
         try:
             rows = rows[: int(task.sampling.split("_")[1])]

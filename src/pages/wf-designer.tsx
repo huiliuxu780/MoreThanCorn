@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useNavigate, useParams } from "react-router-dom"
 import {
   ArrowLeft,
+  BookOpen,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -45,6 +46,7 @@ import {
   Flag,
   FilePlus2,
   Bell,
+  Server,
 } from "lucide-react"
 import {
   Background,
@@ -87,6 +89,7 @@ import {
   type WfDefinition,
   type WfNode,
 } from "@/services/wf-api"
+import { resApi } from "@/services/resource-api"
 
 /* ============ 视觉令牌（16 §1） ============ */
 const C = {
@@ -109,6 +112,7 @@ const NEUTRAL = "#1F2329"
 const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   input: Play, llm: Bot, tool: Wrench, condition: GitBranch, transform: Braces,
   end: Flag, "create-record": FilePlus2, notification: Bell, "workflow-exec": Network,
+  "knowledge-retrieval": BookOpen, "mcp-call": Server,
 }
 const TypeIcon = ({ type, className }: { type: string; className?: string }) => {
   const I = TYPE_ICON[type] ?? Braces
@@ -194,6 +198,14 @@ function SummaryRows({ n }: { n: WfNode }) {
   }
   if (n.type === "tool") {
     rows.push({ label: "工具", body: cfg.toolVersionId ? <span className="text-xs">已绑定</span> : un })
+  }
+  if (n.type === "knowledge-retrieval") {
+    rows.push({ label: "知识库", body: cfg.knowledgeSourceId ? <span className="text-xs">已绑定</span> : un })
+    rows.push({ label: "查询", body: cfg.query ? <span className="max-w-40 truncate text-xs">{String(cfg.query)}</span> : un })
+  }
+  if (n.type === "mcp-call") {
+    rows.push({ label: "MCP", body: cfg.mcpServerId ? <span className="text-xs">已绑定</span> : un })
+    rows.push({ label: "工具", body: cfg.toolName ? <span className="text-xs">{String(cfg.toolName)}</span> : un })
   }
   if (n.type === "condition") {
     rows.push({ label: "如果", body: (cfg.branches as unknown[])?.length ? <span className="text-xs">已配置</span> : <span style={{ color: C.ink3 }} className="text-xs">未完成条件配置</span> })
@@ -298,6 +310,35 @@ function VarCascader({ nodes, selfId, onPick }: { nodes: WfNode[]; selfId: strin
 }
 
 /* ============ 配置抽屉（16 §6） ============ */
+function ResourceSelect({ types, value, onPick, placeholder }: {
+  types: string
+  value?: string
+  onPick: (item: { id: string; name: string; metadata: Record<string, unknown> }) => void
+  placeholder: string
+}) {
+  const [items, setItems] = useState<{ id: string; name: string; metadata: Record<string, unknown> }[]>([])
+  useEffect(() => { resApi.registry(types).then((r) => setItems(r.items)).catch(() => undefined) }, [types])
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button className="flex w-full items-center gap-2 rounded-md border bg-white px-2 py-1.5 text-left text-xs" style={{ borderColor: C.cardBorder, color: C.ink }}>
+          <span className="flex-1 truncate">{items.find((i) => i.id === value)?.name ?? placeholder}</span>
+          <ChevronDown className="size-3.5 text-neutral-400" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-1" align="start">
+        {items.length === 0 && <div className="px-2 py-1.5 text-xs" style={{ color: C.ink3 }}>暂无 Enabled 资源</div>}
+        {items.map((m) => (
+          <button key={m.id} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-neutral-50" style={{ color: C.ink }} onClick={() => onPick(m)}>
+            <span className="flex-1 truncate text-left">{m.name}</span>
+            {value === m.id && <CheckCircle2 className="size-3.5" style={{ color: C.primary }} />}
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 function Section({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
@@ -324,7 +365,18 @@ function ConfigDrawer(props: {
   if (!node) return null
   const def = defs.find((d) => d.type_key === node.type)
   const [models, setModels] = useState<{ id: string; caps: string[] }[]>(MODELS)
-  useEffect(() => { wfApi.models().then((ms) => setModels(ms.map((m) => ({ id: m.modelKey, caps: m.capabilities ?? [] })))).catch(() => undefined) }, [])
+  useEffect(() => {
+    resApi.registry("model").then((r) => setModels(r.items.map((m) => ({
+      id: (m.metadata.modelKey as string) || m.id,
+      caps: (m.metadata.capabilities as string[]) ?? [],
+    })))).catch(() => undefined)
+  }, [])
+  const [mcpTools, setMcpTools] = useState<string[]>([])
+  useEffect(() => {
+    const sid = (node.config as Record<string, any>)?.mcpServerId
+    if (!sid) { setMcpTools([]); return }
+    resApi.get("mcp", sid).then((d) => setMcpTools(((d.config?.discoveredTools as { name?: string }[] | undefined) ?? []).map((t) => t.name ?? ""))).catch(() => undefined)
+  }, [(node.config as Record<string, any>)?.mcpServerId])
   const cfg = node.config as Record<string, any>
   const set = (k: string, v: unknown) => onChange({ ...node, config: { ...cfg, [k]: v } })
   const setBranch = (i: number, patch: Record<string, unknown>) => {
@@ -454,6 +506,53 @@ function ConfigDrawer(props: {
             </div>
             <Button variant="outline" size="sm" className="h-7 rounded-md bg-white text-xs" onClick={() => toast.success("输出示例已生成")}>输出示例</Button>
             <p className="pt-1 text-[11px] leading-4" style={{ color: C.ink3 }}>用于定义预期输出结果的数据示例，帮助大模型更准确的输出Json参数</p>
+          </Section>
+        </>
+      )}
+      {node.type === "tool" && (
+        <Section title="插件工具">
+          <ResourceSelect types="tool" value={cfg.toolId ?? ""} placeholder="选择 Tool（仅 Enabled）"
+            onPick={async (m) => {
+              let versionId = ""
+              try {
+                const vs = await resApi.toolVersions(m.id)
+                versionId = vs[0]?.id ?? ""
+              } catch { /* 忽略 */ }
+              onChange({ ...node, config: { ...cfg, toolId: m.id, toolVersionId: versionId } })
+            }} />
+          <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>默认绑定最新版本；节点引用计入删除防护。</p>
+        </Section>
+      )}
+      {node.type === "knowledge-retrieval" && (
+        <>
+          <Section title="Knowledge Source">
+            <ResourceSelect types="knowledge" value={cfg.knowledgeSourceId ?? ""} placeholder="选择 Knowledge Source（仅 Enabled）"
+              onPick={(m) => set("knowledgeSourceId", m.id)} />
+          </Section>
+          <Section title="检索配置">
+            <input className="w-full rounded-md border p-2 text-xs" style={{ borderColor: C.cardBorder }}
+              value={cfg.query ?? ""} onChange={(e) => set("query", e.target.value)} placeholder="{{s.outputs.userQuery}}" />
+            <div className="flex items-center gap-2 pt-2 text-xs" style={{ color: C.ink3 }}>
+              topK
+              <input type="number" className="w-20 rounded-md border p-1.5 text-xs" style={{ borderColor: C.cardBorder }}
+                value={cfg.topK ?? 5} onChange={(e) => set("topK", Number(e.target.value))} />
+            </div>
+          </Section>
+        </>
+      )}
+      {node.type === "mcp-call" && (
+        <>
+          <Section title="MCP Server">
+            <ResourceSelect types="mcp" value={cfg.mcpServerId ?? ""} placeholder="选择 MCP Server（仅 Enabled）"
+              onPick={(m) => set("mcpServerId", m.id)} />
+          </Section>
+          <Section title="MCP 工具">
+            <select className="w-full rounded-md border bg-white p-1.5 text-xs" style={{ borderColor: C.cardBorder }}
+              value={cfg.toolName ?? ""} onChange={(e) => set("toolName", e.target.value)}>
+              <option value="">选择工具</option>
+              {mcpTools.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>工具列表来自 MCP Server 握手发现。</p>
           </Section>
         </>
       )}

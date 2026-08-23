@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工单系统查询 · Tool 详情 · 资源管理原型</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-active="ai-resources.html" data-crumbs='[{"label":"AI 质量平台","href":"index.html"},{"label":"配置管理"},{"label":"AI Resources","href":"ai-resources.html"},{"label":"工单系统查询"}]'>
+<div id="content">
+<div class="page">
+
+  <!-- ============ Resource Header ============ -->
+  <div class="res-header">
+    <div class="res-icon"><i data-ic="wrench" data-cls="ic" style="width:22px;height:22px"></i></div>
+    <div style="min-width:0;flex:1">
+      <div class="res-title">工单系统查询 <span class="badge b-success b-dot">Enabled</span> <span class="badge b-success">Healthy</span></div>
+      <div class="res-meta">
+        <span>Tool · http · <b>v3</b>（Latest Published）</span>
+        <span>创建于 2026-05-12</span>
+        <span>更新于 2026-08-22 18:40</span>
+      </div>
+    </div>
+    <div class="page-actions">
+      <button class="btn btn-outline" onclick="openDialog('dlg-test')"><i data-ic="flask"></i> 测试</button>
+      <button class="btn btn-outline" onclick="toast('打开编辑表单（原型略）','info','pencil')"><i data-ic="pencil"></i> 编辑</button>
+      <div class="menu-wrap">
+        <button class="btn btn-outline btn-icon" data-menu-trigger style="width:36px;height:36px"><i data-ic="ellipsis"></i></button>
+        <div class="menu">
+          <button class="menu-item" onclick="toast('已停用：保留数据，新节点不可再选择该资源','success')"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+          <button class="menu-item danger" onclick="closeMenus();openDialog('dlg-blocked')"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Inner Tabs ============ -->
+  <div data-tab-scope>
+    <div class="tabs" data-tab-group>
+      <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="config">Configuration</button>
+      <button class="tab" data-tab="usage">Usage <span class="n">3</span></button>
+      <button class="tab" data-tab="versions">Versions <span class="n">3</span></button>
+    </div>
+
+    <!-- Overview -->
+    <div data-pane="overview">
+      <p class="t13" style="max-width:760px;margin-bottom:16px">按会话 ID 拉取关联工单的处理轨迹（创建、流转、关闭时间与处理人），用于客服质检中的事实核对节点。输入 session_id，返回工单数组。</p>
+      <div class="section" style="margin-top:0">
+        <div class="section-title">基本信息</div>
+        <div class="kv" style="max-width:760px">
+          <div class="k">类型</div><div>Tool · http（外部 API）</div>
+          <div class="k">当前版本</div><div>v3 · Latest Published</div>
+          <div class="k">端点</div><div class="mono">GET https://ticket.corp.com/api/tickets?session_id=…</div>
+          <div class="k">超时 / 重试</div><div>5000ms · 失败重试 2 次（指数退避）</div>
+          <div class="k">认证</div><div>API Key（已配置，加密存储）</div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">最近测试</div>
+        <div class="test-panel" style="max-width:760px">
+          <div style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px"><i data-ic="check" data-cls="ic ic-sm" style="color:#047857"></i> 通过 · 2026-08-23 06:00 定时巡检</div>
+          <div class="t12 dim" style="margin-top:4px">延迟 398ms · 返回 2 条工单 · 结构校验 ✓</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Configuration -->
+    <div data-pane="config" style="display:none">
+      <div class="section" style="margin-top:0">
+        <div class="section-title">请求配方（v3）</div>
+        <div class="section-desc">配置只读展示；修改将产生新的草稿版本（ToolVersion）。</div>
+        <div class="code" style="max-width:760px">{
+  "kind": "http",
+  "method": "GET",
+  "url": "https://ticket.corp.com/api/tickets",
+  "query": { "session_id": "{{input.session_id}}" },
+  "headers": { "X-Api-Key": "{{secret.TICKET_API_KEY}}" },
+  "timeout_ms": 5000,
+  "retry": { "max": 2, "backoff": "exponential" },
+  "output_schema": {
+    "type": "array",
+    "items": { "ticket_id": "string", "status": "string", "closed_at": "datetime" }
+  }
+}</div>
+      </div>
+    </div>
+
+    <!-- Usage -->
+    <div data-pane="usage" style="display:none">
+      <div class="note" style="margin-bottom:14px;max-width:860px">
+        <i data-ic="alert-triangle" data-cls="ic ic-sm"></i>
+        <div>该资源正被 <b>3 个 Workflow Version</b> 的节点引用，<b>不可删除</b>。Agent 不直接保存资源引用：引用链为 Agent → Workflow → Version → Node Config → Resource。</div>
+      </div>
+      <div class="frame" style="max-width:980px">
+        <table class="tbl">
+          <thead><tr><th>Workflow</th><th>Version</th><th>节点</th><th>所属 Agent</th><th>最近运行</th></tr></thead>
+          <tbody>
+            <tr class="click">
+              <td class="cell-main">客诉归因工作流</td><td>v4</td><td class="cell-sub">事实核对（tool 节点）</td><td class="cell-sub">客诉分析专家组</td>
+              <td class="cell-sub">2 小时前 · 成功</td>
+            </tr>
+            <tr class="click">
+              <td class="cell-main">质检复核工作流</td><td>v7</td><td class="cell-sub">工单轨迹（tool 节点）</td><td class="cell-sub">质检复核员</td>
+              <td class="cell-sub">昨天 · 成功</td>
+            </tr>
+            <tr class="click">
+              <td class="cell-main">专家组研判工作流</td><td>v2</td><td class="cell-sub">上下文补全（tool 节点）</td><td class="cell-sub">疑难会话研判组</td>
+              <td class="cell-sub">3 天前 · 成功</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="section">
+        <div class="section-title">调用统计（近 7 日）</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div class="test-panel" style="min-width:150px"><div class="t12 dim">调用次数</div><div style="font-size:22px;font-weight:600;margin-top:2px">5,120</div></div>
+          <div class="test-panel" style="min-width:150px"><div class="t12 dim">成功率</div><div style="font-size:22px;font-weight:600;margin-top:2px">99.7%</div></div>
+          <div class="test-panel" style="min-width:150px"><div class="t12 dim">P95 延迟</div><div style="font-size:22px;font-weight:600;margin-top:2px">842ms</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Versions -->
+    <div data-pane="versions" style="display:none">
+      <div class="section-desc" style="margin-bottom:14px">Tool 支持 ToolVersion。节点默认引用 Latest Published；发布新版本不影响运行中的旧版本。</div>
+      <div class="tl" style="max-width:760px">
+        <div class="tl-item cur">
+          <div class="tl-head">v3 <span class="badge b-success">Published</span> <span class="badge b-neutral">Latest</span></div>
+          <div class="tl-sub">2026-08-22 · 增加重试与 output_schema 校验 · 发布人：质量管理员</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-head">v2 <span class="badge b-neutral">Deprecated</span></div>
+          <div class="tl-sub">2026-07-04 · 迁移到新工单系统域名 · 被 0 个节点引用</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-head">v1 <span class="badge b-neutral">Deprecated</span></div>
+          <div class="tl-sub">2026-05-12 · 初始版本 · 创建人：质量管理员</div>
+        </div>
+      </div>
+      <div style="margin-top:6px"><button class="btn btn-outline btn-sm" onclick="toast('基于 v3 创建草稿 v4（原型略）','info','git-branch')"><i data-ic="plus" data-cls="ic ic-sm"></i> 基于 v3 创建新版本</button></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 测试对话框 -->
+<div class="overlay" id="dlg-test">
+  <div class="dialog">
+    <div class="dialog-head" style="display:flex;align-items:flex-start">
+      <div>
+        <div class="dialog-title">测试 · 工单系统查询（v3）</div>
+        <div class="dialog-desc">以样例入参执行一次真实调用。</div>
+      </div>
+      <button class="btn-icon dialog-x" data-close><i data-ic="x"></i></button>
+    </div>
+    <div class="dialog-body">
+      <div class="field"><label class="label">输入（JSON）</label><textarea class="textarea mono">{ "session_id": "S-20260823-001" }</textarea></div>
+      <div class="test-result" id="d-ok">
+        <div style="display:flex;align-items:center;gap:6px;font-weight:600"><i data-ic="check" data-cls="ic ic-sm"></i> 测试通过 · 延迟 402ms</div>
+        <div class="mono" style="margin-top:8px;font-size:12px;background:rgba(255,255,255,.6);border-radius:6px;padding:8px">[ { "ticket_id": "T-88213", "status": "closed", "closed_at": "2026-08-20T15:32:00Z" } ]</div>
+      </div>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-outline" data-close>取消</button>
+      <button class="btn btn-primary" id="d-run"><i data-ic="flask"></i> 执行测试</button>
+    </div>
+  </div>
+</div>
+
+<!-- 删除防护 -->
+<div class="overlay" id="dlg-blocked">
+  <div class="dialog">
+    <div class="dialog-head" style="display:flex;align-items:flex-start">
+      <div>
+        <div class="dialog-title" style="display:flex;align-items:center;gap:8px"><i data-ic="ban" data-cls="ic" style="color:#dc2626"></i> 无法删除「工单系统查询」</div>
+        <div class="dialog-desc">该资源正被 3 个 Workflow Version 的节点引用（见 Usage 页）。</div>
+      </div>
+      <button class="btn-icon dialog-x" data-close><i data-ic="x"></i></button>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-outline" data-close>知道了</button>
+      <button class="btn btn-primary" onclick="closeDialog('dlg-blocked');document.querySelector('[data-tab=usage]').click()">查看引用方</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+  document.getElementById("d-run").addEventListener("click", function () {
+    fakeRun(this, 1000, () => {
+      document.getElementById("d-ok").classList.add("ok");
+      toast("测试通过，健康度保持 Healthy", "success");
+    });
+  });
+</script>
+</div>
+</body>
+</html>

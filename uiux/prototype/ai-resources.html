@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Resources · 资源管理原型</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-active="ai-resources.html" data-crumbs='[{"label":"AI 质量平台","href":"index.html"},{"label":"配置管理"},{"label":"AI Resources"}]'>
+<div id="content">
+<div class="page">
+
+  <!-- ============ Header ============ -->
+  <div class="page-head">
+    <div>
+      <div class="page-title">AI Resources</div>
+      <div class="page-desc">管理 Agent 执行过程中使用的 AI 能力资源：Models、Tools、MCP Servers、Knowledge Sources。资源引用链：Agent → Workflow → Version → Node Config → Resource。</div>
+    </div>
+    <div class="page-actions">
+      <a class="btn btn-primary" href="wizard.html?scope=ai"><i data-ic="plus"></i> 创建资源</a>
+    </div>
+  </div>
+
+  <!-- ============ Toolbar ============ -->
+  <div class="toolbar">
+    <div class="search"><i data-ic="search"></i><input id="kw" placeholder="搜索资源名称…" oninput="filterCards()"></div>
+    <select class="select" id="f-status" onchange="filterCards()">
+      <option value="">全部状态</option>
+      <option value="enabled">Enabled</option>
+      <option value="disabled">Disabled</option>
+    </select>
+    <select class="select" id="f-health" onchange="filterCards()">
+      <option value="">全部健康度</option>
+      <option value="healthy">Healthy</option>
+      <option value="degraded">Degraded</option>
+      <option value="error">Error</option>
+    </select>
+    <div class="spacer"></div>
+    <span class="count" id="count"></span>
+  </div>
+
+  <!-- ============ Tabs ============ -->
+  <div data-tab-scope>
+    <div class="tabs" data-tab-group>
+      <button class="tab active" data-tab="models">Models <span class="n">4</span></button>
+      <button class="tab" data-tab="tools">Tools <span class="n">5</span></button>
+      <button class="tab" data-tab="mcp">MCP Servers <span class="n">3</span></button>
+      <button class="tab" data-tab="ks">Knowledge Sources <span class="n">3</span></button>
+    </div>
+
+    <!-- ========== Models ========== -->
+    <div data-pane="models">
+      <div class="grid">
+
+        <article class="rc" data-name="qwen-max" data-inuse="6" data-test="ok" data-status="enabled" data-health="healthy">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="cpu" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">qwen-max</div>
+              <div class="rc-sub">Model · 阿里云百炼 · v2</div>
+            </div>
+            <span class="badge b-success b-dot">Enabled</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-tool.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">旗舰推理模型，用于客诉归因与复杂质检判定节点的默认模型。</p>
+          <div class="rc-meta">
+            <span class="badge b-outline mono">qwen-max-latest</span>
+            <span class="badge b-neutral">chat</span>
+            <span class="badge b-neutral">function-call</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="workflow" data-cls="ic"></i> 被 6 个节点引用 · 7 日 12,438 次</span>
+            <span>2026-08-22</span>
+          </div>
+        </article>
+
+        <article class="rc" data-name="qwen-plus" data-inuse="3" data-test="ok" data-status="enabled" data-health="healthy">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="cpu" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">qwen-plus</div>
+              <div class="rc-sub">Model · 阿里云百炼 · v1</div>
+            </div>
+            <span class="badge b-success b-dot">Enabled</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-tool.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">均衡型模型，批量质检任务的默认低成本选择。</p>
+          <div class="rc-meta">
+            <span class="badge b-outline mono">qwen-plus</span>
+            <span class="badge b-neutral">chat</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="workflow" data-cls="ic"></i> 被 3 个节点引用 · 7 日 41,207 次</span>
+            <span>2026-08-21</span>
+          </div>
+        </article>
+
+        <article class="rc" data-name="text-embedding-v3" data-inuse="2" data-test="ok" data-status="enabled" data-health="healthy">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="cpu" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">text-embedding-v3</div>
+              <div class="rc-sub">Model · 阿里云百炼 · v1</div>
+            </div>
+            <span class="badge b-success b-dot">Enabled</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-tool.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">向量化模型，供 Knowledge Source 切片入库与检索使用。</p>
+          <div class="rc-meta">
+            <span class="badge b-outline mono">text-embedding-v3</span>
+            <span class="badge b-neutral">embedding</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="workflow" data-cls="ic"></i> 被 2 个资源依赖 · 7 日 9,882 次</span>
+            <span>2026-08-20</span>
+          </div>
+        </article>
+
+        <article class="rc disabled-card" data-name="gpt-4o-mini" data-inuse="0" data-test="ok" data-status="disabled" data-health="healthy">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="cpu" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">gpt-4o-mini</div>
+              <div class="rc-sub">Model · Azure OpenAI · v1</div>
+            </div>
+            <span class="badge b-neutral b-dot">Disabled</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-tool.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 启用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">备用外部模型，因合规要求已停用，保留配置待评估。</p>
+          <div class="rc-meta">
+            <span class="badge b-outline mono">gpt-4o-mini</span>
+            <span class="badge b-neutral">chat</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="workflow" data-cls="ic"></i> 无引用 · 7 日 0 次</span>
+            <span>2026-08-11</span>
+          </div>
+        </article>
+
+      </div>
+    </div>
+
+    <!-- ========== Tools ========== -->
+    <div data-pane="tools" style="display:none">
+      <div class="grid">
+
+        <article class="rc" data-name="工单系统查询" data-inuse="3" data-test="ok" data-status="enabled" data-health="healthy">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="wrench" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">工单系统查询</div>
+              <div class="rc-sub">Tool · http · v3</div>
+            </div>
+            <span class="badge b-success b-dot">Enabled</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-tool.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">按会话 ID 拉取关联工单的处理轨迹，用于客服质检的事实核对。<b>（演示：删除被拦截）</b></p>
+          <div class="rc-meta">
+            <span class="badge b-outline">ACTION</span>
+            <span class="badge b-neutral">GET /api/tickets</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="workflow" data-cls="ic"></i> 被 3 个节点引用 · 7 日 5,120 次</span>
+            <span>2026-08-22</span>
+          </div>
+        </article>
+
+        <article class="rc" data-name="知识库检索" data-inuse="4" data-test="ok" data-status="enabled" data-health="healthy">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="wrench" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">知识库检索</div>
+              <div class="rc-sub">Tool · builtin · v1</div>
+            </div>
+            <span class="badge b-success b-dot">Enabled</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-tool.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">内置检索能力：在指定 Knowledge Source 中召回 Top-K 切片。</p>
+          <div class="rc-meta">
+            <span class="badge b-outline">READ</span>
+            <span class="badge b-neutral">平台内置</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="workflow" data-cls="ic"></i> 被 4 个节点引用 · 7 日 18,730 次</span>
+            <span>2026-08-23</span>
+          </div>
+        </article>
+
+        <article class="rc" data-name="质检规则计算" data-inuse="2" data-test="ok" data-status="enabled" data-health="healthy">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="wrench" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">质检规则计算</div>
+              <div class="rc-sub">Tool · http · v1</div>
+            </div>
+            <span class="badge b-success b-dot">Enabled</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-tool.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">调用规则引擎计算硬性规则命中（静音时长、抢话次数等）。</p>
+          <div class="rc-meta">
+            <span class="badge b-outline">READ</span>
+            <span class="badge b-neutral">POST /rule-engine/eval</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="workflow" data-cls="ic"></i> 被 2 个节点引用 · 7 日 33,410 次</span>
+            <span>2026-08-21</span>
+          </div>
+        </article>
+
+        <article class="rc disabled-card" data-name="短信通知" data-inuse="0" data-test="ok" data-status="disabled" data-health="healthy">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="wrench" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">短信通知</div>
+              <div class="rc-sub">Tool · http · v2</div>
+            </div>
+            <span class="badge b-neutral b-dot">Disabled</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-tool.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 启用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">向坐席发送整改提醒短信。<b>（演示：无引用，可直接删除）</b></p>
+          <div class="rc-meta">
+            <span class="badge b-outline">ACTION</span>
+            <span class="badge b-neutral">POST /sms/send</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="workflow" data-cls="ic"></i> 无引用 · 7 日 0 次</span>
+            <span>2026-08-02</span>
+          </div>
+        </article>
+
+        <article class="rc" data-name="SQL 执行器" data-inuse="1" data-test="ok" data-status="enabled" data-health="degraded">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="wrench" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">SQL 执行器</div>
+              <div class="rc-sub">Tool · builtin · v1</div>
+            </div>
+            <span class="badge b-warning b-dot">Degraded</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-tool.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">在只读副本上执行受控 SQL。最近测试超时率上升，健康度降级。</p>
+          <div class="rc-meta">
+            <span class="badge b-outline">READ</span>
+            <span class="badge b-neutral">平台内置</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="workflow" data-cls="ic"></i> 被 1 个节点引用 · 7 日 204 次</span>
+            <span>2026-08-19</span>
+          </div>
+        </article>
+
+      </div>
+    </div>
+
+    <!-- ========== MCP Servers ========== -->
+    <div data-pane="mcp" style="display:none">
+      <div class="grid">
+
+        <article class="rc" data-name="内部文档 MCP" data-inuse="2" data-test="ok" data-status="enabled" data-health="healthy">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="server" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">内部文档 MCP</div>
+              <div class="rc-sub">MCP Server · stdio · 12 tools</div>
+            </div>
+            <span class="badge b-success b-dot">Enabled</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-datasource.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">以 stdio 方式接入企业文档中台的 MCP Server，提供文档读取/搜索工具。</p>
+          <div class="rc-meta">
+            <span class="badge b-outline mono">stdio</span>
+            <span class="badge b-neutral">doc-mcp-server</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="workflow" data-cls="ic"></i> 被 2 个节点引用 · 7 日 1,882 次</span>
+            <span>2026-08-22</span>
+          </div>
+        </article>
+
+        <article class="rc" data-name="浏览器操作 MCP" data-inuse="1" data-test="fail" data-status="enabled" data-health="error">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="server" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">浏览器操作 MCP</div>
+              <div class="rc-sub">MCP Server · http · 8 tools</div>
+            </div>
+            <span class="badge b-danger b-dot">Error</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-datasource.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">远端浏览器自动化 MCP。<b>（演示：测试失败态）</b>最近一次巡检握手超时。</p>
+          <div class="rc-meta">
+            <span class="badge b-outline mono">http</span>
+            <span class="badge b-neutral mono">mcp.internal:8390</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="workflow" data-cls="ic"></i> 被 1 个节点引用 · 巡检失败 08-23 06:00</span>
+            <span>2026-08-23</span>
+          </div>
+        </article>
+
+        <article class="rc disabled-card" data-name="数据分析沙箱 MCP" data-inuse="0" data-test="ok" data-status="disabled" data-health="healthy">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="server" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">数据分析沙箱 MCP</div>
+              <div class="rc-sub">MCP Server · stdio · 5 tools</div>
+            </div>
+            <span class="badge b-neutral b-dot">Disabled</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-datasource.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 启用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">受限 Python 执行环境，用于评测阶段的自定义指标计算。</p>
+          <div class="rc-meta">
+            <span class="badge b-outline mono">stdio</span>
+            <span class="badge b-neutral">sandbox-mcp</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="workflow" data-cls="ic"></i> 无引用</span>
+            <span>2026-07-30</span>
+          </div>
+        </article>
+
+      </div>
+    </div>
+
+    <!-- ========== Knowledge Sources ========== -->
+    <div data-pane="ks" style="display:none">
+      <div class="grid">
+
+        <article class="rc" data-name="客服话术知识库" data-inuse="4" data-test="ok" data-status="enabled" data-health="healthy">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="book-open" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">客服话术知识库</div>
+              <div class="rc-sub">Knowledge Source · 向量库</div>
+            </div>
+            <span class="badge b-success b-dot">Enabled</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-datasource.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">标准话术与禁语清单，质检判定节点的事实依据来源。</p>
+          <div class="rc-meta">
+            <span class="badge b-neutral">8,214 切片</span>
+            <span class="badge b-neutral">text-embedding-v3</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="workflow" data-cls="ic"></i> 被 4 个节点引用 · 7 日 16,002 次检索</span>
+            <span>2026-08-22</span>
+          </div>
+        </article>
+
+        <article class="rc" data-name="产品手册库" data-inuse="1" data-test="ok" data-status="enabled" data-health="degraded">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="book-open" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">产品手册库</div>
+              <div class="rc-sub">Knowledge Source · 向量库</div>
+            </div>
+            <span class="badge b-warning b-dot">Degraded</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-datasource.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">产品功能与资费说明。最近增量同步失败 2 次，部分切片过期。</p>
+          <div class="rc-meta">
+            <span class="badge b-neutral">2,031 切片</span>
+            <span class="badge b-neutral">text-embedding-v3</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="workflow" data-cls="ic"></i> 被 1 个节点引用 · 同步失败 08-22 23:00</span>
+            <span>2026-08-22</span>
+          </div>
+        </article>
+
+        <article class="rc" data-name="质检标准文档库" data-inuse="2" data-test="ok" data-status="enabled" data-health="healthy">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="book-open" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">质检标准文档库</div>
+              <div class="rc-sub">Knowledge Source · 文档库</div>
+            </div>
+            <span class="badge b-success b-dot">Enabled</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-datasource.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">质检评分标准原始文档（非向量化），按章节精确引用。</p>
+          <div class="rc-meta">
+            <span class="badge b-neutral">47 文档</span>
+            <span class="badge b-neutral">按章节引用</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="workflow" data-cls="ic"></i> 被 2 个节点引用 · 7 日 890 次</span>
+            <span>2026-08-18</span>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+  <p class="spec-note">原型交互说明：点击卡片 ⋯ 菜单可体验 查看详情 / 编辑 / 测试 / 停用 / 删除；「工单系统查询」演示删除防护（被引用不可删），「短信通知」演示无引用删除确认；「浏览器操作 MCP」演示测试失败。顶部搜索与筛选实时生效。</p>
+
+</div>
+
+<!-- ============ 测试对话框 ============ -->
+<div class="overlay" id="dlg-test">
+  <div class="dialog">
+    <div class="dialog-head" style="display:flex;align-items:flex-start">
+      <div>
+        <div class="dialog-title">测试资源 · <span id="test-name"></span></div>
+        <div class="dialog-desc">使用样例输入执行一次真实调用，验证连通性与响应。</div>
+      </div>
+      <button class="btn-icon dialog-x" data-close><i data-ic="x"></i></button>
+    </div>
+    <div class="dialog-body">
+      <div class="field">
+        <label class="label">测试输入（JSON）</label>
+        <textarea class="textarea mono" id="test-input">{ "input": "ping" }</textarea>
+      </div>
+      <div class="test-result" id="test-ok">
+        <div style="display:flex;align-items:center;gap:6px;font-weight:600"><i data-ic="check" data-cls="ic ic-sm"></i> 测试通过</div>
+        <div class="row"><span>延迟 412ms</span><span>Token 38</span><span>时间 2026-08-23 14:02</span></div>
+        <div class="mono" style="margin-top:8px;font-size:12px;background:rgba(255,255,255,.6);border-radius:6px;padding:8px">{ "ok": true, "output": "pong" }</div>
+      </div>
+      <div class="test-result" id="test-fail">
+        <div style="display:flex;align-items:center;gap:6px;font-weight:600"><i data-ic="alert-triangle" data-cls="ic ic-sm"></i> 测试失败</div>
+        <div class="mono" style="margin-top:8px;font-size:12px;background:rgba(255,255,255,.6);border-radius:6px;padding:8px">connect ETIMEDOUT mcp.internal:8390（5000ms）</div>
+        <div style="margin-top:8px;font-size:12px">请返回编辑配置（Endpoint / 超时 / 凭证）后重试。失败不会自动停用资源，但健康度会标记为 Error。</div>
+      </div>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-outline" data-close>取消</button>
+      <button class="btn btn-primary" id="test-run"><i data-ic="flask"></i> 执行测试</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 删除防护对话框（被引用） ============ -->
+<div class="overlay" id="dlg-blocked">
+  <div class="dialog">
+    <div class="dialog-head" style="display:flex;align-items:flex-start">
+      <div>
+        <div class="dialog-title" style="display:flex;align-items:center;gap:8px"><i data-ic="ban" data-cls="ic" style="color:#dc2626"></i> 无法删除「<span id="blocked-name"></span>」</div>
+        <div class="dialog-desc">使用中的资源不允许删除。该资源正被以下对象引用：</div>
+      </div>
+      <button class="btn-icon dialog-x" data-close><i data-ic="x"></i></button>
+    </div>
+    <div class="dialog-body">
+      <div class="frame">
+        <table class="tbl">
+          <thead><tr><th>引用方</th><th>位置</th><th>最近运行</th></tr></thead>
+          <tbody>
+            <tr><td class="cell-main">客诉归因工作流</td><td class="cell-sub">v4 · 节点「事实核对」</td><td class="cell-sub">2 小时前</td></tr>
+            <tr><td class="cell-main">质检复核工作流</td><td class="cell-sub">v7 · 节点「工单轨迹」</td><td class="cell-sub">昨天</td></tr>
+            <tr><td class="cell-main">专家组研判工作流</td><td class="cell-sub">v2 · 节点「上下文补全」</td><td class="cell-sub">3 天前</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="hint" style="margin-top:10px">如需下线：先在对应 Workflow Version 中移除节点引用，或停用该资源（保留数据，禁止新引用）。</p>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-outline" data-close>知道了</button>
+      <button class="btn btn-primary" onclick="closeDialog('dlg-blocked');toast('已跳转到引用该资源的 Workflow 列表','info','workflow')">查看引用方</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 删除确认对话框（无引用） ============ -->
+<div class="overlay" id="dlg-delete">
+  <div class="dialog">
+    <div class="dialog-head" style="display:flex;align-items:flex-start">
+      <div>
+        <div class="dialog-title">删除「<span id="del-name"></span>」？</div>
+        <div class="dialog-desc">该资源当前没有被任何 Workflow 节点引用。删除后配置与版本历史不可恢复。</div>
+      </div>
+      <button class="btn-icon dialog-x" data-close><i data-ic="x"></i></button>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-outline" data-close>取消</button>
+      <button class="btn btn-danger" id="del-confirm"><i data-ic="trash"></i> 确认删除</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+  /* 列表过滤 */
+  function filterCards() {
+    const kw = document.getElementById("kw").value.trim().toLowerCase();
+    const st = document.getElementById("f-status").value;
+    const hl = document.getElementById("f-health").value;
+    let shown = 0;
+    document.querySelectorAll(".rc").forEach((c) => {
+      const okKw = !kw || c.dataset.name.toLowerCase().includes(kw);
+      const okSt = !st || c.dataset.status === st;
+      const okHl = !hl || c.dataset.health === hl;
+      const vis = okKw && okSt && okHl;
+      c.style.display = vis ? "" : "none";
+      if (vis) shown++;
+    });
+    document.getElementById("count").textContent = `共 ${shown} 个资源`;
+  }
+
+  /* 卡片菜单动作（事件委托） */
+  let currentCard = null;
+  document.addEventListener("click", (e) => {
+    const actBtn = e.target.closest("[data-act]");
+    if (!actBtn) return;
+    const card = actBtn.closest(".rc");
+    currentCard = card;
+    const act = actBtn.dataset.act;
+    closeMenus();
+    if (act === "test") {
+      document.getElementById("test-name").textContent = card.dataset.name;
+      document.getElementById("test-ok").className = "test-result";
+      document.getElementById("test-fail").className = "test-result";
+      openDialog("dlg-test");
+    } else if (act === "delete") {
+      if (Number(card.dataset.inuse) > 0) {
+        document.getElementById("blocked-name").textContent = card.dataset.name;
+        openDialog("dlg-blocked");
+      } else {
+        document.getElementById("del-name").textContent = card.dataset.name;
+        openDialog("dlg-delete");
+      }
+    } else if (act === "toggle") {
+      const disabled = card.dataset.status === "disabled";
+      card.dataset.status = disabled ? "enabled" : "disabled";
+      card.classList.toggle("disabled-card", !disabled);
+      const badge = card.querySelector(".rc-top .badge");
+      badge.className = "badge b-dot " + (disabled ? "b-success" : "b-neutral");
+      badge.textContent = disabled ? "Enabled" : "Disabled";
+      const item = card.querySelector('[data-act="toggle"]');
+      item.lastChild.textContent = disabled ? " 停用" : " 启用";
+      toast(disabled ? `已启用「${card.dataset.name}」` : `已停用「${card.dataset.name}」，不可再被新节点选择`, "success");
+    } else if (act === "edit") {
+      toast(`打开「${card.dataset.name}」编辑表单（原型略）`, "info", "pencil");
+    }
+  });
+
+  /* 测试执行 */
+  document.getElementById("test-run").addEventListener("click", function () {
+    const fail = currentCard && currentCard.dataset.test === "fail";
+    document.getElementById("test-ok").className = "test-result";
+    document.getElementById("test-fail").className = "test-result";
+    fakeRun(this, 1100, () => {
+      if (fail) {
+        document.getElementById("test-fail").classList.add("fail");
+        if (currentCard) {
+          const badge = currentCard.querySelector(".rc-top .badge");
+          if (currentCard.dataset.status === "enabled") { badge.className = "badge b-dot b-danger"; badge.textContent = "Error"; }
+          currentCard.dataset.health = "error";
+        }
+      } else {
+        document.getElementById("test-ok").classList.add("ok");
+        toast("测试通过，结果已记录到资源健康度", "success");
+      }
+    });
+  });
+
+  /* 删除确认 */
+  document.getElementById("del-confirm").addEventListener("click", function () {
+    const name = currentCard ? currentCard.dataset.name : "";
+    closeDialog("dlg-delete");
+    if (currentCard) currentCard.remove();
+    toast(`已删除「${name}」`, "success");
+    filterCards();
+  });
+
+  filterCards();
+</script>
+</div>
+</body>
+</html>

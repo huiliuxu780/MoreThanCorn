@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Resources · 资源管理原型</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-active="data-resources.html" data-crumbs='[{"label":"AI 质量平台","href":"index.html"},{"label":"配置管理"},{"label":"Data Resources"}]'>
+<div id="content">
+<div class="page">
+
+  <div class="page-head">
+    <div>
+      <div class="page-title">Data Resources</div>
+      <div class="page-desc">管理分析任务与 Evaluation Agent 使用的数据资源：Datasources 与 Data Assets。数据链路：Datasource → Data Asset → Data Definition → Analysis Task（Data Definition 不属于 Resource）。</div>
+    </div>
+    <div class="page-actions">
+      <a class="btn btn-primary" href="wizard.html?scope=data"><i data-ic="plus"></i> 创建资源</a>
+    </div>
+  </div>
+
+  <div class="note info" style="margin-bottom:16px">
+    <i data-ic="info" data-cls="ic ic-sm"></i>
+    <div>
+      <b>边界说明：</b>本页的 Data Asset 定义「一份可分析的数据集」（来源、一条数据代表什么、字段含义概览）；
+      而「数据定义（Data Definition）」挂在 Data Asset 之下、供分析任务选择字段映射，不在资源管理范围内。
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="search"><i data-ic="search"></i><input id="kw" placeholder="搜索资源名称…" oninput="filterCards()"></div>
+    <select class="select" id="f-type" onchange="filterCards()">
+      <option value="">全部类型</option>
+      <option value="mysql">MySQL</option>
+      <option value="postgresql">PostgreSQL</option>
+      <option value="oss">对象存储 OSS</option>
+      <option value="http">HTTP API</option>
+    </select>
+    <select class="select" id="f-status" onchange="filterCards()">
+      <option value="">全部状态</option>
+      <option value="enabled">Enabled</option>
+      <option value="disabled">Disabled</option>
+    </select>
+    <div class="spacer"></div>
+    <span class="count" id="count"></span>
+  </div>
+
+  <div data-tab-scope>
+    <div class="tabs" data-tab-group>
+      <button class="tab active" data-tab="ds">Datasources <span class="n">4</span></button>
+      <button class="tab" data-tab="da">Data Assets <span class="n">4</span></button>
+    </div>
+
+    <!-- ========== Datasources ========== -->
+    <div data-pane="ds">
+      <div class="grid">
+
+        <article class="rc" data-name="mysql-prod" data-dstype="mysql" data-inuse="3" data-test="ok" data-status="enabled">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="database" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">mysql-prod</div>
+              <div class="rc-sub">Datasource · MySQL 8.0</div>
+            </div>
+            <span class="badge b-success b-dot">Healthy</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-datasource.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试连接</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">呼叫中心生产库（只读副本）。<b>（演示：被 3 个 Data Asset 依赖，删除被拦截）</b></p>
+          <div class="rc-meta">
+            <span class="badge b-outline mono">rm-prod.internal:3306</span>
+            <span class="badge b-neutral">db_cc</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="layers" data-cls="ic"></i> 3 个 Data Asset · 检测于 10 分钟前</span>
+            <span>2026-08-23</span>
+          </div>
+        </article>
+
+        <article class="rc" data-name="pg-analytics" data-dstype="postgresql" data-inuse="2" data-test="ok" data-status="enabled">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="database" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">pg-analytics</div>
+              <div class="rc-sub">Datasource · PostgreSQL 16</div>
+            </div>
+            <span class="badge b-success b-dot">Healthy</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-datasource.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试连接</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">分析数仓，T+1 汇聚坐席、工单与满意度指标。</p>
+          <div class="rc-meta">
+            <span class="badge b-outline mono">pg-analytics.internal:5432</span>
+            <span class="badge b-neutral">dw_quality</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="layers" data-cls="ic"></i> 2 个 Data Asset · 检测于 10 分钟前</span>
+            <span>2026-08-23</span>
+          </div>
+        </article>
+
+        <article class="rc" data-name="oss-voice-records" data-dstype="oss" data-inuse="1" data-test="ok" data-status="enabled" data-degraded="1">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="database" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">oss-voice-records</div>
+              <div class="rc-sub">Datasource · 对象存储 OSS</div>
+            </div>
+            <span class="badge b-warning b-dot">Degraded</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-datasource.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试连接</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">通话录音文件存储。最近巡检发现 0.3% 对象读取超时。</p>
+          <div class="rc-meta">
+            <span class="badge b-outline mono">oss://cc-records</span>
+            <span class="badge b-neutral">华东 2</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="layers" data-cls="ic"></i> 1 个 Data Asset · 检测于 10 分钟前</span>
+            <span>2026-08-23</span>
+          </div>
+        </article>
+
+        <article class="rc disabled-card" data-name="http-crm-api" data-dstype="http" data-inuse="0" data-test="ok" data-status="disabled">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="globe" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">http-crm-api</div>
+              <div class="rc-sub">Datasource · HTTP API</div>
+            </div>
+            <span class="badge b-neutral b-dot">Disabled</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-datasource.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试连接</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 启用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">CRM 客户画像接口。<b>（演示：无下游依赖，可直接删除）</b></p>
+          <div class="rc-meta">
+            <span class="badge b-outline mono">crm.corp.com/api/v2</span>
+            <span class="badge b-neutral">OAuth2</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="layers" data-cls="ic"></i> 无下游 Data Asset</span>
+            <span>2026-07-28</span>
+          </div>
+        </article>
+
+      </div>
+    </div>
+
+    <!-- ========== Data Assets ========== -->
+    <div data-pane="da" style="display:none">
+      <div class="grid">
+
+        <article class="rc" data-name="客服会话记录" data-inuse="3" data-test="ok" data-status="enabled">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="layers" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">客服会话记录</div>
+              <div class="rc-sub">Data Asset · mysql-prod.t_call_session</div>
+            </div>
+            <span class="badge b-success b-dot">Ready</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-datasource.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 抽样测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">一条数据 = 一通客服电话会话（含转写文本与时间线）。<b>（演示：删除被拦截）</b></p>
+          <div class="rc-meta">
+            <span class="badge b-neutral">约 240 万条/月</span>
+            <span class="badge b-neutral">时间字段 call_start_at</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="clipboard" data-cls="ic"></i> 3 个数据定义 · 5 个分析任务</span>
+            <span>2026-08-22</span>
+          </div>
+        </article>
+
+        <article class="rc" data-name="在线聊天记录" data-inuse="1" data-test="ok" data-status="enabled">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="layers" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">在线聊天记录</div>
+              <div class="rc-sub">Data Asset · mysql-prod.t_im_chat</div>
+            </div>
+            <span class="badge b-success b-dot">Ready</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-datasource.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 抽样测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">一条数据 = 一次在线咨询会话（多轮消息聚合）。</p>
+          <div class="rc-meta">
+            <span class="badge b-neutral">约 90 万条/月</span>
+            <span class="badge b-neutral">时间字段 session_start</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="clipboard" data-cls="ic"></i> 1 个数据定义 · 2 个分析任务</span>
+            <span>2026-08-21</span>
+          </div>
+        </article>
+
+        <article class="rc" data-name="工单处理记录" data-inuse="0" data-test="ok" data-status="enabled">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="layers" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">工单处理记录</div>
+              <div class="rc-sub">Data Asset · pg-analytics.f_ticket</div>
+            </div>
+            <span class="badge b-info b-dot">Draft</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-datasource.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 抽样测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">一条数据 = 一张工单从创建到关闭的完整轨迹。草稿态，字段映射待确认。</p>
+          <div class="rc-meta">
+            <span class="badge b-neutral">约 12 万条/月</span>
+            <span class="badge b-neutral">时间字段 created_at</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="clipboard" data-cls="ic"></i> 暂无下游数据定义</span>
+            <span>2026-08-20</span>
+          </div>
+        </article>
+
+        <article class="rc disabled-card" data-name="坐席排班表" data-inuse="0" data-test="ok" data-status="disabled">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="layers" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">坐席排班表</div>
+              <div class="rc-sub">Data Asset · pg-analytics.dim_shift</div>
+            </div>
+            <span class="badge b-neutral b-dot">Deprecated</span>
+            <div class="menu-wrap">
+              <button class="rc-menu-btn" data-menu-trigger><i data-ic="ellipsis"></i></button>
+              <div class="menu">
+                <a class="menu-item" href="detail-datasource.html"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</a>
+                <button class="menu-item" data-act="edit"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+                <button class="menu-item" data-act="test"><i data-ic="flask" data-cls="ic ic-sm"></i> 抽样测试</button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-act="toggle"><i data-ic="power" data-cls="ic ic-sm"></i> 启用</button>
+                <button class="menu-item danger" data-act="delete"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+              </div>
+            </div>
+          </div>
+          <p class="rc-desc">已废弃：排班数据改由坐席系统实时接口提供。</p>
+          <div class="rc-meta">
+            <span class="badge b-neutral">静态维表</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="clipboard" data-cls="ic"></i> 无下游引用</span>
+            <span>2026-06-15</span>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+  <p class="spec-note">原型交互说明：Datasource 卡片健康度来自连接巡检；Data Asset 卡片展示下游「数据定义 → 分析任务」引用口径。「客服会话记录」演示删除防护，「http-crm-api」演示无依赖删除。</p>
+
+</div>
+
+<!-- ============ 测试对话框 ============ -->
+<div class="overlay" id="dlg-test">
+  <div class="dialog">
+    <div class="dialog-head" style="display:flex;align-items:flex-start">
+      <div>
+        <div class="dialog-title">测试连接 · <span id="test-name"></span></div>
+        <div class="dialog-desc">执行一次真实连通性检查（数据库：SELECT 1；对象存储：列举对象；API：健康检查）。</div>
+      </div>
+      <button class="btn-icon dialog-x" data-close><i data-ic="x"></i></button>
+    </div>
+    <div class="dialog-body">
+      <div class="test-result" id="test-ok">
+        <div style="display:flex;align-items:center;gap:6px;font-weight:600"><i data-ic="check" data-cls="ic ic-sm"></i> 连接正常</div>
+        <div class="row"><span>往返 23ms</span><span>权限 只读 ✓</span><span>时间 2026-08-23 14:05</span></div>
+      </div>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-outline" data-close>取消</button>
+      <button class="btn btn-primary" id="test-run"><i data-ic="flask"></i> 执行测试</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 删除防护 ============ -->
+<div class="overlay" id="dlg-blocked">
+  <div class="dialog">
+    <div class="dialog-head" style="display:flex;align-items:flex-start">
+      <div>
+        <div class="dialog-title" style="display:flex;align-items:center;gap:8px"><i data-ic="ban" data-cls="ic" style="color:#dc2626"></i> 无法删除「<span id="blocked-name"></span>」</div>
+        <div class="dialog-desc">使用中的资源不允许删除。存在下游依赖：</div>
+      </div>
+      <button class="btn-icon dialog-x" data-close><i data-ic="x"></i></button>
+    </div>
+    <div class="dialog-body">
+      <div class="frame">
+        <table class="tbl">
+          <thead><tr><th>下游对象</th><th>类型</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td class="cell-main">客服会话记录</td><td class="cell-sub">Data Asset</td><td><span class="badge b-success">Ready</span></td></tr>
+            <tr><td class="cell-main">在线聊天记录</td><td class="cell-sub">Data Asset</td><td><span class="badge b-success">Ready</span></td></tr>
+            <tr><td class="cell-main">工单处理记录</td><td class="cell-sub">Data Asset</td><td><span class="badge b-info">Draft</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="hint" style="margin-top:10px">删除链路约束：Datasource → Data Asset → Data Definition → Analysis Task，上游资源须先解除全部下游引用。</p>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-outline" data-close>知道了</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 删除确认 ============ -->
+<div class="overlay" id="dlg-delete">
+  <div class="dialog">
+    <div class="dialog-head" style="display:flex;align-items:flex-start">
+      <div>
+        <div class="dialog-title">删除「<span id="del-name"></span>」？</div>
+        <div class="dialog-desc">该资源无下游依赖，删除后配置不可恢复。</div>
+      </div>
+      <button class="btn-icon dialog-x" data-close><i data-ic="x"></i></button>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-outline" data-close>取消</button>
+      <button class="btn btn-danger" id="del-confirm"><i data-ic="trash"></i> 确认删除</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+  function filterCards() {
+    const kw = document.getElementById("kw").value.trim().toLowerCase();
+    const st = document.getElementById("f-status").value;
+    const tp = document.getElementById("f-type").value;
+    let shown = 0;
+    document.querySelectorAll(".rc").forEach((c) => {
+      const vis = (!kw || c.dataset.name.toLowerCase().includes(kw)) && (!st || c.dataset.status === st) && (!tp || c.dataset.dstype === tp);
+      c.style.display = vis ? "" : "none";
+      if (vis) shown++;
+    });
+    document.getElementById("count").textContent = `共 ${shown} 个资源`;
+  }
+  /* 类型筛选仅对 Datasources Tab 生效（反馈#2） */
+  document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => {
+    document.getElementById("f-type").style.display = t.dataset.tab === "ds" ? "" : "none";
+  }));
+
+  let currentCard = null;
+  document.addEventListener("click", (e) => {
+    const actBtn = e.target.closest("[data-act]");
+    if (!actBtn) return;
+    currentCard = actBtn.closest(".rc");
+    const act = actBtn.dataset.act;
+    closeMenus();
+    if (act === "test") {
+      document.getElementById("test-name").textContent = currentCard.dataset.name;
+      document.getElementById("test-ok").className = "test-result";
+      openDialog("dlg-test");
+    } else if (act === "delete") {
+      if (Number(currentCard.dataset.inuse) > 0) {
+        document.getElementById("blocked-name").textContent = currentCard.dataset.name;
+        openDialog("dlg-blocked");
+      } else {
+        document.getElementById("del-name").textContent = currentCard.dataset.name;
+        openDialog("dlg-delete");
+      }
+    } else if (act === "toggle") {
+      const disabled = currentCard.dataset.status === "disabled";
+      currentCard.dataset.status = disabled ? "enabled" : "disabled";
+      currentCard.classList.toggle("disabled-card", !disabled);
+      toast(disabled ? `已启用「${currentCard.dataset.name}」` : `已停用「${currentCard.dataset.name}」`, "success");
+    } else if (act === "edit") {
+      toast(`打开「${currentCard.dataset.name}」编辑表单（原型略）`, "info", "pencil");
+    }
+  });
+
+  document.getElementById("test-run").addEventListener("click", function () {
+    fakeRun(this, 900, () => {
+      document.getElementById("test-ok").classList.add("ok");
+      toast("连接正常，健康度已更新", "success");
+    });
+  });
+
+  document.getElementById("del-confirm").addEventListener("click", function () {
+    const name = currentCard ? currentCard.dataset.name : "";
+    closeDialog("dlg-delete");
+    if (currentCard) currentCard.remove();
+    toast(`已删除「${name}」`, "success");
+    filterCards();
+  });
+
+  filterCards();
+</script>
+</div>
+</body>
+</html>

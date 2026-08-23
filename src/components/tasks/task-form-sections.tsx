@@ -1,4 +1,5 @@
 import { Plus, X } from "lucide-react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -15,7 +16,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { FormField } from "@/components/app/form-field"
 import { SectionHeader } from "@/components/app/page"
 import { agents, agentDetails, dataAssets } from "@/mocks/data"
-import type { AgentDetail, DataAsset } from "@/domain/types"
+import type { AgentDetail, DataAsset, DataAssetField } from "@/domain/types"
+import { defApi, type DefinitionDTO } from "@/services/resource-api"
+import { wfEnabled } from "@/services/wf-api"
 import { cn } from "@/lib/utils"
 
 export interface ScopeCondition {
@@ -31,6 +34,7 @@ export interface TaskFormState {
   versionPolicy: "Latest Published" | "Fixed"
   fixedVersion: string
   assetId: string
+  definitionId: string
   mapping: Record<string, string>
   scope: ScopeCondition[]
   samplingType: "全量" | "随机抽样" | "固定数量"
@@ -50,6 +54,7 @@ export const emptyTaskForm: TaskFormState = {
   versionPolicy: "Latest Published",
   fixedVersion: "",
   assetId: "",
+  definitionId: "",
   mapping: {},
   scope: [],
   samplingType: "全量",
@@ -190,11 +195,49 @@ export function DataTaskFields({
 }) {
   const set = (patch: Partial<TaskFormState>) => onChange({ ...form, ...patch })
   const agent = agentOf(form)
-  const asset = assetOf(form)
+  const [defs, setDefs] = useState<DefinitionDTO[]>([])
+  const [selDef, setSelDef] = useState<DefinitionDTO | null>(null)
+  useEffect(() => {
+    if (!wfEnabled()) return
+    defApi.list({}).then((r) => setDefs(r.items.filter((d) => d.lifecycle === "Ready"))).catch(() => undefined)
+  }, [])
+  useEffect(() => {
+    if (form.definitionId && wfEnabled()) defApi.get(form.definitionId).then(setSelDef).catch(() => undefined)
+  }, [form.definitionId])
+
+  /** 真 API 模式：以 Data Definition 的 field_schema 构造映射视图（迭代自现有能力）。 */
+  const shellFromDef = (d: DefinitionDTO | null): DataAsset | null => {
+    if (!d) return null
+    return {
+      id: d.assetId, name: d.assetName, description: "", source: "",
+      recordMeaning: "见数据定义", recordIdField: "", timeField: "", timeFieldLabel: "",
+      lifecycle: "Ready", health: "Healthy", currentRevision: d.revision, updatedAt: "",
+      schema: (d.fieldSchema ?? []) as DataAssetField[], eligibility: d.eligibility ?? [],
+    }
+  }
+  const asset = wfEnabled() ? shellFromDef(selDef) : assetOf(form)
   const issues = mappingIssues(form)
 
   return (
     <div className="space-y-5">
+      {wfEnabled() ? (
+        <FormField label="Data Definition" required description="选择 Ready 的数据定义（字段 schema + eligibility）；任务按定义字段执行分析。">
+          <Select
+            value={form.definitionId || undefined}
+            onValueChange={(definitionId) => {
+              const d = defs.find((x) => x.id === definitionId) ?? null
+              onChange({ ...form, definitionId, assetId: d?.assetId ?? "", mapping: autoMapping(agent, shellFromDef(d)), scope: [] })
+            }}
+          >
+            <SelectTrigger><SelectValue placeholder="选择 Data Definition" /></SelectTrigger>
+            <SelectContent>
+              {defs.map((d) => (
+                <SelectItem key={d.id} value={d.id}>{d.name} · {d.assetName} · R{d.revision}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormField>
+      ) : (
       <FormField label="Data Asset" required description="只允许选择 Ready 资产；Run 创建时自动冻结当前 Ready Revision。">
         <Select
           value={form.assetId || undefined}
@@ -211,6 +254,7 @@ export function DataTaskFields({
           </SelectContent>
         </Select>
       </FormField>
+      )}
 
       {asset ? (
         <div className="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">

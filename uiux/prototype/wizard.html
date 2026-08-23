@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>创建资源 · 资源管理原型</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-active="ai-resources.html" data-crumbs='[{"label":"AI 质量平台","href":"index.html"},{"label":"配置管理"},{"label":"AI Resources","href":"ai-resources.html"},{"label":"创建资源"}]'>
+<div id="content">
+<div class="page narrow">
+
+  <div>
+    <a class="btn btn-ghost btn-sm" id="back-link" href="ai-resources.html" style="gap:4px;padding-left:8px"><i data-ic="arrow-left"></i> AI Resources</a>
+    <div class="page-head" style="margin-top:8px;margin-bottom:12px">
+      <div>
+        <div class="page-title">创建资源</div>
+        <div class="page-desc">统一向导：选择资源类型 → 填写类型表单 → 测试 → 保存。所有资源类型共用同一流程骨架。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step Indicator -->
+  <div class="steps" id="steps">
+    <span class="step active" data-step="0"><span class="num">1</span> 选择类型</span>
+    <span class="step-line"></span>
+    <span class="step" data-step="1"><span class="num">2</span> 填写配置</span>
+    <span class="step-line"></span>
+    <span class="step" data-step="2"><span class="num">3</span> 测试</span>
+    <span class="step-line"></span>
+    <span class="step" data-step="3"><span class="num">4</span> 完成</span>
+  </div>
+
+  <div style="border:1px solid var(--border);border-radius:10px;background:#fff;padding:20px">
+
+    <!-- ========== Step 1：Select Type ========== -->
+    <div data-wstep="0">
+      <div class="group-label" data-scope="ai">AI Resources — Agent 执行过程使用</div>
+      <div class="type-grid" data-scope="ai">
+        <button class="type-card sel" data-type="model">
+          <div class="rc-icon"><i data-ic="cpu" data-cls="ic ic-lg"></i></div>
+          <div>
+            <div class="type-name">Model <span class="badge b-neutral" style="font-size:10px">支持版本</span></div>
+            <div class="type-desc">LLM / Embedding 模型。按 Provider + Model Key 注册，支持 Model Version。</div>
+          </div>
+        </button>
+        <button class="type-card" data-type="tool">
+          <div class="rc-icon"><i data-ic="wrench" data-cls="ic ic-lg"></i></div>
+          <div>
+            <div class="type-name">Tool <span class="badge b-neutral" style="font-size:10px">支持版本</span></div>
+            <div class="type-desc">可复用能力资产（内置 / HTTP API），支持 ToolVersion 与发布流。</div>
+          </div>
+        </button>
+        <button class="type-card" data-type="mcp">
+          <div class="rc-icon"><i data-ic="server" data-cls="ic ic-lg"></i></div>
+          <div>
+            <div class="type-name">MCP Server <span class="badge b-neutral" style="font-size:10px">无版本</span></div>
+            <div class="type-desc">以 stdio / http 接入的 MCP 服务，注册后自动发现其工具列表。</div>
+          </div>
+        </button>
+        <button class="type-card" data-type="ks">
+          <div class="rc-icon"><i data-ic="book-open" data-cls="ic ic-lg"></i></div>
+          <div>
+            <div class="type-name">Knowledge Source <span class="badge b-neutral" style="font-size:10px">无版本</span></div>
+            <div class="type-desc">知识库（向量库 / 文档库），供检索工具与判定节点引用。</div>
+          </div>
+        </button>
+      </div>
+
+      <div class="group-label" data-scope="data">Data Resources — 分析任务 / Evaluation Agent 使用</div>
+      <div class="type-grid" data-scope="data">
+        <button class="type-card" data-type="datasource">
+          <div class="rc-icon"><i data-ic="database" data-cls="ic ic-lg"></i></div>
+          <div>
+            <div class="type-name">Datasource <span class="badge b-neutral" style="font-size:10px">无版本</span></div>
+            <div class="type-desc">数据连接（数据库 / 对象存储 / HTTP API），只读优先。</div>
+          </div>
+        </button>
+        <button class="type-card" data-type="asset">
+          <div class="rc-icon"><i data-ic="layers" data-cls="ic ic-lg"></i></div>
+          <div>
+            <div class="type-name">Data Asset <span class="badge b-neutral" style="font-size:10px">无版本</span></div>
+            <div class="type-desc">一份可分析的数据集：来源 + 一条数据代表什么 + 时间字段。</div>
+          </div>
+        </button>
+      </div>
+      <p class="hint" style="margin-top:12px">Data Definition 不属于 Resource，在 Data Asset 创建完成后于「数据定义」中配置。</p>
+    </div>
+
+    <!-- ========== Step 2：Configure ========== -->
+    <div data-wstep="1" style="display:none">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <div class="rc-icon" id="form-icon" style="width:30px;height:30px"></div>
+        <div>
+          <div style="font-size:14px;font-weight:600" id="form-title">Model</div>
+          <div class="t12 dim" id="form-sub">类型表单随所选类型切换（强类型资源模型）</div>
+        </div>
+      </div>
+
+      <!-- Model Form -->
+      <div data-form="model">
+        <div class="field-row">
+          <div class="field"><label class="label">名称 <span class="req">*</span></label><input class="input" value="qwen-turbo" id="res-name"></div>
+          <div class="field"><label class="label">Provider <span class="req">*</span></label>
+            <select class="fselect"><option>阿里云百炼</option><option>Azure OpenAI</option><option>＋ 新建 Provider…</option></select>
+          </div>
+        </div>
+        <div class="field"><label class="label">Model Key <span class="req">*</span></label><input class="input mono" value="qwen-turbo-latest"><div class="hint">OpenAI 兼容协议下对应 model 参数</div></div>
+        <div class="field"><label class="label">能力标签</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <span class="badge b-success" style="cursor:pointer">chat ✓</span>
+            <span class="badge b-outline" style="cursor:pointer">function-call</span>
+            <span class="badge b-outline" style="cursor:pointer">embedding</span>
+            <span class="badge b-outline" style="cursor:pointer">json-mode</span>
+          </div>
+        </div>
+        <div class="field"><label class="label">描述</label><textarea class="textarea" placeholder="这个模型用于什么场景？">轻量高速模型，用于批量质检初筛。</textarea></div>
+      </div>
+
+      <!-- Tool Form -->
+      <div data-form="tool" style="display:none">
+        <div class="field-row">
+          <div class="field"><label class="label">名称 <span class="req">*</span></label><input class="input" value="满意度回访查询" id="res-name"></div>
+          <div class="field"><label class="label">类型 <span class="req">*</span></label>
+            <select class="fselect"><option>http（外部 API）</option><option>builtin（平台内置）</option></select>
+          </div>
+        </div>
+        <div class="field"><label class="label">请求配方（spec）</label><textarea class="textarea mono" style="min-height:96px">{
+  "method": "GET",
+  "url": "https://crm.corp.com/api/v2/surveys/{{session_id}}"
+}</textarea></div>
+        <div class="field"><label class="label">描述</label><textarea class="textarea">按会话查询满意度回访结果。</textarea></div>
+      </div>
+
+      <!-- MCP Server Form -->
+      <div data-form="mcp" style="display:none">
+        <div class="field-row">
+          <div class="field"><label class="label">名称 <span class="req">*</span></label><input class="input" value="监控告警 MCP" id="res-name"></div>
+          <div class="field"><label class="label">Transport <span class="req">*</span></label>
+            <select class="fselect"><option>stdio</option><option>http</option></select>
+          </div>
+        </div>
+        <div class="field"><label class="label">启动命令（stdio）<span class="req">*</span></label><input class="input mono" value="npx -y @corp/alerts-mcp --env prod"><div class="hint">http 模式下此字段替换为 Endpoint URL</div></div>
+        <div class="field"><label class="label">环境变量</label>
+          <div style="display:flex;gap:8px;margin-bottom:6px"><input class="input mono" style="width:38%" value="ALERTS_TOKEN"><input class="input mono" style="flex:1" value="••••••••" type="password"><button class="btn-icon" title="移除"><i data-ic="x" data-cls="ic ic-sm"></i></button></div>
+          <button class="btn-xs"><i data-ic="plus" data-cls="ic ic-sm"></i> 添加变量</button>
+        </div>
+        <div class="field"><label class="label">描述</label><textarea class="textarea">接入监控告警平台，提供告警查询/确认工具。</textarea></div>
+      </div>
+
+      <!-- Knowledge Source Form -->
+      <div data-form="ks" style="display:none">
+        <div class="field-row">
+          <div class="field"><label class="label">名称 <span class="req">*</span></label><input class="input" value="退换货政策库" id="res-name"></div>
+          <div class="field"><label class="label">类型 <span class="req">*</span></label>
+            <select class="fselect"><option>向量库（语义检索）</option><option>文档库（按章节引用）</option></select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label class="label">Embedding 模型</label><select class="fselect"><option>text-embedding-v3</option></select></div>
+          <div class="field"><label class="label">内容来源</label><input class="input" value="内部文档中台 / 退换货政策"></div>
+        </div>
+        <div class="field"><label class="label">描述</label><textarea class="textarea">退换货与赔付政策问答库。</textarea></div>
+      </div>
+
+      <!-- Datasource Form -->
+      <div data-form="datasource" style="display:none">
+        <div class="field-row">
+          <div class="field"><label class="label">名称 <span class="req">*</span></label><input class="input" value="mysql-report" id="res-name"></div>
+          <div class="field"><label class="label">类型 <span class="req">*</span></label>
+            <select class="fselect"><option>MySQL</option><option>PostgreSQL</option><option>对象存储 OSS</option><option>HTTP API</option></select>
+          </div>
+        </div>
+        <div class="field"><label class="label">连接地址 <span class="req">*</span></label><input class="input mono" value="rm-report.internal:3306"></div>
+        <div class="field-row">
+          <div class="field"><label class="label">用户名</label><input class="input mono" value="quality_ro"></div>
+          <div class="field"><label class="label">密码</label><input class="input mono" type="password" value="********"></div>
+        </div>
+        <div class="note info" style="margin-bottom:14px"><i data-ic="info" data-cls="ic ic-sm"></i><div>凭证加密存储；连接默认要求只读账号，保存前必须通过连接测试。</div></div>
+        <div class="field"><label class="label">描述</label><textarea class="textarea">报表库只读副本。</textarea></div>
+      </div>
+
+      <!-- Data Asset Form -->
+      <div data-form="asset" style="display:none">
+        <div class="field-row">
+          <div class="field"><label class="label">名称 <span class="req">*</span></label><input class="input" value="视频客服记录" id="res-name"></div>
+          <div class="field"><label class="label">所属 Datasource <span class="req">*</span></label>
+            <select class="fselect"><option>mysql-prod</option><option>pg-analytics</option><option>oss-voice-records</option></select>
+          </div>
+        </div>
+        <div class="field"><label class="label">表 / 路径 <span class="req">*</span></label><input class="input mono" value="db_cc.t_video_session"></div>
+        <div class="field"><label class="label">一条数据代表什么 <span class="req">*</span></label><input class="input" value="一次视频客服通话"></div>
+        <div class="field-row">
+          <div class="field"><label class="label">时间字段</label><select class="fselect"><option>call_start_at</option><option>created_at</option></select></div>
+          <div class="field"><label class="label">Lifecycle</label><select class="fselect"><option>Draft</option><option>Ready</option></select></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== Step 3：Test ========== -->
+    <div data-wstep="2" style="display:none">
+      <div class="test-panel">
+        <div style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px"><i data-ic="flask"></i> 保存前测试</div>
+        <p class="t13 dim" style="margin:6px 0 12px" id="test-desc">发送一次最小请求验证配置正确性。测试通过后资源保存为 Enabled；失败可返回上一步修改。</p>
+        <div class="field" style="margin-bottom:10px">
+          <label class="label t12">测试输入</label>
+          <textarea class="textarea mono" style="min-height:56px">{ "input": "ping" }</textarea>
+        </div>
+        <button class="btn btn-primary btn-sm" id="wizard-test"><i data-ic="play" data-cls="ic ic-sm"></i> 执行测试</button>
+        <div class="test-result" id="w-ok">
+          <div style="display:flex;align-items:center;gap:6px;font-weight:600"><i data-ic="check" data-cls="ic ic-sm"></i> 测试通过 · 延迟 386ms</div>
+          <div class="row"><span>时间 2026-08-23 14:12</span><span>可以继续保存</span></div>
+        </div>
+        <div class="test-result" id="w-fail">
+          <div style="display:flex;align-items:center;gap:6px;font-weight:600"><i data-ic="alert-triangle" data-cls="ic ic-sm"></i> 测试失败 · connect ETIMEDOUT</div>
+          <div style="margin-top:6px;font-size:12px">返回「填写配置」检查连接地址 / 凭证后重试。</div>
+        </div>
+      </div>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:10px">
+        <button class="btn btn-outline btn-sm" id="wizard-retest" style="display:none"><i data-ic="refresh" data-cls="ic ic-sm"></i> 重新测试</button>
+        <span class="t12 dim">演示：当前类型默认通过；选择「MCP Server」类型进入本页可看到失败态。</span>
+      </div>
+    </div>
+
+    <!-- ========== Step 4：Complete ========== -->
+    <div data-wstep="3" style="display:none;text-align:center;padding:16px 0">
+      <div style="width:52px;height:52px;border-radius:50%;background:var(--emerald-bg);border:1px solid var(--emerald-bd);color:var(--emerald-tx);display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
+        <i data-ic="check" data-cls="ic" style="width:24px;height:24px"></i>
+      </div>
+      <div style="font-size:16px;font-weight:600">资源创建成功</div>
+      <p class="t13 dim" style="margin-top:4px">已通过测试并保存为 Enabled，可立即被 Workflow 节点选择。</p>
+      <div class="kv" style="max-width:440px;margin:18px auto 0;text-align:left">
+        <div class="k">类型</div><div id="sum-type">Model</div>
+        <div class="k">名称</div><div id="sum-name">qwen-turbo</div>
+        <div class="k">状态</div><div><span class="badge b-success b-dot">Enabled</span></div>
+        <div class="k">引用</div><div class="dim">暂无（Agent → Workflow → Node Config 选择后生效）</div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:20px">
+        <a class="btn btn-outline" href="detail-tool.html"><i data-ic="eye"></i> 查看详情</a>
+        <a class="btn btn-primary" href="ai-resources.html">返回资源列表</a>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Wizard footer -->
+  <div style="display:flex;justify-content:space-between;margin-top:16px" id="wizard-nav">
+    <button class="btn btn-outline" id="w-prev" disabled>上一步</button>
+    <button class="btn btn-primary" id="w-next">下一步 <i data-ic="arrow-right"></i></button>
+  </div>
+
+</div>
+<script src="assets/app.js"></script>
+<script>
+  const TYPE_META = {
+    model: { label: "Model", icon: "cpu", group: "AI Resources" },
+    tool: { label: "Tool", icon: "wrench", group: "AI Resources" },
+    mcp: { label: "MCP Server", icon: "server", group: "AI Resources" },
+    ks: { label: "Knowledge Source", icon: "book-open", group: "AI Resources" },
+    datasource: { label: "Datasource", icon: "database", group: "Data Resources" },
+    asset: { label: "Data Asset", icon: "layers", group: "Data Resources" },
+  };
+  const TEST_DESC = {
+    model: "向 Provider 发送最小补全请求，验证凭证、Model Key 与协议兼容性。",
+    tool: "以样例入参执行一次调用，校验端点可达与响应结构。",
+    mcp: "握手 MCP Server 并拉取工具列表，验证 Transport 配置与工具发现。",
+    ks: "以样例 query 检索一次，验证切片索引与 Embedding 模型配置。",
+    datasource: "执行连通性检查（数据库：SELECT 1；OSS：列举对象；HTTP：健康检查）。",
+    asset: "从来源表抽样读取 10 条，校验表路径与时间字段有效。",
+  };
+
+  /* 分域向导（反馈#1）：同一套 UI，按入口 scope 只展示本域类型 */
+  const scope = new URLSearchParams(location.search).get("scope") || "ai";
+  let step = 0;
+  let type = new URLSearchParams(location.search).get("type") || (scope === "data" ? "datasource" : "model");
+  let tested = false;
+
+  document.querySelectorAll("[data-scope]").forEach((el) => (el.style.display = el.dataset.scope === scope ? "" : "none"));
+  const backLink = document.getElementById("back-link");
+  backLink.href = scope === "data" ? "data-resources.html" : "ai-resources.html";
+  backLink.lastChild.textContent = scope === "data" ? " Data Resources" : " AI Resources";
+  if (scope === "data") {
+    // #crumbs 由 app.js 在 DOMContentLoaded 挂载，需在其后更新
+    window.addEventListener("DOMContentLoaded", () => setCrumbs([{ label: "AI 质量平台", href: "index.html" }, { label: "配置管理" }, { label: "Data Resources", href: "data-resources.html" }, { label: "创建资源" }]));
+  }
+
+  const stepEls = document.querySelectorAll("#steps .step");
+  const paneEls = document.querySelectorAll("[data-wstep]");
+  const prevBtn = document.getElementById("w-prev");
+  const nextBtn = document.getElementById("w-next");
+
+  function selectType(t) {
+    type = t;
+    document.querySelectorAll(".type-card").forEach((c) => c.classList.toggle("sel", c.dataset.type === t));
+    const meta = TYPE_META[t];
+    document.getElementById("form-icon").innerHTML = icon(meta.icon, "ic ic-lg");
+    document.getElementById("form-title").textContent = meta.label;
+    document.getElementById("form-sub").textContent = meta.group + " · 类型表单随所选类型切换";
+    document.querySelectorAll("[data-form]").forEach((f) => (f.style.display = f.dataset.form === t ? "" : "none"));
+    document.getElementById("test-desc").textContent = TEST_DESC[t];
+  }
+
+  function render() {
+    stepEls.forEach((el, i) => {
+      el.classList.toggle("active", i === step);
+      el.classList.toggle("done", i < step);
+      el.querySelector(".num").innerHTML = i < step ? icon("check", "ic-sm") : String(i + 1);
+    });
+    paneEls.forEach((p) => (p.style.display = Number(p.dataset.wstep) === step ? "" : "none"));
+    prevBtn.disabled = step === 0;
+    if (step === 2) {
+      nextBtn.innerHTML = `保存并启用 ${icon("check", "ic ic-sm")}`;
+      nextBtn.disabled = !tested;
+    } else if (step === 3) {
+      document.getElementById("wizard-nav").style.display = "none";
+    } else {
+      nextBtn.innerHTML = `下一步 ${icon("arrow-right", "ic ic-sm")}`;
+      nextBtn.disabled = false;
+    }
+  }
+
+  document.querySelectorAll(".type-card").forEach((c) => c.addEventListener("click", () => selectType(c.dataset.type)));
+
+  stepEls.forEach((el) => el.addEventListener("click", () => {
+    const target = Number(el.dataset.step);
+    if (target < step && step < 3) { step = target; render(); }
+  }));
+
+  prevBtn.addEventListener("click", () => { if (step > 0) { step--; render(); } });
+  nextBtn.addEventListener("click", () => {
+    if (step === 2 && !tested) return;
+    if (step === 2) {
+      document.getElementById("sum-type").textContent = TYPE_META[type].label;
+      const nameInput = document.querySelector(`[data-form="${type}"] #res-name`) || document.querySelector(`[data-form="${type}"] .input`);
+      document.getElementById("sum-name").textContent = nameInput ? nameInput.value : "—";
+    }
+    step = Math.min(step + 1, 3);
+    render();
+  });
+
+  /* 测试步骤 */
+  const wOk = document.getElementById("w-ok");
+  const wFail = document.getElementById("w-fail");
+  document.getElementById("wizard-test").addEventListener("click", function () {
+    wOk.className = "test-result"; wFail.className = "test-result";
+    tested = false; render();
+    fakeRun(this, 1200, () => {
+      if (type === "mcp") {
+        wFail.classList.add("fail");
+        document.getElementById("wizard-retest").style.display = "";
+        toast("测试失败：请返回修改配置", "error");
+      } else {
+        wOk.classList.add("ok");
+        tested = true; render();
+        toast("测试通过，可以保存", "success");
+      }
+    });
+  });
+  document.getElementById("wizard-retest").addEventListener("click", function () {
+    wFail.className = "test-result";
+    fakeRun(this, 900, () => { wOk.classList.add("ok"); tested = true; render(); toast("重试通过", "success"); });
+  });
+
+  selectType(type);
+  render();
+</script>
+</div>
+</body>
+</html>

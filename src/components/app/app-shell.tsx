@@ -71,6 +71,20 @@ export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
       })
       if (segments[2] === "new") crumbs.push({ label: "创建 API Tool" })
       else if (segments[2]) crumbs.push({ label: segments[2] })
+    } else if (segments[1] === "ai-resources") {
+      crumbs.push({
+        label: "AI Resources",
+        href: segments[2] ? "/config/ai-resources" : undefined,
+      })
+      if (segments[2] === "new") crumbs.push({ label: "创建资源" })
+      else if (segments[2]) crumbs.push({ label: segments[3] ?? segments[2] })
+    } else if (segments[1] === "data-resources") {
+      crumbs.push({
+        label: "Data Resources",
+        href: segments[2] ? "/config/data-resources" : undefined,
+      })
+      if (segments[2] === "new") crumbs.push({ label: "创建资源" })
+      else if (segments[2]) crumbs.push({ label: segments[3] ?? segments[2] })
     } else if (segments[1] === "data-assets") {
       crumbs.push({
         label: UI_TERMS.navigation.dataAssets,
@@ -110,6 +124,8 @@ const RAIL_SHORT: Record<string, string> = {
   结果规则: "规则",
   坐席分析: "坐席",
   分析任务: "任务",
+  "AI Resources": "AI资源",
+  "Data Resources": "数据资源",
 }
 
 function AppRail() {

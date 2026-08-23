@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>组件规范 · 资源管理原型</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .anatomy { position: relative; max-width: 360px; }
+  .callout { position: absolute; right: -170px; font-size: 11px; color: var(--muted-fg); white-space: nowrap; }
+  .callout::before { content: ""; position: absolute; left: -14px; top: 7px; width: 10px; height: 1px; background: #d4d4d4; }
+  @media (max-width: 900px) { .callout { display: none; } }
+</style>
+</head>
+<body data-active="" data-crumbs='[{"label":"AI 质量平台","href":"index.html"},{"label":"组件规范"}]'>
+<div id="content">
+<div class="page">
+
+  <div class="page-head">
+    <div>
+      <div class="page-title">组件规范 <span class="proto-tag">SPEC</span></div>
+      <div class="page-desc">Design Spec V1.4 §组件结构 的前端落地规范。全部基于现有产品 shadcn 中性主题（Card / Tabs / Dialog / Badge / Form），不引入新视觉语言。</div>
+    </div>
+  </div>
+
+  <!-- ============ 1. ResourceCard ============ -->
+  <div class="section">
+    <div class="section-title">1 · ResourceCard 解剖</div>
+    <div class="section-desc">统一卡片组件，结构固定：Icon + Status / Name / Description / Metadata / Usage。六类资源共用，仅图标、副标题与元数据字段随类型变化。高度自适应（最小 168px），网格 1/2/3/4 列响应式。</div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
+      <div class="anatomy">
+        <article class="rc">
+          <div class="rc-top">
+            <div class="rc-icon"><i data-ic="cpu" data-cls="ic ic-lg"></i></div>
+            <div class="rc-name-wrap">
+              <div class="rc-name">qwen-max</div>
+              <div class="rc-sub">Model · 阿里云百炼 · v2</div>
+            </div>
+            <span class="badge b-success b-dot">Enabled</span>
+            <button class="rc-menu-btn" style="opacity:1"><i data-ic="ellipsis"></i></button>
+          </div>
+          <p class="rc-desc">旗舰推理模型，用于客诉归因与复杂质检判定节点的默认模型。</p>
+          <div class="rc-meta">
+            <span class="badge b-outline mono">qwen-max-latest</span>
+            <span class="badge b-neutral">chat</span>
+          </div>
+          <div class="rc-foot">
+            <span class="rc-usage"><i data-ic="workflow" data-cls="ic"></i> 被 6 个节点引用 · 7 日 12,438 次</span>
+            <span>08-22</span>
+          </div>
+        </article>
+        <div class="callout" style="top:8px">① Icon + 类型副标题</div>
+        <div class="callout" style="top:34px">② Status Badge（右上角）</div>
+        <div class="callout" style="top:78px">③ Description（2 行截断）</div>
+        <div class="callout" style="top:124px">④ Metadata（类型相关）</div>
+        <div class="callout" style="top:160px">⑤ Usage + 更新时间</div>
+      </div>
+      <div class="frame" style="flex:1;min-width:340px">
+        <table class="tbl">
+          <thead><tr><th>槽位</th><th>规则</th></tr></thead>
+          <tbody>
+            <tr><td class="cell-main">① Icon</td><td class="cell-sub">34px 圆角灰底；lucide 图标：cpu / wrench / server / book-open / database / layers</td></tr>
+            <tr><td class="cell-main">② Status</td><td class="cell-sub">ResourceStatusBadge，见第 2 节；健康异常时替代显示健康度</td></tr>
+            <tr><td class="cell-main">③ Description</td><td class="cell-sub">line-clamp 2；缺省文案按类型给默认句</td></tr>
+            <tr><td class="cell-main">④ Metadata</td><td class="cell-sub">Badge 组：类型标签 + 关键配置（端点/版本/切片数等），等宽字体用于值</td></tr>
+            <tr><td class="cell-main">⑤ Usage</td><td class="cell-sub">AI Resources：被引用节点数 + 7 日调用；Data Resources：下游 Asset/Definition 数 + 巡检时间</td></tr>
+            <tr><td class="cell-main">Hover</td><td class="cell-sub">边框加深 + 出现 ⋯ 菜单（ResourceActionMenu）；整卡点击进入详情</td></tr>
+            <tr><td class="cell-main">Disabled 态</td><td class="cell-sub">卡片透明度降至 72%，状态徽章为 neutral</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ============ 2. 状态体系 ============ -->
+  <div class="section">
+    <div class="section-title">2 · ResourceStatusBadge 状态体系</div>
+    <div class="section-desc">生命周期（所有类型）与健康度（来自测试/巡检）正交。颜色仅为辅助语义，文字始终存在（沿用现有 StatusBadge 原则）。</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <span class="badge b-success b-dot">Enabled</span>
+      <span class="badge b-neutral b-dot">Disabled</span>
+      <span class="badge b-success">Healthy</span>
+      <span class="badge b-warning">Degraded</span>
+      <span class="badge b-danger b-dot">Error</span>
+      <span class="badge b-info b-dot">Draft</span>
+      <span class="badge b-success">Ready</span>
+      <span class="badge b-neutral">Deprecated</span>
+    </div>
+    <div class="frame" style="max-width:860px">
+      <table class="tbl">
+        <thead><tr><th>状态</th><th>维度</th><th>含义</th><th>Badge</th></tr></thead>
+        <tbody>
+          <tr><td class="cell-main">Enabled</td><td class="cell-sub">生命周期</td><td class="cell-sub">可被 Workflow 节点 / 下游对象选择使用</td><td><span class="badge b-success b-dot">success</span></td></tr>
+          <tr><td class="cell-main">Disabled</td><td class="cell-sub">生命周期</td><td class="cell-sub">停用：保留数据与引用，禁止新引用</td><td><span class="badge b-neutral b-dot">neutral</span></td></tr>
+          <tr><td class="cell-main">Healthy / Degraded / Error</td><td class="cell-sub">健康度</td><td class="cell-sub">最近一次 Test 或巡检结果；测试失败不自动停用</td><td><span class="badge b-success">success</span> <span class="badge b-warning">warning</span> <span class="badge b-danger">danger</span></td></tr>
+          <tr><td class="cell-main">Draft / Ready / Deprecated</td><td class="cell-sub">Data Asset Lifecycle</td><td class="cell-sub">沿用现有 data-assets 语义</td><td><span class="badge b-info">info</span> <span class="badge b-success">success</span> <span class="badge b-neutral">neutral</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ============ 3. 空态与加载 ============ -->
+  <div class="section">
+    <div class="section-title">3 · 空态 / 筛选空态 / 加载骨架</div>
+    <div class="section-desc">与现有 EmptyState、FilteredEmptyState、CardGridSkeleton 保持一致。</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;max-width:1200px">
+      <div class="empty">
+        <i data-ic="package" data-cls="ic"></i>
+        <div class="t">暂无 MCP Server</div>
+        <div class="d">创建第一个 MCP Server，为 Agent 接入外部工具</div>
+        <button class="btn btn-primary btn-sm"><i data-ic="plus" data-cls="ic ic-sm"></i> 创建资源</button>
+      </div>
+      <div class="empty">
+        <i data-ic="search" data-cls="ic"></i>
+        <div class="t">没有匹配的资源</div>
+        <div class="d">尝试调整关键词或清除筛选条件</div>
+        <button class="btn btn-outline btn-sm">清除筛选</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="skel skel-card"></div>
+        <div class="skel skel-card"></div>
+        <div class="skel skel-card"></div>
+        <div class="skel skel-card"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ============ 4. ResourceActionMenu ============ -->
+  <div class="section">
+    <div class="section-title">4 · ResourceActionMenu 操作菜单</div>
+    <div class="section-desc">卡片 hover 出现 ⋯ 触发；详情页 Header 使用同款菜单。删除始终位于底部危险区。</div>
+    <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start">
+      <div style="position:relative;display:inline-block">
+        <div class="menu open" style="position:static">
+          <button class="menu-item"><i data-ic="eye" data-cls="ic ic-sm"></i> 查看详情</button>
+          <button class="menu-item"><i data-ic="pencil" data-cls="ic ic-sm"></i> 编辑</button>
+          <button class="menu-item"><i data-ic="flask" data-cls="ic ic-sm"></i> 测试</button>
+          <div class="menu-sep"></div>
+          <button class="menu-item"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+          <button class="menu-item danger"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+        </div>
+      </div>
+      <div class="frame" style="flex:1;min-width:320px;max-width:640px">
+        <table class="tbl">
+          <thead><tr><th>菜单项</th><th>行为</th></tr></thead>
+          <tbody>
+            <tr><td class="cell-main">查看详情</td><td class="cell-sub">进入 ResourceDetailLayout 页面</td></tr>
+            <tr><td class="cell-main">编辑</td><td class="cell-sub">打开类型表单（Dialog 或编辑页，随类型）；有版本类型产生新草稿版本</td></tr>
+            <tr><td class="cell-main">测试</td><td class="cell-sub">打开 ResourceTestDialog，即时执行</td></tr>
+            <tr><td class="cell-main">停用 / 启用</td><td class="cell-sub">切换生命周期状态；停用后不可被新节点选择，已有引用保留</td></tr>
+            <tr><td class="cell-main">删除</td><td class="cell-sub">有引用 → 拦截对话框并列出引用方；无引用 → 二次确认。<b>使用中永不物理删除</b></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ============ 5. ResourceTestDialog 四态 ============ -->
+  <div class="section">
+    <div class="section-title">5 · ResourceTestDialog 四态</div>
+    <div class="section-desc">输入（类型相关）→ 执行 → 结果面板。结果写入资源健康度与最近测试记录。</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;max-width:1200px">
+      <div style="border:1px solid var(--border);border-radius:10px;padding:14px">
+        <div class="t12 dim" style="margin-bottom:8px">① 空闲</div>
+        <textarea class="textarea mono" style="min-height:48px">{ "input": "ping" }</textarea>
+        <button class="btn btn-primary btn-sm" style="margin-top:8px" disabled><i data-ic="flask" data-cls="ic ic-sm"></i> 执行测试</button>
+      </div>
+      <div style="border:1px solid var(--border);border-radius:10px;padding:14px">
+        <div class="t12 dim" style="margin-bottom:8px">② 执行中</div>
+        <div class="test-panel" style="display:flex;align-items:center;gap:8px"><span class="spinner"></span> 正在调用，5000ms 超时…</div>
+      </div>
+      <div style="border:1px solid var(--border);border-radius:10px;padding:14px">
+        <div class="t12 dim" style="margin-bottom:8px">③ 成功</div>
+        <div class="test-result ok">
+          <div style="display:flex;align-items:center;gap:6px;font-weight:600"><i data-ic="check" data-cls="ic ic-sm"></i> 测试通过</div>
+          <div class="row"><span>延迟 412ms</span></div>
+        </div>
+      </div>
+      <div style="border:1px solid var(--border);border-radius:10px;padding:14px">
+        <div class="t12 dim" style="margin-bottom:8px">④ 失败</div>
+        <div class="test-result fail">
+          <div style="display:flex;align-items:center;gap:6px;font-weight:600"><i data-ic="alert-triangle" data-cls="ic ic-sm"></i> 测试失败</div>
+          <div style="margin-top:4px;font-size:12px">ETIMEDOUT · 返回修改配置后重试</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ============ 6. 删除防护 ============ -->
+  <div class="section">
+    <div class="section-title">6 · 删除防护（使用中的 Resource 不允许删除）</div>
+    <div class="section-desc">判定口径：AI Resources 看 Workflow Version Node Config 引用；Data Resources 看下游 Data Asset / Data Definition 链路。</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap">
+      <div class="dialog" style="max-width:420px;box-shadow:none;border:1px solid var(--border)">
+        <div class="dialog-head">
+          <div class="dialog-title" style="display:flex;align-items:center;gap:8px;font-size:14px"><i data-ic="ban" data-cls="ic" style="color:#dc2626"></i> 无法删除「工单系统查询」</div>
+          <div class="dialog-desc">该资源正被 3 个 Workflow Version 引用：客诉归因 v4 / 质检复核 v7 / 专家研判 v2。</div>
+        </div>
+        <div class="dialog-foot" style="padding-top:6px">
+          <button class="btn btn-outline btn-sm">知道了</button>
+          <button class="btn btn-primary btn-sm">查看引用方</button>
+        </div>
+      </div>
+      <div class="dialog" style="max-width:420px;box-shadow:none;border:1px solid var(--border)">
+        <div class="dialog-head">
+          <div class="dialog-title" style="font-size:14px">删除「短信通知」？</div>
+          <div class="dialog-desc">无引用。删除后配置与版本历史不可恢复。</div>
+        </div>
+        <div class="dialog-foot" style="padding-top:6px">
+          <button class="btn btn-outline btn-sm">取消</button>
+          <button class="btn btn-danger btn-sm"><i data-ic="trash" data-cls="ic ic-sm"></i> 确认删除</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ============ 7. Wizard 与各类型表单 ============ -->
+  <div class="section">
+    <div class="section-title">7 · Create Resource Wizard 与类型表单清单</div>
+    <div class="section-desc">四步固定骨架；第二步随类型切换强类型表单；第三步必须测试通过方可保存（见 wizard.html 可交互演示）。</div>
+    <div class="frame" style="max-width:1080px">
+      <table class="tbl">
+        <thead><tr><th>类型</th><th>表单关键字段</th><th>测试方式</th><th>版本</th></tr></thead>
+        <tbody>
+          <tr><td class="cell-main">Model</td><td class="cell-sub">名称 / Provider / Model Key / 能力标签 / 描述</td><td class="cell-sub">最小补全请求</td><td class="cell-sub">Model Version</td></tr>
+          <tr><td class="cell-main">Tool</td><td class="cell-sub">名称 / 类型（builtin/http）/ 请求配方 spec / 描述</td><td class="cell-sub">样例入参执行</td><td class="cell-sub">ToolVersion</td></tr>
+          <tr><td class="cell-main">MCP Server</td><td class="cell-sub">名称 / Transport / 命令或 Endpoint / 环境变量 / 描述</td><td class="cell-sub">握手 + 工具发现</td><td class="cell-sub">—</td></tr>
+          <tr><td class="cell-main">Knowledge Source</td><td class="cell-sub">名称 / 类型（向量/文档）/ Embedding 模型 / 内容来源 / 描述</td><td class="cell-sub">样例检索</td><td class="cell-sub">—</td></tr>
+          <tr><td class="cell-main">Datasource</td><td class="cell-sub">名称 / 类型 / 连接地址 / 凭证 / 描述</td><td class="cell-sub">连通性检查</td><td class="cell-sub">—（变更记录）</td></tr>
+          <tr><td class="cell-main">Data Asset</td><td class="cell-sub">名称 / 所属 Datasource / 表路径 / 一条数据代表什么 / 时间字段</td><td class="cell-sub">抽样读取</td><td class="cell-sub">—（变更记录）</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ============ 8. 组件清单 ============ -->
+  <div class="section">
+    <div class="section-title">8 · 组件清单（对齐 Design Spec V1.4）</div>
+    <div class="frame" style="max-width:1080px">
+      <table class="tbl">
+        <thead><tr><th>组件</th><th>职责</th><th>出现位置</th></tr></thead>
+        <tbody>
+          <tr><td class="cell-main mono">ResourceCard</td><td class="cell-sub">统一卡片（第 1 节解剖）</td><td class="cell-sub">列表页网格</td></tr>
+          <tr><td class="cell-main mono">ResourceTabs</td><td class="cell-sub">类型 Tab + 计数徽标</td><td class="cell-sub">列表页</td></tr>
+          <tr><td class="cell-main mono">ResourceStatusBadge</td><td class="cell-sub">状态/健康度徽章（第 2 节）</td><td class="cell-sub">卡片 / 详情 / 表格</td></tr>
+          <tr><td class="cell-main mono">ResourceCreateDialog</td><td class="cell-sub">四步创建向导</td><td class="cell-sub">wizard.html</td></tr>
+          <tr><td class="cell-main mono">ResourceDetailLayout</td><td class="cell-sub">Header + Overview/Configuration/Usage/Versions</td><td class="cell-sub">detail-*.html</td></tr>
+          <tr><td class="cell-main mono">ResourceActionMenu</td><td class="cell-sub">Edit/Test/Disable/Delete 菜单（第 4 节）</td><td class="cell-sub">卡片 / 详情</td></tr>
+          <tr><td class="cell-main mono">ResourceTestDialog</td><td class="cell-sub">测试对话框四态（第 5 节）</td><td class="cell-sub">卡片 / 详情 / 向导第 3 步</td></tr>
+          <tr><td class="cell-main mono">各类型 Form</td><td class="cell-sub">六类强类型表单（第 7 节）</td><td class="cell-sub">向导第 2 步 / 编辑</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+<script src="assets/app.js"></script>
+</div>
+</body>
+</html>

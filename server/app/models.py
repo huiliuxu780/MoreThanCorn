@@ -51,6 +51,8 @@ class WorkflowVersion(Base):
     definition: Mapped[dict] = mapped_column(JSONB)  # 不可变快照
     tool_version_refs: Mapped[dict] = mapped_column(JSONB, default=list)
     model_refs: Mapped[dict] = mapped_column(JSONB, default=list)
+    mcp_refs: Mapped[dict] = mapped_column(JSONB, default=list)
+    knowledge_refs: Mapped[dict] = mapped_column(JSONB, default=list)
     input_schema: Mapped[dict] = mapped_column(JSONB, default=dict)
     structured_output_schemas: Mapped[dict] = mapped_column(JSONB, default=list)
     note: Mapped[str] = mapped_column(Text, default="")
@@ -79,6 +81,8 @@ class Connection(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(64))
     kind: Mapped[str] = mapped_column(String(16))  # api_key|basic|bearer
+    protocol: Mapped[str] = mapped_column(String(16), default="http-api")  # http-api|mysql|postgresql|oss|mcp-http|llm
+    endpoint: Mapped[dict] = mapped_column(JSONB, default=dict)  # {base_url}|{host,port}|{bucket,region}
     provider_hint: Mapped[str] = mapped_column(String(64), default="")
     secret_ref: Mapped[str] = mapped_column(String(128))  # Secret Store 引用，不存明文
     status: Mapped[str] = mapped_column(String(16), default="active")
@@ -130,6 +134,7 @@ class Model(Base):
     display_name: Mapped[str] = mapped_column(String(64))
     capabilities: Mapped[dict] = mapped_column(JSONB, default=list)  # ["text","thinking"]
     default_params: Mapped[dict] = mapped_column(JSONB, default=dict)
+    version: Mapped[int] = mapped_column(Integer, default=1)  # 轻量 Model Version：配置修订号
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
@@ -228,7 +233,8 @@ class CallRecord(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     node_run_id: Mapped[str | None] = mapped_column(ForeignKey("node_run.id"), nullable=True, index=True)
-    kind: Mapped[str] = mapped_column(String(16))  # tool|model
+    kind: Mapped[str] = mapped_column(String(16))  # tool|model|mcp|knowledge
+    target_type: Mapped[str] = mapped_column(String(16), default="")  # tool|model|mcp|knowledge|datasource|asset
     target_id: Mapped[str] = mapped_column(String(64), default="")
     request: Mapped[dict] = mapped_column(JSONB, default=dict)  # 脱敏后
     response: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -309,6 +315,7 @@ class EvalSample(Base):
     name: Mapped[str] = mapped_column(String(64))
     input: Mapped[dict] = mapped_column(JSONB, default=dict)
     expected: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    data_asset_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -336,6 +343,8 @@ class DataAsset(Base):
     name: Mapped[str] = mapped_column(String(64))
     description: Mapped[str] = mapped_column(Text, default="")
     source: Mapped[str] = mapped_column(String(64), default="manual")
+    datasource_id: Mapped[str | None] = mapped_column(ForeignKey("datasource.id"), nullable=True)
+    location: Mapped[str] = mapped_column(String(128), default="")  # 表/路径；空=内联 rows
     record_meaning: Mapped[str] = mapped_column(String(128), default="一通客服对话")
     record_id_field: Mapped[str] = mapped_column(String(64), default="interactionId")
     time_field: Mapped[str] = mapped_column(String(64), default="interactionTime")
@@ -356,8 +365,92 @@ class AnalysisTask(Base):
     workflow_id: Mapped[str] = mapped_column(String(64))
     version_policy: Mapped[str] = mapped_column(String(16), default="Latest Published")
     data_asset_id: Mapped[str] = mapped_column(String(64))
+    data_definition_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     scope: Mapped[str] = mapped_column(String(128), default="all")
     sampling: Mapped[str] = mapped_column(String(64), default="all")
     data_window: Mapped[str] = mapped_column(String(64), default="last_7d")
     status: Mapped[str] = mapped_column(String(16), default="Active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Datasource(Base):
+    """数据源：连接层引用 Connection，语义层描述库/桶/路径。"""
+    __tablename__ = "datasource"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(Text, default="")
+    type: Mapped[str] = mapped_column(String(16))  # mysql|postgresql|oss|http
+    connection_id: Mapped[str | None] = mapped_column(ForeignKey("connection.id"), nullable=True)
+    location: Mapped[str] = mapped_column(String(128), default="")  # db 名 / bucket / base path
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    status: Mapped[str] = mapped_column(String(16), default="enabled")  # enabled|disabled
+    health: Mapped[str] = mapped_column(String(16), default="healthy")  # healthy|degraded|error
+    last_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class McpServer(Base):
+    """MCP Server：stdio/http 接入，注册后握手发现工具列表。"""
+    __tablename__ = "mcp_server"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(Text, default="")
+    transport: Mapped[str] = mapped_column(String(8))  # stdio|http
+    command: Mapped[str] = mapped_column(String(256), default="")  # stdio 启动命令
+    connection_id: Mapped[str | None] = mapped_column(ForeignKey("connection.id"), nullable=True)  # http 模式
+    env: Mapped[dict] = mapped_column(JSONB, default=dict)  # {KEY: {"secret_ref": ...}}
+    status: Mapped[str] = mapped_column(String(16), default="enabled")
+    health: Mapped[str] = mapped_column(String(16), default="healthy")
+    discovered_tools: Mapped[dict] = mapped_column(JSONB, default=list)
+    last_test_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class KnowledgeSource(Base):
+    """知识库：向量库/文档库，供 knowledge-retrieval 节点与检索工具消费。"""
+    __tablename__ = "knowledge_source"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(Text, default="")
+    kind: Mapped[str] = mapped_column(String(16))  # vector|document
+    embedding_model_id: Mapped[str | None] = mapped_column(ForeignKey("model.id"), nullable=True)
+    source_config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    status: Mapped[str] = mapped_column(String(16), default="enabled")
+    health: Mapped[str] = mapped_column(String(16), default="healthy")
+    slice_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class DataDefinition(Base):
+    """数据定义：挂在 Data Asset 下的字段语义层（schema + eligibility + revision）。"""
+    __tablename__ = "data_definition"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    data_asset_id: Mapped[str] = mapped_column(ForeignKey("data_asset.id"), index=True)
+    field_schema: Mapped[dict] = mapped_column(JSONB, default=list)
+    eligibility: Mapped[dict] = mapped_column(JSONB, default=list)
+    lifecycle: Mapped[str] = mapped_column(String(16), default="Draft")  # Draft|Ready|Deprecated
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class ResourceChangeLog(Base):
+    """资源变更记录：无版本类型资源的审计（创建/配置变更/凭证轮换/停用启用/测试失败）。"""
+    __tablename__ = "resource_change_log"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    resource_type: Mapped[str] = mapped_column(String(16), index=True)
+    resource_id: Mapped[str] = mapped_column(String(32), index=True)
+    action: Mapped[str] = mapped_column(String(32))
+    actor: Mapped[str] = mapped_column(String(64), default="")
+    detail: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

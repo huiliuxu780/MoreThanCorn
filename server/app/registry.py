@@ -91,6 +91,34 @@ V1_NODE_DEFINITIONS: list[dict] = [
         "schema": {"type": "object", "properties": {"message": {"type": "string"}}},
         "io": {},
     },
+    {
+        "type_key": "knowledge-retrieval", "family": "外部", "label": "知识检索", "icon": "book-open", "accent": "#0E9F6E",
+        "executor_key": "knowledge_retrieval",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "knowledgeSourceId": {"type": "string", "x-control": "knowledge-picker"},
+                "query": {"type": "string", "x-control": "expression-editor"},
+                "topK": {"type": "number", "default": 5},
+            },
+            "required": ["knowledgeSourceId", "query"],
+        },
+        "io": {"outputs": ["slices:string", "sources:string"]},
+    },
+    {
+        "type_key": "mcp-call", "family": "外部", "label": "MCP 工具", "icon": "server", "accent": "#0891B2",
+        "executor_key": "mcp_call",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "mcpServerId": {"type": "string", "x-control": "mcp-picker"},
+                "toolName": {"type": "string", "x-control": "mcp-tool-picker"},
+                "args": {"type": "object"},
+            },
+            "required": ["mcpServerId", "toolName"],
+        },
+        "io": {"outputs": ["result:string"]},
+    },
 ]
 
 BY_TYPE: dict[str, dict] = {d["type_key"]: d for d in V1_NODE_DEFINITIONS}

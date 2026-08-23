@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mysql-prod · Datasource 详情 · 资源管理原型</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-active="data-resources.html" data-crumbs='[{"label":"AI 质量平台","href":"index.html"},{"label":"配置管理"},{"label":"Data Resources","href":"data-resources.html"},{"label":"mysql-prod"}]'>
+<div id="content">
+<div class="page">
+
+  <!-- ============ Resource Header ============ -->
+  <div class="res-header">
+    <div class="res-icon"><i data-ic="database" data-cls="ic" style="width:22px;height:22px"></i></div>
+    <div style="min-width:0;flex:1">
+      <div class="res-title">mysql-prod <span class="badge b-success b-dot">Enabled</span> <span class="badge b-success">Healthy</span></div>
+      <div class="res-meta">
+        <span>Datasource · MySQL 8.0</span>
+        <span>创建于 2026-03-02</span>
+        <span>最近巡检 2026-08-23 13:50 · 23ms</span>
+      </div>
+    </div>
+    <div class="page-actions">
+      <button class="btn btn-outline" onclick="openDialog('dlg-test')"><i data-ic="flask"></i> 测试连接</button>
+      <button class="btn btn-outline" onclick="toast('打开编辑表单（原型略）','info','pencil')"><i data-ic="pencil"></i> 编辑</button>
+      <div class="menu-wrap">
+        <button class="btn btn-outline btn-icon" data-menu-trigger style="width:36px;height:36px"><i data-ic="ellipsis"></i></button>
+        <div class="menu">
+          <button class="menu-item" onclick="toast('已停用：下游 Data Asset 保留，但不可新建','success')"><i data-ic="power" data-cls="ic ic-sm"></i> 停用</button>
+          <button class="menu-item danger" onclick="closeMenus();openDialog('dlg-blocked')"><i data-ic="trash" data-cls="ic ic-sm"></i> 删除</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div data-tab-scope>
+    <div class="tabs" data-tab-group>
+      <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="config">Configuration</button>
+      <button class="tab" data-tab="usage">Usage <span class="n">3</span></button>
+      <button class="tab" data-tab="history">变更记录 <span class="n">4</span></button>
+    </div>
+
+    <!-- Overview -->
+    <div data-pane="overview">
+      <p class="t13 dim" style="max-width:760px;margin-bottom:16px">呼叫中心生产库只读副本，供质检与分析场景读取会话、工单与坐席数据。</p>
+      <div class="section" style="margin-top:0">
+        <div class="section-title">连接信息</div>
+        <div class="kv" style="max-width:760px">
+          <div class="k">类型</div><div>MySQL 8.0</div>
+          <div class="k">地址</div><div class="mono">rm-prod.internal:3306</div>
+          <div class="k">数据库</div><div class="mono">db_cc</div>
+          <div class="k">账号</div><div class="mono">quality_ro（只读）</div>
+          <div class="k">巡检策略</div><div>每 10 分钟执行 SELECT 1 + 慢查询水位检查</div>
+          <div class="k">数据窗口约束</div><div>分析任务仅可读取近 180 天分区</div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">健康度</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div class="test-panel" style="min-width:150px"><div class="t12 dim">最近 24h 巡检</div><div style="font-size:22px;font-weight:600;margin-top:2px">144/144</div></div>
+          <div class="test-panel" style="min-width:150px"><div class="t12 dim">平均往返</div><div style="font-size:22px;font-weight:600;margin-top:2px">21ms</div></div>
+          <div class="test-panel" style="min-width:150px"><div class="t12 dim">只读校验</div><div style="font-size:22px;font-weight:600;margin-top:2px">✓</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Configuration -->
+    <div data-pane="config" style="display:none">
+      <div class="note info" style="margin-bottom:14px;max-width:760px">
+        <i data-ic="info" data-cls="ic ic-sm"></i>
+        <div>Datasource 不设计版本机制：配置变更即时生效并写入「变更记录」；凭证仅显示掩码。</div>
+      </div>
+      <div class="kv" style="max-width:760px">
+        <div class="k">Host / Port</div><div class="mono">rm-prod.internal:3306</div>
+        <div class="k">Database</div><div class="mono">db_cc</div>
+        <div class="k">Username</div><div class="mono">quality_ro</div>
+        <div class="k">Password</div><div style="display:flex;align-items:center;gap:8px"><span class="mono">••••••••••</span> <button class="btn-xs" onclick="toast('已发起轮换流程（原型略）','info','refresh')"><i data-ic="refresh" data-cls="ic ic-sm"></i> 轮换</button></div>
+        <div class="k">SSL</div><div>启用（verify-identity）</div>
+        <div class="k">连接池</div><div>max 8 · idle 60s 回收</div>
+      </div>
+    </div>
+
+    <!-- Usage -->
+    <div data-pane="usage" style="display:none">
+      <div class="note" style="margin-bottom:14px;max-width:860px">
+        <i data-ic="alert-triangle" data-cls="ic ic-sm"></i>
+        <div>下游链路：Datasource → <b>Data Asset</b> → Data Definition → Analysis Task。存在下游依赖时不可删除。</div>
+      </div>
+      <div class="frame" style="max-width:980px">
+        <table class="tbl">
+          <thead><tr><th>Data Asset</th><th>表 / 路径</th><th>下游数据定义</th><th>分析任务</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr class="click"><td class="cell-main">客服会话记录</td><td class="cell-sub mono">t_call_session</td><td>3</td><td>5</td><td><span class="badge b-success">Ready</span></td></tr>
+            <tr class="click"><td class="cell-main">在线聊天记录</td><td class="cell-sub mono">t_im_chat</td><td>1</td><td>2</td><td><span class="badge b-success">Ready</span></td></tr>
+            <tr class="click"><td class="cell-main">工单处理记录</td><td class="cell-sub mono">t_ticket_trace</td><td>0</td><td>0</td><td><span class="badge b-info">Draft</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 变更记录（无版本机制的替代） -->
+    <div data-pane="history" style="display:none">
+      <div class="section-desc" style="margin-bottom:14px">Datasource 无版本机制（需求 V0.1 §版本策略），以变更记录审计配置演化。</div>
+      <div class="frame" style="max-width:860px">
+        <table class="tbl">
+          <thead><tr><th>时间</th><th>操作人</th><th>变更</th></tr></thead>
+          <tbody>
+            <tr><td class="cell-sub">2026-08-23 09:12</td><td class="cell-sub">质量管理员</td><td>密码轮换（自动策略）</td></tr>
+            <tr><td class="cell-sub">2026-07-15 11:03</td><td class="cell-sub">质量管理员</td><td>连接池 max 4 → 8</td></tr>
+            <tr><td class="cell-sub">2026-05-20 16:40</td><td class="cell-sub">数据平台</td><td>切换至新只读副本地址</td></tr>
+            <tr><td class="cell-sub">2026-03-02 10:00</td><td class="cell-sub">质量管理员</td><td>创建数据源</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 测试对话框 -->
+<div class="overlay" id="dlg-test">
+  <div class="dialog">
+    <div class="dialog-head" style="display:flex;align-items:flex-start">
+      <div>
+        <div class="dialog-title">测试连接 · mysql-prod</div>
+        <div class="dialog-desc">执行 SELECT 1，并校验账号只读权限。</div>
+      </div>
+      <button class="btn-icon dialog-x" data-close><i data-ic="x"></i></button>
+    </div>
+    <div class="dialog-body">
+      <div class="test-result" id="d-ok">
+        <div style="display:flex;align-items:center;gap:6px;font-weight:600"><i data-ic="check" data-cls="ic ic-sm"></i> 连接正常 · 往返 21ms</div>
+        <div class="row"><span>SELECT 1 ✓</span><span>只读权限 ✓</span><span>SSL ✓</span></div>
+      </div>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-outline" data-close>取消</button>
+      <button class="btn btn-primary" id="d-run"><i data-ic="flask"></i> 执行测试</button>
+    </div>
+  </div>
+</div>
+
+<!-- 删除防护 -->
+<div class="overlay" id="dlg-blocked">
+  <div class="dialog">
+    <div class="dialog-head" style="display:flex;align-items:flex-start">
+      <div>
+        <div class="dialog-title" style="display:flex;align-items:center;gap:8px"><i data-ic="ban" data-cls="ic" style="color:#dc2626"></i> 无法删除「mysql-prod」</div>
+        <div class="dialog-desc">存在 3 个下游 Data Asset（见 Usage 页）。请先移除全部下游依赖。</div>
+      </div>
+      <button class="btn-icon dialog-x" data-close><i data-ic="x"></i></button>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-outline" data-close>知道了</button>
+      <button class="btn btn-primary" onclick="closeDialog('dlg-blocked');document.querySelector('[data-tab=usage]').click()">查看下游依赖</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+  document.getElementById("d-run").addEventListener("click", function () {
+    fakeRun(this, 900, () => {
+      document.getElementById("d-ok").classList.add("ok");
+      toast("连接正常", "success");
+    });
+  });
+</script>
+</div>
+</body>
+</html>
