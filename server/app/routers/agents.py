@@ -153,13 +153,13 @@ def mounts_health(aid: str, db: Session = Depends(get_db)):
     for s in cfg.get("skills", []):
         items.append({"kind": "skill", "name": s, "valid": True})
     for tname in cfg.get("tools", []):
-        t = db.query(Tool).filter_by(name=tname).first()
+        t = db.get(Tool, tname) or db.query(Tool).filter_by(name=tname).first()
         items.append({"kind": "tool", "name": tname, "valid": bool(t and t.status in ("ready", "enabled"))})
     for wname in cfg.get("workflows", []):
-        w = db.query(Workflow).filter_by(name=wname).first()
+        w = db.get(Workflow, wname) or db.query(Workflow).filter_by(name=wname).first()
         items.append({"kind": "workflow", "name": wname, "valid": bool(w and w.status == "published")})
     for kname in cfg.get("knowledges", []):
-        k = db.query(KnowledgeSource).filter_by(name=kname).first()
+        k = db.get(KnowledgeSource, kname) or db.query(KnowledgeSource).filter_by(name=kname).first()
         items.append({"kind": "knowledge", "name": kname, "valid": bool(k and k.status == "enabled")})
     for m in cfg.get("memories", []):
         items.append({"kind": "memory", "name": m, "valid": True})

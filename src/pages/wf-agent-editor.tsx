@@ -1,5 +1,7 @@
 /** Agent 编辑器路由：三型分发（quickservice 同款）。
- *  dialogue → flow 编辑器 + Agent 配置抽屉；autonomous → 角色表单+挂载+预览调试；expert-group → 成员+路由。 */
+ *  dialogue → flow 编辑器 + Agent 配置抽屉；autonomous → 角色表单+挂载+预览调试；expert-group → 成员池。
+ *  Phase A（SDD 01）：A-02 删除路由规则死配置（路由在画布 Agent选择节点）；A-03 运行异步轮询；
+ *  A-08 保存带 expectedRevision；A-10 删除门面控件；A-11 挂载/成员改真选择器；A-16 统一 agentApi。 */
 import { ArrowLeft, Bot, Send } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
@@ -9,21 +11,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { WF_BASE } from "@/services/wf-api"
+import { resApi } from "@/services/resource-api"
+import { agentApi, wfApi, type AgentInfo } from "@/services/wf-api"
 import WfDesignerPage from "./wf-designer"
 import { avatarFor } from "./wf-agents-list"
-
-interface AgentInfo {
-  id: string; name: string; type: string; typeLabel: string; status: string;
-  workflowId: string | null; config: Record<string, any>; description: string; avatar?: string | null
-}
-
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(`${WF_BASE}${path}`, { headers: { "Content-Type": "application/json" }, ...init })
-  if (r.status === 404) throw Object.assign(new Error("not found"), { code: 404 })
-  if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`)
-  return r.json() as Promise<T>
-}
 
 const INK = "#1F2329"; const INK2 = "#5A6472"; const INK3 = "#B9C2CF"; const CARD = "#EDF0F4"
 
@@ -37,18 +28,43 @@ function AddInline({ onAdd, placeholder = "名称" }: { onAdd: (v: string) => vo
   )
 }
 
-function MountList({ title, items, onChange, invalid = [] }: { title: string; items: string[]; onChange: (v: string[]) => void; invalid?: string[] }) {
+/** A-11：注册表多选器——候选来自真实资源注册表，存 id，杜绝自由文本假绑定。 */
+function RegistryPicker({ title, load, ids, onChange, invalid = [] }: {
+  title: string
+  load: () => Promise<{ id: string; name: string }[]>
+  ids: string[]
+  onChange: (v: string[]) => void
+  invalid?: string[]
+}) {
+  const [items, setItems] = useState<{ id: string; name: string }[]>([])
+  const [open, setOpen] = useState(false)
+  useEffect(() => { load().then(setItems).catch(() => setItems([])) }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+  const nameOf = (id: string) => items.find((i) => i.id === id)?.name ?? id
   return (
     <div className="space-y-1">
-      <div className="text-xs" style={{ color: INK2 }}>{title}</div>
-      {items.map((v, i) => (
-        <div key={i} className="flex items-center gap-1 text-xs">
-          <span className="flex-1 truncate rounded border px-1 py-0.5" style={{ borderColor: CARD }}>{v}</span>
-          {invalid.includes(v) && <span className="rounded bg-neutral-100 px-1 text-[10px]" style={{ color: "#F97E2B" }}>已失效</span>}
-          <button onClick={() => onChange(items.filter((_, j) => j !== i))}><span className="text-neutral-400">×</span></button>
+      <div className="flex items-center justify-between">
+        <span className="text-xs" style={{ color: INK2 }}>{title}</span>
+        <button className="text-[11px]" style={{ color: "#3D6BFF" }} onClick={() => setOpen(!open)}>{open ? "收起" : "添加"}</button>
+      </div>
+      {ids.map((id) => (
+        <div key={id} className="flex items-center gap-1 text-xs">
+          <span className="flex-1 truncate rounded border px-1 py-0.5" style={{ borderColor: CARD }}>{nameOf(id)}</span>
+          {invalid.includes(id) && <span className="rounded bg-neutral-100 px-1 text-[10px]" style={{ color: "#F97E2B" }}>已失效</span>}
+          <button onClick={() => onChange(ids.filter((x) => x !== id))}><span className="text-neutral-400">×</span></button>
         </div>
       ))}
-      <AddInline onAdd={(v) => onChange([...items, v])} />
+      {open && (
+        <div className="max-h-40 space-y-0.5 overflow-y-auto rounded border p-1" style={{ borderColor: CARD }}>
+          {items.length === 0 && <div className="px-1 py-1 text-[11px]" style={{ color: INK3 }}>注册表暂无可用资源</div>}
+          {items.map((it) => (
+            <label key={it.id} className="flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-xs hover:bg-neutral-50">
+              <input type="checkbox" checked={ids.includes(it.id)}
+                onChange={(e) => onChange(e.target.checked ? [...ids, it.id] : ids.filter((x) => x !== it.id))} />
+              <span className="truncate">{it.name}</span>
+            </label>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -57,7 +73,7 @@ function MountList({ title, items, onChange, invalid = [] }: { title: string; it
 function RunsHistory({ agentId }: { agentId: string }) {
   const [runs, setRuns] = useState<{ runId: string; status: string; trigger: string; startedAt: string | null }[]>([])
   useEffect(() => {
-    api<{ items: typeof runs }>(`/api/agents/${agentId}/runs`).then((r) => setRuns(r.items)).catch(() => undefined)
+    agentApi.runs(agentId).then((r) => setRuns(r.items)).catch(() => undefined)
   }, [agentId])
   if (runs.length === 0) return null
   return (
@@ -74,12 +90,9 @@ function RunsHistory({ agentId }: { agentId: string }) {
   )
 }
 
-/** 真运行（05 设计）：POST run → 拉事件渲染工具调用与终答。 */
+/** A-03：真运行（异步入队 + 轮询终态），渲染工具调用与终答。 */
 async function runAgentOnce(agentId: string, query: string): Promise<string> {
-  const { runId } = await api<{ runId: string }>(`/api/agents/${agentId}/run`, {
-    method: "POST", body: JSON.stringify({ input: { userQuery: query }, trigger: "test" }),
-  })
-  const d = await api<{ status: string; output?: { content?: string }; error?: { message?: string }; events: { type: string; payload: Record<string, any> }[] }>(`/api/agents/${agentId}/runs/${runId}`)
+  const d = await agentApi.runOnce(agentId, { userQuery: query })
   const steps = d.events
     .filter((e) => e.type === "tool_call" || e.type === "workflow_started" || e.type === "agent_started")
     .map((e) => (e.type === "tool_call" ? `🔧 ${e.payload.name ?? ""}` : `▸ ${e.type}`))
@@ -90,24 +103,31 @@ async function runAgentOnce(agentId: string, query: string): Promise<string> {
 /* ---------- 自主规划 ---------- */
 function AutonomousEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: AgentInfo) => void }) {
   const [cfg, setCfg] = useState(agent.config ?? {})
+  const [revision, setRevision] = useState(agent.configRevision ?? 1)
   const [models, setModels] = useState<{ modelKey: string }[]>([])
   const [chat, setChat] = useState<{ role: "user" | "ai"; text: string }[]>([])
   const [q, setQ] = useState("")
   const [running, setRunning] = useState(false)
   const [invalid, setInvalid] = useState<string[]>([])
   useEffect(() => {
-    api<{ modelKey: string }[] | { items: { modelKey: string }[] }>("/api/registry/models")
-      .then((r) => setModels(Array.isArray(r) ? r : (r.items ?? [])))
-      .catch(() => undefined)
+    wfApi.models().then((r) => setModels(Array.isArray(r) ? r : [])).catch(() => undefined)
   }, [])
   useEffect(() => {
-    api<{ items: { kind: string; name: string; valid: boolean }[] }>(`/api/agents/${agent.id}/mounts-health`)
+    agentApi.mountsHealth(agent.id)
       .then((r) => setInvalid(r.items.filter((i) => !i.valid).map((i) => i.name)))
       .catch(() => undefined)
   }, [agent.id, cfg])
   const save = async () => {
-    const r = await api<AgentInfo>(`/api/agents/${agent.id}`, { method: "PUT", body: JSON.stringify({ config: cfg }) })
-    toast.success("Agent 配置已保存"); onSaved({ ...agent, config: r.config })
+    try {
+      const r = await agentApi.update(agent.id, { config: cfg }, revision)
+      setRevision(r.configRevision)
+      toast.success("Agent 配置已保存"); onSaved({ ...agent, config: r.config, configRevision: r.configRevision })
+    } catch (e) {
+      if (String((e as Error).message).startsWith("409")) {
+        toast.error("配置已被更新，请刷新后重试")
+        agentApi.get(agent.id).then((a) => { setCfg(a.config); setRevision(a.configRevision); onSaved(a) })
+      } else toast.error((e as Error).message)
+    }
   }
   const sendChat = async () => {
     if (!q.trim() || running) return
@@ -145,11 +165,27 @@ function AutonomousEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: A
           </select>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <MountList title="技能" items={cfg.skills ?? []} invalid={invalid} onChange={(v) => setCfg({ ...cfg, skills: v })} />
-          <MountList title="插件" items={cfg.tools ?? []} invalid={invalid} onChange={(v) => setCfg({ ...cfg, tools: v })} />
-          <MountList title="工作流" items={cfg.workflows ?? []} invalid={invalid} onChange={(v) => setCfg({ ...cfg, workflows: v })} />
-          <MountList title="知识" items={cfg.knowledges ?? []} invalid={invalid} onChange={(v) => setCfg({ ...cfg, knowledges: v })} />
-          <MountList title="记忆变量" items={cfg.memories ?? []} invalid={invalid} onChange={(v) => setCfg({ ...cfg, memories: v })} />
+          {/* A-10：技能是注入提示词的文本，明示非资源绑定 */}
+          <div className="space-y-1">
+            <div className="text-xs" style={{ color: INK2 }}>技能说明（注入提示词的文本）</div>
+            {(cfg.skills ?? []).map((v: string, i: number) => (
+              <div key={i} className="flex items-center gap-1 text-xs">
+                <span className="flex-1 truncate rounded border px-1 py-0.5" style={{ borderColor: CARD }}>{v}</span>
+                <button onClick={() => setCfg({ ...cfg, skills: (cfg.skills ?? []).filter((_: string, j: number) => j !== i) })}><span className="text-neutral-400">×</span></button>
+              </div>
+            ))}
+            <AddInline onAdd={(v) => setCfg({ ...cfg, skills: [...(cfg.skills ?? []), v] })} />
+          </div>
+          {/* A-11：插件/工作流/知识来自真实注册表（A-10：记忆自由文本已删除，结构化表单见 Phase B） */}
+          <RegistryPicker title="插件" ids={cfg.tools ?? []} invalid={invalid}
+            onChange={(v) => setCfg({ ...cfg, tools: v })}
+            load={() => resApi.registry("tool").then((r) => r.items)} />
+          <RegistryPicker title="工作流" ids={cfg.workflows ?? []} invalid={invalid}
+            onChange={(v) => setCfg({ ...cfg, workflows: v })}
+            load={() => wfApi.list({ pageSize: 100 }).then((r) => r.items)} />
+          <RegistryPicker title="知识" ids={cfg.knowledges ?? []} invalid={invalid}
+            onChange={(v) => setCfg({ ...cfg, knowledges: v })}
+            load={() => resApi.registry("knowledge").then((r) => r.items)} />
           <RunsHistory agentId={agent.id} />
         </div>
         <Button size="sm" className="bg-black text-white hover:bg-neutral-800" onClick={save}>保存</Button>
@@ -173,16 +209,24 @@ function AutonomousEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: A
   )
 }
 
-/* ---------- 编排 Agent 专家组 ---------- */
+/* ---------- 编排 Agent 专家组（A-02：路由在画布 Agent选择节点；此处只管成员池） ---------- */
 function ExpertGroupEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: AgentInfo) => void }) {
+  const navigate = useNavigate()
   const [cfg, setCfg] = useState(agent.config ?? {})
-  const [agents, setAgents] = useState<{ id: string; name: string }[]>([])
+  const [revision, setRevision] = useState(agent.configRevision ?? 1)
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState("")
-  useEffect(() => { api<{ id: string; name: string }[]>("/api/agents").then((l) => setAgents(l.filter((a) => a.id !== agent.id))).catch(() => undefined) }, [agent.id])
   const save = async () => {
-    const r = await api<AgentInfo>(`/api/agents/${agent.id}`, { method: "PUT", body: JSON.stringify({ config: cfg }) })
-    toast.success("专家组配置已保存"); onSaved({ ...agent, config: r.config })
+    try {
+      const r = await agentApi.update(agent.id, { config: cfg }, revision)
+      setRevision(r.configRevision)
+      toast.success("专家组配置已保存"); onSaved({ ...agent, config: r.config, configRevision: r.configRevision })
+    } catch (e) {
+      if (String((e as Error).message).startsWith("409")) {
+        toast.error("配置已被更新，请刷新后重试")
+        agentApi.get(agent.id).then((a) => { setCfg(a.config); setRevision(a.configRevision); onSaved(a) })
+      } else toast.error((e as Error).message)
+    }
   }
   const trialRun = async () => {
     setRunning(true); setResult("")
@@ -196,23 +240,15 @@ function ExpertGroupEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
   }
   return (
     <div className="space-y-4 overflow-y-auto p-6">
-      <div className="text-sm" style={{ color: INK2 }}>Agent 专家组根据人工编排的流程进行协作，适用于稳定且复杂的业务流程</div>
-      <MountList title="成员 Agent" items={cfg.members ?? []} onChange={(v) => setCfg({ ...cfg, members: v })} />
-      <div className="space-y-1">
-        <div className="text-xs" style={{ color: INK2 }}>路由规则（成员 → 条件）</div>
-        {(cfg.routing ?? []).map((r: { member: string; when: string }, i: number) => (
-          <div key={i} className="flex items-center gap-1 text-xs">
-            <span className="w-32 truncate rounded border px-1 py-0.5" style={{ borderColor: CARD }}>{r.member}</span>
-            <Input className="h-6 flex-1 text-xs" value={r.when}
-              onChange={(e) => setCfg({ ...cfg, routing: (cfg.routing ?? []).map((x: any, j: number) => (j === i ? { ...x, when: e.target.value } : x)) })} placeholder="路由条件" />
-            <button onClick={() => setCfg({ ...cfg, routing: (cfg.routing ?? []).filter((_: any, j: number) => j !== i) })}><span className="text-neutral-400">×</span></button>
-          </div>
-        ))}
-        <AddInline placeholder="成员名称" onAdd={(m) => setCfg({ ...cfg, routing: [...(cfg.routing ?? []), { member: m, when: "" }] })} />
+      <div className="text-sm" style={{ color: INK2 }}>
+        Agent 专家组根据人工编排的流程进行协作。路由逻辑在画布的「Agent选择」节点中配置（主要/兜底成员 + 语义判定）。
       </div>
-      <div className="text-[11px]" style={{ color: INK3 }}>可选成员：{agents.map((a) => a.name).join("、") || "—"}</div>
+      <RegistryPicker title="成员 Agent" ids={cfg.members ?? []}
+        onChange={(v) => setCfg({ ...cfg, members: v })}
+        load={() => agentApi.list({ pageSize: 100 }).then((r) => r.items.filter((a) => a.id !== agent.id))} />
       <div className="flex items-center gap-2">
         <Button size="sm" className="bg-black text-white hover:bg-neutral-800" onClick={save}>保存</Button>
+        <Button size="sm" variant="outline" onClick={() => navigate(`/config/workflows/${agent.workflowId}`)}>打开画布编排</Button>
         <Button size="sm" variant="outline" disabled={running} onClick={trialRun}>{running ? "运行中…" : "试运行"}</Button>
       </div>
       {result && <pre className="whitespace-pre-wrap rounded border p-2 text-[11px]" style={{ borderColor: CARD, color: INK2 }}>{result}</pre>}
@@ -228,13 +264,13 @@ export default function WfAgentEditorPage() {
   const [agent, setAgent] = useState<AgentInfo | null>(null)
   const [legacy, setLegacy] = useState(false)
   useEffect(() => {
-    api<AgentInfo>(`/api/agents/${agentId}`).then(setAgent).catch((e) => { if (e.code === 404) setLegacy(true) })
+    agentApi.get(agentId).then(setAgent).catch((e) => { if (String((e as Error).message).startsWith("404")) setLegacy(true) })
   }, [agentId])
   if (legacy) return <WfDesignerPage workflowId={agentId} />
   if (!agent) return <div className="p-8 text-sm" style={{ color: INK2 }}>加载中…</div>
   if (agent.type === "dialogue") {
     const avatar = avatarFor(agent.id, agent.avatar)
-  return <div className="h-[calc(100dvh-3.5rem)] min-h-0"><WfDesignerPage workflowId={agent.workflowId ?? agentId} agentId={agent.id} agentMeta={{ name: agent.name, typeLabel: agent.typeLabel }} avatar={avatar} /></div>
+    return <div className="h-[calc(100dvh-3.5rem)] min-h-0"><WfDesignerPage workflowId={agent.workflowId ?? agentId} agentId={agent.id} agentMeta={{ name: agent.name, typeLabel: agent.typeLabel }} avatar={avatar} /></div>
   }
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col">

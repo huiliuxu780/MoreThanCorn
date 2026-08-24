@@ -22,9 +22,6 @@ import {
   Redo2,
   Undo2,
   PanelLeftOpen,
-  Settings2,
-  MessageSquare,
-  Info,
   FolderOpen,
   Map as MapIcon,
   MoreHorizontal,
@@ -76,7 +73,9 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
-  WF_BASE,
+  agentApi,
+  evalApi,
+  lockApi,
   runApi,
   runExportUrl,
   runRetry,
@@ -87,6 +86,7 @@ import {
   type ScheduleInfo,
   type ValidationIssue,
   type WfDefinition,
+  type WfEdge,
   type WfNode,
 } from "@/services/wf-api"
 import { resApi } from "@/services/resource-api"
@@ -148,12 +148,7 @@ function ToastHost() {
   )
 }
 
-/* 模型目录（P0 下拉选项；P2 接 registry models） */
-const MODELS = [
-  { id: "Deepseek-R1-Distill-Qwen-14B", caps: ["文本生成", "推理"] },
-  { id: "Qwen-Max", caps: ["文本生成"] },
-  { id: "GPT-4o", caps: ["文本生成", "视觉"] },
-]
+/* A-15：已删除硬编码 MODELS 回退——模型目录只来自注册表接口，失败显示空态 */
 
 function TypeChip({ t }: { t: string }) {
   return (
@@ -276,34 +271,72 @@ function WfNodeCard({ data, selected }: NodeProps) {
 }
 const nodeTypes = { wf: WfNodeCard }
 
-/* ============ 变量级联（16 §6） ============ */
-function VarCascader({ nodes, selfId, onPick }: { nodes: WfNode[]; selfId: string; onPick: (v: string) => void }) {
-  const [group, setGroup] = useState<string>("开始")
-  const groups = ["开始", ...nodes.filter((n) => n.id !== selfId && n.type !== "end").map((n) => n.name)]
-  const itemsFor = (g: string) => {
-    if (g === "开始") return ["userQuery", "chatHistory", "userId", "conversationId", "chatId"]
-    const node = nodes.find((n) => n.name === g)
+/* ============ 变量级联（16 §6；SDD A-04：可达祖先 + 注册表 io + 按 id） ============ */
+function parseIoOutputs(def: NodeDefinition | undefined): { name: string; type: string }[] | null {
+  const io = (def?.io ?? {}) as { outputs?: unknown }
+  if (!Array.isArray(io.outputs)) return null  // 动态输出（如 tool from-tool-version）
+  return io.outputs.map((s) => {
+    const [name, type] = String(s).split(":")
+    return { name, type: type || "string" }
+  })
+}
+
+function VarCascader({ nodes, edges, selfId, defs, onPick }: {
+  nodes: WfNode[]; edges: WfEdge[]; selfId: string; defs: NodeDefinition[]; onPick: (v: string) => void
+}) {
+  // 与后端校验器 _ancestors 同构：只有控制流可达的祖先输出可见（调研 11 §5.2）
+  const ancestors = useMemo(() => {
+    const parents: Record<string, string[]> = {}
+    for (const e of edges) (parents[e.target] ??= []).push(e.source)
+    const memo: Record<string, Set<string>> = {}
+    const reach = (nid: string, seen: Set<string>): Set<string> => {
+      if (memo[nid]) return memo[nid]
+      const acc = new Set<string>()
+      for (const p of parents[nid] ?? []) {
+        if (seen.has(p)) continue
+        acc.add(p)
+        for (const x of reach(p, new Set([...seen, nid]))) acc.add(x)
+      }
+      memo[nid] = acc
+      return acc
+    }
+    return reach(selfId, new Set([selfId]))
+  }, [edges, selfId])
+  const startNode = nodes.find((n) => n.type === "input")
+  const ancNodes = nodes.filter((n) => ancestors.has(n.id) && n.type !== "input" && n.type !== "end")
+  const firstId = startNode?.id ?? ancNodes[0]?.id ?? ""
+  const [group, setGroup] = useState<string>(firstId)
+  const gid = group || firstId
+  const itemsFor = (id: string) => {
+    const node = nodes.find((n) => n.id === id)
     if (!node) return []
-    if (node.type === "llm") return ["output", "thought", "answer"]
-    if (node.type === "condition") return ["classificationTitle", "classificationId"]
-    return ["output"]
+    const outs = parseIoOutputs(defs.find((d) => d.type_key === node.type))
+    return outs ?? []
   }
-  const gid = (g: string) => (g === "开始" ? nodes.find((n) => n.type === "input")?.id ?? "start" : nodes.find((n) => n.name === g)?.id ?? g)
+  const dynHint = (id: string) => {
+    const node = nodes.find((n) => n.id === id)
+    const io = (defs.find((d) => d.type_key === node?.type)?.io ?? {}) as { outputs?: unknown }
+    return typeof io.outputs === "string" && io.outputs
+  }
+  const nameOf = (id: string) => (id === startNode?.id ? "开始" : nodes.find((n) => n.id === id)?.name ?? id)
   return (
     <div className="flex text-xs">
       <div className="w-28 border-r py-1" style={{ borderColor: C.cardBorder }}>
-        {groups.map((g) => (
-          <button key={g} className={`flex w-full items-center justify-between px-2 py-1 hover:bg-neutral-50 ${group === g ? "bg-neutral-100" : ""}`} onClick={() => setGroup(g)}>
-            {g} <ChevronRight className="size-3 text-neutral-400" />
+        {[...(startNode ? [startNode.id] : []), ...ancNodes.map((n) => n.id)].map((id) => (
+          <button key={id} className={`flex w-full items-center justify-between px-2 py-1 hover:bg-neutral-50 ${gid === id ? "bg-neutral-100" : ""}`} onClick={() => setGroup(id)}>
+            {nameOf(id)} <ChevronRight className="size-3 text-neutral-400" />
           </button>
         ))}
+        {!startNode && ancNodes.length === 0 && <div className="px-2 py-1 text-neutral-400">无可引用上游</div>}
       </div>
       <div className="w-40 py-1">
-        {itemsFor(group).map((it) => (
-          <button key={it} className="flex w-full items-center gap-1 px-2 py-1 hover:bg-neutral-50" onClick={() => onPick(`{{${gid(group)}.outputs.${it}}}`)}>
-            {it} <TypeChip t="Str" />
+        {itemsFor(gid).map((it) => (
+          <button key={it.name} className="flex w-full items-center gap-1 px-2 py-1 hover:bg-neutral-50" onClick={() => onPick(`{{${gid}.outputs.${it.name}}}`)}>
+            {it.name} <TypeChip t={it.type === "array" ? "Arr" : it.type === "object" ? "Obj" : "Str"} />
           </button>
         ))}
+        {dynHint(gid) && <div className="px-2 py-1 text-neutral-400">输出由资源配置决定</div>}
+        {itemsFor(gid).length === 0 && !dynHint(gid) && <div className="px-2 py-1 text-neutral-400">无输出</div>}
       </div>
     </div>
   )
@@ -355,21 +388,22 @@ function ConfigDrawer(props: {
   node: WfNode | null
   defs: NodeDefinition[]
   nodes: WfNode[]
+  edges: WfEdge[]
   onClose: () => void
   onChange: (n: WfNode) => void
 }) {
-  const { node, defs, nodes, onClose, onChange } = props
+  const { node, defs, nodes, edges, onClose, onChange } = props
   const [varTarget, setVarTarget] = useState<"prompt" | string | null>(null)
   const [mode, setMode] = useState<"单次" | "批处理">("单次")
   const [openBr, setOpenBr] = useState<Record<number, boolean>>({})
   if (!node) return null
   const def = defs.find((d) => d.type_key === node.type)
-  const [models, setModels] = useState<{ id: string; caps: string[] }[]>(MODELS)
+  const [models, setModels] = useState<{ id: string; caps: string[] }[]>([])
   useEffect(() => {
     resApi.registry("model").then((r) => setModels(r.items.map((m) => ({
       id: (m.metadata.modelKey as string) || m.id,
       caps: (m.metadata.capabilities as string[]) ?? [],
-    })))).catch(() => undefined)
+    })))).catch(() => setModels([]))
   }, [])
   const [mcpTools, setMcpTools] = useState<string[]>([])
   useEffect(() => {
@@ -463,7 +497,7 @@ function ConfigDrawer(props: {
                       {b.source.kind === "fixed" ? String(b.source.value || "请输入或引用变量值") : "引用"}
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent><VarCascader nodes={nodes} selfId={node.id} onPick={insertVar} /></PopoverContent>
+                  <PopoverContent><VarCascader nodes={nodes} edges={edges} selfId={node.id} defs={defs} onPick={insertVar} /></PopoverContent>
                 </Popover>
               </div>
             ))}
@@ -486,7 +520,7 @@ function ConfigDrawer(props: {
               />
               {varTarget === "prompt" && (
                 <div className="absolute left-0 top-full z-30 rounded-md border bg-white shadow-lg" style={{ borderColor: C.cardBorder }}>
-                  <VarCascader nodes={nodes} selfId={node.id} onPick={(v) => { set("prompt", `${(cfg.prompt ?? "").replace(/#$/, "")}${v}`); setVarTarget(null) }} />
+                  <VarCascader nodes={nodes} edges={edges} selfId={node.id} defs={defs} onPick={(v) => { set("prompt", `${(cfg.prompt ?? "").replace(/#$/, "")}${v}`); setVarTarget(null) }} />
                 </div>
               )}
             </div>
@@ -568,15 +602,18 @@ function ConfigDrawer(props: {
                 <div className="grid grid-cols-[1fr_auto] gap-1">
                   <Popover>
                     <PopoverTrigger asChild><button className="truncate rounded border bg-white px-1 py-0.5 text-left text-xs" style={{ borderColor: (b as any).variable ? C.cardBorder : C.danger }} onClick={() => setVarTarget(`__br${i}`)}>{(b as any).variable ? "已引用" : "引用变量"}</button></PopoverTrigger>
-                    <PopoverContent><VarCascader nodes={nodes} selfId={node.id} onPick={insertVar} /></PopoverContent>
+                    <PopoverContent><VarCascader nodes={nodes} edges={edges} selfId={node.id} defs={defs} onPick={insertVar} /></PopoverContent>
                   </Popover>
                   <select className="rounded border bg-white px-1 py-0.5 text-xs" style={{ borderColor: C.cardBorder }} value={(b as any).operator ?? ""} onChange={(e) => setBranch(i, { operator: e.target.value })}>
-                    <option value="">条件关系</option><option value="eq">等于</option><option value="contains">包含</option><option value="neq">不等于</option>
+                    <option value="">条件关系</option><option value="eq">等于</option><option value="neq">不等于</option>
+                    <option value="contains">包含</option><option value="not_contains">不包含</option>
+                    <option value="empty">为空</option><option value="not_empty">不为空</option>
+                    <option value="gt">大于</option><option value="lt">小于</option>
                   </select>
                   <Input className="h-6 text-xs" placeholder="比较变量" value={(b as any).value ?? ""} onChange={(e) => setBranch(i, { value: e.target.value })} />
                   <Popover>
                     <PopoverTrigger asChild><button className="flex size-6 items-center justify-center rounded border bg-white" style={{ borderColor: C.cardBorder }} title="引用变量" onClick={() => setVarTarget(`__brv${i}`)}><Settings className="size-3 text-neutral-500" /></button></PopoverTrigger>
-                    <PopoverContent><VarCascader nodes={nodes} selfId={node.id} onPick={insertVar} /></PopoverContent>
+                    <PopoverContent><VarCascader nodes={nodes} edges={edges} selfId={node.id} defs={defs} onPick={insertVar} /></PopoverContent>
                   </Popover>
                 </div>
               )}
@@ -676,57 +713,70 @@ function WorkflowPicker({ value, onPick }: { value: string; onPick: (v: string) 
 }
 
 /* ============ Agent 配置信息抽屉（对话编排型，quickservice 同款） ============ */
-function AddInline({ onAdd, label = "添加" }: { onAdd: (v: string) => void; label?: string }) {
-  const [v, setV] = useState("")
-  return (
-    <span className="flex items-center gap-1">
-      <Input className="h-6 w-24 text-xs" value={v} onChange={(e) => setV(e.target.value)} placeholder="名称" />
-      <button className="flex items-center gap-0.5 text-xs" style={{ color: C.primary }} onClick={() => { if (v.trim()) { onAdd(v.trim()); setV("") } }}>
-        <Plus className="size-3" /> {label}
-      </button>
-    </span>
-  )
-}
-const WF_BASE2 = WF_BASE
+/* A-16：已移除私有 WF_BASE2 包装，统一走 wf-api 服务层；原 AddInline 自由文本添加器随 A-10/A-11 删除 */
 
-function AgentConfigDrawer({ agentId, inline, avatar, onAvatar, onClose }: { agentId: string; onClose?: () => void; inline?: boolean; avatar?: string; onAvatar?: (v: string) => void }) {
-  const [avatarOpen, setAvatarOpen] = useState(false)
-  const [collapsed, setCollapsed] = useState(false)
-  const [agent, setAgent] = useState<{ name: string; description: string; config: Record<string, any>; workflowId?: string | null } | null>(null)
-  useEffect(() => {
-    fetch(`${WF_BASE2}/api/agents/${agentId}`).then((r) => r.json()).then(setAgent)
-  }, [agentId])
-  if (!agent) return null
-  const cfg = agent.config ?? {}
-  const setCfg = (k: string, v: unknown) => setAgent({ ...agent, config: { ...cfg, [k]: v } })
-  const save = async () => {
-    await fetch(`${WF_BASE2}/api/agents/${agentId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: cfg, workflowId: agent.workflowId, name: agent.name, description: agent.description }) })
-    toast.success("Agent 配置已保存")
-  }
-  const EmptyBox = ({ text }: { text: string }) => (
-    <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-lg border" style={{ borderColor: C.cardBorder, background: "#FAFBFC" }}>
-      <FolderOpen className="size-8 text-neutral-300" />
-      <span className="px-4 text-center text-xs" style={{ color: C.ink3 }}>{text}</span>
-    </div>
-  )
-  const ListAdd = ({ k, label, empty }: { k: string; label: string; empty: string }) => (
+/* A-11：知识兜底多选（真注册表）。A-10 已删除：闲聊兜底死开关/高级设置死行/词库/经验库/记忆自由文本。 */
+function KnowledgeFallbackPicker({ ids, onChange }: { ids: string[]; onChange: (v: string[]) => void }) {
+  const [items, setItems] = useState<{ id: string; name: string }[]>([])
+  const [open, setOpen] = useState(false)
+  useEffect(() => { resApi.registry("knowledge").then((r) => setItems(r.items)).catch(() => setItems([])) }, [])
+  const nameOf = (id: string) => items.find((i) => i.id === id)?.name ?? id
+  return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-[13px] font-medium" style={{ color: C.ink }}>| {label} <Info className="ml-0.5 inline size-3 text-neutral-400" /></span>
-        <AddInline onAdd={(v) => setCfg(k, [...(cfg[k] ?? []), v])} label={`添加${label.slice(-2)}`} />
+        <span className="text-[13px] font-medium" style={{ color: C.ink }}>| Agent 知识兜底</span>
+        <button className="text-xs" style={{ color: C.primary }} onClick={() => setOpen(!open)}>{open ? "收起" : "添加知识"}</button>
       </div>
-      {(cfg[k] ?? []).length === 0 ? <EmptyBox text={empty} /> : (
-        <div className="space-y-1">
-          {(cfg[k] ?? []).map((v: string, i: number) => (
-            <div key={i} className="flex items-center gap-1 text-xs">
-              <span className="flex-1 truncate rounded border px-1 py-0.5" style={{ borderColor: C.cardBorder }}>{v}</span>
-              <button onClick={() => setCfg(k, (cfg[k] ?? []).filter((_: string, j: number) => j !== i))}><X className="size-3 text-neutral-400" /></button>
-            </div>
+      {ids.length === 0 && !open && (
+        <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-lg border" style={{ borderColor: C.cardBorder, background: "#FAFBFC" }}>
+          <FolderOpen className="size-8 text-neutral-300" />
+          <span className="px-4 text-center text-xs" style={{ color: C.ink3 }}>添加知识文件，让Agent具备知识信息大脑</span>
+        </div>
+      )}
+      {ids.map((id) => (
+        <div key={id} className="flex items-center gap-1 text-xs">
+          <span className="flex-1 truncate rounded border px-1 py-0.5" style={{ borderColor: C.cardBorder }}>{nameOf(id)}</span>
+          <button onClick={() => onChange(ids.filter((x) => x !== id))}><X className="size-3 text-neutral-400" /></button>
+        </div>
+      ))}
+      {open && (
+        <div className="max-h-40 space-y-0.5 overflow-y-auto rounded border p-1" style={{ borderColor: C.cardBorder }}>
+          {items.length === 0 && <div className="px-1 py-1 text-[11px]" style={{ color: C.ink3 }}>暂无 Enabled 知识资源</div>}
+          {items.map((it) => (
+            <label key={it.id} className="flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-xs hover:bg-neutral-50">
+              <input type="checkbox" checked={ids.includes(it.id)}
+                onChange={(e) => onChange(e.target.checked ? [...ids, it.id] : ids.filter((x) => x !== it.id))} />
+              <span className="truncate">{it.name}</span>
+            </label>
           ))}
         </div>
       )}
     </div>
   )
+}
+
+function AgentConfigDrawer({ agentId, inline, avatar, onAvatar, onClose }: { agentId: string; onClose?: () => void; inline?: boolean; avatar?: string; onAvatar?: (v: string) => void }) {
+  const [avatarOpen, setAvatarOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
+  const [agent, setAgent] = useState<{ name: string; description: string; config: Record<string, any>; workflowId?: string | null; configRevision: number } | null>(null)
+  useEffect(() => {
+    agentApi.get(agentId).then(setAgent)
+  }, [agentId])
+  if (!agent) return null
+  const cfg = agent.config ?? {}
+  const setCfg = (k: string, v: unknown) => setAgent({ ...agent, config: { ...cfg, [k]: v } })
+  const save = async () => {
+    try {
+      const r = await agentApi.update(agentId, { config: cfg, workflowId: agent.workflowId, name: agent.name, description: agent.description }, agent.configRevision)
+      setAgent({ ...agent, config: r.config, configRevision: r.configRevision })
+      toast.success("Agent 配置已保存")
+    } catch (e) {
+      if (String((e as Error).message).startsWith("409")) {
+        toast.error("配置已被更新，请刷新后重试")
+        agentApi.get(agentId).then(setAgent)
+      } else toast.error((e as Error).message)
+    }
+  }
   if (collapsed) {
     return (
       <div className="flex h-full w-10 shrink-0 flex-col items-center border-r bg-white py-2" style={{ borderColor: C.cardBorder }}>
@@ -792,26 +842,11 @@ function AgentConfigDrawer({ agentId, inline, avatar, onAvatar, onClose }: { age
             </Dialog>
           </div>
         </div>
-        <div className="flex items-center justify-between rounded-lg border p-3" style={{ borderColor: C.cardBorder }}>
-          <span className="flex items-center gap-2 text-[13px]" style={{ color: C.ink }}><MessageSquare className="size-4" style={{ color: C.primary }} /> 闲聊兜底</span>
-          <span className="flex items-center gap-2 text-xs" style={{ color: C.primary }}>配置信息
-            <input type="checkbox" checked={!!cfg.dialogue?.chitchat} onChange={(e) => setCfg("dialogue", { ...cfg.dialogue, chitchat: e.target.checked })} />
-          </span>
-        </div>
-        <div className="flex items-center justify-between rounded-lg border p-3" style={{ borderColor: C.cardBorder }}>
-          <span className="flex items-center gap-2 text-[13px]" style={{ color: C.ink }}><Settings2 className="size-4" style={{ color: C.primary }} /> 高级设置</span>
-          <span className="text-xs" style={{ color: C.primary }}>配置信息</span>
-        </div>
-        <ListAdd k="knowledges" label="Agent 知识兜底" empty="添加知识文件，让Agent具备知识信息大脑" />
-        <ListAdd k="terms" label="专业词库" empty="暂未添加任何专业词库" />
-        <ListAdd k="experiences" label="问答经验库" empty="暂未添加任何问答经验库" />
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[13px] font-medium" style={{ color: C.ink }}>| Agent 记忆</span>
-            <AddInline onAdd={(v) => setCfg("memories", [...(cfg.memories ?? []), v])} label="添加记忆" />
-          </div>
-          <p className="text-[11px] leading-5" style={{ color: C.ink3 }}>请先配置该Agent的记忆变量，然后在工作流中配置记忆变量节点来写入和读取记忆变量的值。</p>
-        </div>
+        {/* A-10：闲聊兜底/高级设置/词库/经验库/记忆自由文本五处门面已删除，真实现随 Phase B 回归 */}
+        <KnowledgeFallbackPicker ids={cfg.knowledges ?? []} onChange={(v) => setCfg("knowledges", v)} />
+        <p className="text-[11px] leading-5" style={{ color: C.ink3 }}>
+          Agent 记忆为结构化声明（名称/类型/作用域/时长），将在 Phase B 提供表单；工作流中通过记忆变量节点读写。
+        </p>
         <Button size="sm" className="bg-black text-white hover:bg-neutral-800" onClick={save}>保存配置</Button>
       </div>
     </div>
@@ -961,6 +996,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const [publishOpen, setPublishOpen] = useState(false)
   const [pop, setPop] = useState<null | "add" | "zoom" | "search">(null)
   const [versions, setVersions] = useState<{ versionNo: number; publishedAt: string }[]>([])
+  const [latestVersion, setLatestVersion] = useState<number | null>(null)
   const [zoom, setZoom] = useState(1)
   const [lockUser, setLockUser] = useState("")
   const [agentAvatar, setAgentAvatar] = useState<string | undefined>(undefined)
@@ -971,12 +1007,12 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const defRef = useRef<WfDefinition | null>(null)
   defRef.current = def
 
-  /* 真实编辑锁与操作人（后端 resource_lock） */
+  /* 真实编辑锁与操作人（后端 resource_lock；SDD A-16 走 lockApi） */
   useEffect(() => {
     const wsId = wsIdRef.current
-    fetch(`${WF_BASE}/api/locks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resourceId: workflowId, wsId, user: "质量管理员" }) })
-      .then((r) => r.json()).then((r) => setLockUser(r.user ?? "")).catch(() => undefined)
-    return () => { fetch(`${WF_BASE}/api/locks/${workflowId}?wsId=${wsId}`, { method: "DELETE" }).catch(() => undefined) }
+    lockApi.acquire(workflowId, wsId, "质量管理员")
+      .then((r) => setLockUser(r.user ?? "")).catch(() => undefined)
+    return () => { lockApi.release(workflowId, wsId).catch(() => undefined) }
   }, [workflowId])
 
   useEffect(() => {
@@ -988,6 +1024,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
       setDef(d.definition); setRevision(d.draftRevision); setDefs(nd); setSavedAt(d.updatedAt)
       wfApi.validate(agentId).then((r) => alive && setIssues(r.issues))
     })
+    wfApi.versions(workflowId).then((vs) => alive && setLatestVersion(vs[0]?.versionNo ?? null)).catch(() => undefined)
     return () => { alive = false }
   }, [workflowId])
 
@@ -1184,12 +1221,16 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
             <span className="truncate text-[15px] font-semibold" style={{ color: C.ink }}>{agentMeta ? agentMeta.name : def.workflow.name}</span>
             {agentMeta ? (
               <button className="flex items-center gap-1 rounded border bg-white px-1.5 py-0.5 text-[11px]" style={{ borderColor: C.cardBorder, color: C.ink2 }} onClick={() => setDrawer("history")}>
-                V1.0.{revision} <ChevronDown className="size-3" />
+                {latestVersion ? `V${latestVersion}` : `草稿 V1.0.${revision}`} <ChevronDown className="size-3" />
               </button>
             ) : null}
+            {/* A-13：agentMeta 模式也显示发布状态（此前只有类型标签） */}
             <span className="rounded px-1.5 py-0.5 text-[11px]" style={{ background: C.tagBg, color: C.orange }}>
-              {agentMeta ? agentMeta.typeLabel : def.workflow.status === "published" ? "已发布" : "待发布"}
+              {def.workflow.status === "published" ? "已发布" : "待发布"}
             </span>
+            {agentMeta && (
+              <span className="rounded px-1.5 py-0.5 text-[11px]" style={{ background: "#F1F3F7", color: C.ink2 }}>{agentMeta.typeLabel}</span>
+            )}
           </div>
           <div className="text-[11px]" style={{ color: C.ink3 }}>
             自动保存于 {savedAt ? new Date(savedAt).toLocaleString() : "—"}
@@ -1197,7 +1238,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
         </div>
         {agentMeta && (
           <div className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg p-0.5" style={{ background: "#F1F3F7" }}>
-            {[["Agent搭建", () => setDrawer(null)], ["运行观测", () => setDrawer("runs")], ["效果评测", () => setDrawer("eval")], ["进化", () => setDrawer("evo")]].map(([label, fn], i) => (
+            {[["Agent搭建", () => setDrawer(null)], ["运行观测", () => setDrawer("runs")], ["效果评测", () => setDrawer("eval")], ["版本指标", () => setDrawer("evo")]].map(([label, fn], i) => (
               <button key={label as string} className="rounded-md px-3 py-1 text-[13px]" style={i === 0 ? { background: "#fff", color: C.ink, boxShadow: "0 1px 3px rgba(31,35,41,.12)" } : { color: C.ink2 }} onClick={() => (fn as () => void)()}>{label as string}</button>
             ))}
           </div>
@@ -1265,7 +1306,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
       <div className="flex min-h-0 flex-1">
       {drawer === "eval" && <EvalPanel workflowId={workflowId} onClose={() => setDrawer(null)} />}
       {drawer === "evo" && <EvoPanel workflowId={workflowId} onClose={() => setDrawer(null)} />}
-      {agentMeta && agentId && <AgentConfigDrawer agentId={agentId} onClose={() => undefined} inline avatar={agentAvatar} onAvatar={(v) => { setAgentAvatar(v); fetch(`${WF_BASE}/api/agents/${agentId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ avatar: v }) }).catch(() => undefined) }} />}
+      {agentMeta && agentId && <AgentConfigDrawer agentId={agentId} onClose={() => undefined} inline avatar={agentAvatar} onAvatar={(v) => { setAgentAvatar(v); agentApi.update(agentId, { avatar: v }).catch(() => undefined) }} />}
       <div className="relative flex-1">
         <ReactFlow
           nodes={nodes} edges={edges} nodeTypes={nodeTypes}
@@ -1359,7 +1400,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
 
         {/* 抽屉层 */}
         {drawer === "config" && selected && (
-          <ConfigDrawer node={selected} defs={defs} nodes={def.graph.nodes} onClose={() => setDrawer(null)}
+          <ConfigDrawer node={selected} defs={defs} nodes={def.graph.nodes} edges={def.graph.edges} onClose={() => setDrawer(null)}
             onChange={(n) => mutate({ ...def, graph: { ...def.graph, nodes: def.graph.nodes.map((x) => (x.id === n.id ? n : x)) } })} />
         )}
         {drawer === "debug" && <DebugDrawer def={def} onClose={() => setDrawer(null)} onRun={startDebugRun} />}
@@ -1432,8 +1473,8 @@ function EvalPanel({ workflowId, onClose }: { workflowId: string; onClose: () =>
   const [name, setName] = useState("")
   const [inputJson, setInputJson] = useState('{ "userQuery": "你好" }')
   const load = () => {
-    fetch(`${WF_BASE}/api/eval-samples?workflowId=${workflowId}`).then((r) => r.json()).then((r) => setSamples(r.items)).catch(() => undefined)
-    fetch(`${WF_BASE}/api/workflows/${workflowId}/eval-summary`).then((r) => r.json()).then(setSummary).catch(() => undefined)
+    evalApi.samples(workflowId).then((r) => setSamples(r.items)).catch(() => undefined)
+    evalApi.summary(workflowId).then(setSummary).catch(() => undefined)
   }
   useEffect(() => { load() }, [workflowId])
   return (
@@ -1458,7 +1499,7 @@ function EvalPanel({ workflowId, onClose }: { workflowId: string; onClose: () =>
           {samples.map((sp) => (
             <div key={sp.id} className="flex items-center gap-2 rounded border px-2 py-1 text-xs" style={{ borderColor: C.cardBorder }}>
               <span className="flex-1 truncate" style={{ color: C.ink }}>{sp.name}</span>
-              <button className="text-neutral-400" onClick={async () => { await fetch(`${WF_BASE}/api/eval-samples/${sp.id}`, { method: "DELETE" }); load() }}><X className="size-3" /></button>
+              <button className="text-neutral-400" onClick={async () => { await evalApi.delSample(sp.id); load() }}><X className="size-3" /></button>
             </div>
           ))}
           <Input className="h-7 text-xs" placeholder="样本名称" value={name} onChange={(e) => setName(e.target.value)} />
@@ -1466,12 +1507,12 @@ function EvalPanel({ workflowId, onClose }: { workflowId: string; onClose: () =>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={async () => {
               try {
-                await fetch(`${WF_BASE}/api/eval-samples`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workflowId, name: name || "样本", input: JSON.parse(inputJson || "{}") }) })
+                await evalApi.addSample(workflowId, name || "样本", JSON.parse(inputJson || "{}"))
                 setName(""); load()
               } catch { toast.error("输入 JSON 非法") }
             }}>添加样本</Button>
             <Button size="sm" className="bg-black text-white hover:bg-neutral-800" onClick={async () => {
-              await fetch(`${WF_BASE}/api/workflows/${workflowId}/eval-run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+              await evalApi.run(workflowId)
               toast.success("评测已启动"); setTimeout(load, 4000)
             }}>运行评测</Button>
           </div>
@@ -1494,16 +1535,16 @@ function EvalPanel({ workflowId, onClose }: { workflowId: string; onClose: () =>
   )
 }
 
-/* ============ 进化面板 ============ */
+/* ============ 版本指标面板（SDD A-12：原“进化”名实不符，真进化见 Phase D） ============ */
 function EvoPanel({ workflowId, onClose }: { workflowId: string; onClose: () => void }) {
   const [data, setData] = useState<{ versions: any[]; failedCases: any[] } | null>(null)
   useEffect(() => {
-    fetch(`${WF_BASE}/api/workflows/${workflowId}/version-metrics`).then((r) => r.json()).then(setData).catch(() => undefined)
+    evalApi.versionMetrics(workflowId).then(setData).catch(() => undefined)
   }, [workflowId])
   return (
     <div className="absolute inset-y-0 right-0 z-20 flex w-[420px] max-w-[92vw] flex-col border-l bg-white" style={{ borderColor: C.cardBorder }}>
       <div className="flex items-center justify-between px-4 py-3">
-        <span className="text-[15px] font-semibold" style={{ color: C.ink }}>进化</span>
+        <span className="text-[15px] font-semibold" style={{ color: C.ink }}>版本指标</span>
         <button onClick={onClose}><X className="size-4 text-neutral-500" /></button>
       </div>
       <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4">

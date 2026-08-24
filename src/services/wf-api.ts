@@ -248,6 +248,75 @@ export const wfApiToken = () =>
   (typeof localStorage !== "undefined" && localStorage.getItem("wf_api_token")) ||
   (import.meta as any).env?.VITE_WF_API_TOKEN || ""
 
+/* ---------- Phase A（SDD A-16/D-3）：Agent 层统一客户端，页面禁止裸 fetch ---------- */
+export interface AgentInfo {
+  id: string; name: string; type: string; typeLabel: string; status: string;
+  workflowId: string | null; config: Record<string, any>; configRevision: number;
+  description: string; avatar?: string | null
+}
+export interface AgentRunEvent { type: string; payload: Record<string, any>; at: string }
+export interface AgentRunDetail {
+  runId: string; status: string; trigger: string; input: Record<string, unknown>;
+  output?: { content?: string } | null; error?: { message?: string } | null;
+  durationMs?: number | null; events: AgentRunEvent[]
+}
+export const agentApi = {
+  list: (p?: { page?: number; pageSize?: number; search?: string }) => {
+    const q = new URLSearchParams()
+    q.set("page", String(p?.page ?? 1)); q.set("pageSize", String(p?.pageSize ?? 100))
+    if (p?.search) q.set("search", p.search)
+    return req<{ items: { id: string; name: string; type: string; status: string }[]; total: number }>(`/api/agents?${q}`)
+  },
+  get: (id: string) => req<AgentInfo>(`/api/agents/${id}`),
+  create: (body: { name: string; type: string; description?: string; config?: Record<string, unknown> }) =>
+    req<{ id: string; workflowId: string | null; configRevision: number }>("/api/agents", {
+      method: "POST", body: JSON.stringify(body) }),
+  /** SDD A-08：携带 expectedRevision，冲突时抛出 409（REVISION_CONFLICT） */
+  update: (id: string, body: Record<string, unknown>, expectedRevision?: number) =>
+    req<{ id: string; config: Record<string, any>; configRevision: number }>(`/api/agents/${id}`, {
+      method: "PUT", body: JSON.stringify({ ...body, ...(expectedRevision != null ? { expectedRevision } : {}) }) }),
+  run: (id: string, input: Record<string, unknown>, trigger = "test") =>
+    req<{ runId: string }>(`/api/agents/${id}/run`, {
+      method: "POST", body: JSON.stringify({ input, trigger }) }),
+  runDetail: (id: string, runId: string) => req<AgentRunDetail>(`/api/agents/${id}/runs/${runId}`),
+  runs: (id: string) =>
+    req<{ items: { runId: string; status: string; trigger: string; startedAt: string | null }[] }>(`/api/agents/${id}/runs`),
+  mountsHealth: (id: string) =>
+    req<{ items: { kind: string; name: string; valid: boolean }[] }>(`/api/agents/${id}/mounts-health`),
+  /** SDD A-03：顶层运行异步入队，轮询直到终态 */
+  async runOnce(id: string, input: Record<string, unknown>, timeoutMs = 90000): Promise<AgentRunDetail> {
+    const { runId } = await agentApi.run(id, input)
+    const deadline = Date.now() + timeoutMs
+    for (; ;) {
+      const d = await agentApi.runDetail(id, runId)
+      if (["succeeded", "failed", "cancelled"].includes(d.status)) return d
+      if (Date.now() > deadline) throw new Error(`运行超时（${Math.round(timeoutMs / 1000)}s 未到终态）`)
+      await new Promise((r) => setTimeout(r, 500))
+    }
+  },
+}
+
+/* ---------- Phase A（SDD A-16）：评测与编辑锁也走服务层 ---------- */
+export const evalApi = {
+  samples: (workflowId: string) =>
+    req<{ items: { id: string; name: string; input: Record<string, unknown> }[] }>(`/api/eval-samples?workflowId=${workflowId}`),
+  addSample: (workflowId: string, name: string, input: Record<string, unknown>) =>
+    req<{ id: string }>("/api/eval-samples", { method: "POST", body: JSON.stringify({ workflowId, name, input }) }),
+  delSample: (id: string) => req<{ ok: boolean }>(`/api/eval-samples/${id}`, { method: "DELETE" }),
+  run: (workflowId: string) =>
+    req<Record<string, unknown>>(`/api/workflows/${workflowId}/eval-run`, { method: "POST", body: "{}" }),
+  summary: (workflowId: string) => req<Record<string, any>>(`/api/workflows/${workflowId}/eval-summary`),
+  versionMetrics: (workflowId: string) =>
+    req<{ versions: { versionNo: number; runs: number; successRate: number }[]; failedCases: { runId: string; error: string }[] }>(
+      `/api/workflows/${workflowId}/version-metrics`),
+}
+export const lockApi = {
+  acquire: (resourceId: string, wsId: string, user: string) =>
+    req<{ user?: string }>("/api/locks", { method: "POST", body: JSON.stringify({ resourceId, wsId, user }) }),
+  release: (resourceId: string, wsId: string) =>
+    req<{ ok: boolean }>(`/api/locks/${resourceId}?wsId=${wsId}`, { method: "DELETE" }),
+}
+
 /* ---------- 质检业务层联调：quality_result/evidence ---------- */
 import type { ListResponse, QualityResult } from "@/domain/types"
 

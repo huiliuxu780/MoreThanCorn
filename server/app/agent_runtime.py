@@ -96,7 +96,7 @@ def _build_tools(db: Session, cfg: dict) -> tuple[list[dict], dict, dict]:
     meta: dict[str, tuple[str, str]] = {}
     resolved: dict[str, list[dict]] = {"tools": [], "workflows": [], "knowledges": [], "missing": []}
     for tname in cfg.get("tools", []):
-        tool = db.execute(select(Tool).where(Tool.name == tname)).scalars().first()
+        tool = db.get(Tool, tname) or db.execute(select(Tool).where(Tool.name == tname)).scalars().first()
         if not tool or tool.status not in ("ready", "enabled"):
             resolved["missing"].append({"kind": "tool", "name": tname})
             continue
@@ -109,7 +109,7 @@ def _build_tools(db: Session, cfg: dict) -> tuple[list[dict], dict, dict]:
         resolved["tools"].append({"name": tname, "id": tool.id,
                                   "toolVersionId": tv.id if tv else None})
     for wname in cfg.get("workflows", []):
-        wf = db.execute(select(Workflow).where(Workflow.name == wname)).scalars().first()
+        wf = db.get(Workflow, wname) or db.execute(select(Workflow).where(Workflow.name == wname)).scalars().first()
         if not wf:
             resolved["missing"].append({"kind": "workflow", "name": wname})
             continue
@@ -119,7 +119,7 @@ def _build_tools(db: Session, cfg: dict) -> tuple[list[dict], dict, dict]:
         meta[f"workflow_{wf.id}"] = ("workflow", wf.id)
         resolved["workflows"].append({"name": wname, "id": wf.id})
     for kname in cfg.get("knowledges", []):
-        ks = db.execute(select(KnowledgeSource).where(KnowledgeSource.name == kname)).scalars().first()
+        ks = db.get(KnowledgeSource, kname) or db.execute(select(KnowledgeSource).where(KnowledgeSource.name == kname)).scalars().first()
         if not ks or ks.status != "enabled":
             resolved["missing"].append({"kind": "knowledge", "name": kname})
             continue
