@@ -1104,6 +1104,8 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const agentVersionState = useAgentVersionState(agentMeta && agentId ? agentId : undefined)
   const [pop, setPop] = useState<null | "add" | "zoom" | "search">(null)
   const [versions, setVersions] = useState<{ versionNo: number; publishedAt: string }[]>([])
+  const [agentVersions, setAgentVersions] = useState<{ versionId: string; versionNo: number; note: string; artifactHash: string; createdAt: string }[]>([])
+  const [agentReleases, setAgentReleases] = useState<{ environment: string; status: string; versionNo: number | null }[]>([])
   const [latestVersion, setLatestVersion] = useState<number | null>(null)
   const [zoom, setZoom] = useState(1)
   const [lockUser, setLockUser] = useState("")
@@ -1403,7 +1405,16 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
             </PopoverContent>
           </Popover>
           <button className="rounded p-1.5 hover:bg-neutral-100" title="历史版本"
-            onClick={async () => { setVersions(await wfApi.versions(workflowId)); setDrawer("history") }}>
+            onClick={async () => {
+              if (agentMeta && agentId) {
+                // SDD B：Agent 模式展示 Agent 版本（发布产生的是 agent_version，不是工作流版本）
+                setAgentVersions(await agentApi.versions(agentId).catch(() => []))
+                setAgentReleases(await agentApi.releases(agentId).catch(() => []))
+              } else {
+                setVersions(await wfApi.versions(workflowId))
+              }
+              setDrawer("history")
+            }}>
             <Clock className="size-4" style={{ color: C.ink2 }} />
           </button>
           <button className="rounded p-1.5 hover:bg-neutral-100" title="运行观测"
@@ -1546,16 +1557,49 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
               <span className="text-[15px] font-semibold" style={{ color: C.ink }}>历史版本</span>
               <button onClick={() => setDrawer(null)}><X className="size-4 text-neutral-500" /></button>
             </div>
-            {versions.length === 0 && (
-              <div className="flex flex-col items-center gap-2 pt-24 text-xs" style={{ color: C.ink3 }}>
-                <History className="size-8" /> 暂无历史版本
-              </div>
+            {agentMeta && agentId ? (
+              <>
+                {agentVersions.length === 0 && (
+                  <div className="flex flex-col items-center gap-2 pt-24 text-xs" style={{ color: C.ink3 }}>
+                    <History className="size-8" /> 暂无历史版本
+                  </div>
+                )}
+                {agentVersions.map((v) => {
+                  const rels = agentReleases.filter((r) => r.status === "active" && r.versionNo === v.versionNo)
+                  return (
+                    <div key={v.versionId} className="border-b py-2 text-xs" style={{ borderColor: C.cardBorder, color: C.ink2 }}>
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium" style={{ color: C.ink }}>V{v.versionNo}</span>
+                        <span className="flex items-center gap-1">
+                          {rels.map((r) => (
+                            <span key={r.environment} className={`rounded px-1 py-0.5 text-[10px] ${r.environment === "prod" ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"}`}>
+                              {r.environment === "prod" ? "线上" : "沙箱"}
+                            </span>
+                          ))}
+                        </span>
+                      </div>
+                      <div className="pt-0.5 text-[10px]" style={{ color: C.ink3 }}>
+                        {new Date(v.createdAt).toLocaleString()}{v.note ? ` · ${v.note}` : ""}
+                      </div>
+                      <div className="pt-0.5 font-mono text-[10px]" style={{ color: C.ink3 }}>sha256:{v.artifactHash.slice(0, 16)}…</div>
+                    </div>
+                  )
+                })}
+              </>
+            ) : (
+              <>
+                {versions.length === 0 && (
+                  <div className="flex flex-col items-center gap-2 pt-24 text-xs" style={{ color: C.ink3 }}>
+                    <History className="size-8" /> 暂无历史版本
+                  </div>
+                )}
+                {versions.map((v) => (
+                  <div key={v.versionNo} className="flex justify-between border-b py-2 text-xs" style={{ borderColor: C.cardBorder, color: C.ink2 }}>
+                    <span>V{v.versionNo}</span><span>{new Date(v.publishedAt).toLocaleString()}</span>
+                  </div>
+                ))}
+              </>
             )}
-            {versions.map((v) => (
-              <div key={v.versionNo} className="flex justify-between border-b py-2 text-xs" style={{ borderColor: C.cardBorder, color: C.ink2 }}>
-                <span>V{v.versionNo}</span><span>{new Date(v.publishedAt).toLocaleString()}</span>
-              </div>
-            ))}
           </div>
         )}
       </div>
