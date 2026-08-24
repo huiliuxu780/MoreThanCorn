@@ -482,19 +482,24 @@ def get_quality_result(rid: str, db: Session = Depends(get_db)):
 # ---------- 效果评测 / 进化 ----------
 
 @router.get("/api/eval-samples")
-def list_eval_samples(workflowId: str = "", db: Session = Depends(get_db)):
+def list_eval_samples(workflowId: str = "", agentId: str = "", db: Session = Depends(get_db)):
     from ..models import EvalSample
     q = db.query(EvalSample)
     if workflowId:
         q = q.filter(EvalSample.workflow_id == workflowId)
-    return {"items": [{"id": s.id, "workflowId": s.workflow_id, "name": s.name,
+    if agentId:
+        q = q.filter(EvalSample.agent_id == agentId)
+    return {"items": [{"id": s.id, "workflowId": s.workflow_id, "agentId": s.agent_id, "name": s.name,
                        "input": s.input, "expected": s.expected} for s in q.all()]}
 
 
 @router.post("/api/eval-samples", status_code=201)
 def create_eval_sample(payload: dict, db: Session = Depends(get_db)):
     from ..models import EvalSample
-    s = EvalSample(workflow_id=payload["workflowId"], name=payload["name"],
+    if not payload.get("workflowId") and not payload.get("agentId"):
+        raise HTTPException(422, "样本必须挂工作流或 Agent")
+    s = EvalSample(workflow_id=payload.get("workflowId"), agent_id=payload.get("agentId"),
+                   name=payload["name"],
                    input=payload.get("input", {}), expected=payload.get("expected"),
                    data_asset_id=payload.get("dataAssetId"))
     db.add(s)

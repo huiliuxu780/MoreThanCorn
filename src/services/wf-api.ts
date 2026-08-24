@@ -255,6 +255,10 @@ export interface AgentInfo {
   workflowId: string | null; config: Record<string, any>; configRevision: number;
   description: string; avatar?: string | null
 }
+
+export interface AgentVersionInfo {
+  versionId: string; versionNo: number; note: string; artifactHash: string; createdAt: string
+}
 export interface AgentRunEvent { type: string; payload: Record<string, any>; at: string }
 export interface AgentRunDetail {
   runId: string; status: string; trigger: string; input: Record<string, unknown>;
@@ -281,7 +285,7 @@ export const agentApi = {
       method: "POST", body: JSON.stringify({ input, trigger }) }),
   runDetail: (id: string, runId: string) => req<AgentRunDetail>(`/api/agents/${id}/runs/${runId}`),
   runs: (id: string) =>
-    req<{ items: { runId: string; status: string; trigger: string; startedAt: string | null }[] }>(`/api/agents/${id}/runs`),
+    req<{ items: { runId: string; status: string; trigger: string; startedAt: string | null; durationMs: number | null; error?: { message?: string } | null }[] }>(`/api/agents/${id}/runs`),
   mountsHealth: (id: string) =>
     req<{ items: { kind: string; name: string; valid: boolean }[] }>(`/api/agents/${id}/mounts-health`),
   /** SDD A-03：顶层运行异步入队，轮询直到终态 */
@@ -297,8 +301,7 @@ export const agentApi = {
   },
   /* ---------- SDD Phase B：Agent 版本与部署 ---------- */
   versions: (id: string) =>
-    req<{ versionId: string; versionNo: number; note: string; artifactHash: string; createdAt: string }[]>(
-      `/api/agents/${id}/versions`),
+    req<AgentVersionInfo[]>(`/api/agents/${id}/versions`),
   createVersion: (id: string, note = "") =>
     req<{ versionId: string; versionNo: number; artifactHash: string } | { detail: { code: string; issues?: { code: string; message: string }[]; message?: string } }>(
       `/api/agents/${id}/versions`, { method: "POST", body: JSON.stringify({ note }) }),
@@ -311,6 +314,22 @@ export const agentApi = {
     req<{ releaseId: string; environment: string; status: string; versionNo: number | null; createdAt: string }[]>(
       `/api/agents/${id}/releases`),
   eventsUrl: (runId: string) => `${WF_BASE}/api/runs/${runId}/events`,
+  /* ---------- SDD D-1：观测 / 评测 / 生成 ---------- */
+  metrics: (id: string) =>
+    req<{ total: number; succeeded: number; failed: number; successRate: number; avgDurationMs: number; maxDurationMs: number }>(
+      `/api/agents/${id}/metrics`),
+  versionsWithMembers: (id: string) =>
+    req<(AgentVersionInfo & { frozenMembers: { ref: string; version: string | null }[] })[]>(`/api/agents/${id}/versions`),
+  evalSamples: (id: string) =>
+    req<{ items: { id: string; name: string; input: Record<string, unknown>; expected?: unknown }[] }>(`/api/agents/${id}/eval-samples`),
+  addEvalSample: (id: string, name: string, input: Record<string, unknown>) =>
+    req<{ id: string }>(`/api/agents/${id}/eval-samples`, { method: "POST", body: JSON.stringify({ name, input }) }),
+  delEvalSample: (sampleId: string) => req<{ ok: boolean }>(`/api/eval-samples/${sampleId}`, { method: "DELETE" }),
+  evalRun: (id: string) =>
+    req<{ total: number; succeeded: number; results: { sampleId: string; name: string; runId?: string; status: string; durationMs?: number | null; output?: string; error?: string | null }[] }>(
+      `/api/agents/${id}/eval-run`, { method: "POST", body: "{}" }),
+  generatePrompt: (name: string, hint: string) =>
+    req<{ prompt: string }>("/api/agents/generate-prompt", { method: "POST", body: JSON.stringify({ name, hint }) }),
 }
 
 /** SSE 事件流消费（SDD B-08）：fetch + ReadableStream 解析，终态事件后返回。 */

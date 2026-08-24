@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: docs_and_design
+title: 产品调研、UI/UX 设计与初始化文档集
+scope:
+    - docs/
+    - uiux/
+    - 初始化doc/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend_service/workflows_routers
+    - path: frontend_app/resources_feature

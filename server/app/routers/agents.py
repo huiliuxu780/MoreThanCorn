@@ -219,8 +219,16 @@ def create_agent_version(aid: str, payload: dict | None = None, db: Session = De
 def list_agent_versions(aid: str, db: Session = Depends(get_db)):
     vers = (db.query(AgentVersion).filter_by(agent_id=aid)
             .order_by(AgentVersion.version_no.desc()).all())
-    return [{"versionId": v.id, "versionNo": v.version_no, "note": v.note,
-             "artifactHash": v.artifact_hash, "createdAt": v.created_at.isoformat()} for v in vers]
+    out = []
+    for v in vers:
+        # SDD D-1：成员冻结版本摘要（依赖快照中的 AGENT 项）
+        members = [{"ref": i.get("ref"), "version": i.get("version")}
+                   for i in ((v.dependency_snapshot or {}).get("items") or [])
+                   if i.get("type") == "AGENT"]
+        out.append({"versionId": v.id, "versionNo": v.version_no, "note": v.note,
+                    "artifactHash": v.artifact_hash, "createdAt": v.created_at.isoformat(),
+                    "frozenMembers": members})
+    return out
 
 
 @router.get("/{aid}/versions/{vid}")
@@ -268,3 +276,82 @@ def list_releases(aid: str, db: Session = Depends(get_db)):
         out.append({"releaseId": r.id, "environment": r.environment, "status": r.status,
                     "versionNo": v.version_no if v else None, "createdAt": r.created_at.isoformat()})
     return out
+
+
+# ---------- 运行观测与评测（SDD D-1） ----------
+
+@router.get("/{aid}/metrics")
+def agent_metrics(aid: str, db: Session = Depends(get_db)):
+    """Agent 级观测指标：总数/成功率/平均时长/近 7 日趋势（SDD D-1）。"""
+    runs = db.query(Run).filter_by(agent_id=aid).all()
+    total = len(runs)
+    succeeded = sum(1 for r in runs if r.status == "succeeded")
+    failed = sum(1 for r in runs if r.status == "failed")
+    durs = [r.duration_ms for r in runs if r.duration_ms is not None]
+    return {"total": total, "succeeded": succeeded, "failed": failed,
+            "successRate": round(succeeded / total, 3) if total else 0,
+            "avgDurationMs": int(sum(durs) / len(durs)) if durs else 0,
+            "maxDurationMs": max(durs) if durs else 0}
+
+
+@router.post("/{aid}/eval-run", status_code=201)
+def agent_eval_run(aid: str, payload: dict | None = None, db: Session = Depends(get_db)):
+    """Agent 级评测：样本逐个真实运行（同步等待终态），返回结果（SDD D-1）。"""
+    from ..models import EvalSample
+    from ..agent_runtime import RunError, run_agent
+    a = db.get(Agent, aid)
+    if not a:
+        raise HTTPException(404, "agent not found")
+    samples = db.query(EvalSample).filter_by(agent_id=aid).all()
+    ids = (payload or {}).get("sampleIds") or [s.id for s in samples]
+    results = []
+    for s in samples:
+        if s.id not in ids:
+            continue
+        try:
+            run_id = run_agent(db, a, s.input or {}, trigger="eval", enqueue=False)
+            r = db.get(Run, run_id)
+            results.append({"sampleId": s.id, "name": s.name, "runId": run_id, "status": r.status,
+                            "durationMs": r.duration_ms,
+                            "output": str((r.output or {}).get("content", ""))[:120],
+                            "error": (r.error or {}).get("message") if r.status == "failed" else None})
+        except RunError as e:
+            results.append({"sampleId": s.id, "name": s.name, "status": "failed", "error": str(e)})
+    succeeded = sum(1 for r in results if r["status"] == "succeeded")
+    return {"total": len(results), "succeeded": succeeded, "results": results}
+
+
+@router.get("/{aid}/eval-samples")
+def list_agent_eval_samples(aid: str, db: Session = Depends(get_db)):
+    from ..models import EvalSample
+    rows = db.query(EvalSample).filter_by(agent_id=aid).all()
+    return {"items": [{"id": s.id, "agentId": s.agent_id, "name": s.name,
+                       "input": s.input, "expected": s.expected} for s in rows]}
+
+
+@router.post("/{aid}/eval-samples", status_code=201)
+def create_agent_eval_sample(aid: str, payload: dict, db: Session = Depends(get_db)):
+    from ..models import EvalSample
+    if not db.get(Agent, aid):
+        raise HTTPException(404, "agent not found")
+    s = EvalSample(agent_id=aid, name=payload.get("name") or "样本",
+                   input=payload.get("input", {}), expected=payload.get("expected"))
+    db.add(s)
+    db.commit()
+    return {"id": s.id, "name": s.name}
+
+
+@router.post("/generate-prompt", status_code=201)
+def generate_prompt(payload: dict, db: Session = Depends(get_db)):
+    """AI 生成 Prompt（SDD D-1）：真 LLM 生成，失败给出明确错误。"""
+    from ..runner import _call_model
+    name = (payload or {}).get("name") or "智能助手"
+    hint = (payload or {}).get("hint") or ""
+    try:
+        answer, _t = _call_model(
+            db, "qwen-plus",
+            f"为名为「{name}」的 Agent 写一份中文角色提示词，包含 角色/目标/技能/限制 四节，"
+            f"使用 Markdown，直接输出提示词本身。补充要求：{hint or '无'}")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, detail={"code": "GENERATE_FAILED", "message": str(exc)})
+    return {"prompt": (answer or "").strip()}

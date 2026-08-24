@@ -368,11 +368,12 @@ class Evidence(Base):
 
 
 class EvalSample(Base):
-    """效果评测样本：固定输入+可选期望输出。"""
+    """效果评测样本：固定输入+可选期望输出；可挂工作流或 Agent（SDD D-1）。"""
     __tablename__ = "eval_sample"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
-    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    workflow_id: Mapped[str | None] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), nullable=True, index=True)
+    agent_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)  # SDD D-1
     name: Mapped[str] = mapped_column(String(64))
     input: Mapped[dict] = mapped_column(JSONB, default=dict)
     expected: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

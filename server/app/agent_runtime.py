@@ -284,6 +284,15 @@ def _maybe_follow_up(db: Session, common: dict, model_key: str, content: str) ->
         return []
 
 
+def ctx_agent_config(ctx: _Ctx) -> dict | None:
+    """运行上下文中取 Agent 配置（知识高级配置等消费用；工作流运行无 Agent 时返回 None）。"""
+    if ctx.run.agent_id:
+        a = ctx.db.get(Agent, ctx.run.agent_id)
+        if a:
+            return a.config or {}
+    return None
+
+
 def _dispatch(db: Session, ctx: _Ctx, kind: str, rid: str, args: dict, run_input: dict,
               call_chain: list[str], memory: dict[str, str], declared_keys: set | None = None) -> dict:
     if kind == "tool":
@@ -299,7 +308,16 @@ def _dispatch(db: Session, ctx: _Ctx, kind: str, rid: str, args: dict, run_input
         return fresh.output or {}
     if kind == "knowledge":
         from .resource_tests import search_knowledge
-        slices = search_knowledge(db, rid, str(args.get("query", "")), 3)
+        # SDD D-1：知识高级配置（TopK）真消费；未配置默认 3
+        adv = ((ctx_agent_config(ctx) or {}).get("knowledgeAdvanced") or {}).get(rid) or {}
+        top_k = int(adv.get("topK") or 3)
+        slices = search_knowledge(db, rid, str(args.get("query", "")), top_k)
+        threshold = adv.get("scoreThreshold")
+        if threshold is not None:
+            try:
+                slices = [s for s in slices if float(s.get("score", 1)) >= float(threshold)]
+            except (TypeError, ValueError):
+                pass
         return {"slices": slices}
     if kind == "memory_write":
         key = str(args.get("key", ""))

@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: frontend_app/shared_layers
+title: 共享 Hooks、工具库与领域类型定义
+scope:
+    - src/hooks/
+    - src/lib/
+    - src/domain/
+source_files: []
+depends_on: []
+related_to:
+    - path: frontend_app/app_entry
+    - path: frontend_app/app_shell_and_ui

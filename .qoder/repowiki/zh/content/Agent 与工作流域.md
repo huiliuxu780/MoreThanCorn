@@ -4,6 +4,9 @@
 **本文引用的文件**
 - [wf-designer.tsx](file://src/pages/wf-designer.tsx)
 - [wf-agent-editor.tsx](file://src/pages/wf-agent-editor.tsx)
+- [wf-agents-list.tsx](file://src/pages/wf-agents-list.tsx)
+- [agent-publish-dialog.tsx](file://src/components/agent-publish-dialog.tsx)
+- [wf-api.ts](file://src/services/wf-api.ts)
 - [workflows.py](file://server/app/routers/workflows.py)
 - [agents.py](file://server/app/routers/agents.py)
 - [models.py](file://server/app/models.py)
@@ -15,23 +18,25 @@
 - [c027phasec0001_event_channels_memory.py](file://server/alembic/versions/c027phasec0001_event_channels_memory.py)
 - [test_phase_b.py](file://server/tests/test_phase_b.py)
 - [test_phase_c.py](file://server/tests/test_phase_c.py)
-- [agent-common-config.tsx](file://src/components/agent-common-config.tsx)
+- [check-history.mjs](file://scripts/check-history.mjs)
+- [check-minimap.mjs](file://scripts/check-minimap.mjs)
+- [verify-fullstack.mjs](file://scripts/verify-fullstack.mjs)
 </cite>
 
 ## 更新摘要
 **变更内容**
-- 新增 Phase B：Agent 版本发布系统（AgentVersion/Release）、运行版本解析、依赖冻结、沙箱/生产环境指针
-- 新增 Phase C：事件通道 CONTROL/CONTENT 双通道、Trace/Span 基础设施、记忆持久化、系统变量目录、四个新节点执行器（exec_reply/exec_memory_variable/exec_workflow_select/exec_workflow_fixed）
-- 扩展数据模型：RunEvent 增加 channel/trace_id/span_id/parent_span_id/duration_ms/tokens；新增 MemoryRecord 表；Agent 增加 sandbox_version_id/prod_version_id/config_revision
-- 前端集成：工作流设计器接入系统变量选择器，Agent 编辑器支持记忆 Schema 声明与保存
+- **新增** Agent 版本显示增强：列表页展示三个版本字段（latestVersion、sandboxVersion、prodVersion），历史抽屉显示 Agent 特定版本与环境徽章
+- **修复** 画布验证 Bug：使用正确的 workflowId 参数进行校验
+- **新增** 小地图渲染兼容性修复：支持 @xyflow/system 的 dimensions/measured 字段兼容
+- **新增** Puppeteer 自动化验证脚本：历史版本抽屉验证、小地图渲染验证、全链路真实运行验证
 
 ## 产品概述
-本工作流聚焦于“Agent 编辑器（节点图/Inspector/变量选择器/测试运行）”“工作流设计器”“Agent 版本管理与发布流程”。平台以可视化节点图编排 AI 能力，支持对话编排、自主规划与专家组协作三类 Agent；通过工作流定义、校验、发布与版本快照，形成从编辑到上线的闭环。前端基于 React + @xyflow/react 实现画布与 Inspector，后端 FastAPI 提供工作流与 Agent 的 CRUD、校验、发布与运行接口，数据库使用 SQLAlchemy/Alembic。
+本工作流聚焦于"Agent 编辑器（节点图/Inspector/变量选择器/测试运行）""工作流设计器""Agent 版本管理与发布流程"。平台以可视化节点图编排 AI 能力，支持对话编排、自主规划与专家组协作三类 Agent；通过工作流定义、校验、发布与版本快照，形成从编辑到上线的闭环。前端基于 React + @xyflow/react 实现画布与 Inspector，后端 FastAPI 提供工作流与 Agent 的 CRUD、校验、发布与运行接口，数据库使用 SQLAlchemy/Alembic。
 
-**更新** 已集成 Phase B 的 Agent 版本发布系统与 Phase C 的事件通道、跟踪基础设施及新节点类型，形成完整的版本化运行链路。
+**更新** 已集成 Phase B 的 Agent 版本发布系统与 Phase C 的事件通道、跟踪基础设施及新节点类型，形成完整的版本化运行链路，并增强了版本显示的可视化效果。
 
 ## 核心业务流程
-- 创建工作流：创建默认包含“开始/结束”的工作流草稿，返回工作流 ID 与初始状态。
+- 创建工作流：创建默认包含"开始/结束"的工作流草稿，返回工作流 ID 与初始状态。
 - 编辑工作流：在画布中拖拽节点、连线、配置节点参数；右侧 Inspector 按节点类型展示专属配置区；变量级联选择器仅暴露可达上游输出；保存草稿带乐观锁 revision。
 - 校验与发布：调用服务端校验规则（图结构、依赖、资源存在性），通过后发布为版本快照并同步关联 Agent 状态。
 - **新增** Agent 版本管理：发布生成不可变 AgentVersion 快照，记录 dependency_snapshot 冻结依赖；Release 表管理沙箱/生产环境部署；运行认版本而非活动草稿。
@@ -51,11 +56,11 @@ U->>FE : 打开工作流并编辑节点/连线
 FE->>API : PUT /api/workflows/{id}/draft(baseRevision, definition)
 API->>DB : 写入 draft_definition, 递增 draft_revision
 API-->>FE : 返回 savedAt/draftVersion
-U->>FE : 点击“验证”
+U->>FE : 点击"验证"
 FE->>API : GET /api/workflows/{id}/validation
 API->>DB : 读取 draft_definition
 API-->>FE : ValidationReport
-U->>FE : 点击“发布”
+U->>FE : 点击"发布"
 FE->>API : POST /api/workflows/{id}/publish?note=...
 API->>DB : 写入 WorkflowVersion, 更新 status=published
 API-->>FE : versionId/versionNo
@@ -239,14 +244,14 @@ Run "0..*" --> MemoryRecord : "scope"
 ```
 
 **图表来源**
-- [models.py:31-62](file://server/app/models.py#L31-L62)
-- [models.py:271-323](file://server/app/models.py#L271-L323)
-- [models.py:221-251](file://server/app/models.py#L221-L251)
+- [models.py:31-62](file://server/app/models.py#L31-62)
+- [models.py:271-323](file://server/app/models.py#L271-323)
+- [models.py:221-251](file://server/app/models.py#L221-251)
 
 **章节来源**
-- [models.py:31-62](file://server/app/models.py#L31-L62)
-- [models.py:271-323](file://server/app/models.py#L271-L323)
-- [models.py:221-251](file://server/app/models.py#L221-L251)
+- [models.py:31-62](file://server/app/models.py#L31-62)
+- [models.py:271-323](file://server/app/models.py#L271-323)
+- [models.py:221-251](file://server/app/models.py#L221-251)
 - [b026phaseb0001_agent_version_release.py:1-21](file://server/alembic/versions/b026phaseb0001_agent_version_release.py#L1-L21)
 - [c027phasec0001_event_channels_memory.py:22-38](file://server/alembic/versions/c027phasec0001_event_channels_memory.py#L22-L38)
 
@@ -282,16 +287,54 @@ R8 --> End(["返回 ValidationReport"])
 ```
 
 **图表来源**
-- [validator.py:54-163](file://server/app/validator.py#L54-L163)
+- [validator.py:54-163](file://server/app/validator.py#L54-163)
 
 **章节来源**
-- [validator.py:54-163](file://server/app/validator.py#L54-L163)
-- [agents.py:17-22](file://server/app/routers/agents.py#L17-L22)
-- [workflows.py:84-134](file://server/app/routers/workflows.py#L84-L134)
-- [runner.py:38-50](file://server/app/runner.py#L38-L50)
-- [runner.py:435-469](file://server/app/runner.py#L435-L469)
+- [validator.py:54-163](file://server/app/validator.py#L54-163)
+- [agents.py:17-22](file://server/app/routers/agents.py#L17-22)
+- [workflows.py:84-134](file://server/app/routers/workflows.py#L84-134)
+- [runner.py:38-50](file://server/app/runner.py#L38-50)
+- [runner.py:435-469](file://server/app/runner.py#L435-469)
 
 ## 新增特性详解
+
+### Agent 版本显示增强（Phase B 增强）
+- **三版本字段显示**：Agent 列表页展示 latestVersion（最新版本号）、sandboxVersion（沙箱环境版本）、prodVersion（线上环境版本）
+- **环境徽章**：沙箱环境显示绿色徽章"沙箱 V{version}"，线上环境显示蓝色徽章"线上 V{version}"
+- **历史抽屉增强**：Agent 历史版本抽屉显示每个版本的部署环境徽章和 artifact hash 前缀
+- **版本状态同步**：后端 list_agents 接口返回最新的版本信息和各环境生效版本
+
+**章节来源**
+- [wf-agents-list.tsx:147-153](file://src/pages/wf-agents-list.tsx#L147-L153)
+- [agents.py:64-77](file://server/app/routers/agents.py#L64-L77)
+- [test_phase_b.py:147-159](file://server/tests/test_phase_b.py#L147-L159)
+
+### 画布验证 Bug 修复
+- **workflowId 参数修正**：修复了画布验证时使用错误参数的 Bug，确保校验请求传递正确的 workflowId
+- **验证流程优化**：确保工作流详情获取和校验流程使用一致的标识符
+
+**章节来源**
+- [workflows.py:74-82](file://server/app/routers/workflows.py#L74-L82)
+- [workflows.py:101-107](file://server/app/routers/workflows.py#L101-L107)
+
+### 小地图渲染兼容性修复
+- **尺寸字段兼容**：支持 @xyflow/system 新版本中的 dimensions 字段和旧版本的 measured 字段
+- **小地图节点同步**：确保画布节点与小地图缩略节点数量保持一致
+- **Puppeteer 验证**：新增 check-minimap.mjs 脚本验证小地图渲染正确性
+
+**章节来源**
+- [wf-designer.tsx:1455-1457](file://src/pages/wf-designer.tsx#L1455-L1457)
+- [check-minimap.mjs:20-30](file://scripts/check-minimap.mjs#L20-L30)
+
+### Puppeteer 自动化验证脚本
+- **历史版本验证**：check-history.mjs 验证历史版本抽屉显示最新版本号、环境徽章和 artifact hash
+- **小地图验证**：check-minimap.mjs 验证画布节点与小地图缩略节点数量一致
+- **全链路验证**：verify-fullstack.mjs 提供完整的前后端集成测试，覆盖资源管理、工作流运行、Agent 执行等场景
+
+**章节来源**
+- [check-history.mjs:1-22](file://scripts/check-history.mjs#L1-L22)
+- [check-minimap.mjs:1-31](file://scripts/check-minimap.mjs#L1-L31)
+- [verify-fullstack.mjs:1-274](file://scripts/verify-fullstack.mjs#L1-L274)
 
 ### Agent 版本发布系统（Phase B）
 - **版本快照**：AgentVersion 存储不可变的定义快照，包含 definition、common_config、dependency_snapshot 和 artifact_hash。
@@ -301,7 +344,7 @@ R8 --> End(["返回 ValidationReport"])
 
 **章节来源**
 - [test_phase_b.py:1-27](file://server/tests/test_phase_b.py#L1-L27)
-- [models.py:294-323](file://server/app/models.py#L294-L323)
+- [models.py:294-323](file://server/app/models.py#L294-323)
 
 ### 事件通道与跟踪基础设施（Phase C）
 - **双通道设计**：CONTROL 通道处理控制面事件（node_completed、memory_read/write），CONTENT 通道处理用户可见内容流（llm_delta、reply_sent）。
@@ -311,7 +354,7 @@ R8 --> End(["返回 ValidationReport"])
 
 **章节来源**
 - [runner.py:49-67](file://server/app/runner.py#L49-L67)
-- [models.py:221-239](file://server/app/models.py#L221-L239)
+- [models.py:221-239](file://server/app/models.py#L221-239)
 - [test_phase_c.py:52-91](file://server/tests/test_phase_c.py#L52-L91)
 
 ### 记忆持久化系统（Phase C）

@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: backend_service/tests
+title: 后端服务端到端测试套件
+scope:
+    - server/tests/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend_service/shared_core
+    - path: backend_service/workflows_routers

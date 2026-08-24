@@ -404,10 +404,11 @@ function ConfigDrawer(props: {
   defs: NodeDefinition[]
   nodes: WfNode[]
   edges: WfEdge[]
+  agentId?: string
   onClose: () => void
   onChange: (n: WfNode) => void
 }) {
-  const { node, defs, nodes, edges, onClose, onChange } = props
+  const { node, defs, nodes, edges, agentId, onClose, onChange } = props
   const [varTarget, setVarTarget] = useState<"prompt" | string | null>(null)
   const [mode, setMode] = useState<"单次" | "批处理">("单次")
   const [openBr, setOpenBr] = useState<Record<number, boolean>>({})
@@ -426,6 +427,17 @@ function ConfigDrawer(props: {
     if (!sid) { setMcpTools([]); return }
     resApi.get("mcp", sid).then((d) => setMcpTools(((d.config?.discoveredTools as { name?: string }[] | undefined) ?? []).map((t) => t.name ?? ""))).catch(() => undefined)
   }, [(node.config as Record<string, any>)?.mcpServerId])
+  /* SDD D-1：成员池联动——agent-select/agent/agent-exec 的候选来自 Agent 成员配置 */
+  const [memberPool, setMemberPool] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => {
+    if (!agentId || !["agent-select", "agent", "agent-exec"].includes(node?.type ?? "")) return
+    agentApi.get(agentId).then((a) => {
+      const ids = ((a.config?.members ?? []) as string[])
+      agentApi.list({ pageSize: 100 }).then((r) => {
+        setMemberPool(ids.map((id) => ({ id, name: r.items.find((x) => x.id === id)?.name ?? id })))
+      }).catch(() => setMemberPool(ids.map((id) => ({ id, name: id }))))
+    }).catch(() => undefined)
+  }, [agentId, node?.type])  // eslint-disable-line react-hooks/exhaustive-deps
   const cfg = node.config as Record<string, any>
   const set = (k: string, v: unknown) => onChange({ ...node, config: { ...cfg, [k]: v } })
   const setBranch = (i: number, patch: Record<string, unknown>) => {
@@ -662,8 +674,43 @@ function ConfigDrawer(props: {
         </Section>
       )}
       {node.type === "workflow-exec" && <WorkflowPicker value={(cfg.workflowCode as string) ?? ""} onPick={(v) => set("workflowCode", v)} />}
+      {/* SDD D-1：Agent 节点从成员池选择 */}
+      {node.type === "agent-select" && (
+        <Section title="主要 Agent（来自左侧成员池）">
+          {memberPool.length === 0 && <p className="text-xs" style={{ color: C.ink3 }}>成员池为空，请先在左侧「成员 Agent」添加</p>}
+          {memberPool.map((m) => {
+            const primary = (cfg.primaryAgents as string[] | undefined) ?? []
+            const checked = primary.includes(m.id)
+            return (
+              <label key={m.id} className="flex cursor-pointer items-center gap-1 py-0.5 text-xs" style={{ color: C.ink }}>
+                <input type="checkbox" checked={checked}
+                  onChange={(e) => set("primaryAgents", e.target.checked ? [...primary, m.id] : primary.filter((x) => x !== m.id))} />
+                <span className="truncate">{m.name}</span>
+              </label>
+            )
+          })}
+          <div className="pt-1 text-xs" style={{ color: C.ink2 }}>兜底 Agent（未命中主要时使用）</div>
+          <select className="h-7 w-full rounded border bg-white px-1 text-xs" style={{ borderColor: C.cardBorder }}
+            value={(cfg.fallbackAgent as string) ?? ""} onChange={(e) => set("fallbackAgent", e.target.value)}>
+            <option value="">不配置兜底</option>
+            {memberPool.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </Section>
+      )}
+      {(node.type === "agent" || node.type === "agent-exec") && (
+        <Section title={node.type === "agent" ? "固定 Agent（来自成员池）" : "执行 Agent"}>
+          <select className="h-7 w-full rounded border bg-white px-1 text-xs" style={{ borderColor: C.cardBorder }}
+            value={(cfg.agentCode as string) ?? ""} onChange={(e) => set("agentCode", e.target.value)}>
+            <option value="">请选择</option>
+            {memberPool.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+          {node.type === "agent-exec" && (
+            <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>也可不选，通过输入绑定 agentCode（如 Agent选择 节点的输出）动态执行。</p>
+          )}
+        </Section>
+      )}
       {/* SDD C-3：无专项表单的节点按注册表 schema 通用渲染（替代“暂无专项配置区”） */}
-      {!["llm", "tool", "knowledge-retrieval", "mcp-call", "condition", "end", "workflow-exec"].includes(node.type) && (
+      {!["llm", "tool", "knowledge-retrieval", "mcp-call", "condition", "end", "workflow-exec", "agent-select", "agent", "agent-exec"].includes(node.type) && (
         <GenericSchemaForm def={def} cfg={cfg} set={set} node={node} onChange={onChange} />
       )}
     </div>
@@ -854,10 +901,49 @@ function KnowledgeFallbackPicker({ ids, onChange }: { ids: string[]; onChange: (
   )
 }
 
+/* SDD D-1：专家组成员池选择器（排除自身；供 Agent选择/执行节点联动） */
+function MemberPoolPicker({ ids, onChange, selfId }: { ids: string[]; onChange: (v: string[]) => void; selfId: string }) {
+  const [all, setAll] = useState<{ id: string; name: string }[]>([])
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    agentApi.list({ pageSize: 100 }).then((r) => setAll(r.items.filter((a) => a.id !== selfId))).catch(() => undefined)
+  }, [selfId])
+  const nameOf = (id: string) => all.find((a) => a.id === id)?.name ?? id
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[13px] font-medium" style={{ color: C.ink }}>| 成员 Agent</span>
+        <button className="text-xs" style={{ color: C.primary }} onClick={() => setOpen(!open)}>{open ? "收起" : "添加成员"}</button>
+      </div>
+      {ids.length === 0 && !open && (
+        <p className="text-[11px]" style={{ color: C.ink3 }}>添加后，画布中「Agent选择/执行」节点可从成员池选择。</p>
+      )}
+      {ids.map((id) => (
+        <div key={id} className="flex items-center gap-1 text-xs">
+          <span className="flex-1 truncate rounded border px-1 py-0.5" style={{ borderColor: C.cardBorder }}>{nameOf(id)}</span>
+          <button onClick={() => onChange(ids.filter((x) => x !== id))}><X className="size-3 text-neutral-400" /></button>
+        </div>
+      ))}
+      {open && (
+        <div className="max-h-40 space-y-0.5 overflow-y-auto rounded border p-1" style={{ borderColor: C.cardBorder }}>
+          {all.length === 0 && <div className="px-1 py-1 text-[11px]" style={{ color: C.ink3 }}>暂无可添加的 Agent</div>}
+          {all.map((a) => (
+            <label key={a.id} className="flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-xs hover:bg-neutral-50">
+              <input type="checkbox" checked={ids.includes(a.id)}
+                onChange={(e) => onChange(e.target.checked ? [...ids, a.id] : ids.filter((x) => x !== a.id))} />
+              <span className="truncate">{a.name}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AgentConfigDrawer({ agentId, inline, avatar, onAvatar, onClose }: { agentId: string; onClose?: () => void; inline?: boolean; avatar?: string; onAvatar?: (v: string) => void }) {
   const [avatarOpen, setAvatarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
-  const [agent, setAgent] = useState<{ name: string; description: string; config: Record<string, any>; workflowId?: string | null; configRevision: number; avatar?: string | null } | null>(null)
+  const [agent, setAgent] = useState<{ name: string; description: string; config: Record<string, any>; workflowId?: string | null; configRevision: number; avatar?: string | null; type?: string } | null>(null)
   useEffect(() => {
     agentApi.get(agentId).then(setAgent)
   }, [agentId])
@@ -944,6 +1030,10 @@ function AgentConfigDrawer({ agentId, inline, avatar, onAvatar, onClose }: { age
         </div>
         {/* A-10 门面已删除；Phase B：结构化记忆 Schema + 对话体验真实现 */}
         <KnowledgeFallbackPicker ids={cfg.knowledges ?? []} onChange={(v) => setCfg("knowledges", v)} />
+        {/* SDD D-1：专家组成员池（画布 Agent选择/执行节点从这里取候选） */}
+        {agent.type === "expert-group" && (
+          <MemberPoolPicker ids={(cfg.members ?? []) as string[]} onChange={(v) => setCfg("members", v)} selfId={agentId} />
+        )}
         <div className="space-y-2">
           <span className="text-[13px] font-medium" style={{ color: C.ink }}>| Agent 记忆</span>
           <MemorySchemaForm memories={cfg.memoriesSchema ?? []} onChange={(v) => setCfg("memoriesSchema", v)} />
@@ -1545,7 +1635,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
 
         {/* 抽屉层 */}
         {drawer === "config" && selected && (
-          <ConfigDrawer node={selected} defs={defs} nodes={def.graph.nodes} edges={def.graph.edges} onClose={() => setDrawer(null)}
+          <ConfigDrawer node={selected} defs={defs} nodes={def.graph.nodes} edges={def.graph.edges} agentId={agentId || undefined} onClose={() => setDrawer(null)}
             onChange={(n) => mutate({ ...def, graph: { ...def.graph, nodes: def.graph.nodes.map((x) => (x.id === n.id ? n : x)) } })} />
         )}
         {drawer === "debug" && <DebugDrawer def={def} onClose={() => setDrawer(null)} onRun={startDebugRun} />}

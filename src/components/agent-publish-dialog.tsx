@@ -13,11 +13,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { agentApi } from "@/services/wf-api"
-
-export interface AgentVersionInfo {
-  versionId: string; versionNo: number; note: string; artifactHash: string; createdAt: string
-}
+import { agentApi, type AgentVersionInfo } from "@/services/wf-api"
 
 /** 头部版本徽标数据：最新版本 + 各环境部署的版本号。 */
 export function useAgentVersionState(agentId: string | undefined) {
