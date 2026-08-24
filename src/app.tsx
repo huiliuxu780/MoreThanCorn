@@ -12,18 +12,14 @@ const TaskWizardPage = lazy(() => import("@/pages/task-wizard"))
 const TaskDetailPage = lazy(() => import("@/pages/task-detail"))
 const TaskEditPage = lazy(() => import("@/pages/task-edit"))
 const RunDetailPage = lazy(() => import("@/pages/run-detail"))
-const AgentsPage = lazy(() => import("@/pages/agents"))
-const AgentDesignerPage = lazy(() => import("@/pages/agent-designer"))
-// 真 API 模式（P0，VITE_WF_API=1）：同一冻结路由，切换实现（15-development-plan.md）
+// A-14：agent 轨道 mock 双轨已清退——/config/agents 固定走真 API 页面
 const WfAgentsPage = lazy(() => import("@/pages/wf-agents-list"))
 const WfAgentEditorPage = lazy(() => import("@/pages/wf-agent-editor"))
 const WfWorkflowsPage = lazy(() => import("@/pages/wf-workflows-list"))
 const WfWorkflowEditorPage = lazy(() => import("@/pages/wf-designer"))
 const WfConnectionsPage = lazy(() => import("@/pages/wf-connections"))
-const WF_API = import.meta.env.VITE_WF_API === "1"
 const ResultRulesPage = lazy(() => import("@/pages/result-rules"))
 const ResultRuleEditorPage = lazy(() => import("@/pages/result-rule-editor"))
-const ConnectionsPage = lazy(() => import("@/pages/connections"))
 // 资源管理一期（uiux/01–03）：AI Resources / Data Resources 统一资源域
 const ResAiResourcesPage = lazy(() => import("@/pages/res-list"))
 const ResDataResourcesPage = lazy(() => import("@/pages/res-list").then((m) => ({ default: m.ResDataResourcesPage })))
@@ -79,12 +75,12 @@ export function App() {
           <Route path="/config/tasks/:taskId/runs/:runId" element={<RunDetailPage />} />
 
           {/* 配置管理：Agents */}
-          <Route path="/config/agents" element={WF_API ? <WfAgentsPage /> : <AgentsPage />} />
-          <Route path="/config/agents/:agentId" element={WF_API ? <WfAgentEditorPage /> : <AgentDesignerPage />} />
+          <Route path="/config/agents" element={<WfAgentsPage />} />
+          <Route path="/config/agents/:agentId" element={<WfAgentEditorPage />} />
 
           {/* 配置管理：工作流 */}
-          <Route path="/config/workflows" element={WF_API ? <WfWorkflowsPage /> : <WfWorkflowsPage />} />
-          <Route path="/config/workflows/:agentId" element={WF_API ? <WfWorkflowEditorPage /> : <WfWorkflowEditorPage />} />
+          <Route path="/config/workflows" element={<WfWorkflowsPage />} />
+          <Route path="/config/workflows/:agentId" element={<WfWorkflowEditorPage />} />
 
           {/* 配置管理：AI Resources / Data Resources（资源管理一期） */}
           <Route path="/config/ai-resources" element={<ResAiResourcesPage />} />
@@ -108,7 +104,7 @@ export function App() {
           <Route path="/config/result-rules/:ruleSetId" element={<ResultRuleEditorPage />} />
 
           {/* 系统级设置 */}
-          <Route path="/settings/connections" element={WF_API ? <WfConnectionsPage /> : <ConnectionsPage />} />
+          <Route path="/settings/connections" element={<WfConnectionsPage />} />
           <Route path="/settings/models" element={<Navigate to="/config/ai-resources?tab=models" replace />} />
 
           <Route path="/403" element={<ForbiddenPage />} />
