@@ -14,6 +14,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .db import SessionLocal
 from .models import (Agent, Connection, KnowledgeSource, Model, ModelProvider, Run,
                      Tool, ToolVersion, Workflow)
 from .runner import RunError, _decrypt, create_run, emit, execute_run, exec_tool
@@ -86,13 +87,18 @@ def _chat_completion(db: Session, model_key: str, messages: list[dict], tools: l
 
 # ---------- 挂载 → tools schema ----------
 
-def _build_tools(db: Session, cfg: dict) -> tuple[list[dict], dict]:
-    """返回 (tools, dispatch 元信息 {name: ("tool", tv_id) | ("workflow", wf_id) | ("knowledge", ks_id)})。"""
+def _build_tools(db: Session, cfg: dict) -> tuple[list[dict], dict, dict]:
+    """返回 (tools, dispatch 元信息, 解析留痕)。
+
+    留痕（SDD A-09）：每个挂载解析到的真实资源 id + 版本；查不到的记 missing。
+    """
     tools: list[dict] = []
     meta: dict[str, tuple[str, str]] = {}
+    resolved: dict[str, list[dict]] = {"tools": [], "workflows": [], "knowledges": [], "missing": []}
     for tname in cfg.get("tools", []):
         tool = db.execute(select(Tool).where(Tool.name == tname)).scalars().first()
         if not tool or tool.status not in ("ready", "enabled"):
+            resolved["missing"].append({"kind": "tool", "name": tname})
             continue
         tv = db.execute(select(ToolVersion).where(ToolVersion.tool_id == tool.id)
                         .order_by(ToolVersion.version_no.desc())).scalars().first()
@@ -100,22 +106,28 @@ def _build_tools(db: Session, cfg: dict) -> tuple[list[dict], dict]:
             "name": f"tool_{tool.id}", "description": tool.description or tool.name,
             "parameters": (tv.input_schema if tv and tv.input_schema else {"type": "object", "properties": {}})}})
         meta[f"tool_{tool.id}"] = ("tool", tool.id)
+        resolved["tools"].append({"name": tname, "id": tool.id,
+                                  "toolVersionId": tv.id if tv else None})
     for wname in cfg.get("workflows", []):
         wf = db.execute(select(Workflow).where(Workflow.name == wname)).scalars().first()
         if not wf:
+            resolved["missing"].append({"kind": "workflow", "name": wname})
             continue
         tools.append({"type": "function", "function": {
             "name": f"workflow_{wf.id}", "description": f"执行工作流：{wf.name}",
             "parameters": {"type": "object", "properties": {"input": {"type": "object"}}}}})
         meta[f"workflow_{wf.id}"] = ("workflow", wf.id)
+        resolved["workflows"].append({"name": wname, "id": wf.id})
     for kname in cfg.get("knowledges", []):
         ks = db.execute(select(KnowledgeSource).where(KnowledgeSource.name == kname)).scalars().first()
         if not ks or ks.status != "enabled":
+            resolved["missing"].append({"kind": "knowledge", "name": kname})
             continue
         tools.append({"type": "function", "function": {
             "name": f"knowledge_{ks.id}", "description": f"检索知识库：{ks.name}",
             "parameters": {"type": "object", "properties": {"query": {"type": "string"}}}}})
         meta[f"knowledge_{ks.id}"] = ("knowledge", ks.id)
+        resolved["knowledges"].append({"name": kname, "id": ks.id})
     tools.append({"type": "function", "function": {
         "name": "memory_write", "description": "写入 run 级记忆变量",
         "parameters": {"type": "object", "properties": {"key": {"type": "string"}, "value": {"type": "string"}}}}})
@@ -124,7 +136,7 @@ def _build_tools(db: Session, cfg: dict) -> tuple[list[dict], dict]:
         "parameters": {"type": "object", "properties": {"key": {"type": "string"}}}}})
     meta["memory_write"] = ("memory_write", "")
     meta["memory_read"] = ("memory_read", "")
-    return tools, meta
+    return tools, meta, resolved
 
 
 # ---------- autonomous 循环 ----------
@@ -136,7 +148,9 @@ def _autonomous_loop(db: Session, agent: Agent, run: Run, run_input: dict, call_
     system = (cfg.get("rolePrompt") or "") + "\n## 挂载技能\n" + "\n".join(f"- {s}" for s in skills)
     messages = [{"role": "system", "content": system},
                 {"role": "user", "content": json.dumps(run_input, ensure_ascii=False)}]
-    tools, meta = _build_tools(db, cfg)
+    tools, meta, resolved = _build_tools(db, cfg)
+    # SDD A-09：挂载解析留痕（含失效项），运行可审计实际用到的资源与版本
+    emit(db, run.id, "agent_mounts_resolved", payload=resolved)
     model = (cfg.get("modelRef") or {}).get("modelId") or "qwen-plus"
     memory: dict[str, str] = {}
     t0 = time.time()
@@ -205,15 +219,63 @@ def _latest_tv(db: Session, tool_id: str) -> str:
 # ---------- 专家组画布节点 executor ----------
 
 def exec_agent_select(node, ctx) -> dict:
+    """Agent选择＝语义路由器（SDD A-02，调研 11 §4.3）：
+    query + 候选成员 → LLM 判定命中主要成员；未命中走兜底；均无则失败。
+    mock（无真实 LLM）时取第一个主要成员并标记 routing=mock。"""
     cfg = node.get("config") or {}
     primary = cfg.get("primaryAgents") or []
-    code = primary[0] if primary else cfg.get("fallbackAgent")
-    if not code:
+    fallback = cfg.get("fallbackAgent")
+    if not primary and not fallback:
         raise RunError("Agent选择节点未配置主要/兜底 Agent")
-    a = ctx.db.get(Agent, code)
-    if not a:
-        raise RunError(f"Agent {code} 不存在")
-    return {"agentCode": a.id, "agentName": a.name, "agentDesc": a.description or ""}
+    from .runner import resolve_bindings
+    inputs = resolve_bindings(node.get("inputs", []), ctx.outputs, ctx.run_input)
+    query = str(inputs.get("query") or ctx.run_input.get("userQuery") or "")
+
+    candidates = []
+    for cid in primary:
+        a = ctx.db.get(Agent, cid)
+        if a:
+            candidates.append(a)
+    chosen, routing = _route(ctx.db, candidates, query)
+    if chosen is None:
+        if not fallback:
+            raise RunError("未命中任何主要 Agent 且未配置兜底 Agent")
+        chosen = ctx.db.get(Agent, fallback)
+        if not chosen:
+            raise RunError(f"兜底 Agent {fallback} 不存在")
+        routing = "fallback"
+    emit(ctx.db, ctx.run.id, "agent_select", node_id=node.get("id"),
+         payload={"query": query[:500], "chosen": chosen.id, "routing": routing,
+                  "candidateCount": len(candidates)})
+    return {"agentCode": chosen.id, "agentName": chosen.name, "agentDesc": chosen.description or ""}
+
+
+def _route(db: Session, candidates: list, query: str):
+    """返回 (Agent|None, routing 标记)。无候选 → (None, "none")。"""
+    if not candidates:
+        return None, "none"
+    base, _secret = _resolve_base_secret(db, "qwen-plus")
+    if not base or not base.startswith(("http://", "https://")):
+        return candidates[0], "mock"  # mock：保持旧行为，标记可观测
+    listing = "\n".join(f"{i + 1}. {a.name}：{(a.description or '').strip()[:120]}"
+                        for i, a in enumerate(candidates))
+    messages = [
+        {"role": "system", "content": "你是路由器。根据用户问题从候选 Agent 中选择最合适的一个。"
+                                      "只输出候选序号（如 1），没有合适的输出 NONE。"},
+        {"role": "user", "content": f"候选 Agent：\n{listing}\n\n用户问题：{query[:800]}"},
+    ]
+    try:
+        resp = _chat_completion(db, "qwen-plus", messages, tools=[])
+    except Exception:  # noqa: BLE001 —— 路由失败降级到兜底，不中断运行
+        return None, "route_error"
+    content = (resp.get("content") or "").strip()
+    digits = "".join(ch for ch in content if ch.isdigit())
+    if not digits:
+        return None, "none"
+    idx = int(digits) - 1
+    if 0 <= idx < len(candidates):
+        return candidates[idx], "primary"
+    return None, "none"
 
 
 def _member_code(node, ctx) -> str:
@@ -246,18 +308,21 @@ def _run_member(ctx: _Ctx, code: str) -> dict:
     agent_chain = [x[len("agent:"): ] for x in ctx.call_chain if x.startswith("agent:")]
     wf_chain = [x for x in ctx.call_chain if not x.startswith("agent:")]
     sub_run = run_agent(ctx.db, member, ctx.run_input, trigger="agent",
-                        agent_chain=agent_chain, call_chain_wf=wf_chain)
+                        agent_chain=agent_chain, call_chain_wf=wf_chain, enqueue=False)
     fresh = ctx.db.get(Run, sub_run)
     if fresh.status != "succeeded":
         raise RunError(f"成员 Agent「{member.name}」执行失败：{(fresh.error or {}).get('message', fresh.status)}")
     return {"content": (fresh.output or {}).get("content", json.dumps(fresh.output or {}, ensure_ascii=False))}
 
 
-# ---------- 统一入口 ----------
+# ---------- 统一入口（SDD A-03：顶层异步入队，嵌套保持同步） ----------
 
 def run_agent(db: Session, agent: Agent, run_input: dict, trigger: str = "agent",
-              agent_chain: list[str] | None = None, call_chain_wf: list[str] | None = None) -> str:
-    """返回 run_id。autonomous 同步循环；dialogue/expert-group 走其 workflow。"""
+              agent_chain: list[str] | None = None, call_chain_wf: list[str] | None = None,
+              enqueue: bool = True) -> str:
+    """返回 run_id。enqueue=True 时创建 Run 后立即返回，由 worker 执行；
+    嵌套调用（成员 Agent/子工作流）必须 enqueue=False 保持顺序。"""
+    from .models import JobQueue
     chain = list(agent_chain or [])
     if agent.id in chain:
         raise RunError(f"检测到 Agent 递归调用：{agent.id}")
@@ -265,14 +330,51 @@ def run_agent(db: Session, agent: Agent, run_input: dict, trigger: str = "agent"
     db.add(run)
     db.commit()
     emit(db, run.id, "agent_started", payload={"agentId": agent.id, "type": agent.type})
-    if agent.type == "autonomous":
-        _autonomous_loop(db, agent, run, run_input or {}, chain)
-        return run.id
-    if not agent.workflow_id:
+    if agent.type != "autonomous" and not agent.workflow_id:
         run.status = "failed"
         run.error = {"message": "该 Agent 未绑定工作流"}
+        run.ended_at = datetime.now(timezone.utc)
         db.commit()
         return run.id
+    if enqueue:
+        db.add(JobQueue(type="agent-execution", payload={"run_id": run.id}))
+        db.commit()
+        return run.id
+    _execute_agent_inline(db, agent, run, run_input or {}, chain, call_chain_wf)
+    return run.id
+
+
+def _execute_agent_inline(db: Session, agent: Agent, run: Run, run_input: dict,
+                          chain: list[str], call_chain_wf: list[str] | None) -> None:
+    if agent.type == "autonomous":
+        _autonomous_loop(db, agent, run, run_input, chain)
+        return
     wf_chain = list(call_chain_wf or []) + [f"agent:{x}" for x in chain] + [f"agent:{agent.id}"]
     execute_run(run.id, call_chain=wf_chain)
-    return run.id
+
+
+def execute_agent_job(run_id: str) -> None:
+    """worker 侧执行入口（SDD A-03）：顶层入队的 agent 运行在此执行。"""
+    db = SessionLocal()
+    try:
+        run = db.get(Run, run_id)
+        if not run or run.status not in ("queued",):
+            return
+        agent = db.get(Agent, run.agent_id)
+        if not agent:
+            run.status = "failed"
+            run.error = {"message": "agent not found"}
+            db.commit()
+            return
+        _execute_agent_inline(db, agent, run, run.input or {}, [], None)
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        run = db.get(Run, run_id)
+        if run and run.status not in ("succeeded", "failed"):
+            run.status = "failed"
+            run.error = {"message": str(exc)}
+            run.ended_at = datetime.now(timezone.utc)
+            db.commit()
+            emit(db, run_id, "agent_failed", payload={"error": str(exc)})
+    finally:
+        db.close()

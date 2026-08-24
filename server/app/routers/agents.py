@@ -107,8 +107,9 @@ def update_agent(aid: str, payload: dict, db: Session = Depends(get_db)):
 
 # ---------- 运行层（05 设计） ----------
 
-@router.post("/{aid}/run")
+@router.post("/{aid}/run", status_code=202)
 def run_agent_endpoint(aid: str, payload: dict | None = None, db: Session = Depends(get_db)):
+    """SDD A-03：顶层运行异步入队，立即返回 runId；调用方轮询 GET runs/{runId} 取终态。"""
     a = db.get(Agent, aid)
     if not a:
         raise HTTPException(404, "agent not found")

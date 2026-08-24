@@ -1,11 +1,25 @@
-"""Agent 运行层（05 设计）验收：三型运行 / 挂载消费 / 护栏 / 发布同步 / mounts-health。"""
+"""Agent 运行层（05 设计）验收：三型运行 / 挂载消费 / 护栏 / 发布同步 / mounts-health。
+SDD A-03 后顶层运行异步执行：统一用 wait_terminal 等待终态。"""
 import json
+import time
 
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.runner import start_worker
 
 client = TestClient(app)
+start_worker()  # 确保独立运行本文件时也有 worker（重复启动无害）
+
+
+def wait_terminal(agent_id: str, run_id: str, timeout: float = 30.0) -> dict:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        d = client.get(f"/api/agents/{agent_id}/runs/{run_id}").json()
+        if d["status"] in ("succeeded", "failed", "cancelled"):
+            return d
+        time.sleep(0.2)
+    raise AssertionError(f"run {run_id} 未在 {timeout}s 内到达终态：{d['status']}")
 
 
 def _create_agent(name, atype, config=None):
@@ -21,9 +35,9 @@ def test_autonomous_run_with_tool_mount():
         "rolePrompt": "# 角色：测试", "modelRef": {"modelId": "qwen-plus"},
         "skills": ["技能A"], "tools": ["echo-tool-rt", "ghost-tool"], "workflows": [], "knowledges": []})
     r = client.post(f"/api/agents/{a['id']}/run", json={"input": {"userQuery": "你好"}})
-    assert r.status_code == 200, r.text
+    assert r.status_code == 202, r.text
     run_id = r.json()["runId"]
-    d = client.get(f"/api/agents/{a['id']}/runs/{run_id}").json()
+    d = wait_terminal(a["id"], run_id)
     assert d["status"] == "succeeded", d
     types = [e["type"] for e in d["events"]]
     assert "agent_started" in types and "agent_completed" in types
@@ -71,8 +85,8 @@ def test_expert_group_run_with_agent_exec():
                     json={"definition": defn, "baseRevision": det["draftRevision"]})
     assert sv.status_code == 200, sv.text
     r = client.post(f"/api/agents/{eg['id']}/run", json={"input": {"userQuery": "hi"}})
-    assert r.status_code == 200, r.text
-    d = client.get(f"/api/agents/{eg['id']}/runs/{r.json()['runId']}").json()
+    assert r.status_code == 202, r.text
+    d = wait_terminal(eg["id"], r.json()["runId"])
     assert d["status"] == "succeeded", d
     # 成员 dialogue 产生独立 Run（agent_id=member）
     member_runs = client.get(f"/api/agents/{member['id']}/runs").json()["items"]

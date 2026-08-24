@@ -1,5 +1,7 @@
 """Phase A 批次1（SDD 01）：A-01 运行认版本 / A-05 注册表与通知节点 / A-06 条件运算符 /
-A-07 调用记录关联节点 / A-08 Agent config 乐观锁 / A-17 名称长度一致化。"""
+A-07 调用记录关联节点 / A-08 Agent config 乐观锁 / A-17 名称长度一致化。
+批次2：A-02 真路由 / A-03 异步运行 / A-09 挂载留痕。"""
+import time
 import uuid
 
 import pytest
@@ -7,9 +9,21 @@ from fastapi.testclient import TestClient
 
 from app.db import SessionLocal
 from app.main import app
-from app.runner import RunError, _branch_ok, create_run, execute_run
+from app.runner import RunError, _branch_ok, create_run, execute_run, start_worker
 
 client = TestClient(app)
+start_worker()  # A-03 后 Agent 顶层运行依赖 worker；重复启动无害
+
+
+def wait_terminal(agent_id: str, run_id: str, timeout: float = 30.0) -> dict:
+    deadline = time.time() + timeout
+    d = {}
+    while time.time() < deadline:
+        d = client.get(f"/api/agents/{agent_id}/runs/{run_id}").json()
+        if d["status"] in ("succeeded", "failed", "cancelled"):
+            return d
+        time.sleep(0.2)
+    raise AssertionError(f"run {run_id} 未在 {timeout}s 内到达终态：{d.get('status')}")
 
 
 def u(prefix: str) -> str:
@@ -252,3 +266,144 @@ def test_a17_db_check_constraint():
         db.commit()
     db.rollback()
     db.close()
+
+
+# ---------- A-02 Agent选择真路由（LLM 判定 + 兜底） ----------
+
+def _mk_member(name: str) -> dict:
+    r = client.post("/api/agents", json={"name": name, "type": "dialogue"})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def _mk_group(name: str, primary: list[str], fallback: str | None) -> dict:
+    eg = client.post("/api/agents", json={"name": name, "type": "expert-group"}).json()
+    det = client.get(f"/api/workflows/{eg['workflowId']}").json()
+    defn = det["definition"]
+    defn["graph"]["nodes"] = [
+        {"id": "s", "type": "input", "name": "开始", "config": {}, "inputs": []},
+        {"id": "sel", "type": "agent-select", "name": "Agent选择",
+         "config": {"primaryAgents": primary, "fallbackAgent": fallback},
+         "inputs": [{"name": "query", "type": "string",
+                     "source": {"kind": "input", "path": "userQuery"}}]},
+        {"id": "ex", "type": "agent-exec", "name": "Agent执行", "config": {},
+         "inputs": [{"name": "agentCode", "type": "string",
+                     "source": {"kind": "upstream", "nodeId": "sel", "path": "outputs.agentCode"}}]},
+        {"id": "e", "type": "end", "name": "结束", "config": {"outputKey": "quality_result"},
+         "inputs": [{"name": "output", "type": "string",
+                     "source": {"kind": "upstream", "nodeId": "ex", "path": "outputs.content"}}]},
+    ]
+    defn["graph"]["edges"] = [
+        {"id": "e1", "source": "s", "target": "sel"},
+        {"id": "e2", "source": "sel", "target": "ex"},
+        {"id": "e3", "source": "ex", "target": "e"},
+    ]
+    sv = client.put(f"/api/workflows/{eg['workflowId']}/draft",
+                    json={"definition": defn, "baseRevision": det["draftRevision"]})
+    assert sv.status_code == 200, sv.text
+    return eg
+
+
+def _force_real_llm(monkeypatch, answer: str):
+    import app.agent_runtime as ar
+    monkeypatch.setattr(ar, "_resolve_base_secret", lambda db, k: ("https://fake-llm", "sk"))
+    monkeypatch.setattr(ar, "_chat_completion",
+                        lambda db, mk, messages, tools: {"content": answer, "tool_calls": []})
+
+
+def test_a02_router_hits_primary_by_llm_choice(monkeypatch):
+    m1 = _mk_member(u("候选甲"))
+    m2 = _mk_member(u("候选乙"))
+    eg = _mk_group(u("路由组"), [m1["id"], m2["id"]], None)
+    _force_real_llm(monkeypatch, "2")
+    r = client.post(f"/api/agents/{eg['id']}/run", json={"input": {"userQuery": "帮我做乙的事"}})
+    assert r.status_code == 202
+    d = wait_terminal(eg["id"], r.json()["runId"])
+    assert d["status"] == "succeeded", d
+    sel = [e for e in d["events"] if e["type"] == "agent_select"]
+    assert sel and sel[0]["payload"]["chosen"] == m2["id"]
+    assert sel[0]["payload"]["routing"] == "primary"
+
+
+def test_a02_router_none_falls_back(monkeypatch):
+    m1, fb = _mk_member(u("主要丙")), _mk_member(u("兜底丁"))
+    eg = _mk_group(u("兜底组"), [m1["id"]], fb["id"])
+    _force_real_llm(monkeypatch, "NONE")
+    r = client.post(f"/api/agents/{eg['id']}/run", json={"input": {"userQuery": "没人会"}})
+    d = wait_terminal(eg["id"], r.json()["runId"])
+    assert d["status"] == "succeeded", d
+    sel = [e for e in d["events"] if e["type"] == "agent_select"]
+    assert sel[0]["payload"]["chosen"] == fb["id"]
+    assert sel[0]["payload"]["routing"] == "fallback"
+
+
+def test_a02_router_no_hit_no_fallback_fails(monkeypatch):
+    m1 = _mk_member(u("孤立戊"))
+    eg = _mk_group(u("无兜底组"), [m1["id"]], None)
+    _force_real_llm(monkeypatch, "NONE")
+    r = client.post(f"/api/agents/{eg['id']}/run", json={"input": {"userQuery": "没人会"}})
+    d = wait_terminal(eg["id"], r.json()["runId"])
+    assert d["status"] == "failed"
+    assert "兜底" in d["error"]["message"]
+
+
+def test_a02_mock_mode_keeps_first_primary():
+    m1 = _mk_member(u("默选己"))
+    eg = _mk_group(u("默认组"), [m1["id"]], None)
+    r = client.post(f"/api/agents/{eg['id']}/run", json={"input": {"userQuery": "hi"}})
+    d = wait_terminal(eg["id"], r.json()["runId"])
+    assert d["status"] == "succeeded", d
+    sel = [e for e in d["events"] if e["type"] == "agent_select"]
+    assert sel[0]["payload"]["routing"] == "mock"
+
+
+# ---------- A-03 顶层运行异步入队 ----------
+
+def test_a03_run_enqueues_agent_job_and_reaches_terminal():
+    a = client.post("/api/agents", json={
+        "name": u("异步"), "type": "autonomous",
+        "config": {"rolePrompt": "测试", "modelRef": {"modelId": ""},
+                   "skills": [], "tools": [], "workflows": [], "knowledges": []}}).json()
+    r = client.post(f"/api/agents/{a['id']}/run", json={"input": {"userQuery": "你好"}})
+    assert r.status_code == 202
+    run_id = r.json()["runId"]
+    from app.models import JobQueue
+    db = SessionLocal()
+    try:
+        jobs = db.query(JobQueue).filter_by(type="agent-execution").all()
+        assert any((j.payload or {}).get("run_id") == run_id for j in jobs)
+    finally:
+        db.close()
+    d = wait_terminal(a["id"], run_id)
+    assert d["status"] == "succeeded", d
+
+
+def test_a03_unbound_dialogue_agent_fails_fast():
+    a = client.post("/api/agents", json={"name": u("无流"), "type": "dialogue"}).json()
+    client.put(f"/api/agents/{a['id']}", json={"workflowId": None})
+    r = client.post(f"/api/agents/{a['id']}/run", json={"input": {}})
+    assert r.status_code == 202
+    d = client.get(f"/api/agents/{a['id']}/runs/{r.json()['runId']}").json()
+    assert d["status"] == "failed" and "未绑定工作流" in d["error"]["message"]
+
+
+# ---------- A-09 挂载解析留痕 ----------
+
+def test_a09_mounts_resolved_event_records_hits_and_missing():
+    client.post("/api/tools", json={"name": "echo-a09", "kind": "builtin",
+                                    "spec": {"kind": "echo"}})
+    a = client.post("/api/agents", json={
+        "name": u("留痕"), "type": "autonomous",
+        "config": {"rolePrompt": "", "modelRef": {"modelId": ""}, "skills": [],
+                   "tools": ["echo-a09", "ghost-a09"], "workflows": ["不存在的流"],
+                   "knowledges": []}}).json()
+    r = client.post(f"/api/agents/{a['id']}/run", json={"input": {"userQuery": "hi"}})
+    d = wait_terminal(a["id"], r.json()["runId"])
+    assert d["status"] == "succeeded", d
+    ev = [e for e in d["events"] if e["type"] == "agent_mounts_resolved"]
+    assert len(ev) == 1
+    p = ev[0]["payload"]
+    assert p["tools"][0]["name"] == "echo-a09" and p["tools"][0]["toolVersionId"]
+    missing = {(m["kind"], m["name"]) for m in p["missing"]}
+    assert ("tool", "ghost-a09") in missing
+    assert ("workflow", "不存在的流") in missing

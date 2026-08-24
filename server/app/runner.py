@@ -595,13 +595,17 @@ def claim_and_run(db: Session) -> bool:
     row = db.execute(text(
         "UPDATE job_queue SET status='processing', locked_at=now(), locked_by='w1' "
         "WHERE id=(SELECT id FROM job_queue WHERE status='pending' ORDER BY run_at LIMIT 1 FOR UPDATE SKIP LOCKED) "
-        "RETURNING id, payload")).fetchone()
+        "RETURNING id, type, payload")).fetchone()
     db.commit()
     if not row:
         return False
     payload = row.payload if isinstance(row.payload, dict) else json.loads(row.payload)
     try:
-        execute_run(payload["run_id"])
+        if row.type == "agent-execution":  # SDD A-03：Agent 顶层运行
+            from .agent_runtime import execute_agent_job
+            execute_agent_job(payload["run_id"])
+        else:
+            execute_run(payload["run_id"])
         st = "done"
     except Exception as exc:  # noqa: BLE001
         st = "failed"
