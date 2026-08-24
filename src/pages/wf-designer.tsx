@@ -758,7 +758,7 @@ function KnowledgeFallbackPicker({ ids, onChange }: { ids: string[]; onChange: (
 function AgentConfigDrawer({ agentId, inline, avatar, onAvatar, onClose }: { agentId: string; onClose?: () => void; inline?: boolean; avatar?: string; onAvatar?: (v: string) => void }) {
   const [avatarOpen, setAvatarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
-  const [agent, setAgent] = useState<{ name: string; description: string; config: Record<string, any>; workflowId?: string | null; configRevision: number } | null>(null)
+  const [agent, setAgent] = useState<{ name: string; description: string; config: Record<string, any>; workflowId?: string | null; configRevision: number; avatar?: string | null } | null>(null)
   useEffect(() => {
     agentApi.get(agentId).then(setAgent)
   }, [agentId])
@@ -815,7 +815,8 @@ function AgentConfigDrawer({ agentId, inline, avatar, onAvatar, onClose }: { age
             </div>
             <button className="shrink-0 overflow-hidden rounded-lg border bg-white p-1" style={{ borderColor: C.cardBorder }} title="选择头像"
               onClick={() => setAvatarOpen(true)}>
-              <img src={avatar ?? "/avatars/avatar-0.png"} alt="agent头像" className="size-24 rounded-md object-cover" />
+              {/* 头像优先级：本次会话新选 > 已保存头像 > 默认第一张（bugfix：此前漏读已保存头像） */}
+              <img src={avatar ?? agent.avatar ?? "/avatars/avatar-0.png"} alt="agent头像" className="size-24 rounded-md object-cover" />
             </button>
             <Dialog open={avatarOpen} onOpenChange={setAvatarOpen}>
               <DialogContent className="max-w-2xl">
