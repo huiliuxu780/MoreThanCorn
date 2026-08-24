@@ -159,3 +159,52 @@ def list_versions(wf_id: str, db: Session = Depends(get_db)):
             .order_by(WorkflowVersion.version_no.desc()).all())
     return [{"versionId": v.id, "versionNo": v.version_no, "note": v.note,
              "publishedAt": v.published_at.isoformat()} for v in vers]
+
+
+@router.post("/{wf_id}/node-test")
+def node_test(wf_id: str, payload: dict, db: Session = Depends(get_db)):
+    """SDD C-6 节点单测：用给定输入执行单个节点执行器，不落 Run/事件（调研 07 §4）。"""
+    import time as _time
+
+    from ..runner import EXECUTORS, RunError, _agent_family_executor
+    wf = db.get(Workflow, wf_id)
+    if not wf:
+        raise HTTPException(404, "workflow not found")
+    defn = WorkflowDefinition.model_validate(wf.draft_definition)
+    node = next((n.model_dump() for n in defn.graph.nodes if n.id == payload.get("nodeId")), None)
+    if not node:
+        raise HTTPException(404, "node not found")
+    fn = EXECUTORS.get(node["type"]) or _agent_family_executor(node["type"])
+    if not fn:
+        raise HTTPException(422, f"节点类型 {node['type']} 暂不支持单测")
+    from types import SimpleNamespace
+
+    from ..models import Run
+    run_input = payload.get("input") or {}
+    # 单测入参覆盖节点自身的固定绑定（调研 07 §4：用户填入参执行单节点）
+    for b in node.get("inputs", []):
+        if b.get("name") in run_input:
+            b["source"] = {"kind": "fixed", "value": run_input[b["name"]]}
+    fake_run = Run(id="node-test", workflow_id=wf_id, agent_id=payload.get("agentId"),
+                   trigger="test", input=run_input)
+
+    class _TCtx:
+        def __init__(self):
+            self.db = db
+            self.run = fake_run
+            self.run_input = run_input
+            self.outputs = {"n_start": run_input, "start": run_input}
+            self.call_chain = []
+            self.current_node_run_id = None
+            self.frozen_agent_versions = {}
+
+        def call(self, *a, **k):
+            pass
+    t0 = _time.time()
+    try:
+        out = fn(node, _TCtx())
+        return {"ok": True, "output": out, "durationMs": int((_time.time() - t0) * 1000)}
+    except RunError as e:
+        return {"ok": False, "error": str(e), "durationMs": int((_time.time() - t0) * 1000)}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e), "durationMs": int((_time.time() - t0) * 1000)}

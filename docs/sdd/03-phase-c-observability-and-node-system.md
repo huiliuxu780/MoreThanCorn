@@ -1,71 +1,60 @@
-# Phase C｜运行可观测与节点系统
+# Phase C｜运行可观测与节点系统（细化版）
 
-状态：大纲（开工前细化为可执行规格）
-预估：2.5 周
-前置：Phase B 已验收
+状态：**已冻结**（2026-08-25 夜间，用户授权连续施工；大纲细化为可执行规格）
+预估：本夜尽量完成，未完成项留绿灯与续作点
+对标：调研 07 §3（Trace）、08 §9（双通道）、11（节点规格）、12 §7（绑定）、§15.2–15.4
 
 ---
 
-## 1. 目标
+## 1. 范围（本阶段）
 
-把"运行可观察可重放"闭环补到调研验收线：Trace/Span 结构化、CONTROL/CONTENT 双通道事件、节点目录按编排器过滤、Inspector schema 驱动、补齐调研基线节点、变量体系统一为结构化绑定并接入记忆持久化。
+### C-1 事件通道与 Trace 骨架
+- migration 017：`run_event` 增列 `channel`(CONTROL|CONTENT)、`trace_id`、`span_id`、`parent_span_id`、`duration_ms`、`tokens`(JSONB)。
+- `emit()` 默认 `channel=CONTROL`、`trace_id=run_id`；`llm_delta`、`reply_sent` 走 CONTENT。
+- 节点执行自动产生 span 语义：`node_started/node_completed` 事件补 `span_id=node_run_id`、`parent_span_id=run_id`、耗时与 tokens（从 NodeRun 读取回填）。
 
-对标：调研 07 §3（Trace）、08 §9（双 SSE）、11（节点规格）、12 §7（绑定）、§15.2–15.4（验收）。
+### C-2 节点注册表 editorKinds + 目录过滤
+- 注册表条目增加 `editor_kinds: ["FLOW"|"GROUP"|"WORKFLOW"]`。
+- `GET /api/registry/node-definitions` 原样下发；设计器画布按编辑器类型过滤可添加节点：
+  - WORKFLOW（质检工作流）：现有全集（含 create-record/notification 域节点）。
+  - FLOW（对话编排）：调研 20 类口径 + 域节点标注（mcp-call/create-record/notification 标记"平台扩展"）。
+  - GROUP（专家组）：仅 7 类可添加（agent/agent-select/agent-exec/decision-class/query-rewrite/condition/code-write）+ Start/End。
+- 前端 `agentMeta` 增加 `agentType` 字段传入设计器。
 
-## 2. 范围（细化前的边界承诺）
+### C-3 Inspector 通用渲染兜底
+- 无专项表单的节点类型按注册表 `schema.properties` 渲染通用表单（string→Input、number→Input、boolean→Checkbox、enum→Select、其他→JSON 文本），替代"暂无专项配置区"。
 
-### C-1 Trace/Span 与事件通道
-- `run_event` 增列：`channel(CONTROL|CONTENT)`、`trace_id`、`span_id`、`parent_span_id`、`duration_ms`、`tokens`。
-- 事件 Envelope 对齐调研 00 §9.5（eventId/sequence/runId/traceId/channel/type/payload）。
-- Span 类型化：LLM / TOOL / KNOWLEDGE / AGENT / ROUTER / MEMORY / WORKFLOW；子 Agent 调用同 trace + `hop` + 预算传递（承接 B 的版本上下文与 D-4 运行树）。
-- 画布运行态覆盖层（调研 08 §9.2 实测行为）：试运行期间按 `nodeId` 把状态/耗时/Token/错误写回画布节点卡片，作为按 runId 派生的覆盖层，不写入持久化图数据（调研 00 §5.3 禁令）。
-- SSE 断线按 sequence 恢复（现有 Last-Event-ID 机制保留）。
-- worker 池化评估：嵌套同步递归阻塞单队列的问题（A-03 风险登记），在本阶段决定池化或明确接受。
+### C-4 补齐节点与真实执行器
+| 节点 | type_key | 执行器 |
+| --- | --- | --- |
+| 对话回复 | `reply` | 发 CONTENT 事件 `reply_sent`（渲染引用），不终止流程 |
+| 记忆变量 | `memory-variable` | 读写持久化 `memory_record` 表（migration 017；键空间 = agent_id 或 wf 作用域；写入校验已声明键） |
+| 工作流选择 | `workflow-select` | LLM 在候选工作流中语义路由（mock：首个候选）；输出 workflowCode/Name/Desc；未命中走 `miss` 分支 |
+| 工作流（固定） | `workflow-fixed` | 绑定固定工作流，子运行执行（沿用 workflow-exec 机制，绑定态存 workflowId） |
+| Query改写 | `query-rewrite` | 真 LLM 改写为列表（mock：原 query 单元素）；输出 `queryList:array` |
+| 决策分类 | `decision-class` | 真 LLM 分类（mock：第一类）；输出 classificationTitle/Id + 分类分支 handle |
+| 代码编写 | `code-write` | 子进程沙箱：`python3` 执行，超时 10s，`args.params` 传入，返回字典作为输出 |
 
-### C-2 节点注册表升级
-- `editorKinds: ["FLOW"|"GROUP"|"WORKFLOW"]`：Flow 目录 = 调研 20 类口径（含域节点标注）；Group 目录收敛为 7 类可添加 + Start/End；质检工作流保留域节点。
-- 能力声明：`resourceType / supportsNodeTest / sideEffectLevel`。
-- 节点类型版本 `configSchemaVersion`（迁移钩子预留，不必全量实现）。
+**明确推迟到 D 阶段候选（登记，不实现）**：信息收集（暂停-恢复需要运行检查点）、数据查询（NL2SQL 依赖数据目录）、图像生成（依赖生图模型能力）。
 
-### C-3 Inspector schema 驱动
-- 通用表单渲染器消费 `NodeDefinition.schema`；`x-control` 注册自定义控件（prompt-editor/tool-picker/agent-picker/knowledge-picker/mcp-picker/variable-picker 已有雏形）。
-- 手写 ConfigDrawer 分支逐个迁移，迁移完删除。
+### C-5 变量体系（部分）
+- 系统变量目录落地：`/api/registry/system-variables` 返回调研实测 14 项（tenantId/userId/userName/sysTime/language/memberId/formId/robotCode/nick/serviceId/serviceName/phoneNum/onlineChannelSource/initContext）。
+- 变量级联增加"系统变量"分组（插入 `{{system.xxx}}`，runner 的 system 分支按名返回，未知名返回空串）。
+- **偏离登记**：`{{}}` 字符串引用完整结构化迁移（ValueBinding AST）推迟到 D——当前后端校验器已覆盖可达性，迁移属展示层重构，不影响闭环。
 
-### C-4 补齐节点（优先级排序，逐项可独立验收）
-1. 对话回复（CONTENT 流出口；承接 A-05 的 notification 语义拆分）
-2. 记忆变量节点 + Memory Service 持久化（表：tenant/agent/user/key + TTL；写后回读验证＝调研 §15.2）
-3. Query改写 / 决策分类 接真 LLM（替换占位执行器）
-4. 工作流选择（语义路由）/ 固定工作流节点
-5. 代码编写沙箱（子进程隔离 + 超时 + 输出声明）
-6. 信息收集（提问-暂停-恢复；工程量最大，允许拆两个迭代）
-7. 数据查询（依赖现有 Datasource；NL2SQL 可后置）
-8. 图像生成（依赖模型能力，允许 mock-first）
-- 不做：客服工具（全局不做清单）。
+### C-6 节点单测
+- `POST /api/workflows/{wid}/node-test`：`{nodeId, input}` → 用给定 run_input 执行单个节点执行器 → 返回 `{ok, output, error, durationMs}`；不落 Run/事件。
 
-### C-5 变量体系统一
-- 结构化 `ValueBinding` 全面替换 `{{...}}` 字符串（字符串仅作展示渲染）。
-- 五作用域：SYSTEM（14 个系统变量入注册表）/ RUN_INPUT / NODE_OUTPUT / MEMORY / SECRET（预留）。
-- 节点删除/端口变化时引用进入 INVALID 并阻断发布（校验器扩展）。
-- 条件节点改存结构化左值（移除正则解析）。
+## 2. 验收清单
+1. [ ] run_event 新列存在；`llm_delta`/`reply_sent` 为 CONTENT，其余 CONTROL（pytest）
+2. [ ] GROUP 画布目录仅 7 类可添加；WORKFLOW 全集不变（前端+注册表断言）
+3. [ ] 7 个新节点执行器测试全绿（含 code-write 超时拦截、决策分类分支、工作流选择路由）
+4. [ ] 记忆变量读写持久化 + 未声明键拒绝 + 跨运行回读（pytest）
+5. [ ] 系统变量接口 + 级联系统分组 + `{{system.sysTime}}` 运行可解析（pytest）
+6. [ ] 通用 Inspector 兜底：无专项表单的节点可编辑配置（构建+手工）
+7. [ ] 节点单测接口：成功/失败两条用例（pytest）
+8. [ ] 既有 71 条测试不回归
 
-### C-6 节点单测与预检分层
-- 节点单测：填入参 → 单节点执行 → 输出/日志/错误（调研 07 §4）。
-- 预检三层：静态结构（现有）+ 依赖解析 + 环境（凭据/配额占位）。
-
-## 3. 验收基线（映射调研 §15.2–15.4）
-
-- [ ] 跑通 `Start → LLM/Code → Condition → Reply → End`，分支/合流/类型校验正确（§15.3）
-- [ ] 变量选择器只显示系统、Start 与可达祖先输出（§15.3、11 §5.2）
-- [ ] 节点失败停止或走错误分支；SSE 断线可恢复（§15.3）
-- [ ] autonomous 完成一次 Knowledge + Tool + Memory 可观察链路，Memory 写入可回读（§15.2）
-- [ ] 专家组主路由/兜底可验证；子 Agent Span 与主 Trace 关联；循环/最大 hop 生效（§15.4）
-- [ ] Group 目录只见 7 类可添加节点；Inspector 无"暂无专项配置区"残留
-- [ ] Trace 视图按 Span 树展示类型/耗时/错误；不展示隐藏推理全文（00 §9.6）
-
-## 4. 候选项（范围外，登记备查）
-- 汇总器（Aggregator）独立节点（调研缺口：无真实样本，先设计后验证）
-- 灰度流量切分的数据面支持
-
-## 5. 状态日志
-- 2026-08-25 大纲建立；开工前须细化为可执行规格并冻结。
-- 2026-08-25 反思修正：C-1 补画布运行态覆盖层与 worker 池化评估。
+## 3. 状态日志
+- 2026-08-25 大纲建立。
+- 2026-08-25 夜间细化为可执行规格并冻结（用户授权连续施工），开工。

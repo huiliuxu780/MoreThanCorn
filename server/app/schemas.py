@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field
 NodeType = Literal[
     "input", "llm", "tool", "condition", "transform", "end", "create-record", "notification",
     "workflow-exec", "knowledge-retrieval", "mcp-call",
-    "agent", "agent-select", "agent-exec", "decision-class", "query-rewrite", "code-write"
+    "agent", "agent-select", "agent-exec", "decision-class", "query-rewrite", "code-write",
+    # Phase C（SDD 03 §C-4）
+    "reply", "memory-variable", "workflow-select", "workflow-fixed",
 ]
 ValueType = Literal["string", "number", "boolean", "object", "array", "datetime"]
 

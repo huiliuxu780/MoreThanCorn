@@ -35,13 +35,33 @@ class RunError(Exception):
 
 # ---------- events ----------
 
+# SDD C-5：平台系统变量（调研 11 §6 实测 14 项）
+SYSTEM_VARIABLES = [
+    {"name": "tenantId", "label": "租户 ID"}, {"name": "userId", "label": "用户 ID"},
+    {"name": "userName", "label": "用户账号名称"}, {"name": "sysTime", "label": "系统时间"},
+    {"name": "language", "label": "多语言标识"}, {"name": "memberId", "label": "进线会员账号 ID"},
+    {"name": "formId", "label": "网页渠道 ID"}, {"name": "robotCode", "label": "机器人 code"},
+    {"name": "nick", "label": "昵称"}, {"name": "serviceId", "label": "服务 ID"},
+    {"name": "serviceName", "label": "服务名称"}, {"name": "phoneNum", "label": "电话"},
+    {"name": "onlineChannelSource", "label": "在线渠道来源"}, {"name": "initContext", "label": "初始化上下文"},
+]
+
+# CONTENT 通道事件（用户可见内容流；其余为 CONTROL 控制面）——SDD C-1
+CONTENT_EVENTS = {"llm_delta", "reply_sent"}
+
 
 def emit(db: Session, run_id: str, type_: str, node_id: str | None = None,
-         node_run_id: str | None = None, payload: dict | None = None) -> RunEvent:
+         node_run_id: str | None = None, payload: dict | None = None,
+         channel: str | None = None, span_id: str | None = None,
+         parent_span_id: str | None = None, duration_ms: int | None = None,
+         tokens: dict | None = None) -> RunEvent:
     seq = (db.execute(text("SELECT coalesce(max(sequence),0)+1 FROM run_event WHERE run_id=:r"),
                       {"r": run_id}).scalar())
     ev = RunEvent(run_id=run_id, sequence=int(seq), type=type_, node_id=node_id,
-                  node_run_id=node_run_id, payload=payload or {})
+                  node_run_id=node_run_id, payload=payload or {},
+                  channel=channel or ("CONTENT" if type_ in CONTENT_EVENTS else "CONTROL"),
+                  trace_id=run_id, span_id=span_id or node_run_id,
+                  parent_span_id=parent_span_id or run_id, duration_ms=duration_ms, tokens=tokens)
     db.add(ev)
     db.commit()
     return ev
@@ -69,7 +89,13 @@ def resolve_source(src: dict, outputs: dict[str, dict], run_input: dict) -> Any:
     if kind == "input":
         return run_input.get(src.get("path", ""))
     if kind == "system":
-        return {"now": datetime.now(timezone.utc).isoformat(), "run_id": ""}.get(src.get("path", ""))
+        path = src.get("path", "")
+        if path == "now":
+            return datetime.now(timezone.utc).isoformat()
+        if path == "run_id":
+            return ""
+        # SDD C-5：14 项系统变量从运行上下文取，缺失返回空串
+        return str((run_input.get("__system") or {}).get(path, ""))
     return None
 
 
@@ -83,6 +109,10 @@ def resolve_bindings(node_inputs: list[dict], outputs: dict[str, dict], run_inpu
 def render_refs(template: str, outputs: dict[str, dict], run_input: dict) -> str:
     def sub(m: re.Match) -> str:
         nid, path = m.group(1), m.group(2)
+        if nid == "system":  # SDD C-5：{{system.xxx}}
+            if path == "now":
+                return datetime.now(timezone.utc).isoformat()
+            return str((run_input.get("__system") or {}).get(path, ""))
         if nid in ("n_start", "start"):
             v = _dig(run_input, path)
             if v is None and path.startswith("outputs."):
@@ -391,25 +421,236 @@ def exec_notification(node, ctx) -> dict:
     return {"sent": True}
 
 
+# ---------- Phase C 新增节点（SDD 03 §C-4） ----------
+
+def exec_reply(node, ctx) -> dict:
+    """对话回复：CONTENT 通道发事件，不终止流程（调研 11 §3.17）。"""
+    cfg = node.get("config") or {}
+    content = render_refs(cfg.get("content", ""), ctx.outputs, ctx.run_input)
+    emit(ctx.db, ctx.run.id, "reply_sent", node_id=node.get("id"),
+         payload={"content": (content or "")[:2000]})
+    return {"sent": True}
+
+
+def exec_memory_variable(node, ctx) -> dict:
+    """记忆变量节点：读写持久化记忆（键空间=agent 或 workflow；写入校验已声明键）。"""
+    from .models import Agent, MemoryRecord
+    cfg = node.get("config") or {}
+    mode = cfg.get("mode", "read")
+    scope = f"agent:{ctx.run.agent_id}" if ctx.run.agent_id else f"wf:{ctx.run.workflow_id}"
+    declared = None
+    if ctx.run.agent_id:
+        a = ctx.db.get(Agent, ctx.run.agent_id)
+        if a:
+            declared = {m.get("name") for m in ((a.config or {}).get("memoriesSchema") or [])}
+    if mode == "write":
+        inputs = resolve_bindings(node.get("inputs", []), ctx.outputs, ctx.run_input)
+        for key, val in inputs.items():
+            if declared is not None and key not in declared:
+                raise RunError(f"记忆变量 {key} 未在记忆 Schema 中声明")
+            rec = ctx.db.execute(select(MemoryRecord).where(
+                MemoryRecord.scope == scope, MemoryRecord.key == key)).scalars().first()
+            if rec:
+                rec.value = "" if val is None else str(val)
+            else:
+                ctx.db.add(MemoryRecord(scope=scope, key=key, value="" if val is None else str(val)))
+        ctx.db.commit()
+        emit(ctx.db, ctx.run.id, "memory_write", node_id=node.get("id"),
+             payload={"scope": scope, "keys": list(inputs.keys())})
+        return {"isSuccess": True}
+    keys = cfg.get("keys") or []
+    out: dict[str, Any] = {}
+    for key in keys:
+        rec = ctx.db.execute(select(MemoryRecord).where(
+            MemoryRecord.scope == scope, MemoryRecord.key == key)).scalars().first()
+        out[key] = rec.value if rec else ""
+    emit(ctx.db, ctx.run.id, "memory_read", node_id=node.get("id"),
+         payload={"scope": scope, "keys": keys})
+    return out
+
+
+def _route_workflow(db: Session, flows: list, query: str):
+    try:
+        from .agent_runtime import _resolve_base_secret
+        base, _s = _resolve_base_secret(db, "qwen-plus")
+    except Exception:  # noqa: BLE001
+        base = ""
+    if not base or not base.startswith(("http://", "https://")):
+        return flows[0]  # mock：取首个候选
+    listing = "\n".join(f"{i + 1}. {w.name}：{(w.description or '').strip()[:100]}" for i, w in enumerate(flows))
+    try:
+        answer, _t = _call_model(db, "qwen-plus",
+                                 f"从候选工作流中为问题选择最合适的一个，只输出序号，没有合适的输出 NONE。\n{listing}\n\n问题：{query[:500]}")
+    except Exception:  # noqa: BLE001
+        return flows[0]
+    digits = "".join(ch for ch in (answer or "") if ch.isdigit())
+    if digits and 1 <= int(digits) <= len(flows):
+        return flows[int(digits) - 1]
+    return None
+
+
+def exec_workflow_select(node, ctx) -> dict:
+    """工作流选择：候选中语义路由；未命中走 miss 分支（调研 11 §3.6）。"""
+    cfg = node.get("config") or {}
+    candidates = cfg.get("candidates") or []
+    inputs = resolve_bindings(node.get("inputs", []), ctx.outputs, ctx.run_input)
+    query = str(inputs.get("query") or ctx.run_input.get("userQuery") or "")
+    flows = [w for w in (ctx.db.get(Workflow, wid) for wid in candidates) if w]
+    if not flows:
+        raise RunError("工作流选择节点未配置有效候选工作流")
+    chosen = _route_workflow(ctx.db, flows, query)
+    if chosen is None:
+        return {"selected": "miss", "workflowCode": "", "workflowName": "", "workflowDesc": ""}
+    return {"selected": chosen.id, "workflowCode": chosen.id,
+            "workflowName": chosen.name, "workflowDesc": chosen.description or ""}
+
+
+def exec_workflow_fixed(node, ctx) -> dict:
+    """固定工作流节点：绑定已选工作流，子运行执行（调研 11 §3.15）。"""
+    wfid = (node.get("config") or {}).get("workflowId")
+    if not wfid:
+        raise RunError("workflowId missing")
+    sub = create_run(ctx.db, wfid, "manual", ctx.run_input, enqueue=False)
+    execute_run(sub.id, call_chain=list(ctx.call_chain))
+    # 独立会话读取，避免当前会话的过期缓存（execute_run 在自己的会话中提交）
+    from .db import SessionLocal as _SL
+    fresh = _SL()
+    try:
+        r = fresh.get(Run, sub.id)
+        status, err, output = r.status, r.error, r.output
+    finally:
+        fresh.close()
+    if status != "succeeded":
+        raise RunError(f"固定工作流执行失败：{(err or {}).get('message', status)}")
+    return output or {}
+
+
+def exec_code_write(node, ctx) -> dict:
+    """代码编写：子进程沙箱执行 Python（超时 10s；args.params 传入；调研 11 §3.18）。"""
+    import subprocess
+    import tempfile
+    cfg = node.get("config") or {}
+    code = cfg.get("code") or "def main(args):\n    return {\"output\": args.params.get(\"input\", \"\")}\n"
+    inputs = resolve_bindings(node.get("inputs", []), ctx.outputs, ctx.run_input)
+    program = ("import json, sys\n"
+               "__in = json.loads(sys.stdin.read())\n"
+               "class Args:\n    pass\n"
+               "args = Args()\n"
+               "args.params = __in.get('params', {})\n"
+               + code + "\n"
+               "__out = main(args)\n"
+               "print(json.dumps(__out if isinstance(__out, dict) else {'result': __out}, ensure_ascii=False))\n")
+    tmp = None
+    t0 = time.time()
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
+            f.write(program)
+            tmp = f.name
+        proc = subprocess.run(["python3", tmp], input=json.dumps({"params": inputs}, ensure_ascii=False),
+                              capture_output=True, text=True, timeout=10)
+    except subprocess.TimeoutExpired:
+        raise RunError("代码执行超时（>10s）")
+    finally:
+        if tmp:
+            try:
+                import os as _os
+                _os.unlink(tmp)
+            except Exception:  # noqa: BLE001
+                pass
+    if proc.returncode != 0:
+        raise RunError(f"代码执行失败：{(proc.stderr or '').strip()[:500]}")
+    ctx.call("code", node.get("id"), {"inputs": inputs}, {"stdout": proc.stdout[:500]},
+             int((time.time() - t0) * 1000), {})
+    try:
+        out = json.loads(proc.stdout.strip().splitlines()[-1]) if proc.stdout.strip() else {}
+    except (json.JSONDecodeError, IndexError):
+        out = {"output": proc.stdout.strip()[:2000]}
+    return out if isinstance(out, dict) else {"result": out}
+
+
+def _llm_base(db: Session) -> str:
+    try:
+        from .agent_runtime import _resolve_base_secret
+        base, _s = _resolve_base_secret(db, "qwen-plus")
+        return base or ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def exec_decision_class(node, ctx) -> dict:
+    """决策分类：LLM 分类 + 多分支（mock：第一类；调研 11 §3.10）。"""
+    cfg = node.get("config") or {}
+    branches = cfg.get("branches") or []
+    if not branches:
+        raise RunError("决策分类未配置分类项")
+    inputs = resolve_bindings(node.get("inputs", []), ctx.outputs, ctx.run_input)
+    query = str(render_refs(cfg.get("query", ""), ctx.outputs, ctx.run_input)
+                or inputs.get("query") or ctx.run_input.get("userQuery") or "")
+    listing = "\n".join(f"{i + 1}. {b.get('title', '')}：{(b.get('description') or '')[:100]}"
+                        for i, b in enumerate(branches))
+    chosen_idx = None
+    base = _llm_base(ctx.db)
+    if base.startswith(("http://", "https://")):
+        try:
+            answer, _t = _call_model(ctx.db, "qwen-plus",
+                                     f"把问题分到最合适的类别，只输出序号，都不合适输出 0。\n{listing}\n\n问题：{query[:500]}")
+            digits = "".join(ch for ch in (answer or "") if ch.isdigit())
+            if digits and 1 <= int(digits) <= len(branches):
+                chosen_idx = int(digits) - 1
+        except Exception:  # noqa: BLE001
+            chosen_idx = None
+    else:
+        chosen_idx = 0  # mock：第一类
+    if chosen_idx is None:
+        return {"selected": "else", "classificationTitle": "其他", "classificationId": "other"}
+    b = branches[chosen_idx]
+    handle = b.get("handle") or f"c{chosen_idx}"
+    return {"selected": handle, "classificationTitle": b.get("title", ""),
+            "classificationId": str(chosen_idx)}
+
+
+def exec_query_rewrite(node, ctx) -> dict:
+    """Query 改写：LLM 改写为查询列表（默认策略/自定义；调研 11 §3.11）。"""
+    cfg = node.get("config") or {}
+    inputs = resolve_bindings(node.get("inputs", []), ctx.outputs, ctx.run_input)
+    query = str(render_refs(cfg.get("template", ""), ctx.outputs, ctx.run_input)
+                or inputs.get("query") or ctx.run_input.get("userQuery") or "")
+    chat_history = str(inputs.get("chatHistory") or ctx.run_input.get("chatHistory") or "")
+    base = _llm_base(ctx.db)
+    if base.startswith(("http://", "https://")) and cfg.get("strategy") == "custom":
+        try:
+            answer, _t = _call_model(ctx.db, "qwen-plus",
+                                     f"把用户问题改写为最多3个检索查询，每行一个。\n历史：{chat_history[:300]}\n问题：{query[:500]}")
+            lines = [ln.strip() for ln in (answer or "").splitlines() if ln.strip()]
+            if lines:
+                return {"queryList": lines[:3]}
+        except Exception:  # noqa: BLE001
+            pass
+    return {"queryList": [query] if query else []}
+
+
 EXECUTORS = {
     "input": exec_input, "llm": exec_llm, "condition": exec_condition,
     "transform": exec_transform, "tool": exec_tool, "end": exec_end,
     "create-record": exec_create_record, "notification": exec_notification,
     "workflow-exec": exec_workflow_exec,
     "knowledge-retrieval": exec_knowledge_retrieval, "mcp-call": exec_mcp_call,
+    # Phase C（SDD 03 §C-4）
+    "reply": exec_reply, "memory-variable": exec_memory_variable,
+    "workflow-select": exec_workflow_select, "workflow-fixed": exec_workflow_fixed,
 }
 
 
 def _agent_family_executor(type_key: str):
-    """专家组画布节点族（05 设计）：Agent/Agent选择/Agent执行 + 产品别名映射。"""
+    """画布节点族补充：Agent 系列 + Phase C 真执行器（决策分类/Query改写/代码）。"""
     from . import agent_runtime as ar
     return {
         "agent": ar.exec_agent_node,
         "agent-select": ar.exec_agent_select,
         "agent-exec": ar.exec_agent_exec,
-        "decision-class": exec_condition,
-        "query-rewrite": exec_transform,
-        "code-write": exec_transform,
+        "decision-class": exec_decision_class,
+        "query-rewrite": exec_query_rewrite,
+        "code-write": exec_code_write,
     }.get(type_key)
 
 
@@ -517,13 +758,15 @@ def execute_run(run_id: str, call_chain: list[str] | None = None) -> None:
                 nr.status = "success"
                 nr.output = out
                 nr.ended_at = datetime.now(timezone.utc)
+                nr.duration_ms = int((nr.ended_at - nr.started_at).total_seconds() * 1000) if nr.started_at else None
                 db.commit()
                 emit(db, run_id, "node_completed", nid, nr.id,
-                     {"output": out, "nodeType": node["type"], "name": node["name"]})
+                     {"output": out, "nodeType": node["type"], "name": node["name"]},
+                     duration_ms=nr.duration_ms)
                 done.add(nid)
-                # successors
+                # successors（condition/decision-class/workflow-select 走分支语义）
                 for tgt, handle in succ.get(nid, []):
-                    if node["type"] == "condition":
+                    if node["type"] in ("condition", "decision-class", "workflow-select"):
                         sel = out.get("selected")
                         want = handle or "yes"
                         if sel == "else":

@@ -228,8 +228,27 @@ class RunEvent(Base):
     type: Mapped[str] = mapped_column(String(40))
     node_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     node_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # SDD C-1：双通道与 Trace 骨架
+    channel: Mapped[str] = mapped_column(String(8), default="CONTROL")  # CONTROL|CONTENT
+    trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    span_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    parent_span_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     payload: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class MemoryRecord(Base):
+    """持久化记忆值（SDD C-4）：scope=agent:{agentId}|wf:{workflowId}，键空间内唯一。"""
+    __tablename__ = "memory_record"
+    __table_args__ = (UniqueConstraint("scope", "key", name="uq_memory_scope_key"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    scope: Mapped[str] = mapped_column(String(64), index=True)
+    key: Mapped[str] = mapped_column(String(128))
+    value: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 class CallRecord(Base):
