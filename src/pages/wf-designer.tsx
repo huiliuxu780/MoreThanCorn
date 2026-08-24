@@ -1441,7 +1441,9 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
             for (const ch of chs) {
               if (ch.type === "position" && ch.position) { positions[ch.id] = { x: ch.position.x, y: ch.position.y }; changed = true }
               if (ch.type === "dimensions") {
-                const m = (ch as { measured?: { width: number; height: number } }).measured
+                // @xyflow/system 该版本尺寸字段为 dimensions（{width,height}），兼容 measured
+                const c = ch as { dimensions?: { width: number; height: number }; measured?: { width: number; height: number } }
+                const m = c.dimensions ?? c.measured
                 if (m?.width && m?.height) { dims[ch.id] = { width: m.width, height: m.height }; dimsChanged = true }
               }
             }
