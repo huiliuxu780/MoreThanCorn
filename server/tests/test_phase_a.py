@@ -126,6 +126,23 @@ def test_a01_manual_run_records_draft_source():
         db.close()
 
 
+def test_a01_runs_api_accepts_version_id():
+    """POST /api/runs 透传 versionId（A-01 API 接线）。"""
+    wid = make_wf(u("api"), "API-SNAP")
+    pub = client.post(f"/api/workflows/{wid}/publish").json()
+    r = client.post("/api/runs", json={"workflowId": wid, "trigger": "manual",
+                                       "versionId": pub["versionId"], "input": {}})
+    assert r.status_code == 202, r.text
+    run_id = r.json()["runId"]
+    from app.runner import execute_run
+    execute_run(run_id)
+    d = client.get(f"/api/runs/{run_id}").json()
+    assert d["status"] == "succeeded" and d["output"]["output"] == "API-SNAP"
+    # 未知版本 → 409
+    r2 = client.post("/api/runs", json={"workflowId": wid, "versionId": "nope", "input": {}})
+    assert r2.status_code == 409
+
+
 # ---------- A-05 注册表类型修正 + 通知节点 ----------
 
 def test_a05_registry_contract_fixes():

@@ -16,7 +16,8 @@ router = APIRouter(prefix="/api/runs", tags=["runs"])
 def start_run(payload: dict, db: Session = Depends(get_db)):
     try:
         run = create_run(db, payload["workflowId"], payload.get("trigger", "test"),
-                         payload.get("input", {}), payload.get("idempotencyKey"))
+                         payload.get("input", {}), payload.get("idempotencyKey"),
+                         version_id=payload.get("versionId"))  # SDD A-01：可指定运行不可变版本
     except RunError as e:
         raise HTTPException(409, str(e))
     return {"runId": run.id, "status": run.status}

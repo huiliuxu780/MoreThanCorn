@@ -215,12 +215,22 @@ if (failed.length) {
   process.exit(1);
 }
 
-// ---- S13 Agent 运行层（05 设计） ----
+// ---- S13 Agent 运行层（05 设计；SDD A-03 后顶层运行异步：轮询到终态） ----
 const H = { "Content-Type": "application/json" };
+async function pollAgentRun(aid, runId, timeoutMs = 30000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    const d = await (await fetch(`${BASE}/api/agents/${aid}/runs/${runId}`)).json();
+    if (["succeeded", "failed", "cancelled"].includes(d.status)) return d;
+    await sleep(500);
+  }
+  return null;
+}
 const ag = await (await fetch(`${BASE}/api/agents`, { method: "POST", headers: H, body: JSON.stringify({ name: "verify-autonomous", type: "autonomous", config: { rolePrompt: "# 角色：验证", modelRef: { modelId: "qwen-plus" }, skills: [], tools: [], workflows: [], knowledges: [] } }) })).json();
 const rr = await (await fetch(`${BASE}/api/agents/${ag.id}/run`, { method: "POST", headers: H, body: JSON.stringify({ input: { userQuery: "你好" }, trigger: "test" }) })).json();
-const rd = await (await fetch(`${BASE}/api/agents/${ag.id}/runs/${rr.runId}`)).json();
-console.log("S13-1 autonomous run:", rd.status, "| events:", rd.events.map(e => e.type).join(","));
+const rd = await pollAgentRun(ag.id, rr.runId);
+console.log("S13-1 autonomous run:", rd?.status, "| events:", rd ? rd.events.map(e => e.type).join(",") : "TIMEOUT");
+console.log("S13-1b 挂载留痕:", rd?.events.some(e => e.type === "agent_mounts_resolved") ? "PASS" : "FAIL");
 const rl = await (await fetch(`${BASE}/api/agents/${ag.id}/runs`)).json();
 console.log("S13-2 runs list:", rl.items.length >= 1 ? "PASS" : "FAIL");
 const mh = await (await fetch(`${BASE}/api/agents/${ag.id}/mounts-health`)).json();
@@ -229,3 +239,35 @@ const dlg2 = await (await fetch(`${BASE}/api/agents`, { method: "POST", headers:
 await fetch(`${BASE}/api/workflows/${dlg2.workflowId}/publish?note=v`, { method: "POST" });
 const ag2 = await (await fetch(`${BASE}/api/agents/${dlg2.id}`)).json();
 console.log("S13-4 publish sync:", ag2.status === "published" ? "PASS" : "FAIL", ag2.status);
+
+// ---- S14 运行认版本（SDD A-01） ----
+{
+  const mk = await (await fetch(`${BASE}/api/workflows`, { method: "POST", headers: H, body: JSON.stringify({ name: u("ver") }) })).json();
+  const det = await (await fetch(`${BASE}/api/workflows/${mk.id}`)).json();
+  const defn = det.definition;
+  defn.graph.nodes = [
+    { id: "s", type: "input", name: "开始", config: {}, inputs: [] },
+    { id: "t", type: "transform", name: "转换", config: { template: "SNAP-V1" }, inputs: [] },
+    { id: "e", type: "end", name: "结束", config: { outputKey: "quality_result" },
+      inputs: [{ name: "output", type: "string", source: { kind: "upstream", nodeId: "t", path: "outputs.output" } }] },
+  ];
+  defn.graph.edges = [{ id: "e1", source: "s", target: "t" }, { id: "e2", source: "t", target: "e" }];
+  await fetch(`${BASE}/api/workflows/${mk.id}/draft`, { method: "PUT", headers: H, body: JSON.stringify({ definition: defn, baseRevision: det.draftRevision }) });
+  const pub = await (await fetch(`${BASE}/api/workflows/${mk.id}/publish`, { method: "POST" })).json();
+  // 发布后漂移草稿
+  const det2 = await (await fetch(`${BASE}/api/workflows/${mk.id}`)).json();
+  det2.definition.graph.nodes.find(n => n.id === "t").config.template = "DRAFT-CHANGED";
+  await fetch(`${BASE}/api/workflows/${mk.id}/draft`, { method: "PUT", headers: H, body: JSON.stringify({ definition: det2.definition, baseRevision: det2.draftRevision }) });
+
+  const rPin = await (await fetch(`${BASE}/api/runs`, { method: "POST", headers: H, body: JSON.stringify({ workflowId: mk.id, trigger: "manual", versionId: pub.versionId, input: {} }) })).json();
+  const dPin = await pollRun(rPin.runId);
+  check("S14-1", "指定版本运行执行快照", dPin?.output?.output === "SNAP-V1", JSON.stringify(dPin?.output));
+  const rDraft = await (await fetch(`${BASE}/api/runs`, { method: "POST", headers: H, body: JSON.stringify({ workflowId: mk.id, trigger: "manual", input: {} }) })).json();
+  const dDraft = await pollRun(rDraft.runId);
+  check("S14-2", "手动试运行仍走草稿", dDraft?.output?.output === "DRAFT-CHANGED", JSON.stringify(dDraft?.output));
+  const rSch = await req("POST", "/api/runs", { workflowId: mk.id, trigger: "schedule", input: {} });
+  check("S14-3", "schedule 优先已发布版本（存在即可运行）", rSch.status === 202);
+  const mk2 = await (await fetch(`${BASE}/api/workflows`, { method: "POST", headers: H, body: JSON.stringify({ name: u("nopub") }) })).json();
+  const rNo = await req("POST", "/api/runs", { workflowId: mk2.id, trigger: "schedule", input: {} });
+  check("S14-4", "无发布版本的 schedule 被拦截（NO_PUBLISHED_VERSION）", rNo.status === 409 && String(rNo.json?.detail ?? "").includes("NO_PUBLISHED_VERSION"));
+}
