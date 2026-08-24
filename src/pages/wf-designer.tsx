@@ -63,6 +63,8 @@ import {
 import "@xyflow/react/dist/style.css"
 
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Switch } from "@/components/ui/switch"
 import {
   Dialog,
   DialogContent,
@@ -528,9 +530,8 @@ function ConfigDrawer(props: {
           </Section>
           <Section title="提示词">
             <div className="relative">
-              <textarea
-                className="min-h-24 w-full rounded-md border p-2 text-xs outline-none focus:border-neutral-400"
-                style={{ borderColor: C.cardBorder }}
+              <Textarea
+                className="min-h-24 text-xs"
                 placeholder="请输入提示词"
                 value={cfg.prompt ?? ""}
                 onChange={(e) => {
@@ -548,9 +549,10 @@ function ConfigDrawer(props: {
           </Section>
           <Section title="输出">
             <div className="flex items-center gap-2 text-xs"><span style={{ color: C.ink2 }}>输出格式 :</span>
-              <select className="rounded border px-1 py-0.5" style={{ borderColor: C.cardBorder }} value={cfg.outputFormat ?? "Markdown"} onChange={(e) => set("outputFormat", e.target.value)}>
-                <option>Markdown</option><option>JSON</option>
-              </select>
+              <Select value={String(cfg.outputFormat ?? "Markdown")} onValueChange={(v) => set("outputFormat", v)}>
+                <SelectTrigger className="h-6 w-28 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="Markdown">Markdown</SelectItem><SelectItem value="JSON">JSON</SelectItem></SelectContent>
+              </Select>
             </div>
             <p className="py-1 text-[11px]" style={{ color: C.ink3 }}>大模型将以{cfg.outputFormat ?? "Markdown"}形式输出最终答案</p>
             <div className="space-y-1 py-1 text-xs">
@@ -600,11 +602,12 @@ function ConfigDrawer(props: {
               onPick={(m) => set("mcpServerId", m.id)} />
           </Section>
           <Section title="MCP 工具">
-            <select className="w-full rounded-md border bg-white p-1.5 text-xs" style={{ borderColor: C.cardBorder }}
-              value={cfg.toolName ?? ""} onChange={(e) => set("toolName", e.target.value)}>
-              <option value="">选择工具</option>
-              {mcpTools.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
+            <Select value={(cfg.toolName as string) || undefined} onValueChange={(v) => set("toolName", v)}>
+              <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="选择工具" /></SelectTrigger>
+              <SelectContent>
+                {mcpTools.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
             <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>工具列表来自 MCP Server 握手发现。</p>
           </Section>
         </>
@@ -623,12 +626,15 @@ function ConfigDrawer(props: {
                     <PopoverTrigger asChild><button className="truncate rounded border bg-white px-1 py-0.5 text-left text-xs" style={{ borderColor: (b as any).variable ? C.cardBorder : C.danger }} onClick={() => setVarTarget(`__br${i}`)}>{(b as any).variable ? "已引用" : "引用变量"}</button></PopoverTrigger>
                     <PopoverContent><VarCascader nodes={nodes} edges={edges} selfId={node.id} defs={defs} onPick={insertVar} /></PopoverContent>
                   </Popover>
-                  <select className="rounded border bg-white px-1 py-0.5 text-xs" style={{ borderColor: C.cardBorder }} value={(b as any).operator ?? ""} onChange={(e) => setBranch(i, { operator: e.target.value })}>
-                    <option value="">条件关系</option><option value="eq">等于</option><option value="neq">不等于</option>
-                    <option value="contains">包含</option><option value="not_contains">不包含</option>
-                    <option value="empty">为空</option><option value="not_empty">不为空</option>
-                    <option value="gt">大于</option><option value="lt">小于</option>
-                  </select>
+                  <Select value={(b as any).operator || undefined} onValueChange={(v) => setBranch(i, { operator: v })}>
+                    <SelectTrigger className="h-6 w-28 text-xs"><SelectValue placeholder="条件关系" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="eq">等于</SelectItem><SelectItem value="neq">不等于</SelectItem>
+                      <SelectItem value="contains">包含</SelectItem><SelectItem value="not_contains">不包含</SelectItem>
+                      <SelectItem value="empty">为空</SelectItem><SelectItem value="not_empty">不为空</SelectItem>
+                      <SelectItem value="gt">大于</SelectItem><SelectItem value="lt">小于</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Input className="h-6 text-xs" placeholder="比较变量" value={(b as any).value ?? ""} onChange={(e) => setBranch(i, { value: e.target.value })} />
                   <Popover>
                     <PopoverTrigger asChild><button className="flex size-6 items-center justify-center rounded border bg-white" style={{ borderColor: C.cardBorder }} title="引用变量" onClick={() => setVarTarget(`__brv${i}`)}><Settings className="size-3 text-neutral-500" /></button></PopoverTrigger>
@@ -694,9 +700,8 @@ function ConfigDrawer(props: {
       {/* 用户报告修复：代码编写/Query改写/决策分类 专项表单（原通用表单与执行器键不匹配=假功能） */}
       {node.type === "code-write" && (
         <Section title="代码（Python 沙箱，10s 超时）">
-          <textarea
-            className="min-h-48 w-full rounded-md border p-2 font-mono text-[11px] leading-4"
-            style={{ borderColor: C.cardBorder }}
+          <Textarea
+            className="min-h-48 font-mono text-[11px] leading-4"
             placeholder={'def main(args):\n    # args.params 为输入绑定值字典\n    return {"output": args.params.get("input", "")}'}
             value={typeof cfg.code === "string" ? cfg.code : ""}
             onChange={(e) => set("code", e.target.value)}
@@ -730,7 +735,7 @@ function ConfigDrawer(props: {
             </Select>
           </div>
           {cfg.strategy === "custom" && (
-            <textarea className="min-h-20 w-full rounded-md border p-2 text-xs" style={{ borderColor: C.cardBorder }}
+            <Textarea className="min-h-20 text-xs"
               placeholder="改写提示词（真 LLM 生效；无模型配置时回落透传）"
               value={typeof cfg.template === "string" ? cfg.template : ""} onChange={(e) => set("template", e.target.value)} />
           )}
@@ -779,8 +784,8 @@ function ConfigDrawer(props: {
             const checked = primary.includes(m.id)
             return (
               <label key={m.id} className="flex cursor-pointer items-center gap-1 py-0.5 text-xs" style={{ color: C.ink }}>
-                <input type="checkbox" checked={checked}
-                  onChange={(e) => set("primaryAgents", e.target.checked ? [...primary, m.id] : primary.filter((x) => x !== m.id))} />
+                <Checkbox checked={checked}
+                  onCheckedChange={(v) => set("primaryAgents", v ? [...primary, m.id] : primary.filter((x) => x !== m.id))} />
                 <span className="truncate">{m.name}</span>
               </label>
             )
@@ -836,11 +841,12 @@ function GenericSchemaForm({ def, cfg, set, node, onChange }: {
           return (
             <div key={k} className="space-y-1">
               <div className="text-xs" style={{ color: C.ink2 }}>{label}</div>
-              <select className="h-7 w-full rounded border bg-white px-1 text-xs" style={{ borderColor: C.cardBorder }}
-                value={(cfg[k] as string) ?? ""} onChange={(e) => set(k, e.target.value)}>
-                <option value="">请选择</option>
-                {p.enum.map((v: string) => <option key={v} value={v}>{v}</option>)}
-              </select>
+              <Select value={(cfg[k] as string) || undefined} onValueChange={(v) => set(k, v)}>
+                <SelectTrigger className="h-7 w-full text-xs"><SelectValue placeholder="请选择" /></SelectTrigger>
+                <SelectContent>
+                  {p.enum.map((v: string) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
           )
         }
@@ -848,7 +854,7 @@ function GenericSchemaForm({ def, cfg, set, node, onChange }: {
           return (
             <label key={k} className="flex items-center justify-between text-xs" style={{ color: C.ink2 }}>
               <span>{label}</span>
-              <input type="checkbox" checked={!!cfg[k]} onChange={(e) => set(k, e.target.checked)} />
+              <Switch checked={!!cfg[k]} onCheckedChange={(v) => set(k, v)} />
             </label>
           )
         }
@@ -948,10 +954,12 @@ function WorkflowPicker({ value, onPick }: { value: string; onPick: (v: string) 
   useEffect(() => { wfApi.list({ pageSize: 100 }).then((r) => setList(r.items as { id: string; name: string }[])).catch(() => undefined) }, [])
   return (
     <Section title="工作流">
-      <select className="w-full rounded-md border p-2 text-xs" value={value} onChange={(e) => onPick(e.target.value)}>
-        <option value="">请选择工作流资源</option>
-        {list.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-      </select>
+      <Select value={value || undefined} onValueChange={(v) => onPick(v)}>
+        <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="请选择工作流资源" /></SelectTrigger>
+        <SelectContent>
+          {list.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
+        </SelectContent>
+      </Select>
     </Section>
   )
 }
@@ -988,8 +996,8 @@ function KnowledgeFallbackPicker({ ids, onChange }: { ids: string[]; onChange: (
           {items.length === 0 && <div className="px-1 py-1 text-[11px]" style={{ color: C.ink3 }}>暂无 Enabled 知识资源</div>}
           {items.map((it) => (
             <label key={it.id} className="flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-xs hover:bg-neutral-50">
-              <input type="checkbox" checked={ids.includes(it.id)}
-                onChange={(e) => onChange(e.target.checked ? [...ids, it.id] : ids.filter((x) => x !== it.id))} />
+              <Checkbox checked={ids.includes(it.id)}
+                onCheckedChange={(v) => onChange(v ? [...ids, it.id] : ids.filter((x) => x !== it.id))} />
               <span className="truncate">{it.name}</span>
             </label>
           ))}
@@ -1027,8 +1035,8 @@ function MemberPoolPicker({ ids, onChange, selfId }: { ids: string[]; onChange: 
           {all.length === 0 && <div className="px-1 py-1 text-[11px]" style={{ color: C.ink3 }}>暂无可添加的 Agent</div>}
           {all.map((a) => (
             <label key={a.id} className="flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-xs hover:bg-neutral-50">
-              <input type="checkbox" checked={ids.includes(a.id)}
-                onChange={(e) => onChange(e.target.checked ? [...ids, a.id] : ids.filter((x) => x !== a.id))} />
+              <Checkbox checked={ids.includes(a.id)}
+                onCheckedChange={(v) => onChange(v ? [...ids, a.id] : ids.filter((x) => x !== a.id))} />
               <span className="truncate">{a.name}</span>
             </label>
           ))}
@@ -1219,10 +1227,14 @@ function RunsDrawer({ workflowId, lastRunId, onClose }: { workflowId: string; la
       </div>
       <div className="flex-1 overflow-y-auto px-4">
         <div className="flex items-center gap-2 pb-2">
-          <select className="rounded border px-1 py-0.5 text-xs" style={{ borderColor: C.cardBorder }} value={filter} onChange={(e) => setFilter(e.target.value)}>
-            <option value="">全部状态</option><option value="succeeded">succeeded</option>
-            <option value="failed">failed</option><option value="running">running</option>
-          </select>
+          <Select value={filter || undefined} onValueChange={(v) => setFilter(v)}>
+            <SelectTrigger className="h-6 w-28 text-xs"><SelectValue placeholder="全部状态" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="succeeded">succeeded</SelectItem>
+              <SelectItem value="failed">failed</SelectItem>
+              <SelectItem value="running">running</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-1 pb-3">
           {runs.filter((r) => !filter || r.status === filter).length === 0 && <div className="py-10 text-center text-xs" style={{ color: C.ink3 }}>暂无运行记录</div>}

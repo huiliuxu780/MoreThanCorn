@@ -10,6 +10,7 @@ import { AgentEvalPanel, AgentRunsPanel, AgentVersionsPanel } from "@/components
 import { ConversationPanel, MemorySchemaForm } from "@/components/agent-common-config"
 import { AgentPublishDialog, useAgentVersionState } from "@/components/agent-publish-dialog"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -75,8 +76,8 @@ function RegistryPicker({ title, load, ids, onChange, invalid = [], extra }: {
           {items.length === 0 && <div className="px-1 py-1 text-[11px]" style={{ color: INK3 }}>注册表暂无可用资源</div>}
           {items.map((it) => (
             <label key={it.id} className="flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-xs hover:bg-neutral-50">
-              <input type="checkbox" checked={ids.includes(it.id)}
-                onChange={(e) => onChange(e.target.checked ? [...ids, it.id] : ids.filter((x) => x !== it.id))} />
+              <Checkbox checked={ids.includes(it.id)}
+                onCheckedChange={(v) => onChange(v ? [...ids, it.id] : ids.filter((x) => x !== it.id))} />
               <span className="truncate">{it.name}</span>
             </label>
           ))}
@@ -103,18 +104,22 @@ function KnowledgeAdvanced({ value, onChange }: {
     <div className="space-y-1 rounded border p-1.5" style={{ borderColor: CARD }}>
       <div className="flex items-center gap-1 text-[11px]" style={{ color: INK2 }}>
         <span>TopK</span>
-        <input type="number" min={1} max={20} className="w-12 rounded border px-1" style={{ borderColor: CARD }}
+        <Input type="number" min={1} max={20} className="h-6 w-14 text-[11px]"
           value={value.topK ?? 3} onChange={(e) => onChange({ ...value, topK: Number(e.target.value) })} />
         <span className="pl-1">匹配分</span>
-        <input type="number" min={0} max={1} step={0.05} className="w-14 rounded border px-1" style={{ borderColor: CARD }}
+        <Input type="number" min={0} max={1} step={0.05} className="h-6 w-16 text-[11px]"
           value={value.scoreThreshold ?? 0.5} onChange={(e) => onChange({ ...value, scoreThreshold: Number(e.target.value) })} />
       </div>
       <div className="flex items-center gap-1 text-[11px]" style={{ color: INK2 }}>
         <span>检索模式</span>
-        <select className="rounded border px-1" style={{ borderColor: CARD }} value={value.mode ?? "HYBRID"}
-          onChange={(e) => onChange({ ...value, mode: e.target.value })}>
-          <option value="HYBRID">混合</option><option value="SEMANTIC">语义</option><option value="TEXT">全文</option>
-        </select>
+        <Select value={value.mode ?? "HYBRID"} onValueChange={(v) => onChange({ ...value, mode: v })}>
+          <SelectTrigger className="h-6 w-24 text-[11px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="HYBRID">混合</SelectItem>
+            <SelectItem value="SEMANTIC">语义</SelectItem>
+            <SelectItem value="TEXT">全文</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
     </div>
   )
@@ -294,11 +299,6 @@ function AutonomousBuilder({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
           <MemorySchemaForm memories={cfg.memoriesSchema ?? []} onChange={(v) => setCfg({ ...cfg, memoriesSchema: v })} />
           <div className="space-y-2">
             <ConversationPanel cfg={cfg} setCfg={setCfg} />
-            <div className="space-y-1">
-              <span className="text-xs" style={{ color: INK2 }}>开场白（预览首条消息）</span>
-              <Input className="h-7 text-xs" placeholder="你好，我是…" value={greeting ?? ""}
-                onChange={(e) => setCfg({ ...cfg, conversation: { ...(cfg.conversation ?? {}), greeting: e.target.value } })} />
-            </div>
           </div>
         </div>
         <Button size="sm" className="bg-black text-white hover:bg-neutral-800" onClick={save}>保存</Button>

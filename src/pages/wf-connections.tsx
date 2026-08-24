@@ -14,6 +14,7 @@ import { CardGridSkeleton, EmptyState } from "@/components/app/list-state"
 import { PageContainer, PageHeader } from "@/components/app/page"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
@@ -181,15 +182,21 @@ export default function WfConnectionsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">鉴权方式</Label>
-                <select className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm" value={form.kind} onChange={(e) => set({ kind: e.target.value })}>
-                  {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
-                </select>
+                <Select value={form.kind} onValueChange={(v) => set({ kind: v })}>
+                  <SelectTrigger className="h-9 w-full text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {KINDS.map((k) => <SelectItem key={k.value} value={k.value}>{k.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label className="text-xs">协议</Label>
-                <select className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm" value={form.protocol} onChange={(e) => set({ protocol: e.target.value })}>
-                  {PROTOCOLS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                </select>
+                <Select value={form.protocol} onValueChange={(v) => set({ protocol: v })}>
+                  <SelectTrigger className="h-9 w-full text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {PROTOCOLS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             {isDb(form.protocol) ? (

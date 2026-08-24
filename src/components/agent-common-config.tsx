@@ -1,7 +1,9 @@
 /** Agent 公共配置组件（SDD 02 CommonAgentConfig）：结构化记忆 Schema + 对话体验。
- *  三型共用（autonomous 编辑器 / expert-group 编辑器 / dialogue 配置抽屉）。 */
+ *  三型共用（autonomous 编辑器 / expert-group 编辑器 / dialogue 配置抽屉）。
+ *  R4：原生 select/checkbox 全部换统一组件（Select/Switch）。 */
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 
 const INK2 = "#5A6472"; const INK3 = "#B9C2CF"; const CARD = "#EDF0F4"
 
@@ -19,11 +21,17 @@ export function MemorySchemaForm({ memories, onChange }: { memories: MemoryVar[]
       {memories.length === 0 && <div className="text-[11px]" style={{ color: INK3 }}>声明后可由 Agent 显式读写；未声明的键写入会被拒绝。</div>}
       {memories.map((m, i) => (
         <div key={i} className="space-y-1 rounded border p-1.5" style={{ borderColor: CARD }}>
-          <div className="flex gap-1">
+          <div className="flex items-center gap-1">
             <Input className="h-6 text-xs" placeholder="变量名" value={m.name} onChange={(e) => setAt(i, { name: e.target.value })} />
-            <select className="h-6 rounded border text-[11px]" style={{ borderColor: CARD }} value={m.dataType} onChange={(e) => setAt(i, { dataType: e.target.value })}>
-              <option>STRING</option><option>NUMBER</option><option>BOOLEAN</option><option>JSON</option>
-            </select>
+            <Select value={m.dataType} onValueChange={(v) => setAt(i, { dataType: v })}>
+              <SelectTrigger className="h-6 w-24 text-[11px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="STRING">STRING</SelectItem>
+                <SelectItem value="NUMBER">NUMBER</SelectItem>
+                <SelectItem value="BOOLEAN">BOOLEAN</SelectItem>
+                <SelectItem value="JSON">JSON</SelectItem>
+              </SelectContent>
+            </Select>
             <button onClick={() => onChange(memories.filter((_, j) => j !== i))}><span className="text-neutral-400">×</span></button>
           </div>
           <Input className="h-6 text-xs" placeholder="描述（会注入提示词）" value={m.description ?? ""} onChange={(e) => setAt(i, { description: e.target.value })} />
@@ -43,22 +51,32 @@ export function ConversationPanel({ cfg, setCfg }: { cfg: Record<string, any>; s
     <div className="space-y-2">
       <div className="flex items-center justify-between text-xs" style={{ color: INK2 }}>
         <span>自动续问（回答后生成后续问题）</span>
-        <input type="checkbox" checked={!!fu.enabled} onChange={(e) => setConv({ autoFollowUp: { ...fu, enabled: e.target.checked } })} />
+        <Switch checked={!!fu.enabled} onCheckedChange={(v) => setConv({ autoFollowUp: { ...fu, enabled: v } })} />
       </div>
       {fu.enabled && (
-        <select className="h-6 w-24 rounded border text-[11px]" style={{ borderColor: CARD }} value={fu.count}
-          onChange={(e) => setConv({ autoFollowUp: { ...fu, count: Number(e.target.value) } })}>
-          <option value={1}>1 条</option><option value={2}>2 条</option><option value={3}>3 条</option>
-        </select>
+        <Select value={String(fu.count)} onValueChange={(v) => setConv({ autoFollowUp: { ...fu, count: Number(v) } })}>
+          <SelectTrigger className="h-6 w-24 text-[11px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="1">1 条</SelectItem>
+            <SelectItem value="2">2 条</SelectItem>
+            <SelectItem value="3">3 条</SelectItem>
+          </SelectContent>
+        </Select>
       )}
       <div className="flex items-center justify-between text-xs" style={{ color: INK2 }}>
         <span>闲聊兜底（无用户问题时友好回应）</span>
-        <input type="checkbox" checked={!!ch.enabled} onChange={(e) => setConv({ chitchatFallback: { ...ch, enabled: e.target.checked } })} />
+        <Switch checked={!!ch.enabled} onCheckedChange={(v) => setConv({ chitchatFallback: { ...ch, enabled: v } })} />
       </div>
       {ch.enabled && (
-        <Textarea className="min-h-16 text-xs" placeholder="兜底提示词" value={ch.prompt ?? ""}
+        <textarea className="min-h-16 w-full rounded-md border p-2 text-xs" style={{ borderColor: CARD }}
+          placeholder="兜底提示词" value={ch.prompt ?? ""}
           onChange={(e) => setConv({ chitchatFallback: { ...ch, prompt: e.target.value } })} />
       )}
+      <div className="space-y-1">
+        <span className="text-xs" style={{ color: INK2 }}>开场白（预览首条消息）</span>
+        <Input className="h-7 text-xs" placeholder="你好，我是…" value={conv.greeting ?? ""}
+          onChange={(e) => setConv({ greeting: e.target.value })} />
+      </div>
     </div>
   )
 }
