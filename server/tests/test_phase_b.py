@@ -144,6 +144,21 @@ def test_b_api_trigger_without_release_422():
     assert r.json()["detail"]["code"] == "NO_RELEASED_VERSION"
 
 
+def test_b_list_shows_version_fields():
+    """列表接口返回最新版本与各环境生效版本（用户需求：列表显示版本）。"""
+    a = mk_autonomous(u("列表版本"))
+    lst = client.get("/api/agents", params={"search": a["id"][:0] or "", "pageSize": 100}).json()
+    row0 = [r for r in lst["items"] if r["id"] == a["id"]][0]
+    assert row0["latestVersion"] is None and row0["sandboxVersion"] is None and row0["prodVersion"] is None
+    v = client.post(f"/api/agents/{a['id']}/versions", json={}).json()
+    client.post(f"/api/agents/{a['id']}/releases", json={"versionId": v["versionId"], "environment": "sandbox"})
+    client.post(f"/api/agents/{a['id']}/releases", json={"versionId": v["versionId"], "environment": "prod"})
+    lst2 = client.get("/api/agents", params={"pageSize": 100}).json()
+    row = [r for r in lst2["items"] if r["id"] == a["id"]][0]
+    assert row["latestVersion"] == 1 and row["sandboxVersion"] == 1 and row["prodVersion"] == 1
+    client.delete(f"/api/agents/{a['id']}")
+
+
 # ---------- CommonConfig：记忆声明约束 + 自动续问 ----------
 
 def test_b_memory_write_rejects_undeclared_key():

@@ -60,10 +60,21 @@ def list_agents(page: int = 1, pageSize: int = 20, search: str = "", db: Session
         q = q.filter(Agent.name.ilike(f"%{search}%"))
     total = q.count()
     rows = q.order_by(Agent.updated_at.desc()).offset((page - 1) * pageSize).limit(pageSize).all()
-    return {"items": [{"id": a.id, "name": a.name, "type": a.type, "typeLabel": TYPE_LABEL[a.type],
-                       "status": a.status, "workflowId": a.workflow_id, "avatar": a.avatar,
-                       "updatedAt": a.updated_at.isoformat()} for a in rows],
-            "total": total, "page": page, "pageSize": pageSize}
+    items = []
+    for a in rows:
+        latest = (db.query(AgentVersion).filter_by(agent_id=a.id)
+                  .order_by(AgentVersion.version_no.desc()).first())
+
+        def _env_ver(vid):
+            v = db.get(AgentVersion, vid) if vid else None
+            return v.version_no if v else None
+        items.append({"id": a.id, "name": a.name, "type": a.type, "typeLabel": TYPE_LABEL[a.type],
+                      "status": a.status, "workflowId": a.workflow_id, "avatar": a.avatar,
+                      "latestVersion": latest.version_no if latest else None,
+                      "sandboxVersion": _env_ver(a.sandbox_version_id),
+                      "prodVersion": _env_ver(a.prod_version_id),
+                      "updatedAt": a.updated_at.isoformat()})
+    return {"items": items, "total": total, "page": page, "pageSize": pageSize}
 
 
 @router.get("/{aid}")

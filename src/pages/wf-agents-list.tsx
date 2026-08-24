@@ -39,7 +39,10 @@ const TYPES = [
   { key: "expert-group", label: "编排 Agent 专家组", desc: "Agent专家组根据人工编排的流程进行协作，适用于稳定且复杂的业务流程" },
 ]
 
-interface AgentRow { id: string; name: string; typeLabel: string; status: string; updatedAt: string; description?: string; avatar?: string | null }
+interface AgentRow {
+  id: string; name: string; typeLabel: string; status: string; updatedAt: string; description?: string; avatar?: string | null;
+  latestVersion?: number | null; sandboxVersion?: number | null; prodVersion?: number | null
+}
 
 export default function WfAgentsListPage() {
   const navigate = useNavigate()
@@ -137,8 +140,20 @@ export default function WfAgentsListPage() {
             <p className="line-clamp-2 pt-3 text-xs leading-5" style={{ color: INK2 }}>{w.description || "\u00A0"}</p>
             <div className="mt-auto flex items-center justify-between pt-4 text-[11px]">
               <span style={{ color: INK3 }}>更新时间： {new Date(w.updatedAt).toLocaleDateString("zh-CN")}</span>
-              <span className="rounded px-1.5 py-0.5" style={w.status === "published" ? { background: "#F5F6FA", color: INK3 } : { background: "#FFF4EA", color: ORANGE }}>
-                {w.status === "published" ? "已发布" : "未发布"}
+              <span className="flex items-center gap-1">
+                {/* 版本显示（SDD B）：最新版本 + 各环境生效版本 */}
+                <span className="rounded border px-1.5 py-0.5" style={{ borderColor: "#EDF0F4", color: INK2 }}>
+                  {w.latestVersion ? `最新 V${w.latestVersion}` : "无版本"}
+                </span>
+                {w.sandboxVersion != null && (
+                  <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-600">沙箱 V{w.sandboxVersion}</span>
+                )}
+                {w.prodVersion != null && (
+                  <span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-600">线上 V{w.prodVersion}</span>
+                )}
+                <span className="rounded px-1.5 py-0.5" style={w.status === "published" ? { background: "#F5F6FA", color: INK3 } : { background: "#FFF4EA", color: ORANGE }}>
+                  {w.status === "published" ? "已发布" : "未发布"}
+                </span>
               </span>
             </div>
           </div>
