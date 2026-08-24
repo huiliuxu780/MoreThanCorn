@@ -1000,6 +1000,9 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const [latestVersion, setLatestVersion] = useState<number | null>(null)
   const [zoom, setZoom] = useState(1)
   const [lockUser, setLockUser] = useState("")
+  /* bugfix：v12 MiniMap 读用户节点对象的 measured；受控模式下测量结果经
+     onNodesChange 的 dimensions 事件下发，此前被丢弃导致小地图全空 */
+  const [nodeDims, setNodeDims] = useState<Record<string, { width: number; height: number }>>({})
   const [agentAvatar, setAgentAvatar] = useState<string | undefined>(undefined)
   const historyRef = useRef<WfDefinition[]>([])
   const pointerRef = useRef(-1)
@@ -1085,6 +1088,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const nodes: Node[] = useMemo(() => (def?.graph.nodes ?? []).map((n) => ({
     id: n.id, type: "wf",
     position: def!.ui.positions[n.id] ?? { x: 120, y: 160 },
+    ...(nodeDims[n.id] ? { measured: nodeDims[n.id] } : {}),
     data: {
       wf: n, def: defs.find((d) => d.type_key === n.type),
       issues: issues.filter((i) => i.nodeId === n.id),
@@ -1096,7 +1100,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
         setSelectedId(null)
       },
     } satisfies WfNodeData,
-  })), [def, defs, issues, runState, mutate])
+  })), [def, defs, issues, runState, mutate, nodeDims])
 
   const edges: Edge[] = useMemo(() => (def?.graph.edges ?? []).map((e) => ({
     id: e.id, source: e.source, target: e.target,
@@ -1314,8 +1318,17 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
           onNodesChange={(chs) => {
             const positions = { ...def.ui.positions }
             let changed = false
-            for (const ch of chs) if (ch.type === "position" && ch.position) { positions[ch.id] = { x: ch.position.x, y: ch.position.y }; changed = true }
+            const dims: Record<string, { width: number; height: number }> = {}
+            let dimsChanged = false
+            for (const ch of chs) {
+              if (ch.type === "position" && ch.position) { positions[ch.id] = { x: ch.position.x, y: ch.position.y }; changed = true }
+              if (ch.type === "dimensions") {
+                const m = (ch as { measured?: { width: number; height: number } }).measured
+                if (m?.width && m?.height) { dims[ch.id] = { width: m.width, height: m.height }; dimsChanged = true }
+              }
+            }
             if (changed) mutate({ ...def, ui: { ...def.ui, positions } })
+            if (dimsChanged) setNodeDims((d) => ({ ...d, ...dims }))
           }}
           onConnect={onConnect}
           onNodeClick={(_, n) => { setSelectedId(n.id); setDrawer("config"); setPop(null) }}
