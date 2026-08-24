@@ -34,6 +34,14 @@ agent.prod_version_id      varchar(32) null
 ```
 `agent.status` 语义收窄为编辑态（draft/published 沿用，发布动作同步）。
 
+### 2.1b Run 增列（决策 D-4 运行树）
+```
+run.parent_run_id          varchar(32) null  -- 嵌套调用（成员 Agent/子工作流）挂载父运行
+```
+- 顶层运行列表接口默认过滤 `parent_run_id IS NULL`，`includeChildren=true` 时返回。
+- `_run_member`、autonomous 子工作流调用创建子 Run 时必须填父。
+- Trace 树（C 阶段）以此为骨架，不再回头补。
+
 ### 2.2 agent_version（不可变）
 ```
 id                 varchar(32) pk
@@ -102,7 +110,7 @@ created_at         timestamptz
 | 方法 路径 | 语义 | 关键行为 |
 | --- | --- | --- |
 | `PUT /api/agents/{aid}` | 保存草稿（身份+config） | 要求 `expectedRevision`；响应 `{config, configRevision}`；409 `REVISION_CONFLICT` |
-| `POST /api/agents/{aid}/versions` | 发布版本（=调研的"创建不可变版本"） | body `{note?}`；服务端：校验（§4）→ 拉取草稿+图 → 组装三快照 → 计算 artifact_hash → 落库；响应 `{versionId, versionNo, artifactHash, issues?}`；校验失败 409 + issues 列表 |
+| `POST /api/agents/{aid}/versions` | 发布版本（=调研的"创建不可变版本"） | body `{note?, configRevision, graphRevision?}`；服务端：revision 双校验（决策 D-1：configRevision 必须等于当前 `agent.config_revision`；dialogue/expert-group 的 `graphRevision` 缺省取绑定工作流当前 `draft_revision`，显式传入则必须相等，任一不符 409 `REVISION_CONFLICT`）→ 校验（§4）→ **同一事务内**读取配置与图草稿 → 组装三快照 → 计算 artifact_hash → 落库；响应 `{versionId, versionNo, artifactHash, issues?}`；校验失败 409 + issues 列表 |
 | `GET /api/agents/{aid}/versions` | 版本列表 | 含 versionNo/note/createdAt/artifactHash |
 | `GET /api/agents/{aid}/versions/{vid}` | 版本详情（含三快照，只读） | |
 | `POST /api/agents/{aid}/releases` | 部署到环境 | body `{versionId, environment}`；将旧 active 置 `rolled_back`（回滚=再发旧版：`POST` 指向旧 versionId 即可，语义与调研 08 §10.4 一致）；更新 `agent.{sandbox,prod}_version_id` 与 `agent.status` |
@@ -130,11 +138,17 @@ created_at         timestamptz
 
 ## 6. 流式与步骤面板
 
-1. `_chat_completion` 增加 `stream=True` 变体（OpenAI 兼容 SSE 解析）；逐块 `emit(..., "llm_delta", payload={"delta": ...})`，结束仍发 `agent_completed`。mock 模式整段一次下发。
+0. **前置：单一 LLM 适配器（决策 D-2）**。把 `runner._call_model` 与 `agent_runtime._chat_completion` 合并为一个模型调用模块（统一鉴权解析、mock 回落、流式/非流式双入口）。本阶段所有 LLM 调用（节点执行、autonomous 循环、路由、流式）只允许走该模块；合并过程不得改变现有测试断言的行为。
+1. 流式变体（OpenAI 兼容 SSE 解析）：逐块 `emit(..., "llm_delta", payload={"delta": ...})`，结束仍发 `agent_completed`。mock 模式整段一次下发。
 2. 前端预览（autonomous）：订阅 `/api/runs/{runId}/events`（现有 DB 轮询 SSE 足够，B 不推翻），增量渲染最终回答；步骤面板按事件分组折叠：思考（占位，C 接真）/工具调用（tool_call+tool_result 配对）/回答。交互对标调研 02 §6 "查看 N 个步骤"。
 3. 对话型/专家组运行结果展示维持现状（内容流双通道属于 C）。
 
 ## 7. 前端交付
+
+**实现约束（复用与视觉基线）**：
+- 运行事件订阅抽成共享钩子（如 `useRunEvents(runId)`：轮询/EventSource 二选一实现、按 sequence 合并、终态通知），预览、运行抽屉、步骤面板共用；禁止第三份事件拼装逻辑（复用性反思结论）。
+- 新增面板的视觉基线引用调研 02 的实测常量（左栏 360px、模态 485–600px、抽屉打开压缩画布、Header 元素清单）与 `uiux/` 现有设计文档；无基线的细节在状态日志登记决策依据，不允许无据拍脑袋。
+- 微交互清单（调研 03 §8）：返回时的未保存确认、保存按钮禁用/loading 态、Header 自动保存时间指示、流式输出的停止按钮。
 
 | 位置 | 内容 |
 | --- | --- |
@@ -185,7 +199,8 @@ pytest 新增（目标 ≥18 条）：
 | migration 016/017 与 A-01 的 015 顺序耦合 | 开工前核对 alembic 链，编号以实际链为准并在变更记录登记 |
 
 ## 11. 变更记录
-（空）
+- 2026-08-25 反思修正：新增决策 D-1（发布双 revision 校验+同事务快照）、D-2（单一 LLM 适配器）、D-4（Run.parent_run_id 运行树）；§7 增加复用/视觉基线约束与微交互清单（调研 02/03）。
 
 ## 12. 状态日志
 - 2026-08-25 规格草稿完成，待冻结。
+- 2026-08-25 四维反思后修正并重新待冻结。

@@ -17,8 +17,10 @@
 ### C-1 Trace/Span 与事件通道
 - `run_event` 增列：`channel(CONTROL|CONTENT)`、`trace_id`、`span_id`、`parent_span_id`、`duration_ms`、`tokens`。
 - 事件 Envelope 对齐调研 00 §9.5（eventId/sequence/runId/traceId/channel/type/payload）。
-- Span 类型化：LLM / TOOL / KNOWLEDGE / AGENT / ROUTER / MEMORY / WORKFLOW；子 Agent 调用同 trace + `hop` + 预算传递（承接 B 的版本上下文）。
+- Span 类型化：LLM / TOOL / KNOWLEDGE / AGENT / ROUTER / MEMORY / WORKFLOW；子 Agent 调用同 trace + `hop` + 预算传递（承接 B 的版本上下文与 D-4 运行树）。
+- 画布运行态覆盖层（调研 08 §9.2 实测行为）：试运行期间按 `nodeId` 把状态/耗时/Token/错误写回画布节点卡片，作为按 runId 派生的覆盖层，不写入持久化图数据（调研 00 §5.3 禁令）。
 - SSE 断线按 sequence 恢复（现有 Last-Event-ID 机制保留）。
+- worker 池化评估：嵌套同步递归阻塞单队列的问题（A-03 风险登记），在本阶段决定池化或明确接受。
 
 ### C-2 节点注册表升级
 - `editorKinds: ["FLOW"|"GROUP"|"WORKFLOW"]`：Flow 目录 = 调研 20 类口径（含域节点标注）；Group 目录收敛为 7 类可添加 + Start/End；质检工作流保留域节点。
@@ -66,3 +68,4 @@
 
 ## 5. 状态日志
 - 2026-08-25 大纲建立；开工前须细化为可执行规格并冻结。
+- 2026-08-25 反思修正：C-1 补画布运行态覆盖层与 worker 池化评估。

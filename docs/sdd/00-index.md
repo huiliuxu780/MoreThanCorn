@@ -17,7 +17,7 @@
 
 | 文档 | 阶段 | 细节级别 | 状态 |
 | --- | --- | --- | --- |
-| [01](01-phase-a-correctness-and-cleanup.md) | A：正确性修复与门面清退 | 可执行细节 | 草稿（待冻结） |
+| [01](01-phase-a-correctness-and-cleanup.md) | A：正确性修复与门面清退 | 可执行细节 | 草稿（待冻结，讨论中） |
 | [02](02-phase-b-agent-aggregate-and-release.md) | B：Agent 聚合根与发布闭环 | 可执行细节 | 草稿（待冻结） |
 | [03](03-phase-c-observability-and-node-system.md) | C：运行可观测与节点系统 | 范围 + 验收基线（开工前细化） | 大纲 |
 | [04](04-phase-d-product-surface-and-governance.md) | D：产品面与治理 | 范围 + 验收基线（开工前细化） | 大纲 |
@@ -59,6 +59,14 @@
 
 ## 5. 全局约定（所有阶段共用）
 
+### 5.0 术语映射（调研 ↔ 本仓库）
+| 调研口径 | 本仓库取值 | UI 标签 |
+| --- | --- | --- |
+| AUTONOMOUS | `autonomous` | 自主规划 |
+| FLOW | `dialogue` | 对话编排 |
+| GROUP | `expert-group` | 编排Agent专家组 |
+规格中引用调研章节时以左列为准，代码改动以中列为准。
+
 ### 5.1 错误契约（新代码一律遵守）
 ```json
 {"code": "VALIDATION_FAILED", "message": "人类可读信息", "path": "nodes[2].config.prompt", "traceId": "..."}
@@ -74,7 +82,21 @@ HTTP 状态与业务状态一致（400/409/422 不再返回 200）；保留现�
 - 不做 QuickService 接口兼容层（调研 00 §1 明示不必复刻其接口命名）。
 - 不把任何 Secret 写入 Prompt、图快照、事件正文。
 
-### 5.4 调研 ↔ 规格对照（高频引用）
+### 5.4 决策登记（规格间共享的架构决定）
+- **D-1 草稿双库的冲突检测**：dialogue/group 型 Agent 的公共配置在 `agent.config`、图在绑定工作流的 `draft_definition`，两者各有 revision。B 阶段发布请求必须同时携带 `configRevision + graphRevision`，服务端任一不符即 409；版本快照落库在同一事务内读取两者。彻底方案（图并入 Agent 草稿、单一 revision）登记为 C/D 候选项，不在 B 范围内。此决策直接来自调研 00 §10.2 对 QuickService 双写漂移的结论。
+- **D-2 单一 LLM 适配器**：B 阶段把 `runner._call_model` 与 `agent_runtime._chat_completion` 合并为单一模型调用模块（鉴权解析、mock 回落、流式/非流式唯一入口），此后禁止新增并行 LLM 调用路径。
+- **D-3 单一前端 API 层**：所有页面经 `wf-api.ts`/`resource-api.ts` 访问后端；A-16 收编现存裸 fetch，此后禁止页面内新增裸 fetch。
+- **D-4 运行树**：B 阶段为 `Run` 增加 `parent_run_id`；嵌套调用（成员 Agent、子工作流）必须挂载到父运行。顶层列表默认只显示 `parent_run_id IS NULL`。
+
+### 5.5 已登记的有意偏差（验收时不视为遗漏）
+| 偏差 | 说明 | 复核时点 |
+| --- | --- | --- |
+| 单租户 | 全库无 tenant 维度；调研 §13 的多租户治理不在原型范围 | D 阶段评估 |
+| Group 无置信度门控 | 路由仅主要/兜底两态，无澄清追问路径（调研 07 §5） | D 阶段候选 |
+| 可访问性后置 | 调研 02 §8 的 aria/焦点/键盘项统一后置 | D 阶段 |
+| 前端暂无单测 | 手工验收步骤登记替代；vitest 建立属于 D-6 | D 阶段 |
+
+### 5.6 调研 ↔ 规格对照（高频引用）
 | 主题 | 调研出处 | 落地阶段 |
 | --- | --- | --- |
 | 四闭环总纲 | 00 §20 | A 修错、B 闭环 |
