@@ -10,12 +10,23 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 TYPE_LABEL = {"autonomous": "自主规划", "dialogue": "对话编排", "expert-group": "编排Agent专家组"}
 
+# 调研 12 §3.1（SDD A-17）：数据库约束/服务端校验/前端 Schema 共用同一上限
+NAME_MAX_LEN = 20
+
+
+def _check_name(name: str) -> None:
+    if name is not None and len(name) > NAME_MAX_LEN:
+        raise HTTPException(400, detail={"code": "NAME_TOO_LONG",
+                                         "message": f"名称不能超过 {NAME_MAX_LEN} 字",
+                                         "path": "name"})
+
 
 @router.post("", status_code=201)
 def create_agent(payload: dict, db: Session = Depends(get_db)):
     t = payload.get("type", "dialogue")
     if t not in TYPE_LABEL:
         raise HTTPException(422, "unknown agent type")
+    _check_name(payload.get("name", ""))
     wf_id = None
     if t in ("dialogue", "expert-group"):
         wf = Workflow(name=f"{payload['name']}的工作流")
@@ -29,7 +40,8 @@ def create_agent(payload: dict, db: Session = Depends(get_db)):
                   config=payload.get("config", default_config(t)))
     db.add(agent)
     db.commit()
-    return {"id": agent.id, "name": agent.name, "type": agent.type, "workflowId": wf_id}
+    return {"id": agent.id, "name": agent.name, "type": agent.type, "workflowId": wf_id,
+            "configRevision": agent.config_revision}
 
 
 def default_config(t: str) -> dict:
@@ -37,9 +49,8 @@ def default_config(t: str) -> dict:
         return {"rolePrompt": "# 角色：\n## 目标：\n## 技能：\n## 限制：", "modelRef": {"modelId": ""},
                 "skills": [], "tools": [], "workflows": [], "knowledges": [], "memories": []}
     if t == "expert-group":
-        return {"members": [], "routing": []}
-    return {"dialogue": {"autoAsk": False, "chitchat": True}, "knowledges": [], "terms": [],
-            "experiences": [], "memories": []}
+        return {"members": []}
+    return {"knowledges": []}
 
 
 @router.get("")
@@ -62,6 +73,7 @@ def get_agent(aid: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "agent not found")
     return {"id": a.id, "name": a.name, "type": a.type, "typeLabel": TYPE_LABEL[a.type],
             "status": a.status, "workflowId": a.workflow_id, "config": a.config,
+            "configRevision": a.config_revision,
             "description": a.description, "avatar": a.avatar}
 
 
@@ -70,18 +82,27 @@ def update_agent(aid: str, payload: dict, db: Session = Depends(get_db)):
     a = db.get(Agent, aid)
     if not a:
         raise HTTPException(404, "agent not found")
+    # SDD A-08 乐观锁：携带 expectedRevision 时校验，冲突 409（旧调用不带则兼容放行）
+    expected = payload.get("expectedRevision")
+    if expected is not None and int(expected) != a.config_revision:
+        raise HTTPException(409, detail={"code": "REVISION_CONFLICT",
+                                         "message": "Agent 配置已被更新，请刷新后重试",
+                                         "currentRevision": a.config_revision})
+    if "name" in payload:
+        _check_name(payload["name"])
+        a.name = payload["name"]
     if "config" in payload:
         a.config = payload["config"]
-    if "name" in payload:
-        a.name = payload["name"]
     if "workflowId" in payload:
         a.workflow_id = payload["workflowId"]
     if "avatar" in payload:
         a.avatar = payload["avatar"]
     if "description" in payload:
         a.description = payload["description"]
+    if expected is not None:
+        a.config_revision += 1
     db.commit()
-    return {"id": a.id, "config": a.config}
+    return {"id": a.id, "config": a.config, "configRevision": a.config_revision}
 
 
 # ---------- 运行层（05 设计） ----------

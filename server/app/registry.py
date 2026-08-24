@@ -51,7 +51,9 @@ V1_NODE_DEFINITIONS: list[dict] = [
                 "type": "object", "properties": {
                     "handle": {"type": "string"},
                     "variable": {"type": "object", "x-control": "variable-picker"},
-                    "operator": {"type": "string", "enum": ["eq", "neq", "contains", "gt", "lt"]},
+                    "operator": {"type": "string",
+                                 "enum": ["eq", "neq", "contains", "not_contains",
+                                          "empty", "not_empty", "gt", "lt"]},
                     "value": {"type": "string"}}}}},
         },
         "io": {},
@@ -128,14 +130,16 @@ V1_NODE_DEFINITIONS: list[dict] = [
     {
         "type_key": "decision-class", "family": "逻辑", "label": "决策分类", "icon": "branch", "accent": "#FF4C00",
         "executor_key": "decision-class",
-        "schema": {"type": "object", "properties": {"branches": {"type": "array"}}},
-        "io": {"outputs": ["selected:string"]},
+        "schema": {"type": "object", "properties": {"branches": {"type": "array", "items": {
+            "type": "object", "properties": {
+                "title": {"type": "string"}, "description": {"type": "string"}}}}}},
+        "io": {"outputs": ["classificationTitle:string", "classificationId:string"]},
     },
     {
         "type_key": "query-rewrite", "family": "数据", "label": "Query改写", "icon": "pen", "accent": "#7B61FF",
         "executor_key": "query-rewrite",
         "schema": {"type": "object", "properties": {"template": {"type": "string"}}},
-        "io": {"outputs": ["queryList:string"]},
+        "io": {"outputs": ["queryList:array"]},
     },
     {
         "type_key": "code-write", "family": "代码", "label": "代码编写", "icon": "code", "accent": "#7B61FF",

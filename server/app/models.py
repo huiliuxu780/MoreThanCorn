@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -186,6 +187,7 @@ class Run(Base):
     idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
     origin_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
+    definition_source: Mapped[str | None] = mapped_column(String(8), nullable=True)  # draft|version（SDD A-01）
     input: Mapped[dict] = mapped_column(JSONB, default=dict)
     output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -249,6 +251,10 @@ class CallRecord(Base):
 class Agent(Base):
     """Agent 层对象（三型）：自主规划/对话编排/编排Agent专家组。"""
     __tablename__ = "agent"
+    __table_args__ = (
+        # SDD A-17（调研 12 §3.1）：名称上限与前端/服务端校验共用同一常量 20
+        CheckConstraint("char_length(name) <= 20", name="ck_agent_name_len"),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(64))
@@ -258,6 +264,7 @@ class Agent(Base):
     workflow_id: Mapped[str | None] = mapped_column(ForeignKey("workflow.id"), nullable=True)
     avatar: Mapped[str | None] = mapped_column(String(128), nullable=True)
     config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    config_revision: Mapped[int] = mapped_column(Integer, default=1)  # SDD A-08 乐观锁
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

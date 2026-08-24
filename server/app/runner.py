@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from .db import SessionLocal
 from .models import (Connection, JobQueue, Model, ModelProvider, NodeRun, Run, RunEvent,
-                     Schedule, ToolVersion, Workflow)
+                     Schedule, ToolVersion, Workflow, WorkflowVersion)
 from .schemas import WorkflowDefinition
 from .validator import validate
 
@@ -197,7 +197,8 @@ def schedule_tick() -> int:
                 else:
                     create_run(db, sch.workflow_id, "schedule",
                                {"window": {"start": (now - __import__("datetime").timedelta(minutes=5)).isoformat(),
-                                          "end": now.isoformat()}})
+                                          "end": now.isoformat()}},
+                               pinned_version_id=sch.pinned_version_id)
                     fired += 1
                 sch.last_ran_at = now
                 sch.failed_count = 0
@@ -233,14 +234,37 @@ def exec_condition(node, ctx) -> dict:
             val = _dig(ctx.outputs.get(m.group(1), {}), m.group(2))
         elif var:
             val = inputs.get(var) or ctx.run_input.get(var)
-        op, expect = b.get("operator"), str(b.get("value") or "")
-        sv = str(val or "")
-        ok = (op == "eq" and sv == expect) or (op == "neq" and sv != expect) or \
-             (op == "contains" and expect in sv) or (op in (None, "") and bool(val))
-        if ok:
+        if _branch_ok(b.get("operator"), val, b.get("value")):
             selected = b.get("handle") or "yes"
             break
     return {"selected": selected}
+
+
+def _branch_ok(op: str | None, val: Any, expect_raw: Any) -> bool:
+    """条件运算符（SDD A-06）：String 六项 + gt/lt 数值比较；无运算符时按真值。"""
+    expect = str(expect_raw or "")
+    if op in (None, ""):
+        return bool(val)
+    if op == "empty":
+        return val is None or val in ("", [], {})
+    if op == "not_empty":
+        return not (val is None or val in ("", [], {}))
+    sv = str(val or "")
+    if op == "eq":
+        return sv == expect
+    if op == "neq":
+        return sv != expect
+    if op == "contains":
+        return expect in sv
+    if op == "not_contains":
+        return expect not in sv
+    if op in ("gt", "lt"):
+        try:
+            lv, rv = float(val), float(expect_raw)
+        except (TypeError, ValueError):
+            return False
+        return lv > rv if op == "gt" else lv < rv
+    return False
 
 
 def exec_transform(node, ctx) -> dict:
@@ -358,10 +382,20 @@ def exec_mcp_call(node, ctx) -> dict:
     return {"result": json.dumps(out, ensure_ascii=False)[:2000]}
 
 
+def exec_notification(node, ctx) -> dict:
+    """通知/中途回复节点（SDD A-05）：发事件但不终止流程——区别于 end。"""
+    cfg = node.get("config") or {}
+    message = render_refs(cfg.get("message", ""), ctx.outputs, ctx.run_input)
+    emit(ctx.db, ctx.run.id, "notification_sent", node_id=node.get("id"),
+         payload={"message": (message or "")[:2000]})
+    return {"sent": True}
+
+
 EXECUTORS = {
     "input": exec_input, "llm": exec_llm, "condition": exec_condition,
     "transform": exec_transform, "tool": exec_tool, "end": exec_end,
-    "create-record": exec_create_record, "notification": exec_end, "workflow-exec": exec_workflow_exec,
+    "create-record": exec_create_record, "notification": exec_notification,
+    "workflow-exec": exec_workflow_exec,
     "knowledge-retrieval": exec_knowledge_retrieval, "mcp-call": exec_mcp_call,
 }
 
@@ -387,10 +421,11 @@ class Ctx:
         self.run = run
         self.run_input = run.input or {}
         self.outputs = outputs
+        self.current_node_run_id: str | None = None  # SDD A-07：调用记录关联节点运行
 
     def call(self, kind, target, req, resp, latency, tokens):
         from .models import CallRecord
-        self.db.add(CallRecord(node_run_id=None, kind=kind, target_id=str(target),
+        self.db.add(CallRecord(node_run_id=self.current_node_run_id, kind=kind, target_id=str(target),
                                request={"summary": str(req)[:1000]}, response={"summary": str(resp)[:1000]},
                                status="success", latency_ms=latency, token_usage=tokens or {}))
         self.db.commit()
@@ -419,8 +454,15 @@ def execute_run(run_id: str, call_chain: list[str] | None = None) -> None:
             emit(db, run_id, "workflow_failed", payload={"error": "workflow depth limit exceeded"})
             return
         chain.append(run.workflow_id)
-        wf = db.get(Workflow, run.workflow_id)
-        defn = WorkflowDefinition.model_validate(wf.draft_definition)
+        # SDD A-01：运行认版本——有 workflow_version_id 时执行不可变快照，否则草稿
+        if run.workflow_version_id:
+            ver = db.get(WorkflowVersion, run.workflow_version_id)
+            if not ver:
+                raise RunError(f"run references missing workflow version {run.workflow_version_id}")
+            defn = WorkflowDefinition.model_validate(ver.definition)
+        else:
+            wf = db.get(Workflow, run.workflow_id)
+            defn = WorkflowDefinition.model_validate(wf.draft_definition)
         nodes = [n.model_dump() for n in defn.graph.nodes]
         edges = [e.model_dump() for e in defn.graph.edges]
         by_id = {n["id"]: n for n in nodes}
@@ -454,6 +496,7 @@ def execute_run(run_id: str, call_chain: list[str] | None = None) -> None:
             db.add(nr)
             db.commit()
             emit(db, run_id, "node_started", nid, nr.id, {"nodeType": node["type"], "name": node["name"]})
+            ctx.current_node_run_id = nr.id  # SDD A-07：节点内调用记录关联到本节点运行
             try:
                 fn = EXECUTORS.get(node["type"]) or _agent_family_executor(node["type"])
                 if not fn:
@@ -589,16 +632,40 @@ def start_worker() -> threading.Event:
 
 
 def create_run(db: Session, workflow_id: str, trigger: str, run_input: dict,
-               idempotency_key: str | None = None, enqueue: bool = True) -> Run:
+               idempotency_key: str | None = None, enqueue: bool = True,
+               version_id: str | None = None, pinned_version_id: str | None = None) -> Run:
+    """创建运行（SDD A-01 运行认版本）。
+
+    解析顺序：
+    - 显式 version_id → 执行该不可变版本；
+    - trigger=schedule → pinned_version_id → 工作流 current_version_id → 两者皆无则
+      RunError("NO_PUBLISHED_VERSION")（定时任务不允许跑未发布草稿）;
+    - 其余（manual/test/agent…）→ 草稿。
+    """
     wf = db.get(Workflow, workflow_id)
     if not wf:
         raise RunError("workflow not found")
-    defn = WorkflowDefinition.model_validate(wf.draft_definition)
+    chosen: WorkflowVersion | None = None
+    if version_id:
+        chosen = db.get(WorkflowVersion, version_id)
+        if not chosen or chosen.workflow_id != workflow_id:
+            raise RunError(f"version {version_id} not found for workflow {workflow_id}")
+    elif trigger == "schedule":
+        vid = pinned_version_id or wf.current_version_id
+        if not vid:
+            raise RunError("NO_PUBLISHED_VERSION：定时任务没有可运行的已发布版本，请先发布")
+        chosen = db.get(WorkflowVersion, vid)
+        if not chosen:
+            raise RunError(f"NO_PUBLISHED_VERSION：版本 {vid} 不存在")
+    raw = chosen.definition if chosen else wf.draft_definition
+    defn = WorkflowDefinition.model_validate(raw)
     rep = validate(defn)
     if not rep.ok:
         raise RunError("validation failed: " + "; ".join(i.message for i in rep.issues[:3]))
     run = Run(workflow_id=workflow_id, trigger=trigger, status="queued", input=run_input or {},
-              idempotency_key=idempotency_key)
+              idempotency_key=idempotency_key,
+              workflow_version_id=chosen.id if chosen else None,
+              definition_source="version" if chosen else "draft")
     db.add(run)
     db.commit()
     if enqueue:

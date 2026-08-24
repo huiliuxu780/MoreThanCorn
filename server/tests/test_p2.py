@@ -17,6 +17,8 @@ def _wf():
 
 def test_schedule_next_run_computed_and_tick_fires():
     wid = _wf()
+    # SDD A-01：定时任务只运行已发布版本——先发布再挂调度
+    assert client.post(f"/api/workflows/{wid}/publish").status_code == 201
     r = client.post("/api/schedules", json={"workflowId": wid, "cron": "* * * * *",
                                             "timezone": "Asia/Shanghai", "enabled": False})
     assert r.status_code == 201

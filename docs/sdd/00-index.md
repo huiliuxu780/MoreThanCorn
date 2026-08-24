@@ -109,6 +109,7 @@ HTTP 状态与业务状态一致（400/409/422 不再返回 200）；保留现�
 - **D-2 单一 LLM 适配器**：B 阶段把 `runner._call_model` 与 `agent_runtime._chat_completion` 合并为单一模型调用模块（鉴权解析、mock 回落、流式/非流式唯一入口），此后禁止新增并行 LLM 调用路径。
 - **D-3 单一前端 API 层**：所有页面经 `wf-api.ts`/`resource-api.ts` 访问后端；A-16 收编现存裸 fetch，此后禁止页面内新增裸 fetch。
 - **D-4 运行树**：B 阶段为 `Run` 增加 `parent_run_id`；嵌套调用（成员 Agent、子工作流）必须挂载到父运行。顶层列表默认只显示 `parent_run_id IS NULL`。
+- **D-5 容量与运行时底座决策点**：当前为单进程单 worker 原型。当**日 run 持续 ≥10 万或峰值 ≥50/s** 时触发容量加固：① worker 池（SKIP LOCKED 已支持多 worker，部署形态变化）② LLM I/O 并发化（线程池/asyncio）③ SSE 由盲轮询改 NOTIFY/Redis 唤醒 ④ run_event 按月分区 + 留存 TTL ⑤ emit 批量/预分配 sequence。若进一步要求**运行中崩溃精确续跑或多机分布式调度**，届时评估引入 Temporal 类持久化底座作为 worker 基座（运行语义与事件协议保持不变）。该评估不提前进行。
 
 ### 5.5 已登记的有意偏差（验收时不视为遗漏）
 | 偏差 | 说明 | 复核时点 |
