@@ -5,9 +5,12 @@ import { Pagination } from "@/components/app/pagination"
 import { pagedApi } from "@/services/wf-api"
 import { toast } from "sonner"
 import { useNavigate } from "react-router-dom"
-import { ChevronDown, Plus, Search , Trash2 } from "lucide-react"
+import { ChevronDown, MoreHorizontal, Plus, Search } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Dialog,
   DialogContent,
@@ -16,9 +19,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { ConfirmDeleteDialog } from "@/components/resources/resource-dialogs"
 import { WF_BASE } from "@/services/wf-api"
 
 export const AVATARS = Array.from({ length: 20 }, (_, i) => `/avatars/avatar-${i}.png`)
+
+/** 头像回落：按 id 哈希稳定取图，保证列表/详情一致。 */
+export function avatarFor(id: string, avatar?: string | null) {
+  return avatar ?? AVATARS[id.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % AVATARS.length]
+}
 
 const INK2 = "#5A6472"
 const INK3 = "#B9C2CF"
@@ -43,6 +52,14 @@ export default function WfAgentsListPage() {
   const [name, setName] = useState("")
   const [atype, setAtype] = useState("dialogue")
   const [creating, setCreating] = useState(false)
+  const [delTarget, setDelTarget] = useState<AgentRow | null>(null)
+
+  const confirmDelete = async () => {
+    if (!delTarget) return
+    const r = await fetch(`${WF_BASE}/api/agents/${delTarget.id}`, { method: "DELETE" })
+    if (r.ok) { toast.success(`已删除「${delTarget.name}」`); setDelTarget(null); load() }
+    else { setDelTarget(null); toast.error(((await r.json().catch(() => null)) as { detail?: string })?.detail ?? "删除失败") }
+  }
 
   const load = () => {
     setLoading(true)
@@ -87,7 +104,7 @@ export default function WfAgentsListPage() {
 
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filtered.map((w, i) => (
+          {filtered.map((w) => (
           <div
             key={w.id}
             role="button"
@@ -97,24 +114,29 @@ export default function WfAgentsListPage() {
             onClick={() => navigate(`/config/agents/${w.id}`)}
           >
             <div className="flex items-start gap-3">
-              <img src={w.avatar ?? AVATARS[i % AVATARS.length]} alt={w.name} className="size-14 shrink-0 rounded-lg object-cover" />
-              <div className="min-w-0">
+              <img src={avatarFor(w.id, w.avatar)} alt={w.name} className="size-14 shrink-0 rounded-lg object-cover" />
+              <div className="min-w-0 flex-1">
                 <div className="truncate text-[15px] font-semibold" style={{ color: "#1F2329" }}>{w.name}</div>
                 <span className="mt-1 inline-block rounded bg-neutral-100 px-1.5 py-0.5 text-[11px]" style={{ color: INK2 }}>{w.typeLabel}</span>
               </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="rounded p-1 opacity-0 transition-opacity hover:bg-neutral-100 group-hover:opacity-100"
+                    onClick={(e) => e.stopPropagation()}
+                  ><MoreHorizontal className="size-3.5 text-neutral-400" /></button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuItem onClick={() => navigate(`/config/agents/${w.id}`)}>查看详情</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate(`/config/agents/${w.id}`)}>编辑</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="text-destructive" onClick={() => setDelTarget(w)}>删除</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
             <p className="line-clamp-2 pt-3 text-xs leading-5" style={{ color: INK2 }}>{w.description || "\u00A0"}</p>
             <div className="mt-auto flex items-center justify-between pt-4 text-[11px]">
               <span style={{ color: INK3 }}>更新时间： {new Date(w.updatedAt).toLocaleDateString("zh-CN")}</span>
-              <button
-                className="rounded p-1 opacity-0 transition-opacity hover:bg-neutral-100 group-hover:opacity-100"
-                onClick={async (e) => {
-                  e.stopPropagation()
-                  if (!window.confirm(`删除 Agent「${w.name}」？`)) return
-                  const r = await fetch(`${WF_BASE}/api/agents/${w.id}`, { method: "DELETE" })
-                  if (r.ok) { toast.success("已删除"); load() } else toast.error((await r.json()).detail ?? "删除失败")
-                }}
-              ><Trash2 className="size-3.5 text-neutral-400" /></button>
               <span className="rounded px-1.5 py-0.5" style={w.status === "published" ? { background: "#F5F6FA", color: INK3 } : { background: "#FFF4EA", color: ORANGE }}>
                 {w.status === "published" ? "已发布" : "未发布"}
               </span>
@@ -148,6 +170,8 @@ export default function WfAgentsListPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDeleteDialog open={!!delTarget} name={delTarget?.name ?? ""} onConfirm={confirmDelete} onClose={() => setDelTarget(null)} />
     </div>
   )
 }

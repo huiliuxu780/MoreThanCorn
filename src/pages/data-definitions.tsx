@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { FilterBar, SearchField } from "@/components/app/filters"
 import { EmptyState, TableSkeleton } from "@/components/app/list-state"
 import { PageContainer, PageHeader } from "@/components/app/page"
+import { Pagination } from "@/components/app/pagination"
 import { StatusBadge } from "@/components/app/status-badge"
 import { TableFrame } from "@/components/app/table-frame"
 import { Button } from "@/components/ui/button"
@@ -24,17 +25,20 @@ export default function DataDefinitionsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [assetFilter, setAssetFilter] = useState("")
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
   const [createOpen, setCreateOpen] = useState(false)
   const [form, setForm] = useState({ name: "", assetId: "" })
 
   const load = () => {
     setLoading(true)
-    defApi.list({ assetId: assetFilter, search })
-      .then((r) => setItems(r.items))
+    defApi.list({ assetId: assetFilter, search, page, pageSize: 20 })
+      .then((r) => { setItems(r.items); setTotal(r.total) })
       .catch(() => setItems([]))
       .finally(() => setLoading(false))
   }
-  useEffect(() => { load() }, [assetFilter, search])
+  useEffect(() => { load() }, [assetFilter, search, page])
+  useEffect(() => { setPage(1) }, [search, assetFilter])
   useEffect(() => {
     resApi.list("asset", { pageSize: 50 }).then((r) => setAssets(r.items.map((a) => ({ id: a.id, name: a.name })))).catch(() => undefined)
   }, [])
@@ -83,6 +87,8 @@ export default function DataDefinitionsPage() {
           </Table>
         </TableFrame>
       )}
+
+      <Pagination page={page} pageSize={20} total={total} onPageChange={setPage} onPageSizeChange={() => undefined} />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>

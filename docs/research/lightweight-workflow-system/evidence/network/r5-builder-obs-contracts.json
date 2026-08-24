@@ -1,0 +1,30 @@
+[
+ {
+  "m": "POST",
+  "u": "https://config.quickservice.lydaas.com/api/agent_store/PlatformSignRecordAbilityService_isSigned",
+  "s": 200,
+  "post": "",
+  "body": ""
+ },
+ {
+  "m": "GET",
+  "u": "https://img.alicdn.com/imgextra/i3/O1CN015AuV701aICWdB5GQ9_!!6000000003306-2-tps-3756-380.png",
+  "s": 200,
+  "post": "",
+  "body": ""
+ },
+ {
+  "m": "POST",
+  "u": "https://config.quickservice.lydaas.com/api/observation/dashboard",
+  "s": 200,
+  "post": "{\"agentId\":\"5e5de82c-4282-4224-8dd9-26200507f619\",\"startTime\":\"2026-08-22T15:58:09.003Z\",\"endTime\":\"2026-08-23T15:58:09.004Z\",\"viewMode\":\"BASELINE\",\"granularity\":\"HOUR\"}",
+  "body": ""
+ },
+ {
+  "m": "GET",
+  "u": "https://agentone-front.oss-cn-zhangjiakou.aliyuncs.com/video/20260409/output_4324_transparent.webp",
+  "s": 200,
+  "post": "",
+  "body": ""
+ }
+]

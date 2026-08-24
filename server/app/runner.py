@@ -366,6 +366,19 @@ EXECUTORS = {
 }
 
 
+def _agent_family_executor(type_key: str):
+    """专家组画布节点族（05 设计）：Agent/Agent选择/Agent执行 + 产品别名映射。"""
+    from . import agent_runtime as ar
+    return {
+        "agent": ar.exec_agent_node,
+        "agent-select": ar.exec_agent_select,
+        "agent-exec": ar.exec_agent_exec,
+        "decision-class": exec_condition,
+        "query-rewrite": exec_transform,
+        "code-write": exec_transform,
+    }.get(type_key)
+
+
 class Ctx:
     call_chain: list[str] = []
 
@@ -442,7 +455,7 @@ def execute_run(run_id: str, call_chain: list[str] | None = None) -> None:
             db.commit()
             emit(db, run_id, "node_started", nid, nr.id, {"nodeType": node["type"], "name": node["name"]})
             try:
-                fn = EXECUTORS.get(node["type"])
+                fn = EXECUTORS.get(node["type"]) or _agent_family_executor(node["type"])
                 if not fn:
                     raise RunError(f"no executor for {node['type']}")
                 out = fn(node, ctx)

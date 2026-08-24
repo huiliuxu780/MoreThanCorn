@@ -126,11 +126,11 @@ export default function ResDetailPage() {
       </div>
 
       <Tabs defaultValue="overview">
-        <TabsList className="h-auto rounded-none border-b bg-transparent p-0">
-          <TabsTrigger value="overview" className="rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none">Overview</TabsTrigger>
-          <TabsTrigger value="config" className="rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none">Configuration</TabsTrigger>
-          <TabsTrigger value="usage" className="rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none">Usage（{refs.length}）</TabsTrigger>
-          <TabsTrigger value="versions" className="rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none">{versioned ? "Versions" : "变更记录"}</TabsTrigger>
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="config">Configuration</TabsTrigger>
+          <TabsTrigger value="usage">Usage（{refs.length}）</TabsTrigger>
+          <TabsTrigger value="versions">{versioned ? "Versions" : "变更记录"}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 pt-4">

@@ -1,0 +1,30 @@
+[
+ {
+  "m": "POST",
+  "u": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+  "s": 200,
+  "post": "{\"code\":\"5e5de82c-4282-4224-8dd9-26200507f619\",\"dataType\":\"agent\",\"wsId\":\"eXMUNkuQ\"}",
+  "body": ""
+ },
+ {
+  "m": "POST",
+  "u": "https://config.quickservice.lydaas.com/api/agent_store/requiredLock",
+  "s": 200,
+  "post": "{\"code\":\"5e5de82c-4282-4224-8dd9-26200507f619\",\"dataType\":\"agent\",\"wsId\":\"eXMUNkuQ\"}",
+  "body": ""
+ },
+ {
+  "m": "GET",
+  "u": "https://config.quickservice.lydaas.com/ui/agent_store/blank/AgentBuilder?agentId=5e5de82c-4282-4224-8dd9-26200507f619",
+  "s": null,
+  "post": "",
+  "body": ""
+ },
+ {
+  "m": "POST",
+  "u": "https://config.quickservice.lydaas.com/api/agent_store/closeLock",
+  "s": null,
+  "post": "{\"code\":\"5e5de82c-4282-4224-8dd9-26200507f619\",\"dataType\":\"agent\",\"wsId\":\"eXMUNkuQ\"}",
+  "body": ""
+ }
+]

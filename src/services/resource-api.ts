@@ -95,10 +95,12 @@ export interface DefinitionDTO {
 }
 
 export const defApi = {
-  list: (p: { assetId?: string; search?: string } = {}) => {
+  list: (p: { assetId?: string; search?: string; page?: number; pageSize?: number } = {}) => {
     const q = new URLSearchParams()
     if (p.assetId) q.set("assetId", p.assetId)
     if (p.search) q.set("search", p.search)
+    if (p.page) q.set("page", String(p.page))
+    if (p.pageSize) q.set("pageSize", String(p.pageSize))
     return req<Paged<DefinitionDTO>>(`/api/data-definitions?${q}`)
   },
   get: (id: string) => req<DefinitionDTO>(`/api/data-definitions/${id}`),

@@ -470,7 +470,8 @@ def list_eval_samples(workflowId: str = "", db: Session = Depends(get_db)):
 def create_eval_sample(payload: dict, db: Session = Depends(get_db)):
     from ..models import EvalSample
     s = EvalSample(workflow_id=payload["workflowId"], name=payload["name"],
-                   input=payload.get("input", {}), expected=payload.get("expected"))
+                   input=payload.get("input", {}), expected=payload.get("expected"),
+                   data_asset_id=payload.get("dataAssetId"))
     db.add(s)
     db.commit()
     return {"id": s.id, "name": s.name}

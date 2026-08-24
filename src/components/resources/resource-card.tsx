@@ -1,4 +1,4 @@
-import { BookOpen, Cpu, Database, Layers, MoreHorizontal, Server, Workflow, Wrench } from "lucide-react"
+import { BookOpen, Bot, Cpu, Database, Layers, MoreHorizontal, Server, Workflow, Wrench } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -10,16 +10,18 @@ import type { ResourceDTO } from "@/services/resource-api"
 
 export const TYPE_ICON = {
   model: Cpu, tool: Wrench, mcp: Server, knowledge: BookOpen,
-  datasource: Database, asset: Layers,
+  datasource: Database, asset: Layers, workflow: Workflow, agent: Bot,
 } as const
 
 export const TYPE_LABEL: Record<string, string> = {
   model: "Model", tool: "Tool", mcp: "MCP Server", knowledge: "Knowledge Source",
-  datasource: "Datasource", asset: "Data Asset",
+  datasource: "Datasource", asset: "Data Asset", workflow: "Workflow", agent: "Agent",
 }
 
-/** 生命周期 × 健康度双轨徽章：健康异常优先展示。 */
+/** 生命周期 × 健康度双轨徽章：健康异常优先；metadata.lifecycleLabel 可覆盖文案（workflow/agent 的 已发布/草稿）。 */
 export function ResourceStatusBadge({ dto }: { dto: ResourceDTO }) {
+  const label = dto.metadata?.lifecycleLabel as string | undefined
+  if (label) return <Badge variant={(dto.metadata?.lifecycleTone as "success" | "warning" | "neutral") ?? "neutral"}>{label}</Badge>
   if (dto.status === "disabled") return <Badge variant="neutral" className="b-dot">Disabled</Badge>
   if (dto.health === "error") return <Badge variant="danger">Error</Badge>
   if (dto.health === "degraded") return <Badge variant="warning">Degraded</Badge>
@@ -54,6 +56,13 @@ function MetaBadges({ dto }: { dto: ResourceDTO }) {
       items.push({ text: String(m.datasource ?? "内联数据") })
       if (m.recordMeaning) items.push({ text: String(m.recordMeaning) })
       break
+    case "workflow":
+      if (m.currentVersion) items.push({ text: `v${m.currentVersion}`, outline: true })
+      items.push({ text: `${m.nodeCount ?? 0} 节点` })
+      break
+    case "agent":
+      if (m.typeLabel) items.push({ text: String(m.typeLabel) })
+      break
   }
   return (
     <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
@@ -68,14 +77,19 @@ function MetaBadges({ dto }: { dto: ResourceDTO }) {
 
 export type ResourceAction = "edit" | "test" | "toggle" | "delete"
 
-export function ResourceCard({ dto, highlighted, onOpen, onAction }: {
+const ACTION_LABEL: Record<ResourceAction, string> = { edit: "编辑", test: "测试", toggle: "停用", delete: "删除" }
+
+export function ResourceCard({ dto, highlighted, actions, onOpen, onAction }: {
   dto: ResourceDTO
   highlighted?: boolean
+  /** 菜单动作裁剪，默认全部（按类型自动隐藏不适用项见调用方） */
+  actions?: ResourceAction[]
   onOpen: () => void
   onAction: (action: ResourceAction) => void
 }) {
   const Icon = TYPE_ICON[dto.type as keyof typeof TYPE_ICON] ?? Cpu
   const disabled = dto.status === "disabled"
+  const menuActions = actions ?? (["edit", "test", "toggle", "delete"] as ResourceAction[])
   return (
     <div
       className={cn(
@@ -97,6 +111,8 @@ export function ResourceCard({ dto, highlighted, onOpen, onAction }: {
             {dto.type === "model" && dto.metadata.provider ? ` · ${dto.metadata.provider}` : ""}
             {dto.type === "tool" ? ` · ${dto.metadata.kind}` : ""}
             {dto.type === "mcp" ? ` · ${dto.metadata.transport}` : ""}
+            {dto.type === "workflow" && dto.metadata.lifecycleLabel ? ` · ${dto.metadata.lifecycleLabel}` : ""}
+            {dto.type === "agent" && dto.metadata.typeLabel ? ` · ${dto.metadata.typeLabel}` : ""}
           </div>
         </div>
         <ResourceStatusBadge dto={dto} />
@@ -109,11 +125,11 @@ export function ResourceCard({ dto, highlighted, onOpen, onAction }: {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
             <DropdownMenuItem onClick={onOpen}>查看详情</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onAction("edit")}>编辑</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onAction("test")}>测试</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => onAction("toggle")}>{disabled ? "启用" : "停用"}</DropdownMenuItem>
-            <DropdownMenuItem className="text-destructive" onClick={() => onAction("delete")}>删除</DropdownMenuItem>
+            {menuActions.includes("edit") && <DropdownMenuItem onClick={() => onAction("edit")}>{ACTION_LABEL.edit}</DropdownMenuItem>}
+            {menuActions.includes("test") && <DropdownMenuItem onClick={() => onAction("test")}>{ACTION_LABEL.test}</DropdownMenuItem>}
+            {(menuActions.includes("test") || menuActions.includes("toggle")) && <DropdownMenuSeparator />}
+            {menuActions.includes("toggle") && <DropdownMenuItem onClick={() => onAction("toggle")}>{disabled ? "启用" : ACTION_LABEL.toggle}</DropdownMenuItem>}
+            {menuActions.includes("delete") && <DropdownMenuItem className="text-destructive" onClick={() => onAction("delete")}>{ACTION_LABEL.delete}</DropdownMenuItem>}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

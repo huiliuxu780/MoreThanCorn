@@ -53,17 +53,22 @@ def create_workflow(req: CreateWorkflowRequest, db: Session = Depends(get_db)):
 @router.get("")
 def list_workflows(search: str = "", page: int = 1, pageSize: int = 20,
                    db: Session = Depends(get_db)):
+    from ..models import Agent, WorkflowVersion
     q = db.query(Workflow).order_by(Workflow.updated_at.desc())
     if search:
         q = q.filter(Workflow.name.ilike(f"%{search}%"))
     total = q.count()
     items = q.offset((page - 1) * pageSize).limit(pageSize).all()
-    return {
-        "items": [WorkflowSummary(
+    out = []
+    for w in items:
+        version_count = db.query(WorkflowVersion).filter_by(workflow_id=w.id).count()
+        node_count = len((w.draft_definition or {}).get("graph", {}).get("nodes", []))
+        agent_refs = db.query(Agent).filter_by(workflow_id=w.id).count()
+        out.append({**WorkflowSummary(
             id=w.id, name=w.name, status=w.status, currentVersion=None,
-            updatedAt=w.updated_at.isoformat()).model_dump() for w in items],
-        "total": total, "page": page, "pageSize": pageSize,
-    }
+            updatedAt=w.updated_at.isoformat()).model_dump(),
+            "versionCount": version_count, "nodeCount": node_count, "agentRefCount": agent_refs})
+    return {"items": out, "total": total, "page": page, "pageSize": pageSize}
 
 
 @router.get("/{wf_id}")
@@ -121,6 +126,10 @@ def publish_workflow(wf_id: str, note: str = "", db: Session = Depends(get_db)):
     db.commit()
     db.refresh(ver)
     wf.current_version_id = ver.id
+    # 发布同步（05 设计）：绑定该工作流的 Agent 状态同步为 published
+    from ..models import Agent
+    for a in db.query(Agent).filter_by(workflow_id=wf_id).all():
+        a.status = "published"
     db.commit()
     return {"versionId": ver.id, "versionNo": ver.version_no}
 

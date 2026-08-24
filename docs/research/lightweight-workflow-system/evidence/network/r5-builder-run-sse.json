@@ -1,0 +1,12 @@
+{
+ "reqs": [
+  {
+   "m": "POST",
+   "u": "https://config.quickservice.lydaas.com/v1/chat",
+   "s": null,
+   "post": "{\"query\":\"你好，介绍下你能做什么\",\"agentInstanceId\":\"5e5de82c-4282-4224-8dd9-26200507f619\",\"bizInvokeFrom\":\"ROBOT_TEST\",\"deep_plan\":false,\"features\":null,\"dataList\":[{\"conversationId\":null,\"chatId\":null,\"chatWindowId\":\"sdVx4oqhFs\",\"ext\":{\"engineCode\":\"deepseek-r1-distill-qwen-14b\",\"modelId\":\"1347\",\"modelCode\":",
+   "body": ""
+  }
+ ],
+ "events": []
+}

@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   ResourceCard, type ResourceAction,
 } from "@/components/resources/resource-card"
@@ -161,30 +161,28 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
       </FilterBar>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="h-auto rounded-none border-b bg-transparent p-0">
+        <TabsList>
           {tabs.map((t) => (
-            <TabsTrigger key={t.type} value={t.type}
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none">
-              {t.label}
-            </TabsTrigger>
+            <TabsTrigger key={t.type} value={t.type}>{t.label}</TabsTrigger>
           ))}
         </TabsList>
+        <TabsContent value={tab}>
+          {loading ? (
+            <CardGridSkeleton count={8} />
+          ) : data.length === 0 ? (
+            filtered ? <FilteredEmptyState onClear={() => { setSearchInput(""); setStatus(""); setHealth(""); setDsType("") }} />
+              : <EmptyState title={`暂无${tabs.find((t) => t.type === tab)?.label ?? ""}`} description="点击右上角「创建资源」开始" />
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {data.map((dto) => (
+                <ResourceCard key={dto.id} dto={dto} highlighted={dto.id === highlight}
+                  onOpen={() => navigate(`/config/${domain === "ai" ? "ai" : "data"}-resources/${dto.type}/${dto.id}`)}
+                  onAction={(a) => onAction(dto, a)} />
+              ))}
+            </div>
+          )}
+        </TabsContent>
       </Tabs>
-
-      {loading ? (
-        <CardGridSkeleton count={8} />
-      ) : data.length === 0 ? (
-        filtered ? <FilteredEmptyState onClear={() => { setSearchInput(""); setStatus(""); setHealth(""); setDsType("") }} />
-          : <EmptyState title={`暂无${tabs.find((t) => t.type === tab)?.label ?? ""}`} description="点击右上角「创建资源」开始" />
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {data.map((dto) => (
-            <ResourceCard key={dto.id} dto={dto} highlighted={dto.id === highlight}
-              onOpen={() => navigate(`/config/${domain === "ai" ? "ai" : "data"}-resources/${dto.type}/${dto.id}`)}
-              onAction={(a) => onAction(dto, a)} />
-          ))}
-        </div>
-      )}
 
       <Pagination page={page} pageSize={12} total={total} onPageChange={setPage} onPageSizeChange={() => undefined} />
 

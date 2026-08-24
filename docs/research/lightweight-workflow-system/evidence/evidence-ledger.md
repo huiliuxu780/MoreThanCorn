@@ -91,3 +91,9 @@
 ## 6. 未验证清单（Unverified）
 
 运行中画布状态；节点级 Run 日志 UI；版本回滚；"#"变量弹层；变量级联子级；MCP Tab 内容；单节点运行反馈；quickservice 全部请求 method/body/事件协议；Sim 云端依赖细节（待 Agent B）。
+
+## 7. Round-5（2026-08-23，三型 Agent 编辑器）
+
+新增 Observed：专家组抽屉全字段树 + save_agent_config 契约 + flow_saveOrUpdate(base64+gzip 图) + flow_detail + /api/observation/dashboard + 专家组 palette 7 型 + 自主规划无画布（表单+五类挂载+预览调试多模型对比+更新发布）+ 锁提示模态 + 挂载「已失效」态。详见 `17-round5-agent-editors-study.md`、`evidence/network/r5-*.json`、`evidence/screenshots/r5-*.png`。
+仍 Unverified：自主规划预览 SSE 事件字典、专家组试运行 SSE（Inferred 同 chat SSE）。专家组三节点抽屉已于 Round-5b 经 CUA 升级为 Observed（见 17 §6）。
+调研副作用：专家组画布曾残留 6 个空壳测试节点，用户刷新后画布已恢复 2 节点（干净）。

@@ -92,6 +92,58 @@ V1_NODE_DEFINITIONS: list[dict] = [
         "io": {},
     },
     {
+        "type_key": "agent", "family": "Agent", "label": "Agent", "icon": "bot", "accent": "#F97E2B",
+        "executor_key": "agent",
+        "schema": {
+            "type": "object",
+            "properties": {"agentCode": {"type": "string", "x-control": "agent-picker"}},
+            "required": ["agentCode"],
+        },
+        "io": {"outputs": ["content:string"]},
+    },
+    {
+        "type_key": "agent-select", "family": "Agent", "label": "Agent选择", "icon": "route", "accent": "#F97E2B",
+        "executor_key": "agent-select",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "x-control": "expression-editor"},
+                "primaryAgents": {"type": "array", "x-control": "agent-picker-multi"},
+                "fallbackAgent": {"type": "string", "x-control": "agent-picker"},
+            },
+            "required": [],
+        },
+        "io": {"outputs": ["agentCode:string", "agentName:string", "agentDesc:string"]},
+    },
+    {
+        "type_key": "agent-exec", "family": "Agent", "label": "Agent执行", "icon": "play", "accent": "#F97E2B",
+        "executor_key": "agent-exec",
+        "schema": {
+            "type": "object",
+            "properties": {"agentCode": {"type": "string", "x-control": "agent-picker"}},
+            "required": [],
+        },
+        "io": {"outputs": ["content:string"]},
+    },
+    {
+        "type_key": "decision-class", "family": "逻辑", "label": "决策分类", "icon": "branch", "accent": "#FF4C00",
+        "executor_key": "decision-class",
+        "schema": {"type": "object", "properties": {"branches": {"type": "array"}}},
+        "io": {"outputs": ["selected:string"]},
+    },
+    {
+        "type_key": "query-rewrite", "family": "数据", "label": "Query改写", "icon": "pen", "accent": "#7B61FF",
+        "executor_key": "query-rewrite",
+        "schema": {"type": "object", "properties": {"template": {"type": "string"}}},
+        "io": {"outputs": ["queryList:string"]},
+    },
+    {
+        "type_key": "code-write", "family": "代码", "label": "代码编写", "icon": "code", "accent": "#7B61FF",
+        "executor_key": "code-write",
+        "schema": {"type": "object", "properties": {"template": {"type": "string"}}},
+        "io": {"outputs": ["output:string"]},
+    },
+    {
         "type_key": "knowledge-retrieval", "family": "外部", "label": "知识检索", "icon": "book-open", "accent": "#0E9F6E",
         "executor_key": "knowledge_retrieval",
         "schema": {

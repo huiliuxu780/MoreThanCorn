@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { WF_BASE } from "@/services/wf-api"
 import WfDesignerPage from "./wf-designer"
-import { AVATARS } from "./wf-agents-list"
+import { avatarFor } from "./wf-agents-list"
 
 interface AgentInfo {
   id: string; name: string; type: string; typeLabel: string; status: string;
@@ -37,13 +37,14 @@ function AddInline({ onAdd, placeholder = "名称" }: { onAdd: (v: string) => vo
   )
 }
 
-function MountList({ title, items, onChange }: { title: string; items: string[]; onChange: (v: string[]) => void }) {
+function MountList({ title, items, onChange, invalid = [] }: { title: string; items: string[]; onChange: (v: string[]) => void; invalid?: string[] }) {
   return (
     <div className="space-y-1">
       <div className="text-xs" style={{ color: INK2 }}>{title}</div>
       {items.map((v, i) => (
         <div key={i} className="flex items-center gap-1 text-xs">
           <span className="flex-1 truncate rounded border px-1 py-0.5" style={{ borderColor: CARD }}>{v}</span>
+          {invalid.includes(v) && <span className="rounded bg-neutral-100 px-1 text-[10px]" style={{ color: "#F97E2B" }}>已失效</span>}
           <button onClick={() => onChange(items.filter((_, j) => j !== i))}><span className="text-neutral-400">×</span></button>
         </div>
       ))}
@@ -52,21 +53,75 @@ function MountList({ title, items, onChange }: { title: string; items: string[];
   )
 }
 
+/** 运行历史（05 设计：运行观测）。 */
+function RunsHistory({ agentId }: { agentId: string }) {
+  const [runs, setRuns] = useState<{ runId: string; status: string; trigger: string; startedAt: string | null }[]>([])
+  useEffect(() => {
+    api<{ items: typeof runs }>(`/api/agents/${agentId}/runs`).then((r) => setRuns(r.items)).catch(() => undefined)
+  }, [agentId])
+  if (runs.length === 0) return null
+  return (
+    <div className="space-y-1">
+      <div className="text-xs" style={{ color: INK2 }}>运行历史</div>
+      {runs.slice(0, 5).map((r) => (
+        <div key={r.runId} className="flex items-center gap-2 text-[11px]" style={{ color: INK2 }}>
+          <span className="rounded px-1" style={{ background: r.status === "succeeded" ? "#E8F7EE" : "#FDECEC", color: r.status === "succeeded" ? "#188F00" : "#F56C6C" }}>{r.status}</span>
+          <span>{r.trigger}</span>
+          <span className="flex-1 truncate">{r.startedAt ? r.startedAt.replace("T", " ").slice(0, 16) : "-"}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** 真运行（05 设计）：POST run → 拉事件渲染工具调用与终答。 */
+async function runAgentOnce(agentId: string, query: string): Promise<string> {
+  const { runId } = await api<{ runId: string }>(`/api/agents/${agentId}/run`, {
+    method: "POST", body: JSON.stringify({ input: { userQuery: query }, trigger: "test" }),
+  })
+  const d = await api<{ status: string; output?: { content?: string }; error?: { message?: string }; events: { type: string; payload: Record<string, any> }[] }>(`/api/agents/${agentId}/runs/${runId}`)
+  const steps = d.events
+    .filter((e) => e.type === "tool_call" || e.type === "workflow_started" || e.type === "agent_started")
+    .map((e) => (e.type === "tool_call" ? `🔧 ${e.payload.name ?? ""}` : `▸ ${e.type}`))
+  if (d.status !== "succeeded") return [...steps, `❌ ${d.error?.message ?? d.status}`].join("\n")
+  return [...steps, d.output?.content ?? ""].filter(Boolean).join("\n")
+}
+
 /* ---------- 自主规划 ---------- */
 function AutonomousEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: AgentInfo) => void }) {
   const [cfg, setCfg] = useState(agent.config ?? {})
   const [models, setModels] = useState<{ modelKey: string }[]>([])
   const [chat, setChat] = useState<{ role: "user" | "ai"; text: string }[]>([])
   const [q, setQ] = useState("")
-  useEffect(() => { api<{ modelKey: string }[]>("/api/registry/models").then(setModels).catch(() => undefined) }, [])
+  const [running, setRunning] = useState(false)
+  const [invalid, setInvalid] = useState<string[]>([])
+  useEffect(() => {
+    api<{ modelKey: string }[] | { items: { modelKey: string }[] }>("/api/registry/models")
+      .then((r) => setModels(Array.isArray(r) ? r : (r.items ?? [])))
+      .catch(() => undefined)
+  }, [])
+  useEffect(() => {
+    api<{ items: { kind: string; name: string; valid: boolean }[] }>(`/api/agents/${agent.id}/mounts-health`)
+      .then((r) => setInvalid(r.items.filter((i) => !i.valid).map((i) => i.name)))
+      .catch(() => undefined)
+  }, [agent.id, cfg])
   const save = async () => {
     const r = await api<AgentInfo>(`/api/agents/${agent.id}`, { method: "PUT", body: JSON.stringify({ config: cfg }) })
     toast.success("Agent 配置已保存"); onSaved({ ...agent, config: r.config })
   }
-  const sendChat = () => {
-    if (!q.trim()) return
-    setChat((c) => [...c, { role: "user", text: q }, { role: "ai", text: `[mock:${cfg.modelRef?.modelId || "model"}] 已收到：${q}` }])
-    setQ("")
+  const sendChat = async () => {
+    if (!q.trim() || running) return
+    const query = q
+    setChat((c) => [...c, { role: "user", text: query }])
+    setQ(""); setRunning(true)
+    try {
+      const text = await runAgentOnce(agent.id, query)
+      setChat((c) => [...c, { role: "ai", text }])
+    } catch (e) {
+      setChat((c) => [...c, { role: "ai", text: `❌ ${(e as Error).message}` }])
+    } finally {
+      setRunning(false)
+    }
   }
   const tpl = (t: string) => setCfg({ ...cfg, rolePrompt: `${cfg.rolePrompt ?? ""}\n${t}` })
   return (
@@ -90,11 +145,12 @@ function AutonomousEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: A
           </select>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <MountList title="技能" items={cfg.skills ?? []} onChange={(v) => setCfg({ ...cfg, skills: v })} />
-          <MountList title="插件" items={cfg.tools ?? []} onChange={(v) => setCfg({ ...cfg, tools: v })} />
-          <MountList title="工作流" items={cfg.workflows ?? []} onChange={(v) => setCfg({ ...cfg, workflows: v })} />
-          <MountList title="知识" items={cfg.knowledges ?? []} onChange={(v) => setCfg({ ...cfg, knowledges: v })} />
-          <MountList title="记忆变量" items={cfg.memories ?? []} onChange={(v) => setCfg({ ...cfg, memories: v })} />
+          <MountList title="技能" items={cfg.skills ?? []} invalid={invalid} onChange={(v) => setCfg({ ...cfg, skills: v })} />
+          <MountList title="插件" items={cfg.tools ?? []} invalid={invalid} onChange={(v) => setCfg({ ...cfg, tools: v })} />
+          <MountList title="工作流" items={cfg.workflows ?? []} invalid={invalid} onChange={(v) => setCfg({ ...cfg, workflows: v })} />
+          <MountList title="知识" items={cfg.knowledges ?? []} invalid={invalid} onChange={(v) => setCfg({ ...cfg, knowledges: v })} />
+          <MountList title="记忆变量" items={cfg.memories ?? []} invalid={invalid} onChange={(v) => setCfg({ ...cfg, memories: v })} />
+          <RunsHistory agentId={agent.id} />
         </div>
         <Button size="sm" className="bg-black text-white hover:bg-neutral-800" onClick={save}>保存</Button>
       </div>
@@ -108,7 +164,9 @@ function AutonomousEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: A
         <div className="flex gap-1 p-3">
           <Input className="h-8 text-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder="说出你的问题吧"
             onKeyDown={(e) => e.key === "Enter" && sendChat()} />
-          <Button size="sm" className="h-8" style={{ background: "#3D6BFF" }} onClick={sendChat}><Send className="size-3" /></Button>
+          <Button size="sm" className="h-8" style={{ background: "#3D6BFF" }} disabled={running} onClick={sendChat}>
+            <Send className="size-3" />{running ? "运行中" : ""}
+          </Button>
         </div>
       </div>
     </div>
@@ -119,10 +177,22 @@ function AutonomousEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: A
 function ExpertGroupEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: AgentInfo) => void }) {
   const [cfg, setCfg] = useState(agent.config ?? {})
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([])
+  const [running, setRunning] = useState(false)
+  const [result, setResult] = useState("")
   useEffect(() => { api<{ id: string; name: string }[]>("/api/agents").then((l) => setAgents(l.filter((a) => a.id !== agent.id))).catch(() => undefined) }, [agent.id])
   const save = async () => {
     const r = await api<AgentInfo>(`/api/agents/${agent.id}`, { method: "PUT", body: JSON.stringify({ config: cfg }) })
     toast.success("专家组配置已保存"); onSaved({ ...agent, config: r.config })
+  }
+  const trialRun = async () => {
+    setRunning(true); setResult("")
+    try {
+      setResult(await runAgentOnce(agent.id, "试运行：请处理该会话"))
+    } catch (e) {
+      setResult(`❌ ${(e as Error).message}`)
+    } finally {
+      setRunning(false)
+    }
   }
   return (
     <div className="space-y-4 overflow-y-auto p-6">
@@ -141,7 +211,12 @@ function ExpertGroupEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
         <AddInline placeholder="成员名称" onAdd={(m) => setCfg({ ...cfg, routing: [...(cfg.routing ?? []), { member: m, when: "" }] })} />
       </div>
       <div className="text-[11px]" style={{ color: INK3 }}>可选成员：{agents.map((a) => a.name).join("、") || "—"}</div>
-      <Button size="sm" className="bg-black text-white hover:bg-neutral-800" onClick={save}>保存</Button>
+      <div className="flex items-center gap-2">
+        <Button size="sm" className="bg-black text-white hover:bg-neutral-800" onClick={save}>保存</Button>
+        <Button size="sm" variant="outline" disabled={running} onClick={trialRun}>{running ? "运行中…" : "试运行"}</Button>
+      </div>
+      {result && <pre className="whitespace-pre-wrap rounded border p-2 text-[11px]" style={{ borderColor: CARD, color: INK2 }}>{result}</pre>}
+      <RunsHistory agentId={agent.id} />
     </div>
   )
 }
@@ -158,7 +233,7 @@ export default function WfAgentEditorPage() {
   if (legacy) return <WfDesignerPage workflowId={agentId} />
   if (!agent) return <div className="p-8 text-sm" style={{ color: INK2 }}>加载中…</div>
   if (agent.type === "dialogue") {
-    const avatar = agent.avatar ?? AVATARS[agent.id.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % 20]
+    const avatar = avatarFor(agent.id, agent.avatar)
   return <div className="h-[calc(100dvh-3.5rem)] min-h-0"><WfDesignerPage workflowId={agent.workflowId ?? agentId} agentId={agent.id} agentMeta={{ name: agent.name, typeLabel: agent.typeLabel }} avatar={avatar} /></div>
   }
   return (

@@ -1,0 +1,59 @@
+6
+⌥
+code
+code
+新建Agent
+V1.0.1
+∨
+待发布
+自动保存于2026/8/23 23:00:24
+Agent搭建
+运行观测
+效果评测
+进化
+汇流
+保存
+发布 ▾
+开始
+输入
+userQuery Str.chatHistory Str.userId Str.conversationId Str.chatId Str.file Obj.reference Str.
+结束
+输出
+output Str.
+添加节点
+100%
+试运行
+Agent配置信息
+基本信息
+0/20
+对话体验
+自动续问
+闲聊兜底
+配置信息
+高级设置
+配置信息
+Agent 知识兜底
+高级配置
+添加知识
+添加知识文件，让Agent具备知识信息大脑
+专业词库
+添加词库
+暂未添加任何专业词库
+问答经验库
+添加经验库
+暂未添加任何问答经验库
+Agent 记忆
+添加记忆
+请先配置该Agent的记忆变量，然后在工作流中配置记忆变量节点来写入和读取记忆变量的值。
+Agent
+添加Agent
+支持添加多个Agent，通过画布进行Agent编排
+信息处理
+Agent
+Agent选择
+Agent执行
+决策分类
+Query改写
+条件判断
+代码编辑
+代码编写

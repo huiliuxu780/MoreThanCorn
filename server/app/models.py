@@ -181,7 +181,8 @@ class Run(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     workflow_version_id: Mapped[str | None] = mapped_column(ForeignKey("workflow_version.id", ondelete="SET NULL"), nullable=True, index=True)
     workflow_id: Mapped[str | None] = mapped_column(ForeignKey("workflow.id", ondelete="SET NULL"), nullable=True, index=True)
-    trigger: Mapped[str] = mapped_column(String(16), default="manual")  # manual|api|schedule|test
+    agent_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)  # Agent 运行层（05 设计）
+    trigger: Mapped[str] = mapped_column(String(16), default="manual")  # manual|api|schedule|test|agent|eval
     idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
     origin_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)

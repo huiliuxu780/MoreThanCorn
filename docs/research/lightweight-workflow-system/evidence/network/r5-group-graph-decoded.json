@@ -1,0 +1,773 @@
+{
+ "nodes": [
+  {
+   "data": {
+    "nodeName": "开始",
+    "nodeDetail": {
+     "output": [
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "userQuery",
+       "type": "String",
+       "required": false,
+       "desc": "用户输入的原始问句"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "chatHistory",
+       "type": "String",
+       "required": false,
+       "desc": "用户的历史对话"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "userId",
+       "type": "String",
+       "required": false,
+       "desc": "用户的唯一身份ID"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "conversationId",
+       "type": "String",
+       "required": false,
+       "desc": "会话一段时间内的对话ID"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "chatId",
+       "type": "String",
+       "required": false,
+       "desc": "问答的唯一标识"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "Object",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "file",
+       "children": [
+        {
+         "isSystem": true,
+         "referInfo": {
+          "textHtml": "",
+          "answerHtml": "",
+          "isRef": false,
+          "dataType": "String",
+          "jsonPath": "",
+          "simpleHtml": "",
+          "text": "",
+          "constantValue": ""
+         },
+         "code": "fileType",
+         "type": "String",
+         "required": false,
+         "desc": "上传文件类型"
+        },
+        {
+         "isSystem": true,
+         "referInfo": {
+          "textHtml": "",
+          "answerHtml": "",
+          "isRef": false,
+          "dataType": "String",
+          "jsonPath": "",
+          "simpleHtml": "",
+          "text": "",
+          "constantValue": ""
+         },
+         "code": "fileUrl",
+         "type": "String",
+         "required": false,
+         "desc": "上传文件地址"
+        },
+        {
+         "isSystem": true,
+         "referInfo": {
+          "textHtml": "",
+          "answerHtml": "",
+          "isRef": false,
+          "dataType": "String",
+          "jsonPath": "",
+          "simpleHtml": "",
+          "text": "",
+          "constantValue": ""
+         },
+         "code": "fileName",
+         "type": "String",
+         "required": false,
+         "desc": "上传文件名称"
+        }
+       ],
+       "type": "Object",
+       "required": false,
+       "desc": "文件上传对象"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "reference",
+       "type": "String",
+       "required": false,
+       "desc": "引用信息"
+      }
+     ],
+     "input": [
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "userQuery",
+       "type": "String",
+       "required": false,
+       "desc": "用户输入的原始问句"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "chatHistory",
+       "type": "String",
+       "required": false,
+       "desc": "用户的历史对话"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "userId",
+       "type": "String",
+       "required": false,
+       "desc": "用户的唯一身份ID"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "conversationId",
+       "type": "String",
+       "required": false,
+       "desc": "会话一段时间内的对话ID"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "chatId",
+       "type": "String",
+       "required": false,
+       "desc": "问答的唯一标识"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "Object",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "file",
+       "children": [
+        {
+         "isSystem": true,
+         "referInfo": {
+          "textHtml": "",
+          "answerHtml": "",
+          "isRef": false,
+          "dataType": "String",
+          "jsonPath": "",
+          "simpleHtml": "",
+          "text": "",
+          "constantValue": ""
+         },
+         "code": "fileType",
+         "type": "String",
+         "required": false,
+         "desc": "上传文件类型"
+        },
+        {
+         "isSystem": true,
+         "referInfo": {
+          "textHtml": "",
+          "answerHtml": "",
+          "isRef": false,
+          "dataType": "String",
+          "jsonPath": "",
+          "simpleHtml": "",
+          "text": "",
+          "constantValue": ""
+         },
+         "code": "fileUrl",
+         "type": "String",
+         "required": false,
+         "desc": "上传文件地址"
+        },
+        {
+         "isSystem": true,
+         "referInfo": {
+          "textHtml": "",
+          "answerHtml": "",
+          "isRef": false,
+          "dataType": "String",
+          "jsonPath": "",
+          "simpleHtml": "",
+          "text": "",
+          "constantValue": ""
+         },
+         "code": "fileName",
+         "type": "String",
+         "required": false,
+         "desc": "上传文件名称"
+        }
+       ],
+       "type": "Object",
+       "required": false,
+       "desc": "文件上传对象"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "reference",
+       "type": "String",
+       "required": false,
+       "desc": "引用信息"
+      }
+     ]
+    },
+    "nodeType": "start",
+    "nodeId": "743e5677-c9bd-43de-849e-4cf0fc88d270",
+    "runData": {}
+   },
+   "width": 300,
+   "id": "743e5677-c9bd-43de-849e-4cf0fc88d270",
+   "position": {
+    "x": 0,
+    "y": 0
+   },
+   "type": "custom",
+   "height": 86
+  },
+  {
+   "dragging": false,
+   "data": {
+    "nodeName": "结束",
+    "nodeDetail": {
+     "output": [
+      {
+       "isSystem": false,
+       "referInfo": {},
+       "code": "output",
+       "type": "String",
+       "required": true,
+       "desc": "输出结果"
+      }
+     ],
+     "outputMode": "param"
+    },
+    "nodeType": "end",
+    "nodeId": "4a3fd78b-43ea-45f2-a77f-ef6a396ba779",
+    "runData": {}
+   },
+   "width": 300,
+   "positionAbsolute": {
+    "x": 697,
+    "y": 0
+   },
+   "id": "4a3fd78b-43ea-45f2-a77f-ef6a396ba779",
+   "position": {
+    "x": 697,
+    "y": 0
+   },
+   "type": "custom",
+   "selected": false,
+   "height": 86
+  },
+  {
+   "data": {
+    "nodeName": "Agent选择",
+    "nodeDetail": {
+     "output": [
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "agentCode",
+       "type": "String",
+       "required": false
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "agentName",
+       "type": "String",
+       "required": false
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "agentDesc",
+       "type": "String",
+       "required": false
+      }
+     ],
+     "input": [
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "query",
+       "type": "String",
+       "required": false
+      }
+     ],
+     "relateRouteConfigs": [],
+     "otherRoutingConfig": {}
+    },
+    "nodeType": "routing_agent",
+    "nodeId": "17657f0e-6bb3-482a-a637-8e3ed4e60a25",
+    "runData": {}
+   },
+   "id": "17657f0e-6bb3-482a-a637-8e3ed4e60a25",
+   "position": {
+    "x": 400,
+    "y": 0
+   },
+   "type": "custom"
+  },
+  {
+   "data": {
+    "nodeName": "Agent执行",
+    "nodeDetail": {
+     "input": [
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "jsonPath": "",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "agentCode",
+       "type": "String",
+       "required": false
+      }
+     ],
+     "executeType": "agent"
+    },
+    "nodeType": "execution_agent",
+    "nodeId": "8171391a-b0cc-4996-a204-01f35c831eec",
+    "runData": {}
+   },
+   "id": "8171391a-b0cc-4996-a204-01f35c831eec",
+   "position": {
+    "x": 420,
+    "y": 20
+   },
+   "type": "custom"
+  },
+  {
+   "data": {
+    "nodeName": "决策分类",
+    "nodeDetail": {
+     "output": [
+      {
+       "referInfo": {},
+       "code": "classificationTitle",
+       "type": "String",
+       "required": false,
+       "desc": "分类名称"
+      },
+      {
+       "referInfo": {},
+       "code": "classificationId",
+       "type": "String",
+       "required": false,
+       "desc": "分类的序号"
+      }
+     ],
+     "classifications": [
+      {
+       "currentPortId": "INgRdVpm",
+       "classificationDesc": "",
+       "classificationTitle": "",
+       "classificationId": "UVltfoAT"
+      }
+     ]
+    },
+    "nodeType": "question-classifier",
+    "nodeId": "d1dbfffb-d51d-4bb2-85b7-4f7873d71124",
+    "runData": {}
+   },
+   "id": "d1dbfffb-d51d-4bb2-85b7-4f7873d71124",
+   "position": {
+    "x": 440,
+    "y": 40
+   },
+   "type": "custom"
+  },
+  {
+   "data": {
+    "nodeName": "Query改写",
+    "nodeDetail": {
+     "output": [
+      {
+       "code": "queryList",
+       "type": "Array",
+       "desc": "改写后的一组query"
+      }
+     ],
+     "input": [
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "query",
+       "type": "String",
+       "required": true,
+       "desc": "Query"
+      },
+      {
+       "isSystem": true,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "chatHistory",
+       "type": "String",
+       "required": true
+      }
+     ],
+     "rewriteStrategy": "default",
+     "nodeId": "58e0c14a-eb25-4e88-b5b6-a87e54dc218c"
+    },
+    "nodeType": "query-rewrite",
+    "nodeId": "58e0c14a-eb25-4e88-b5b6-a87e54dc218c",
+    "runData": {}
+   },
+   "id": "58e0c14a-eb25-4e88-b5b6-a87e54dc218c",
+   "position": {
+    "x": 460,
+    "y": 60
+   },
+   "type": "custom"
+  },
+  {
+   "data": {
+    "nodeName": "条件判断",
+    "nodeDetail": {
+     "branchList": [
+      {
+       "currentPortId": "DzTZlvZn",
+       "branchName": "if",
+       "conditions": {
+        "children": [
+         {
+          "data": {}
+         }
+        ]
+       },
+       "relation": "and"
+      },
+      {
+       "currentPortId": "hbZWCLEk",
+       "branchName": "else"
+      }
+     ]
+    },
+    "nodeType": "condition",
+    "nodeId": "c4e92b6d-73ad-4aac-9b2a-8b95fee7cff6",
+    "runData": {}
+   },
+   "id": "c4e92b6d-73ad-4aac-9b2a-8b95fee7cff6",
+   "position": {
+    "x": 480,
+    "y": 80
+   },
+   "type": "custom"
+  },
+  {
+   "data": {
+    "nodeName": "代码编写",
+    "nodeDetail": {
+     "input": [
+      {
+       "isSystem": false,
+       "referInfo": {
+        "textHtml": "",
+        "answerHtml": "",
+        "isRef": false,
+        "dataType": "String",
+        "simpleHtml": "",
+        "text": "",
+        "constantValue": ""
+       },
+       "code": "input",
+       "id": "TSbiTUXV",
+       "type": "String",
+       "required": false,
+       "desc": ""
+      }
+     ],
+     "codeType": "python",
+     "codeContent": "# 在这里，您可以通过 ‘args’  获取节点中的输入变量，并通过 'ret' 输出结果\n# 'args' 和 'ret' 已经被正确地注入到环境中\n# 下面是一个示例，首先获取节点的全部输入参数params，其次获取其中参数名为‘input’的值：\n# params = args.params; \n# input = params.input;\n# 下面是一个示例，输出一个包含多种数据类型的 'ret' 对象：\n# ret: Output =  { \"output\": ‘小明’, result:  };\n\nasync def main(args: Args) -> Output:\n    params = args.params\n    # 构建输出对象\n    ret: Output = {\n        \"output\": params['input'] + params['input'], # 拼接两次入参 input 的值\n        \"result\": \"hello world\",  # 输出一个字符串\n    }\n    return ret\n"
+    },
+    "nodeType": "code",
+    "nodeId": "87f76b2d-262a-40be-9718-7b2f77c8edd7",
+    "runData": {}
+   },
+   "id": "87f76b2d-262a-40be-9718-7b2f77c8edd7",
+   "position": {
+    "x": 500,
+    "y": 100
+   },
+   "type": "custom"
+  }
+ ],
+ "edges": [
+  {
+   "sourceHandle": "source",
+   "updatable": true,
+   "source": "743e5677-c9bd-43de-849e-4cf0fc88d270",
+   "id": "reactflow__edge-743e5677-c9bd-43de-849e-4cf0fc88d270source-4a3fd78b-43ea-45f2-a77f-ef6a396ba779target",
+   "type": "custom",
+   "targetHandle": "target",
+   "target": "4a3fd78b-43ea-45f2-a77f-ef6a396ba779"
+  }
+ ],
+ "checkList": [
+  {
+   "flowError": [
+    {
+     "errorType": "nodeConnectIncomplete",
+     "tips": "节点未连接完整"
+    }
+   ],
+   "customError": [],
+   "nodeId": "17657f0e-6bb3-482a-a637-8e3ed4e60a25"
+  },
+  {
+   "flowError": [
+    {
+     "errorType": "nodeConnectIncomplete",
+     "tips": "节点未连接完整"
+    }
+   ],
+   "customError": [],
+   "nodeId": "8171391a-b0cc-4996-a204-01f35c831eec"
+  },
+  {
+   "flowError": [
+    {
+     "errorType": "nodeConnectIncomplete",
+     "tips": "节点未连接完整"
+    }
+   ],
+   "customError": [],
+   "nodeId": "d1dbfffb-d51d-4bb2-85b7-4f7873d71124"
+  },
+  {
+   "flowError": [
+    {
+     "errorType": "nodeConnectIncomplete",
+     "tips": "节点未连接完整"
+    }
+   ],
+   "customError": [],
+   "nodeId": "58e0c14a-eb25-4e88-b5b6-a87e54dc218c"
+  },
+  {
+   "flowError": [
+    {
+     "errorType": "nodeConnectIncomplete",
+     "tips": "节点未连接完整"
+    }
+   ],
+   "customError": [
+    {
+     "errorType": "formDataIncomplete",
+     "tips": "节点未完整配置"
+    }
+   ],
+   "nodeId": "c4e92b6d-73ad-4aac-9b2a-8b95fee7cff6"
+  },
+  {
+   "flowError": [
+    {
+     "errorType": "nodeConnectIncomplete",
+     "tips": "节点未连接完整"
+    }
+   ],
+   "customError": [],
+   "nodeId": "87f76b2d-262a-40be-9718-7b2f77c8edd7"
+  }
+ ]
+}
