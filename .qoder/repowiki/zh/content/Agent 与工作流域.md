@@ -34,11 +34,12 @@
 - **新增** 综合操作仪表板：运行指标、事件时间线、版本部署状态可视化
 - **新增** 高级知识检索配置：TopK、匹配分阈值、检索模式（混合/语义/全文）
 - **新增** AI Prompt 生成：基于角色描述自动生成中文提示词
+- **重大改进** 工作流设计器优化：移除LLM节点虚假的单批处理切换、transform节点schema统一使用template而非expression、agent-select查询参数移除改用决策类查询绑定、内存描述正确注入到提示词中
 
 ## 产品概述
 本工作流聚焦于"Agent 编辑器（节点图/Inspector/变量选择器/测试运行）""工作流设计器""Agent 版本管理与发布流程"。平台以可视化节点图编排 AI 能力，支持对话编排、自主规划与专家组协作三类 Agent；通过工作流定义、校验、发布与版本快照，形成从编辑到上线的闭环。前端基于 React + @xyflow/react 实现画布与 Inspector，后端 FastAPI 提供工作流与 Agent 的 CRUD、校验、发布与运行接口，数据库使用 SQLAlchemy/Alembic。
 
-**更新** 已集成 Phase B 的 Agent 版本发布系统与 Phase C 的事件通道、跟踪基础设施及新节点类型，并新增 Phase D-1 的四标签 Agent 编辑器界面、Agent 级评估系统、专家组增强功能和综合操作仪表板，形成完整的 Agent 全生命周期管理能力。
+**更新** 已集成 Phase B 的 Agent 版本发布系统与 Phase C 的事件通道、跟踪基础设施及新节点类型，并新增 Phase D-1 的四标签 Agent 编辑器界面、Agent 级评估系统、专家组增强功能和综合操作仪表板，形成完整的 Agent 全生命周期管理能力。同时对工作流设计器进行了重大改进，包括LLM节点配置优化、transform节点schema统一、agent-select查询参数改进和内存描述正确注入等。
 
 ## 核心业务流程
 - 创建工作流：创建默认包含"开始/结束"的工作流草稿，返回工作流 ID 与初始状态。
@@ -88,12 +89,16 @@ FE->>FE : 显示评测结果和成功率
   - 职责：节点家族渲染、连线、属性配置、变量级联选择、调试配置、运行入口。
   - 用户价值：低代码编排 AI 流程，所见即所得。
   - 验收要点：新增/删除节点、连线合法性、变量引用可见性、保存冲突提示、运行反馈。
+  - **重大改进** LLM节点配置优化：移除了虚假的单批处理切换开关，该功能在后端无实际语义且未实现，避免误导用户。
+  - **重大改进** transform节点schema统一：现在统一使用template字段而非expression，简化了配置结构。
+  - **重大改进** agent-select查询参数改进：移除了query参数，改用决策类查询绑定，提升了查询准确性。
 - Agent 编辑器（三型分发）
   - 职责：对话编排（复用工作流画布）、自主规划（角色/模型/技能/工具/工作流/知识挂载+预览）、专家组（成员池+试运行）。
   - 用户价值：统一入口管理不同形态的 Agent。
   - 验收要点：类型路由正确、配置保存带乐观锁、挂载项来自注册表、预览调试可用。
   - **新增** 记忆 Schema 声明：支持 STRING/NUMBER/BOOLEAN/JSON 类型，运行时校验写入键。
   - **新增** 四标签界面：自主规划 Agent 提供搭建/运行观测/效果评测/版本指标四个标签页。
+  - **重大改进** 内存描述正确注入：现在在提示词中正确注入memory变量的description字段，提升AI对记忆变量的理解。
 - 变量选择器与资源选择器
   - 职责：根据拓扑可达性计算祖先集合，仅暴露上游输出；资源选择器拉取注册表 Enabled 项。
   - 用户价值：避免无效绑定，提升配置效率。
@@ -264,13 +269,13 @@ Run "1" -- "0..*" RunEvent : "events"
 **图表来源**
 - [models.py:31-62](file://server/app/models.py#L31-62)
 - [models.py:271-323](file://server/app/models.py#L271-323)
-- [models.py:221-251](file://server/app/models.py#L221-251)
+- [models.py:221-251](file://server/app/models.py#L221-L251)
 - [d028phased1001_eval_sample_agent.py:21-24](file://server/alembic/versions/d028phased1001_eval_sample_agent.py#L21-L24)
 
 **章节来源**
 - [models.py:31-62](file://server/app/models.py#L31-62)
 - [models.py:271-323](file://server/app/models.py#L271-323)
-- [models.py:221-251](file://server/app/models.py#L221-251)
+- [models.py:221-251](file://server/app/models.py#L221-L251)
 - [b026phaseb0001_agent_version_release.py:1-21](file://server/alembic/versions/b026phaseb0001_agent_version_release.py#L1-L21)
 - [c027phasec0001_event_channels_memory.py:22-38](file://server/alembic/versions/c027phasec0001_event_channels_memory.py#L22-L38)
 - [d028phased1001_eval_sample_agent.py:1-31](file://server/alembic/versions/d028phased1001_eval_sample_agent.py#L1-L31)
@@ -422,3 +427,38 @@ R9 --> End(["返回 ValidationReport"])
 - [agent-ops-panels.tsx:147-189](file://src/components/agent-ops-panels.tsx#L147-L189)
 - [agents.py:218-231](file://server/app/routers/agents.py#L218-L231)
 - [test_phase_d1.py:75-101](file://server/tests/test_phase_d1.py#L75-L101)
+
+### 工作流设计器重大改进
+
+#### LLM节点配置优化
+- **移除虚假开关**：移除了LLM节点的"单次/批处理"切换开关，因为该功能在后端无实际语义且未实现
+- **简化配置**：现在LLM节点只保留真实的配置项，避免误导用户
+- **用户体验**：减少了不必要的配置选项，使界面更加简洁直观
+
+**章节来源**
+- [wf-designer.tsx:476-565](file://src/pages/wf-designer.tsx#L476-L565)
+
+#### transform节点schema统一
+- **统一字段**：transform节点现在统一使用template字段而非expression
+- **简化配置**：消除了配置歧义，所有转换逻辑都通过template字段表达
+- **向后兼容**：保持了与现有工作流的兼容性
+
+**章节来源**
+- [wf-designer.tsx:725-757](file://src/pages/wf-designer.tsx#L725-L757)
+
+#### agent-select查询参数改进
+- **移除query参数**：agent-select节点不再使用query参数进行查询
+- **决策类绑定**：改用决策类查询绑定，提升了查询的准确性和灵活性
+- **更好的路由**：改进了Agent选择的路由逻辑，支持更复杂的决策场景
+
+**章节来源**
+- [wf-designer.tsx:779-813](file://src/pages/wf-designer.tsx#L779-L813)
+
+#### 内存描述正确注入
+- **description注入**：现在在提示词中正确注入memory变量的description字段
+- **完整信息**：包含name、dataType、description和defaultValue等完整信息
+- **AI理解**：提升了AI对记忆变量的理解和正确使用能力
+
+**章节来源**
+- [agent_runtime.py:199-206](file://server/app/agent_runtime.py#L199-L206)
+- [runner.py:438-463](file://server/app/runner.py#L438-L463)

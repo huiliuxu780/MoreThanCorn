@@ -4,6 +4,7 @@
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
 
 const INK2 = "#5A6472"; const INK3 = "#B9C2CF"; const CARD = "#EDF0F4"
 
@@ -68,7 +69,7 @@ export function ConversationPanel({ cfg, setCfg }: { cfg: Record<string, any>; s
         <Switch checked={!!ch.enabled} onCheckedChange={(v) => setConv({ chitchatFallback: { ...ch, enabled: v } })} />
       </div>
       {ch.enabled && (
-        <textarea className="min-h-16 w-full rounded-md border p-2 text-xs" style={{ borderColor: CARD }}
+        <Textarea className="min-h-16 text-xs"
           placeholder="兜底提示词" value={ch.prompt ?? ""}
           onChange={(e) => setConv({ chitchatFallback: { ...ch, prompt: e.target.value } })} />
       )}

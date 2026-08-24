@@ -5,6 +5,7 @@ import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { agentApi, WF_BASE } from "@/services/wf-api"
 
 const INK = "#1F2329"; const INK2 = "#5A6472"; const INK3 = "#B9C2CF"; const CARD = "#EDF0F4"
@@ -103,7 +104,7 @@ export function AgentEvalPanel({ agentId }: { agentId: string }) {
         ))}
         <div className="space-y-2 pt-2">
           <Input className="h-8 text-xs" placeholder="样本名称" value={name} onChange={(e) => setName(e.target.value)} />
-          <textarea className="min-h-16 w-full rounded-md border p-2 text-xs" style={{ borderColor: CARD }}
+          <Textarea className="min-h-16 text-xs"
             value={inputJson} onChange={(e) => setInputJson(e.target.value)} />
           <Button size="sm" variant="outline" onClick={async () => {
             try {

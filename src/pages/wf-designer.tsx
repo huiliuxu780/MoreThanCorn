@@ -608,7 +608,7 @@ function ConfigDrawer(props: {
                 {mcpTools.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
               </SelectContent>
             </Select>
-            <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>工具列表来自 MCP Server 握手发现。</p>
+            <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>工具列表来自 MCP Server 握手发现；无真实服务时为示例工具（不可当真）。</p>
           </Section>
         </>
       )}

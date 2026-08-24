@@ -140,9 +140,18 @@ def recalc(rid: str, db: Session = Depends(get_db)):
 
 # ---------- Review 流 ----------
 
+def _qr_by_any(db, rid: str):
+    """复核审计修复：前端按 interaction_ref 跳转/调用，后端主键是随机 id；
+    两者都允许定位（先主键，后 interaction_ref）。"""
+    qr = db.get(QualityResult, rid)
+    if qr:
+        return qr
+    return db.query(QualityResult).filter(QualityResult.interaction_ref == rid).first()
+
+
 @router.post("/api/quality-results/{rid}/review")
 def review_result(rid: str, payload: dict, db: Session = Depends(get_db)):
-    qr = db.get(QualityResult, rid)
+    qr = _qr_by_any(db, rid)
     if not qr:
         raise HTTPException(404, "质检结果不存在")
     action = payload.get("action", "approve")
@@ -176,7 +185,7 @@ def review_result(rid: str, payload: dict, db: Session = Depends(get_db)):
 def add_manual_evidence(rid: str, payload: dict, db: Session = Depends(get_db)):
     """R2：人工添加证据（此前前端只 toast 占位）。"""
     from ..models import Evidence
-    qr = db.get(QualityResult, rid)
+    qr = _qr_by_any(db, rid)
     if not qr:
         raise HTTPException(404, "质检结果不存在")
     text = (payload or {}).get("text", "")
@@ -273,8 +282,26 @@ def _resolve_rows(db: Session, task: AnalysisTask) -> list[dict]:
     return rows
 
 
-def batch_run_task(db: Session, task: AnalysisTask, limit: int | None = None) -> list[str]:
+def batch_run_task(db: Session, task: AnalysisTask, limit: int | None = None,
+                   window: dict | None = None) -> list[str]:
     rows = _resolve_rows(db, task)
+    # 复核审计修复：回填日期窗真生效（按行的时间字段过滤）
+    if window and (window.get("start") or window.get("end")):
+        tf = task.data_window if False else None  # 时间字段名由 Definition 决定，缺省 interactionTime
+        from ..models import DataDefinition
+        time_field = "interactionTime"
+        if task.data_definition_id:
+            defn = db.get(DataDefinition, task.data_definition_id)
+            if defn and defn.time_field:
+                time_field = defn.time_field
+        def in_window(row: dict) -> bool:
+            v = str(row.get(time_field) or row.get("interactionTime") or "")
+            if window.get("start") and v and v < str(window["start"]):
+                return False
+            if window.get("end") and v and v > str(window["end"]) + "T23:59:59":
+                return False
+            return True
+        rows = [r for r in rows if in_window(r)]
     if task.sampling.startswith("first_"):
         try:
             rows = rows[: int(task.sampling.split("_")[1])]
@@ -296,7 +323,7 @@ def batch_run(tid: str, payload: dict | None = None, db: Session = Depends(get_d
     t = db.get(AnalysisTask, tid)
     if not t:
         raise HTTPException(404, "任务不存在")
-    ids = batch_run_task(db, t, (payload or {}).get("limit"))
+    ids = batch_run_task(db, t, (payload or {}).get("limit"), (payload or {}).get("window"))
     return {"runIds": ids}
 
 

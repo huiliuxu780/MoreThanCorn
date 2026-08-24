@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: frontend_app/resources_feature
+title: 资源管理（AI/Data Resources）页面与组件
+scope:
+    - src/pages/res-list.tsx
+    - src/pages/res-detail.tsx
+    - src/pages/res-wizard.tsx
+    - src/components/resources/
+source_files: []
+depends_on: []
+related_to: []

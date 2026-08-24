@@ -21,6 +21,7 @@
 - [server/app/routers/admin.py](file://server/app/routers/admin.py)
 - [server/app/routers/agents.py](file://server/app/routers/agents.py)
 - [server/alembic/env.py](file://server/alembic/env.py)
+- [server/alembic/versions/2fb72708e1d8_quality_result_evidence.py](file://server/alembic/versions/2fb72708e1d8_quality_result_evidence.py)
 </cite>
 
 ## 产品概述
@@ -91,9 +92,9 @@ API-->>FE : event stream
 - [server/app/routers/workflows.py:17-162](file://server/app/routers/workflows.py#L17-L162)
 - [server/app/routers/registry.py:1-11](file://server/app/routers/registry.py#L1-L11)
 - [server/app/routers/runs.py:12-105](file://server/app/routers/runs.py#L12-L105)
-- [server/app/routers/business.py:1-298](file://server/app/routers/business.py#L1-L298)
+- [server/app/routers/business.py:1-344](file://server/app/routers/business.py#L1-L344)
 - [server/app/routers/resources.py:1-403](file://server/app/routers/resources.py#L1-L403)
-- [server/app/routers/admin.py:1-557](file://server/app/routers/admin.py#L1-L557)
+- [server/app/routers/admin.py:1-574](file://server/app/routers/admin.py#L1-L574)
 - [server/app/routers/agents.py:24-259](file://server/app/routers/agents.py#L24-L259)
 
 ## 数据与状态
@@ -105,6 +106,8 @@ API-->>FE : event stream
   - 资源：enabled/disabled；删除前进行引用检测，避免破坏依赖。
   - 规则：draft/published；发布后自动重算历史结果。
   - Agent：配置变更使用 config_revision 乐观锁；类型限定 autonomous/dialogue/expert-group。
+  - **分析任务**：Active/Paused 状态控制任务执行开关。
+  - **质检结果**：AI → REVIEWED → EFFECTIVE 审核流程，支持人工修正。
 - 数据所有权边界：
   - 运行与事件属于执行层，由 runner 写入；业务层仅消费结构化输出与结果。
   - 资源与连接属于基础设施层，被工作流/工具/数据源等多处引用，需通过 resource_registry 进行一致性保护。
@@ -132,13 +135,14 @@ CONNECTION ||--o{ DATASOURCE : "连接"
 CONNECTION ||--o{ MCP_SERVER : "HTTP 模式"
 MODEL_PROVIDER ||--o{ MODEL : "模型"
 MEMORY_RECORD ||..|| AGENT : "按 scope 隔离"
+ANALYSIS_TASK ||--o{ SCHEDULE : "定时调度"
 ```
 
 **图表来源**
-- [server/app/models.py:31-518](file://server/app/models.py#L31-L518)
+- [server/app/models.py:31-519](file://server/app/models.py#L31-L519)
 
 **章节来源**
-- [server/app/models.py:31-518](file://server/app/models.py#L31-L518)
+- [server/app/models.py:31-519](file://server/app/models.py#L31-L519)
 
 ## 关键约束与边界
 - 应用初始化与启动：
@@ -146,7 +150,7 @@ MEMORY_RECORD ||..|| AGENT : "按 scope 隔离"
   - 全局 HTTP 中间件实现可选 RBAC：当环境变量 WF_API_TOKEN 存在时，所有 /api/* 请求必须携带 Bearer token，否则返回 401。
 - 数据库与迁移：
   - 数据库 URL 通过环境变量 WF_DATABASE_URL 覆盖；Alembic env 注入 app.models 与 Base.metadata，支持在线/离线迁移。
-  - 迁移目录包含初始 schema 及后续演进（模型版本、运行/事件级联、资源锁、评测样本、**Agent 版本管理、事件通道与追踪、记忆持久化**）。
+  - 迁移目录包含初始 schema 及后续演进（模型版本、运行/事件级联、资源锁、评测样本、**Agent 版本管理、事件通道与追踪、记忆持久化、质检结果与证据表**）。
 - 外部依赖与集成：
   - 资源测试与连通性探测通过 resource_tests 与 httpx 完成；连接层对 HTTP/DB 协议做基础探测。
   - 工作流 DSL 校验基于 Pydantic schemas，并与 JSON Schema 契约对齐。
@@ -220,18 +224,57 @@ Allow --> Next["继续处理请求"]
 - [server/app/models.py:221-239](file://server/app/models.py#L221-L239)
 - [server/app/models.py:242-252](file://server/app/models.py#L242-L252)
 
+### 质检结果与证据管理系统
+**新增** 完整的质检结果管理和证据支撑体系，支持人工审核流程。
+
+#### 质检结果管理
+- **列表查询**：`GET /api/quality-results` - 支持分页、审核状态过滤、Tab 计数
+- **详情查询**：`GET /api/quality-results/{rid}` - 获取质检结果详情及相关证据
+- **审核流程**：`POST /api/quality-results/{rid}/review` - 支持 approve/effective/reopen/revise 操作
+
+#### 证据提交与管理
+- **证据提交**：`POST /api/quality-results/{rid}/evidence` - 人工添加证据支撑
+- **证据类型**：transcript_span（对话片段）、tool_call（工具调用）、field（字段值）
+- **证据定位**：支持 locator 精确定位原始数据位置
+
+#### 任务管理系统
+- **任务更新**：`PUT /api/tasks/{tid}` - 编辑任务配置（名称、描述、范围、采样策略、数据窗口）
+- **状态管理**：`POST /api/tasks/{tid}/status` - 切换任务 Active/Paused 状态
+- **批量运行**：`POST /api/tasks/{tid}/batch-run` - 对数据资产进行批量质检
+- **定时调度**：`POST /api/tasks/{tid}/schedule` - 配置 Cron 定时任务
+
+**章节来源**
+- [server/app/routers/business.py:175-191](file://server/app/routers/business.py#L175-L191)
+- [server/app/routers/business.py:303-328](file://server/app/routers/business.py#L303-L328)
+- [server/app/routers/admin.py:454-488](file://server/app/routers/admin.py#L454-L488)
+
 ### 数据库架构演进
 **新增** 多个数据库表以支持新功能：
 
 - **agent_version**：Agent 不可变版本快照表
 - **release**：Agent 版本到环境的部署记录表  
 - **memory_record**：持久化记忆值表（scope=agent:{agentId}|wf:{workflowId}）
+- **quality_result**：质检结果主表，存储 AI 结构化输出、评分、风险等级、审核状态
+- **evidence**：证据表，支撑质检结论的片段/调用事实，支持多种证据类型
 - **run_event 扩展**：新增 channel、trace_id、span_id、parent_span_id、duration_ms、tokens 字段
 
 **迁移版本**：
 - `b026phaseb0001_agent_version_release.py`：Agent 版本管理表 + Agent 环境版本指针
 - `c027phasec0001_event_channels_memory.py`：事件通道/追踪列 + 记忆持久化
+- `2fb72708e1d8_quality_result_evidence.py`：质检结果表 + 证据表
 
 **章节来源**
 - [server/alembic/versions/b026phaseb0001_agent_version_release.py:1-65](file://server/alembic/versions/b026phaseb0001_agent_version_release.py#L1-L65)
 - [server/alembic/versions/c027phasec0001_event_channels_memory.py:1-50](file://server/alembic/versions/c027phasec0001_event_channels_memory.py#L1-L50)
+- [server/alembic/versions/2fb72708e1d8_quality_result_evidence.py:21-65](file://server/alembic/versions/2fb72708e1d8_quality_result_evidence.py#L21-L65)
+
+### 增强的质量结果查询功能
+**更新** 质量结果列表端点支持高级过滤和统计功能：
+
+- **分页支持**：page、pageSize 参数控制分页显示
+- **审核状态过滤**：review 参数可按 AI/REVIEWED/EFFECTIVE 状态筛选
+- **实时计数**：counts 字段提供各状态数量统计（all、ai、reviewed）
+- **执行信息**：execution 字段包含运行 ID、任务 ID、状态、Agent 版本等信息
+
+**章节来源**
+- [server/app/routers/admin.py:454-475](file://server/app/routers/admin.py#L454-L475)

@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: backend_service/shared_core/agent_release_domain
-title: Agent 发布域（定义快照/依赖冻结/发布校验）
-scope:
-    - server/app/agent_release.py
-source_files: []
-depends_on: []
-related_to:
-    - path: backend_service/workflows_routers

@@ -512,8 +512,8 @@ export const bizApi = {
     req<{ id: string; status: string }>(`/api/tasks/${id}/status`, { method: "POST", body: JSON.stringify({ status }) }),
   addEvidence: (resultId: string, body: { kind?: string; text: string; sourceRef?: string }) =>
     req<{ id: string; kind: string }>(`/api/quality-results/${resultId}/evidence`, { method: "POST", body: JSON.stringify(body) }),
-  batchRun: (id: string, limit?: number) =>
-    req<{ runIds: string[] }>(`/api/tasks/${id}/batch-run`, { method: "POST", body: JSON.stringify({ limit }) }),
+  batchRun: (id: string, limit?: number, window?: { start?: string; end?: string }) =>
+    req<{ runIds: string[] }>(`/api/tasks/${id}/batch-run`, { method: "POST", body: JSON.stringify({ limit, window }) }),
   taskSchedule: (id: string, cron: string, timezone = "Asia/Shanghai") =>
     req<{ id: string; nextRunAt: string }>(`/api/tasks/${id}/schedule`, { method: "POST", body: JSON.stringify({ cron, timezone }) }),
 }

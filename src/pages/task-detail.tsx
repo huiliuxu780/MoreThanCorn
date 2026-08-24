@@ -189,11 +189,11 @@ export default function TaskDetailPage() {
             <Button variant="outline" onClick={() => setBackfillOpen(false)}>取消</Button>
             <Button
               onClick={async () => {
-                // R2 修复：真回填（批量运行，此前只 toast）
+                // R2 修复：真回填（批量运行，此前只 toast）；复核修复：日期窗真下发
                 setBackfillOpen(false)
                 try {
-                  const r = await bizApi.batchRun(task.id)
-                  toast.success(`已创建回填 Run ${r.runIds.length} 条（${backfillStart} → ${backfillEnd}）`)
+                  const r = await bizApi.batchRun(task.id, undefined, { start: backfillStart, end: backfillEnd })
+                  toast.success(`已创建回填 Run ${r.runIds.length} 条（${backfillStart} → ${backfillEnd}，窗口内 ${r.runIds.length} 行）`)
                   retry()
                 } catch (e) {
                   toast.error(`回填失败：${(e as Error).message}`)

@@ -478,10 +478,11 @@ def list_quality_results(page: int = 1, pageSize: int = 20, review: str = "", db
 @router.get("/api/quality-results/{rid}")
 def get_quality_result(rid: str, db: Session = Depends(get_db)):
     from ..models import Evidence, QualityResult
-    r = db.get(QualityResult, rid)
+    # 复核审计修复：允许按主键或 interaction_ref 定位（前端按 interaction_ref 跳转）
+    r = db.get(QualityResult, rid) or db.query(QualityResult).filter(QualityResult.interaction_ref == rid).first()
     if not r:
         raise HTTPException(404, "质检结果不存在")
-    evs = db.query(Evidence).filter_by(result_id=rid).all()
+    evs = db.query(Evidence).filter_by(result_id=r.id).all()
     return {"id": r.id, "runId": r.run_id, "interactionId": r.interaction_ref,
             "structuredOutput": r.structured_output, "score": r.score, "risk": r.risk,
             "critical": r.critical, "issueCount": r.issue_count, "review": r.review_status,

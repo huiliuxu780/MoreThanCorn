@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: frontend_app/quality_feature
+title: 坐席质量复核工作台（总览/列表/详情）
+scope:
+    - src/pages/quality-overview.tsx
+    - src/pages/quality-result-detail.tsx
+    - src/pages/quality-results.tsx
+    - src/components/quality/
+source_files: []
+depends_on: []
+related_to: []

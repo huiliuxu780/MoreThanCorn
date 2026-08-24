@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { PageContainer, PageHeader } from "@/components/app/page"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -92,8 +93,8 @@ export default function DataDefinitionEditorPage() {
                   <SelectContent>{FIELD_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                 </Select>
                 <label className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <input type="checkbox" checked={f.required}
-                    onChange={(e) => setSchema(schema.map((x, j) => j === i ? { ...x, required: e.target.checked } : x))} />
+                  <Checkbox checked={f.required}
+                    onCheckedChange={(v) => setSchema(schema.map((x, j) => j === i ? { ...x, required: !!v } : x))} />
                   必填
                 </label>
                 <Button variant="ghost" size="icon" className="size-7" onClick={() => setSchema(schema.filter((_, j) => j !== i))}>
