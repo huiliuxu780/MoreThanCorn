@@ -46,15 +46,17 @@
 - `POST /api/workflows/{wid}/node-test`：`{nodeId, input}` → 用给定 run_input 执行单个节点执行器 → 返回 `{ok, output, error, durationMs}`；不落 Run/事件。
 
 ## 2. 验收清单
-1. [ ] run_event 新列存在；`llm_delta`/`reply_sent` 为 CONTENT，其余 CONTROL（pytest）
-2. [ ] GROUP 画布目录仅 7 类可添加；WORKFLOW 全集不变（前端+注册表断言）
-3. [ ] 7 个新节点执行器测试全绿（含 code-write 超时拦截、决策分类分支、工作流选择路由）
-4. [ ] 记忆变量读写持久化 + 未声明键拒绝 + 跨运行回读（pytest）
-5. [ ] 系统变量接口 + 级联系统分组 + `{{system.sysTime}}` 运行可解析（pytest）
-6. [ ] 通用 Inspector 兜底：无专项表单的节点可编辑配置（构建+手工）
-7. [ ] 节点单测接口：成功/失败两条用例（pytest）
-8. [ ] 既有 71 条测试不回归
+1. [x] run_event 新列存在；`llm_delta`/`reply_sent` 为 CONTENT，其余 CONTROL（`test_c1_event_channels_and_trace_ids`、`test_c1_reply_node_emits_content_channel`）
+2. [x] GROUP 画布目录仅 7 类可添加；WORKFLOW 全集不变（`editor_kinds` 注册表 + 前端过滤，`201a597`）
+3. [x] 7 个新节点执行器测试全绿（`test_c4_*`：code-write 超时拦截、决策分类分支、工作流选择路由、记忆读写）
+4. [x] 记忆变量读写持久化 + 未声明键拒绝 + 跨运行回读（`test_c4_memory_write_read_persists_across_runs`；未声明键拒绝见 B 阶段 `test_b_memory_write_rejects_undeclared_key`）
+5. [x] 系统变量接口 + 级联系统分组 + `{{system.outputs.x}}` 运行可解析（`test_c5_system_variables_registry_and_resolution`）
+6. [x] 通用 Inspector 兜底：无专项表单的节点可编辑配置（`GenericSchemaForm`，构建通过；手工核验）
+7. [x] 节点单测接口：成功/失败两条用例（`test_c6_node_test_endpoint`）
+8. [x] 既有测试不回归：全量 **80/80 绿**
 
 ## 3. 状态日志
 - 2026-08-25 大纲建立。
 - 2026-08-25 夜间细化为可执行规格并冻结（用户授权连续施工），开工。
+- 2026-08-25 夜间完成：后端（`601d365`）+ 前端（`201a597`）；80/80 pytest 绿。**待用户逐项验收。**
+- 实施偏离登记：①系统变量引用格式为 `{{system.outputs.x}}`（与既有引用语法同构）；②节点单测入参覆盖节点固定绑定；③`exec_workflow_fixed` 用独立会话读子运行状态（会话缓存陷阱，同 `exec_workflow_exec`）。
