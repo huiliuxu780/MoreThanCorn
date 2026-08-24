@@ -53,6 +53,7 @@ export default function ResultRulesPage() {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [agentId, setAgentId] = useState("")
+  const [creating, setCreating] = useState(false)
 
   const canManage = rbac.can("rules.manage")
 
@@ -138,8 +139,21 @@ export default function ResultRulesPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
-            <Button disabled={!name.trim() || !agentId} onClick={() => { setCreateOpen(false); toast.success("已创建 Draft"); navigate("/config/result-rules/RR-01") }}>
-              创建并编辑
+            <Button disabled={!name.trim() || !agentId || creating} onClick={async () => {
+              // R2 修复：真创建规则（此前只 toast + 硬编码 RR-01）
+              setCreating(true)
+              try {
+                const r = await bizApi.createRule({ name: name.trim(), description, rules: { scoreRules: [], issueRules: [] } })
+                setCreateOpen(false)
+                toast.success("已创建 Draft")
+                navigate(`/config/result-rules/${r.id}`)
+              } catch (e) {
+                toast.error(`创建失败：${(e as Error).message}`)
+              } finally {
+                setCreating(false)
+              }
+            }}>
+              {creating ? "创建中…" : "创建并编辑"}
             </Button>
           </DialogFooter>
         </DialogContent>

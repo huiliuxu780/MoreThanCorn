@@ -36,6 +36,7 @@ import { StatusIcon } from "@/components/app/status-indicator"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { getResultRule } from "@/services/mock-service"
 import { rbac } from "@/services/rbac"
+import { bizApi } from "@/services/wf-api"
 
 /**
  * Result Rules Editor（Design Spec §27）：
@@ -51,6 +52,7 @@ export default function ResultRuleEditorPage() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [versionNote, setVersionNote] = useState("")
   const [priority, setPriority] = useState<string | null>(null)
+  const [publishing, setPublishing] = useState(false)
 
   const canManage = rbac.can("rules.manage")
   const readOnly = rule?.versionStatus === "Published" || !canManage
@@ -82,7 +84,16 @@ export default function ResultRuleEditorPage() {
               {!readOnly ? (
                 <Button size="sm" onClick={() => setPublishOpen(true)}><Upload className="size-3.5" /> 发布</Button>
               ) : (
-                <Button size="sm" variant="outline" onClick={() => toast.info("已基于当前版本创建 Draft（原型）")}>基于当前版本创建 Draft</Button>
+                <Button size="sm" variant="outline" onClick={async () => {
+                  // R2 修复：真创建 Draft（复制为新规则集；此前只 toast）
+                  try {
+                    const r = await bizApi.createRule({ name: `${rule.name} (Draft)`, description: rule.description ?? "", rules: (rule as unknown as { rules?: Record<string, unknown> }).rules ?? {} })
+                    toast.success("已基于当前版本创建 Draft")
+                    navigate(`/config/result-rules/${r.id}`)
+                  } catch (e) {
+                    toast.error(`创建失败：${(e as Error).message}`)
+                  }
+                }}>基于当前版本创建 Draft</Button>
               )}
             </>
           }
@@ -251,7 +262,19 @@ export default function ResultRuleEditorPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPublishOpen(false)}>取消</Button>
-            <Button disabled={!versionNote.trim()} onClick={() => { setPublishOpen(false); toast.success("Rules 已发布新版本") }}>发布</Button>
+            <Button disabled={!versionNote.trim() || publishing} onClick={async () => {
+              // R2 修复：真发布（此前只 toast）
+              setPublishing(true)
+              try {
+                const r = await bizApi.publishRule(ruleSetId)
+                setPublishOpen(false)
+                toast.success(`Rules 已发布 V${r.version}，重算 ${r.recalculated} 条结果`)
+              } catch (e) {
+                toast.error(`发布失败：${(e as Error).message}`)
+              } finally {
+                setPublishing(false)
+              }
+            }}>{publishing ? "发布中…" : "发布"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

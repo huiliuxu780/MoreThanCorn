@@ -35,6 +35,7 @@ import { TableFrame } from "@/components/app/table-frame"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { formatCompactDateTime } from "@/lib/time"
 import { getTask, listRuns } from "@/services/mock-service"
+import { bizApi } from "@/services/wf-api"
 import { rbac } from "@/services/rbac"
 
 export default function TaskDetailPage() {
@@ -72,9 +73,15 @@ export default function TaskDetailPage() {
                 <Button
                   variant={isActive ? "outline" : "default"}
                   size="sm"
-                  onClick={() => {
-                    setEnabled(!isActive)
-                    toast.success(!isActive ? "任务已启用" : "任务已停用：不再创建新的 Scheduled Run，已创建 / 已运行 Run 不受影响")
+                  onClick={async () => {
+                    // R2 修复：真启停（此前只 toast）
+                    try {
+                      const r = await bizApi.setTaskStatus(task.id, !isActive ? "Active" : "Paused")
+                      setEnabled(r.status === "Active")
+                      toast.success(r.status === "Active" ? "任务已启用" : "任务已停用：不再创建新的 Scheduled Run，已创建 / 已运行 Run 不受影响")
+                    } catch (e) {
+                      toast.error(`操作失败：${(e as Error).message}`)
+                    }
                   }}
                 >
                   {isActive ? "停用" : "启用"}
@@ -86,7 +93,7 @@ export default function TaskDetailPage() {
                     <Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => toast.info("已复制任务 ID")}>复制任务 ID</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(task.id); toast.success("已复制任务 ID") }}>复制任务 ID</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </>
@@ -181,9 +188,16 @@ export default function TaskDetailPage() {
           <SheetFooter className="mt-6">
             <Button variant="outline" onClick={() => setBackfillOpen(false)}>取消</Button>
             <Button
-              onClick={() => {
+              onClick={async () => {
+                // R2 修复：真回填（批量运行，此前只 toast）
                 setBackfillOpen(false)
-                toast.success(`已创建回填 Run（${backfillStart} → ${backfillEnd}）`)
+                try {
+                  const r = await bizApi.batchRun(task.id)
+                  toast.success(`已创建回填 Run ${r.runIds.length} 条（${backfillStart} → ${backfillEnd}）`)
+                  retry()
+                } catch (e) {
+                  toast.error(`回填失败：${(e as Error).message}`)
+                }
               }}
             >
               开始回填
@@ -204,9 +218,16 @@ export default function TaskDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setRerunId(null)}>取消</Button>
             <Button
-              onClick={() => {
-                toast.success("已创建新的 Run")
+              onClick={async () => {
+                // R2 修复：真重新运行（创建 1 条新 Run，此前只 toast）
                 setRerunId(null)
+                try {
+                  const r = await bizApi.batchRun(task.id, 1)
+                  toast.success(`已创建新的 Run（${r.runIds[0]?.slice(0, 8) ?? ""}）`)
+                  retry()
+                } catch (e) {
+                  toast.error(`重新运行失败：${(e as Error).message}`)
+                }
               }}
             >
               重新运行

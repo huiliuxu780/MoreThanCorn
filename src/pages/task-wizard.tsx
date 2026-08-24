@@ -16,6 +16,7 @@ import {
   type TaskFormState,
 } from "@/components/tasks/task-form-sections"
 import { cn } from "@/lib/utils"
+import { bizApi } from "@/services/wf-api"
 
 const STEPS = ["基本设置", "分析数据", "执行策略", "确认并创建"] as const
 
@@ -23,6 +24,7 @@ export default function TaskWizardPage() {
   const navigate = useNavigate()
   const [step, setStep] = useState(0)
   const [form, setForm] = useState<TaskFormState>(emptyTaskForm)
+  const [creating, setCreating] = useState(false)
 
   const mappingOk = useMemo(() => {
     const agent = agentOf(form)
@@ -120,12 +122,32 @@ export default function TaskWizardPage() {
           </Button>
         ) : (
           <Button
-            onClick={() => {
-              toast.success("任务已创建并启用")
-              navigate("/config/tasks/T-1001")
+            disabled={creating}
+            onClick={async () => {
+              // R2 修复：真创建任务（此前只 toast + 硬编码 T-1001）
+              const agent = agentOf(form)
+              setCreating(true)
+              try {
+                const sampling = form.samplingType === "全量" ? "all"
+                  : form.samplingType === "固定数量" ? `first_${form.samplingCount}` : "all"
+                const t = await bizApi.createTask({
+                  name: form.name.trim(),
+                  workflowId: agent?.id ?? form.agentId,
+                  dataAssetId: form.assetId,
+                  scope: form.scope.length === 0 ? "all" : form.scope.map((c) => `${c.field}${c.operator}${c.value}`).join(";"),
+                  sampling,
+                  dataWindow: windowLabel,
+                })
+                toast.success("任务已创建并启用")
+                navigate(`/config/tasks/${t.id}`)
+              } catch (e) {
+                toast.error(`创建失败：${(e as Error).message}`)
+              } finally {
+                setCreating(false)
+              }
             }}
           >
-            创建并启用
+            {creating ? "创建中…" : "创建并启用"}
           </Button>
         )}
       </div>

@@ -45,7 +45,7 @@ import { useListQuery } from "@/hooks/use-list-query"
 import { formatDateTime } from "@/lib/time"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
 import { getRun, listExecutions } from "@/services/mock-service"
-import { realRunDetail, wfEnabled, WF_BASE } from "@/services/wf-api"
+import { realRunDetail, runCancel, runRetry, wfEnabled, WF_BASE } from "@/services/wf-api"
 import type { InteractionExecution } from "@/domain/types"
 
 export default function RunDetailPage() {
@@ -79,6 +79,7 @@ export default function RunDetailPage() {
   const [mappingOpen, setMappingOpen] = useState(false)
   const [rerunOpen, setRerunOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
+  const [traceOpen, setTraceOpen] = useState(false)
   const [selectedExecution, setSelectedExecution] = useState<InteractionExecution | null>(null)
 
   if (error) return <PageContainer><ErrorState title="Run 加载失败" onRetry={retry} /></PageContainer>
@@ -123,7 +124,7 @@ export default function RunDetailPage() {
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(run.id); toast.success("已复制 Run ID") }}>复制 Run ID</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate(`/config/tasks/${taskId}`)}>查看 Task</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => toast.info("Run Trace（高级）：原型中展示于 Execution Detail Sheet")}>查看运行 Trace</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTraceOpen(true)}>查看运行 Trace</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </>
@@ -402,7 +403,7 @@ export default function RunDetailPage() {
                     <StatusBadge status="ERROR" />
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => toast.info("完整 Trace（高级）原型占位")}>查看完整 Trace</Button>
+                <Button variant="outline" size="sm" onClick={() => setTraceOpen(true)}>查看完整 Trace</Button>
               </div>
             </>
           ) : null}
@@ -420,7 +421,17 @@ export default function RunDetailPage() {
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRerunOpen(false)}>取消</Button>
-            <Button onClick={() => { toast.success("已创建新的 Run"); setRerunOpen(false) }}>重新运行</Button>
+            <Button onClick={async () => {
+              // R2 修复：真重新运行（此前只 toast）
+              try {
+                const r = await runRetry(runId)
+                toast.success(`已创建重试 Run（${r.runId.slice(0, 8)}）`)
+                setRerunOpen(false)
+                retry()
+              } catch (e) {
+                toast.error(`重新运行失败：${(e as Error).message}`)
+              }
+            }}>重新运行</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -434,8 +445,37 @@ export default function RunDetailPage() {
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCancelOpen(false)}>继续运行</Button>
-            <Button variant="destructive" onClick={() => { toast.success("Run 已取消"); setCancelOpen(false) }}>取消运行</Button>
+            <Button variant="destructive" onClick={async () => {
+              // R2 修复：真取消（此前只 toast）
+              try {
+                await runCancel(runId)
+                toast.success("Run 已取消")
+                setCancelOpen(false)
+                retry()
+              } catch (e) {
+                toast.error(`取消失败：${(e as Error).message}`)
+              }
+            }}>取消运行</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* R2 修复：运行 Trace 真数据（此前 toast 占位） */}
+      <Dialog open={traceOpen} onOpenChange={setTraceOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>运行 Trace（事件流）</DialogTitle></DialogHeader>
+          <div className="max-h-96 space-y-1 overflow-y-auto">
+            {events.length === 0 && <p className="text-xs text-muted-foreground">无事件数据（仅真实运行轨道产生）</p>}
+            {events.map((e) => (
+              <div key={e.sequence} className="flex items-center gap-2 rounded border px-2 py-1 text-[11px]">
+                <span className="font-mono text-muted-foreground">{e.sequence}</span>
+                <span className="rounded bg-neutral-100 px-1 font-mono">{e.type}</span>
+                {e.nodeId && <span className="text-muted-foreground">{e.nodeId}</span>}
+                <span className="flex-1" />
+                <span className="text-muted-foreground">{e.at?.slice(11, 19)}</span>
+              </div>
+            ))}
+          </div>
         </DialogContent>
       </Dialog>
     </PageContainer>

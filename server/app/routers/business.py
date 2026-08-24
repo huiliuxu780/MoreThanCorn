@@ -172,6 +172,24 @@ def review_result(rid: str, payload: dict, db: Session = Depends(get_db)):
     return {"id": qr.id, "review": qr.review_status, "history": qr.review_history}
 
 
+@router.post("/api/quality-results/{rid}/evidence", status_code=201)
+def add_manual_evidence(rid: str, payload: dict, db: Session = Depends(get_db)):
+    """R2：人工添加证据（此前前端只 toast 占位）。"""
+    from ..models import Evidence
+    qr = db.get(QualityResult, rid)
+    if not qr:
+        raise HTTPException(404, "质检结果不存在")
+    text = (payload or {}).get("text", "")
+    if not str(text).strip():
+        raise HTTPException(422, "证据内容不能为空")
+    ev = Evidence(result_id=qr.id, kind=str((payload or {}).get("kind", "manual")),
+                  locator=(payload or {}).get("locator") if isinstance((payload or {}).get("locator"), dict) else {},
+                  text=str(text), source_ref=str((payload or {}).get("sourceRef", "manual")))
+    db.add(ev)
+    db.commit()
+    return {"id": ev.id, "kind": ev.kind}
+
+
 # ---------- Data Asset ----------
 
 @router.get("/api/data-assets")
@@ -280,6 +298,34 @@ def batch_run(tid: str, payload: dict | None = None, db: Session = Depends(get_d
         raise HTTPException(404, "任务不存在")
     ids = batch_run_task(db, t, (payload or {}).get("limit"))
     return {"runIds": ids}
+
+
+@router.put("/api/tasks/{tid}")
+def update_task(tid: str, payload: dict, db: Session = Depends(get_db)):
+    """R2：任务编辑保存（此前前端只 toast）。"""
+    t = db.get(AnalysisTask, tid)
+    if not t:
+        raise HTTPException(404, "任务不存在")
+    for k, col in (("name", "name"), ("description", "description"), ("scope", "scope"),
+                   ("sampling", "sampling"), ("dataWindow", "data_window")):
+        if payload.get(k) is not None:
+            setattr(t, col, payload[k])
+    db.commit()
+    return {"id": t.id, "name": t.name, "status": t.status}
+
+
+@router.post("/api/tasks/{tid}/status")
+def set_task_status(tid: str, payload: dict, db: Session = Depends(get_db)):
+    """R2：任务启用/停用（此前前端只 toast）。"""
+    t = db.get(AnalysisTask, tid)
+    if not t:
+        raise HTTPException(404, "任务不存在")
+    status = (payload or {}).get("status")
+    if status not in ("Active", "Paused"):
+        raise HTTPException(422, "status 必须是 Active|Paused")
+    t.status = status
+    db.commit()
+    return {"id": t.id, "status": t.status}
 
 
 @router.post("/api/tasks/{tid}/schedule")

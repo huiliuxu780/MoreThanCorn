@@ -14,12 +14,14 @@ import {
 } from "@/components/tasks/task-form-sections"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { getTask } from "@/services/mock-service"
+import { bizApi } from "@/services/wf-api"
 
 export default function TaskEditPage() {
   const { taskId = "" } = useParams()
   const navigate = useNavigate()
   const { data: task, loading } = useAsyncData(() => getTask(taskId), [taskId])
   const [form, setForm] = useState<TaskFormState>(emptyTaskForm)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!task) return
@@ -66,12 +68,27 @@ export default function TaskEditPage() {
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={() => navigate(`/config/tasks/${task.id}`)}>取消</Button>
         <Button
-          onClick={() => {
-            toast.success("任务配置已保存")
-            navigate(`/config/tasks/${task.id}`)
+          disabled={saving}
+          onClick={async () => {
+            // R2 修复：真保存（此前只 toast）
+            setSaving(true)
+            try {
+              await bizApi.updateTask(task.id, {
+                name: form.name.trim(),
+                description: form.description ?? "",
+                scope: (form.scope ?? []).map((c) => `${c.field} ${c.operator} ${c.value}`).join(";") || "all",
+                sampling: form.samplingType === "全量" ? "all" : `first_${form.samplingCount || 100}`,
+              })
+              toast.success("任务配置已保存")
+              navigate(`/config/tasks/${task.id}`)
+            } catch (e) {
+              toast.error(`保存失败：${(e as Error).message}`)
+            } finally {
+              setSaving(false)
+            }
           }}
         >
-          保存
+          {saving ? "保存中…" : "保存"}
         </Button>
       </div>
     </PageContainer>

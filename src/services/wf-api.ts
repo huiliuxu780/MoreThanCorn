@@ -191,6 +191,10 @@ export const scheduleApi = {
 }
 export const runRetry = (runId: string) =>
   req<{ runId: string; originRunId: string }>(`/api/runs/${runId}/retry`, { method: "POST" })
+export const runCancel = (runId: string) =>
+  req<{ runId: string; status: string }>(`/api/runs/${runId}/cancel`, { method: "POST" })
+export const runEventsList = (runId: string) =>
+  req<{ items: { sequence: number; type: string; nodeId?: string; at: string; payload: Record<string, unknown> }[] }>(`/api/runs/${runId}/events-list`)
 export const runExportUrl = (runId: string) => `${WF_BASE}/api/runs/${runId}/export`
 
 /* ---------- P1：Run Detail 真 API 适配（冻结页 run-detail 复用） ---------- */
@@ -432,7 +436,13 @@ export const bizApi = {
   appendRows: (id: string, rows: unknown[]) =>
     req<Record<string, any>>(`/api/data-assets/${id}/rows`, { method: "POST", body: JSON.stringify({ rows }) }),
   tasks: () => req<Paged<Record<string, any>>>("/api/tasks").then((r) => r.items as AnalysisTask[]),
-  createTask: (body: Record<string, unknown>) => req<{ id: string }>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
+  createTask: (body: Record<string, unknown>) => req<{ id: string; name: string }>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
+  updateTask: (id: string, body: Record<string, unknown>) =>
+    req<{ id: string; name: string; status: string }>(`/api/tasks/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  setTaskStatus: (id: string, status: "Active" | "Paused") =>
+    req<{ id: string; status: string }>(`/api/tasks/${id}/status`, { method: "POST", body: JSON.stringify({ status }) }),
+  addEvidence: (resultId: string, body: { kind?: string; text: string; sourceRef?: string }) =>
+    req<{ id: string; kind: string }>(`/api/quality-results/${resultId}/evidence`, { method: "POST", body: JSON.stringify(body) }),
   batchRun: (id: string, limit?: number) =>
     req<{ runIds: string[] }>(`/api/tasks/${id}/batch-run`, { method: "POST", body: JSON.stringify({ limit }) }),
   taskSchedule: (id: string, cron: string, timezone = "Asia/Shanghai") =>

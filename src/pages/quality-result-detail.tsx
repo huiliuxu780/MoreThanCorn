@@ -404,10 +404,25 @@ export default function QualityResultDetailPage() {
                                       onChange={(e) => setHumanEdits((ed) => ({ ...ed, [criterion.id]: { ...ed[criterion.id], comment: e.target.value } }))}
                                     />
                                     <div className="flex gap-2 text-xs">
-                                      <Button variant="outline" size="sm" className="h-6 text-[11px]" onClick={() => toast.info("已添加当前对话片段作为人工证据（原型）")}>
+                                      <Button variant="outline" size="sm" className="h-6 text-[11px]" onClick={async () => {
+                                        // R2 修复：真添加证据（此前只 toast 占位）
+                                        const text = humanEdits[criterion.id]?.comment ?? ""
+                                        if (!text.trim()) { toast.error("请先填写人工说明，再添加为证据"); return }
+                                        try {
+                                          await bizApi.addEvidence(interactionId, { kind: "transcript", text, sourceRef: criterion.id })
+                                          toast.success("已添加当前对话片段作为人工证据")
+                                        } catch (e) { toast.error(`添加失败：${(e as Error).message}`) }
+                                      }}>
                                         + 添加当前对话片段
                                       </Button>
-                                      <Button variant="outline" size="sm" className="h-6 text-[11px]" onClick={() => toast.info("已添加业务事实作为人工证据（原型）")}>
+                                      <Button variant="outline" size="sm" className="h-6 text-[11px]" onClick={async () => {
+                                        const text = humanEdits[criterion.id]?.comment ?? ""
+                                        if (!text.trim()) { toast.error("请先填写人工说明，再添加为证据"); return }
+                                        try {
+                                          await bizApi.addEvidence(interactionId, { kind: "fact", text, sourceRef: criterion.id })
+                                          toast.success("已添加业务事实作为人工证据")
+                                        } catch (e) { toast.error(`添加失败：${(e as Error).message}`) }
+                                      }}>
                                         + 添加业务事实
                                       </Button>
                                     </div>
