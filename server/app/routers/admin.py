@@ -452,18 +452,27 @@ def delete_model(mid: str, db: Session = Depends(get_db)):
 # ---------- 质检业务层：quality_result / evidence ----------
 
 @router.get("/api/quality-results")
-def list_quality_results(page: int = 1, pageSize: int = 20, db: Session = Depends(get_db)):
+def list_quality_results(page: int = 1, pageSize: int = 20, review: str = "", db: Session = Depends(get_db)):
     from ..models import QualityResult
     q = db.query(QualityResult)
+    if review:
+        q = q.filter(QualityResult.review_status == review)
     total = q.count()
     rows = q.order_by(QualityResult.created_at.desc()).offset((page - 1) * pageSize).limit(pageSize).all()
+    # R3：Tab 计数真数据（此前恒来自 mock）
+    review_counts = dict(db.execute(select(QualityResult.review_status, func.count(QualityResult.id))
+                                    .group_by(QualityResult.review_status)).all())
+    all_total = db.query(func.count(QualityResult.id)).scalar()
     return {"items": [{"id": r.id, "runId": r.run_id, "interactionId": r.interaction_ref,
                        "interactionTime": r.interaction_time.isoformat(), "score": r.score,
                        "risk": r.risk, "critical": r.critical, "issueCount": r.issue_count,
                        "issueSummary": r.issue_summary, "review": r.review_status,
                        "execution": {"runId": r.run_id or "-", "taskId": "-", "status": "SUCCESS", "agentVersion": "-"}}
                       for r in rows],
-            "total": total, "page": page, "pageSize": pageSize}
+            "total": total, "page": page, "pageSize": pageSize,
+            "counts": {"all": all_total,
+                       "ai": review_counts.get("AI", 0),
+                       "reviewed": review_counts.get("REVIEWED", 0) + review_counts.get("EFFECTIVE", 0)}}
 
 
 @router.get("/api/quality-results/{rid}")

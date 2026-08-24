@@ -40,7 +40,7 @@ import { useListQuery } from "@/hooks/use-list-query"
 import { formatCallDuration, formatCompactDateTime } from "@/lib/time"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
 import { getQualityResultCounts, listQualityResults } from "@/services/mock-service"
-import { realQualityResults, wfEnabled } from "@/services/wf-api"
+import { realQualityResultCounts, realQualityResults, wfEnabled } from "@/services/wf-api"
 import { BRANDS, CRITERIA_CATALOG, ISSUES, PRODUCT_CATEGORIES, REQUEST_TYPES, SERVICE_TYPES, TEAMS, DEPARTMENTS, SERVICERS } from "@/mocks/catalog"
 
 export default function QualityResultsPage() {
@@ -56,7 +56,8 @@ export default function QualityResultsPage() {
     params.filters,
     params.tab,
   ])
-  const { data: counts } = useAsyncData(() => getQualityResultCounts(), [])
+  const { data: counts } = useAsyncData(
+    () => (wfEnabled() ? realQualityResultCounts() : getQualityResultCounts()), [])
 
   const [searchInput, setSearchInput] = useState(params.search ?? "")
   useEffect(() => {

@@ -30,6 +30,7 @@ import { GlobalFilters } from "@/components/quality/global-filters"
 import { useListQuery } from "@/hooks/use-list-query"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { getQualityOverview } from "@/services/mock-service"
+import { realQualityOverview, wfEnabled } from "@/services/wf-api"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
 import { cn } from "@/lib/utils"
 
@@ -48,7 +49,7 @@ export default function QualityOverviewPage() {
   const [sceneDim, setSceneDim] = useState("serviceType")
 
   const { data, loading, error, retry } = useAsyncData(
-    () => getQualityOverview(params, sceneDim),
+    () => (wfEnabled() ? realQualityOverview() : getQualityOverview(params, sceneDim)),
     [params.filters, sceneDim],
   )
 

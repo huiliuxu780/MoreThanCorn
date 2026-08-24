@@ -415,6 +415,75 @@ export async function realQualityResultDetail(id: string) {
   return req<Record<string, any>>(`/api/quality-results/${id}`)
 }
 
+/* ---------- R3：质检页真数据适配（取代 mock 双轨） ---------- */
+import type { AgentAnalysisData, OverviewData } from "@/services/mock-service"
+
+/** Tab 计数真数据（此前恒来自 mock）。 */
+export async function realQualityResultCounts(): Promise<{ all: number; pending: number; reviewed: number }> {
+  const r = await req<{ counts?: { all: number; ai: number; reviewed: number } }>("/api/quality-results?pageSize=1")
+  const c = r.counts ?? { all: 0, ai: 0, reviewed: 0 }
+  return { all: c.all, pending: c.ai, reviewed: c.reviewed }
+}
+
+/** 质量总览真数据：KPI 由真实质检结果计算；无数据的板块返回空（页面显示空态，不造假数）。 */
+export async function realQualityOverview(): Promise<OverviewData> {
+  const r = await req<{ items: Record<string, any>[]; counts?: { all: number; ai: number; reviewed: number } }>(
+    "/api/quality-results?pageSize=200")
+  const items = r.items ?? []
+  const scored = items.filter((x) => typeof x.score === "number")
+  const avg = scored.length ? scored.reduce((a, x) => a + x.score, 0) / scored.length : 0
+  const issue = items.filter((x) => (x.issueCount ?? 0) > 0).length
+  const critical = items.filter((x) => x.critical).length
+  const c = r.counts ?? { all: items.length, ai: 0, reviewed: 0 }
+  return {
+    kpis: [
+      { label: "质检交互总数", value: String(c.all), delta: "真实数据", deltaTone: "neutral" },
+      { label: "平均质量得分", value: scored.length ? avg.toFixed(1) : "—", delta: scored.length ? `${scored.length} 条有分` : "暂无评分", deltaTone: "neutral" },
+      { label: "问题交互率", value: c.all ? `${Math.round((issue / c.all) * 100)}%` : "—", delta: `${issue} 条有问题`, deltaTone: issue > 0 ? "warning" : "neutral" },
+      { label: "Critical", value: String(critical), delta: critical > 0 ? "需关注" : "无", deltaTone: critical > 0 ? "danger" : "success" },
+      { label: "已复核", value: String(c.reviewed), delta: `${c.ai} 条待复核`, deltaTone: "neutral" },
+    ],
+    trend: [],       // 历史趋势需要按日聚合，待后端提供（真实空态）
+    attention: [],
+    topIssues: [],
+    sceneQuality: [],
+  }
+}
+
+/** 坐席分析真数据：Agent 维度由真实 agents+runs 汇总；细分板块真实空态。 */
+export async function realAgentAnalysis(): Promise<AgentAnalysisData> {
+  const [agents, results, runs] = await Promise.all([
+    req<{ items: Record<string, any>[] }>("/api/agents?pageSize=100"),
+    req<{ items: Record<string, any>[] }>("/api/quality-results?pageSize=200"),
+    req<{ runId: string; status: string }[]>("/api/runs"),
+  ])
+  const items = results.items ?? []
+  const scored = items.filter((x) => typeof x.score === "number")
+  const avg = scored.length ? scored.reduce((a, x) => a + x.score, 0) / scored.length : 0
+  const runCount = Array.isArray(runs) ? runs.length : 0
+  const succ = Array.isArray(runs) ? runs.filter((x) => x.status === "succeeded").length : 0
+  return {
+    scopeSummary: [
+      { label: "Agent 总数", value: String((agents.items ?? []).length) },
+      { label: "运行总数", value: String(runCount) },
+      { label: "运行成功率", value: runCount ? `${Math.round((succ / runCount) * 100)}%` : "—" },
+      { label: "质检结果", value: String(items.length) },
+      { label: "平均得分", value: scored.length ? avg.toFixed(1) : "—" },
+    ],
+    trend: [],
+    teams: [],
+    agents: (agents.items ?? []).map((a) => ({
+      agent: String(a.name ?? a.id), team: String(a.typeLabel ?? "-"),
+      valid: runCount, avgScore: scored.length ? Number(avg.toFixed(1)) : 0,
+      issueRate: 0, critical: 0, topProblem: "—", topScene: "—",
+    })),
+    attentionAgents: [],
+    problems: [],
+    scenes: [],
+    related: [],
+  }
+}
+
 /* ---------- 业务深化适配器 ---------- */
 import type { AnalysisTask, DataAsset, ResultRuleSet } from "@/domain/types"
 

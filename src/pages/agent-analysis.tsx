@@ -16,6 +16,7 @@ import { useListQuery } from "@/hooks/use-list-query"
 import { formatCompactDateTime, formatCallDuration } from "@/lib/time"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
 import { getAgentAnalysis } from "@/services/mock-service"
+import { realAgentAnalysis, wfEnabled } from "@/services/wf-api"
 import { RiskBadge } from "@/components/app/status-badge"
 
 const trendConfig = { value: { label: "指标", color: "var(--chart-2)" } } satisfies ChartConfig
@@ -26,7 +27,8 @@ export default function AgentAnalysisPage() {
   const filters = useMemo(() => parseListFilters(params.filters), [params.filters])
   const [view, setView] = useState<"team" | "agent">("team")
 
-  const { data, loading, error, retry } = useAsyncData(() => getAgentAnalysis(params), [params.filters])
+  const { data, loading, error, retry } = useAsyncData(
+    () => (wfEnabled() ? realAgentAnalysis() : getAgentAnalysis(params)), [params.filters])
 
   const setFilters = (next: Record<string, string>) => update({ filters: serializeListFilters(next) }, true)
   const drillTo = (extra: Record<string, string>) => {
