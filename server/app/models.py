@@ -188,6 +188,7 @@ class Run(Base):
     origin_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
     definition_source: Mapped[str | None] = mapped_column(String(8), nullable=True)  # draft|version（SDD A-01）
+    agent_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)  # SDD B-03
     input: Mapped[dict] = mapped_column(JSONB, default=dict)
     output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -265,8 +266,41 @@ class Agent(Base):
     avatar: Mapped[str | None] = mapped_column(String(128), nullable=True)
     config: Mapped[dict] = mapped_column(JSONB, default=dict)
     config_revision: Mapped[int] = mapped_column(Integer, default=1)  # SDD A-08 乐观锁
+    sandbox_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # SDD B
+    prod_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # SDD B
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AgentVersion(Base):
+    """Agent 不可变版本快照（SDD 02 §2.2）。"""
+    __tablename__ = "agent_version"
+    __table_args__ = (UniqueConstraint("agent_id", "version_no", name="uq_agent_version_no"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agent.id"), index=True)
+    version_no: Mapped[int] = mapped_column(Integer)
+    schema_version: Mapped[int] = mapped_column(Integer, default=1)
+    definition: Mapped[dict] = mapped_column(JSONB)
+    common_config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    dependency_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict)
+    artifact_hash: Mapped[str] = mapped_column(String(64))
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Release(Base):
+    """Agent 版本到环境的部署记录（SDD 02 §2.3）；回滚=重新部署旧版本。"""
+    __tablename__ = "release"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agent.id"), index=True)
+    agent_version_id: Mapped[str] = mapped_column(ForeignKey("agent_version.id"))
+    environment: Mapped[str] = mapped_column(String(8))  # sandbox|prod
+    status: Mapped[str] = mapped_column(String(16), default="active")  # active|rolled_back|offline
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class ResourceLock(Base):

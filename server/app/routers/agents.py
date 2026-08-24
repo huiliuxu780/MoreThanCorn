@@ -1,9 +1,9 @@
-"""Agent 层 API（三型 + 运行层，uiux/05 设计）。"""
+"""Agent 层 API（三型 + 运行层 + 版本/发布，uiux/05 设计 + SDD 02）。"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Agent, KnowledgeSource, Run, RunEvent, Tool, Workflow
+from ..models import Agent, AgentVersion, KnowledgeSource, Release, Run, RunEvent, Tool, Workflow
 from ..routers.workflows import _default_definition
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -109,16 +109,21 @@ def update_agent(aid: str, payload: dict, db: Session = Depends(get_db)):
 
 @router.post("/{aid}/run", status_code=202)
 def run_agent_endpoint(aid: str, payload: dict | None = None, db: Session = Depends(get_db)):
-    """SDD A-03：顶层运行异步入队，立即返回 runId；调用方轮询 GET runs/{runId} 取终态。"""
+    """SDD A-03：顶层运行异步入队。SDD B-03：可指定 versionId；
+    schedule/api 触发默认走沙箱已发布版本，无版本 422。"""
     a = db.get(Agent, aid)
     if not a:
         raise HTTPException(404, "agent not found")
     from ..agent_runtime import RunError, run_agent
     try:
         run_id = run_agent(db, a, (payload or {}).get("input") or {},
-                           trigger=(payload or {}).get("trigger", "agent"))
+                           trigger=(payload or {}).get("trigger", "agent"),
+                           version_id=(payload or {}).get("versionId"))
     except RunError as e:
-        raise HTTPException(409, str(e))
+        msg = str(e)
+        if msg.startswith("NO_RELEASED_VERSION"):
+            raise HTTPException(422, detail={"code": "NO_RELEASED_VERSION", "message": msg})
+        raise HTTPException(409, msg)
     return {"runId": run_id}
 
 
@@ -164,3 +169,91 @@ def mounts_health(aid: str, db: Session = Depends(get_db)):
     for m in cfg.get("memories", []):
         items.append({"kind": "memory", "name": m, "valid": True})
     return {"items": items}
+
+
+# ---------- 版本与发布（SDD 02） ----------
+
+@router.post("/{aid}/versions", status_code=201)
+def create_agent_version(aid: str, payload: dict | None = None, db: Session = Depends(get_db)):
+    """发布不可变版本：校验 → 同事务快照（配置+图+依赖冻结）→ artifactHash（02 §3）。"""
+    from ..agent_release import (artifact_hash, build_common_config, build_definition,
+                                 freeze_dependencies, next_version_no, validate_publish)
+    a = db.get(Agent, aid)
+    if not a:
+        raise HTTPException(404, "agent not found")
+    try:
+        definition = build_definition(db, a)
+    except ValueError as e:
+        raise HTTPException(409, detail={"code": "NO_WORKFLOW", "message": str(e)})
+    common = build_common_config(a)
+    issues = validate_publish(db, a, definition, common)
+    if issues:
+        raise HTTPException(409, detail={"code": "VALIDATION_FAILED", "issues": issues})
+    deps = freeze_dependencies(db, a, definition)
+    blocking = [i for i in deps["items"] if i["status"] in ("MISSING", "NO_READY_VERSION", "DISABLED")]
+    if blocking:
+        raise HTTPException(409, detail={"code": "DEPENDENCY_INVALID", "issues": [
+            {"code": f"DEP_{i['status']}", "message": f"{i['type']} {i['ref']} {i['status']}"} for i in blocking]})
+    ver = AgentVersion(agent_id=aid, version_no=next_version_no(db, aid),
+                       definition=definition, common_config=common, dependency_snapshot=deps,
+                       artifact_hash=artifact_hash(definition, common, deps),
+                       note=(payload or {}).get("note", ""))
+    db.add(ver)
+    a.status = "published"
+    db.commit()
+    return {"versionId": ver.id, "versionNo": ver.version_no, "artifactHash": ver.artifact_hash}
+
+
+@router.get("/{aid}/versions")
+def list_agent_versions(aid: str, db: Session = Depends(get_db)):
+    vers = (db.query(AgentVersion).filter_by(agent_id=aid)
+            .order_by(AgentVersion.version_no.desc()).all())
+    return [{"versionId": v.id, "versionNo": v.version_no, "note": v.note,
+             "artifactHash": v.artifact_hash, "createdAt": v.created_at.isoformat()} for v in vers]
+
+
+@router.get("/{aid}/versions/{vid}")
+def get_agent_version(aid: str, vid: str, db: Session = Depends(get_db)):
+    v = db.get(AgentVersion, vid)
+    if not v or v.agent_id != aid:
+        raise HTTPException(404, "agent version not found")
+    return {"versionId": v.id, "versionNo": v.version_no, "note": v.note,
+            "artifactHash": v.artifact_hash, "schemaVersion": v.schema_version,
+            "definition": v.definition, "commonConfig": v.common_config,
+            "dependencySnapshot": v.dependency_snapshot, "createdAt": v.created_at.isoformat()}
+
+
+@router.post("/{aid}/releases", status_code=201)
+def create_release(aid: str, payload: dict, db: Session = Depends(get_db)):
+    """部署版本到环境（02 §3）：同环境旧 active → rolled_back；回滚=对旧版本再发一次。"""
+    a = db.get(Agent, aid)
+    if not a:
+        raise HTTPException(404, "agent not found")
+    env = (payload or {}).get("environment", "sandbox")
+    if env not in ("sandbox", "prod"):
+        raise HTTPException(422, detail={"code": "BAD_ENVIRONMENT", "message": "environment 必须是 sandbox|prod"})
+    v = db.get(AgentVersion, (payload or {}).get("versionId", ""))
+    if not v or v.agent_id != aid:
+        raise HTTPException(404, detail={"code": "VERSION_NOT_FOUND", "message": "版本不存在"})
+    for r in db.query(Release).filter_by(agent_id=aid, environment=env, status="active").all():
+        r.status = "rolled_back"
+    rel = Release(agent_id=aid, agent_version_id=v.id, environment=env)
+    db.add(rel)
+    if env == "sandbox":
+        a.sandbox_version_id = v.id
+    else:
+        a.prod_version_id = v.id
+    a.status = "published"
+    db.commit()
+    return {"releaseId": rel.id, "environment": env, "versionNo": v.version_no, "status": rel.status}
+
+
+@router.get("/{aid}/releases")
+def list_releases(aid: str, db: Session = Depends(get_db)):
+    rows = db.query(Release).filter_by(agent_id=aid).order_by(Release.created_at.desc()).all()
+    out = []
+    for r in rows:
+        v = db.get(AgentVersion, r.agent_version_id)
+        out.append({"releaseId": r.id, "environment": r.environment, "status": r.status,
+                    "versionNo": v.version_no if v else None, "createdAt": r.created_at.isoformat()})
+    return out

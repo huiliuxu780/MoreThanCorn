@@ -19,7 +19,7 @@ def test_connection_protocol_endpoint():
                                               "kind": "basic", "secret": "pw"})
     assert r.status_code == 201, r.text
     cid = r.json()["id"]
-    items = client.get("/api/connections", params={"type": "mysql"}).json()["items"]
+    items = client.get("/api/connections", params={"type": "mysql", "pageSize": 200}).json()["items"]
     hit = [c for c in items if c["id"] == cid][0]
     assert hit["protocol"] == "mysql" and hit["endpoint"]["host"] == "db.internal"
     assert hit["secretConfigured"] is True

@@ -1,0 +1,204 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: main
+nodes_managed: true
+exported_at: "2026-08-24T20:28:05Z"
+modules:
+    backend_service:
+        dir_name: backend_service
+        title: backend_service
+        scope:
+            - server/
+        source_files: []
+        children:
+            - backend_service/shared_core
+            - backend_service/tests
+            - backend_service/workflows_routers
+        depends_on: []
+        related_to: []
+    backend_service/shared_core:
+        dir_name: 工作流内核后端服务与数据库迁移
+        title: 工作流内核后端服务与数据库迁移
+        scope:
+            - server/app/
+            - server/alembic/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend_service/tests:
+        dir_name: tests
+        title: tests
+        scope:
+            - server/tests/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend_service/workflows_routers:
+        dir_name: workflows_routers
+        title: workflows_routers
+        scope:
+            - server/app/routers/workflows.py
+            - server/app/routers/registry.py
+            - server/app/routers/runs.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    docs_and_design:
+        dir_name: docs_and_design
+        title: docs_and_design
+        scope:
+            - docs/
+            - uiux/
+            - 初始化doc/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    frontend_app:
+        dir_name: frontend_app
+        title: frontend_app
+        scope:
+            - src/
+        source_files: []
+        children:
+            - frontend_app/agents_feature
+            - frontend_app/app_entry
+            - frontend_app/app_shell_and_ui
+            - frontend_app/data_assets_feature
+            - frontend_app/quality_feature
+            - frontend_app/resources_feature
+            - frontend_app/services_and_mocks
+            - frontend_app/shared_layers
+            - frontend_app/tasks_feature
+            - frontend_app/tools_feature
+        depends_on: []
+        related_to: []
+    frontend_app/agents_feature:
+        dir_name: Agent 工作流编排与模型管理页面
+        title: Agent 工作流编排与模型管理页面
+        scope:
+            - src/pages/wf-agents-list.tsx
+            - src/pages/wf-agent-editor.tsx
+            - src/pages/wf-models.tsx
+            - src/pages/wf-designer.tsx
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    frontend_app/app_entry:
+        dir_name: 应用入口与路由装配
+        title: 应用入口与路由装配
+        scope:
+            - src/app.tsx
+            - src/main.tsx
+            - src/index.css
+            - src/vite-env.d.ts
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    frontend_app/app_shell_and_ui:
+        dir_name: 应用外壳与共享 UI 组件层
+        title: 应用外壳与共享 UI 组件层
+        scope:
+            - src/components/ui/
+            - src/components/app/
+            - src/config/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    frontend_app/data_assets_feature:
+        dir_name: 数据资产与数据定义管理页面
+        title: 数据资产与数据定义管理页面
+        scope:
+            - src/pages/data-assets.tsx
+            - src/pages/data-asset-editor.tsx
+            - src/pages/data-definition-editor.tsx
+            - src/pages/data-definitions.tsx
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    frontend_app/quality_feature:
+        dir_name: 质检质量结果页面（总览_列表_详情）
+        title: 质检质量结果页面（总览/列表/详情）
+        scope:
+            - src/pages/quality-overview.tsx
+            - src/pages/quality-result-detail.tsx
+            - src/pages/quality-results.tsx
+            - src/components/quality/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    frontend_app/resources_feature:
+        dir_name: 资源管理（AI_Data Resources）页面与组件
+        title: 资源管理（AI/Data Resources）页面与组件
+        scope:
+            - src/pages/res-list.tsx
+            - src/pages/res-detail.tsx
+            - src/pages/res-wizard.tsx
+            - src/components/resources/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    frontend_app/services_and_mocks:
+        dir_name: 服务层与 Mock 数据（质检_工作流_资源）
+        title: 服务层与 Mock 数据（质检/工作流/资源）
+        scope:
+            - src/services/
+            - src/mocks/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    frontend_app/shared_layers:
+        dir_name: 共享 Hooks、工具库与领域类型定义
+        title: 共享 Hooks、工具库与领域类型定义
+        scope:
+            - src/hooks/
+            - src/lib/
+            - src/domain/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    frontend_app/tasks_feature:
+        dir_name: 分析任务（AnalysisTask）管理页面
+        title: 分析任务（AnalysisTask）管理页面
+        scope:
+            - src/pages/tasks.tsx
+            - src/pages/task-detail.tsx
+            - src/pages/task-edit.tsx
+            - src/pages/task-wizard.tsx
+            - src/components/tasks/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    frontend_app/tools_feature:
+        dir_name: 工具资产与工作流工具管理页面
+        title: 工具资产与工作流工具管理页面
+        scope:
+            - src/pages/tools.tsx
+            - src/pages/tool-editor.tsx
+            - src/pages/wf-tools.tsx
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    scripts_and_e2e:
+        dir_name: scripts_and_e2e
+        title: scripts_and_e2e
+        scope:
+            - scripts/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []

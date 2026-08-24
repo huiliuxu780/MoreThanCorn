@@ -454,8 +454,18 @@ def execute_run(run_id: str, call_chain: list[str] | None = None) -> None:
             emit(db, run_id, "workflow_failed", payload={"error": "workflow depth limit exceeded"})
             return
         chain.append(run.workflow_id)
-        # SDD A-01：运行认版本——有 workflow_version_id 时执行不可变快照，否则草稿
-        if run.workflow_version_id:
+        # SDD A-01/B-03：运行认版本——优先级 Agent 版本快照 > 工作流版本快照 > 草稿
+        frozen_agent_versions: dict[str, str] = {}
+        if run.agent_version_id:
+            from .models import AgentVersion
+            av = db.get(AgentVersion, run.agent_version_id)
+            if not av:
+                raise RunError(f"run references missing agent version {run.agent_version_id}")
+            defn = WorkflowDefinition.model_validate((av.definition or {}).get("graph"))
+            for item in ((av.dependency_snapshot or {}).get("items") or []):
+                if item.get("type") == "AGENT" and item.get("version"):
+                    frozen_agent_versions[item["ref"]] = item["version"]
+        elif run.workflow_version_id:
             ver = db.get(WorkflowVersion, run.workflow_version_id)
             if not ver:
                 raise RunError(f"run references missing workflow version {run.workflow_version_id}")
@@ -474,6 +484,7 @@ def execute_run(run_id: str, call_chain: list[str] | None = None) -> None:
         outputs: dict[str, dict] = {}
         ctx = Ctx(db, run, outputs)
         ctx.call_chain = chain
+        ctx.frozen_agent_versions = frozen_agent_versions  # SDD B：成员 Agent 冻结版本（可空）
         succ: dict[str, list[tuple[str, str | None]]] = {}
         indeg: dict[str, int] = {n["id"]: 0 for n in nodes}
         for e in edges:
