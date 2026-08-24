@@ -391,10 +391,13 @@ def release_lock(rid: str, wsId: str = "", db: Session = Depends(get_db)):
 
 @router.delete("/api/agents/{aid}")
 def delete_agent(aid: str, db: Session = Depends(get_db)):
-    from ..models import Agent
+    from ..models import Agent, AgentVersion, Release
     a = db.get(Agent, aid)
     if not a:
         raise HTTPException(404, "Agent 不存在")
+    # SDD B：先清理部署记录与不可变版本（FK 级联），再删 Agent 本体
+    db.query(Release).filter_by(agent_id=aid).delete()
+    db.query(AgentVersion).filter_by(agent_id=aid).delete()
     db.delete(a)
     db.commit()
     return {"ok": True}
