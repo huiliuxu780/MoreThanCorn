@@ -1,18 +1,19 @@
-/** Agent 编辑器路由：三型分发（quickservice 同款）。
- *  dialogue → flow 编辑器 + Agent 配置抽屉；autonomous → 角色表单+挂载+预览调试；expert-group → 成员池。
- *  Phase A（SDD 01）：A-02 删除路由规则死配置（路由在画布 Agent选择节点）；A-03 运行异步轮询；
- *  A-08 保存带 expectedRevision；A-10 删除门面控件；A-11 挂载/成员改真选择器；A-16 统一 agentApi。 */
-import { ArrowLeft, Bot, Send } from "lucide-react"
-import { useEffect, useState } from "react"
+/** Agent 编辑器路由：三型分发。
+ *  dialogue → flow 编辑器 + Agent 配置抽屉；autonomous → 角色表单+挂载+流式预览；expert-group → 成员池。
+ *  Phase B（SDD 02）：Agent 级版本徽标 + 发布对话框 + 流式预览/步骤面板 + 结构化记忆表单 + 对话体验。 */
+import { ArrowLeft, Bot, ChevronDown, Send } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
+import { AgentPublishDialog, useAgentVersionState } from "@/components/agent-publish-dialog"
+import { ConversationPanel, MemorySchemaForm } from "@/components/agent-common-config"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { resApi } from "@/services/resource-api"
-import { agentApi, wfApi, type AgentInfo } from "@/services/wf-api"
+import { agentApi, streamRunEvents, wfApi, type AgentInfo } from "@/services/wf-api"
 import WfDesignerPage from "./wf-designer"
 import { avatarFor } from "./wf-agents-list"
 
@@ -28,7 +29,7 @@ function AddInline({ onAdd, placeholder = "名称" }: { onAdd: (v: string) => vo
   )
 }
 
-/** A-11：注册表多选器——候选来自真实资源注册表，存 id，杜绝自由文本假绑定。 */
+/** 注册表多选器（A-11）：候选来自真实资源注册表，存 id。 */
 function RegistryPicker({ title, load, ids, onChange, invalid = [] }: {
   title: string
   load: () => Promise<{ id: string; name: string }[]>
@@ -69,46 +70,21 @@ function RegistryPicker({ title, load, ids, onChange, invalid = [] }: {
   )
 }
 
-/** 运行历史（05 设计：运行观测）。 */
-function RunsHistory({ agentId }: { agentId: string }) {
-  const [runs, setRuns] = useState<{ runId: string; status: string; trigger: string; startedAt: string | null }[]>([])
-  useEffect(() => {
-    agentApi.runs(agentId).then((r) => setRuns(r.items)).catch(() => undefined)
-  }, [agentId])
-  if (runs.length === 0) return null
-  return (
-    <div className="space-y-1">
-      <div className="text-xs" style={{ color: INK2 }}>运行历史</div>
-      {runs.slice(0, 5).map((r) => (
-        <div key={r.runId} className="flex items-center gap-2 text-[11px]" style={{ color: INK2 }}>
-          <span className="rounded px-1" style={{ background: r.status === "succeeded" ? "#E8F7EE" : "#FDECEC", color: r.status === "succeeded" ? "#188F00" : "#F56C6C" }}>{r.status}</span>
-          <span>{r.trigger}</span>
-          <span className="flex-1 truncate">{r.startedAt ? r.startedAt.replace("T", " ").slice(0, 16) : "-"}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-/** A-03：真运行（异步入队 + 轮询终态），渲染工具调用与终答。 */
-async function runAgentOnce(agentId: string, query: string): Promise<string> {
-  const d = await agentApi.runOnce(agentId, { userQuery: query })
-  const steps = d.events
-    .filter((e) => e.type === "tool_call" || e.type === "workflow_started" || e.type === "agent_started")
-    .map((e) => (e.type === "tool_call" ? `🔧 ${e.payload.name ?? ""}` : `▸ ${e.type}`))
-  if (d.status !== "succeeded") return [...steps, `❌ ${d.error?.message ?? d.status}`].join("\n")
-  return [...steps, d.output?.content ?? ""].filter(Boolean).join("\n")
-}
+/* ---------- 流式预览消息 ---------- */
+interface ChatMsg { role: "user" | "ai"; text: string; steps: string[]; followUps?: string[]; fallback?: string; done: boolean }
 
 /* ---------- 自主规划 ---------- */
 function AutonomousEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: AgentInfo) => void }) {
   const [cfg, setCfg] = useState(agent.config ?? {})
   const [revision, setRevision] = useState(agent.configRevision ?? 1)
   const [models, setModels] = useState<{ modelKey: string }[]>([])
-  const [chat, setChat] = useState<{ role: "user" | "ai"; text: string }[]>([])
+  const [chat, setChat] = useState<ChatMsg[]>([])
   const [q, setQ] = useState("")
   const [running, setRunning] = useState(false)
   const [invalid, setInvalid] = useState<string[]>([])
+  const [stepsOpen, setStepsOpen] = useState<Record<number, boolean>>({})
+  const chatEndRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [chat])
   useEffect(() => {
     wfApi.models().then((r) => setModels(Array.isArray(r) ? r : [])).catch(() => undefined)
   }, [])
@@ -129,16 +105,30 @@ function AutonomousEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: A
       } else toast.error((e as Error).message)
     }
   }
-  const sendChat = async () => {
-    if (!q.trim() || running) return
-    const query = q
-    setChat((c) => [...c, { role: "user", text: query }])
+  const sendChat = async (question?: string) => {
+    const query = (question ?? q).trim()
+    if (!query || running) return
+    setChat((c) => [...c, { role: "user", text: query, steps: [], done: true },
+                     { role: "ai", text: "", steps: [], done: false }])
     setQ(""); setRunning(true)
+    const aiIdx = chat.length + 1
+    const patchAi = (patch: Partial<ChatMsg> | ((m: ChatMsg) => Partial<ChatMsg>)) =>
+      setChat((c) => c.map((m, i) => (i === aiIdx ? { ...m, ...(typeof patch === "function" ? patch(m) : patch) } : m)))
     try {
-      const text = await runAgentOnce(agent.id, query)
-      setChat((c) => [...c, { role: "ai", text }])
+      const { runId } = await agentApi.run(agent.id, { userQuery: query })
+      await streamRunEvents(runId, (ev) => {
+        if (ev.type === "llm_delta") patchAi((m) => ({ text: m.text + (ev.payload.delta ?? "") }))
+        if (ev.type === "tool_call") patchAi((m) => ({ steps: [...m.steps, `🔧 调用 ${ev.payload.name}`] }))
+        if (ev.type === "tool_result") patchAi((m) => ({ steps: [...m.steps, `↩ ${String(ev.payload.result ?? "").slice(0, 120)}`] }))
+        if (ev.type === "agent_mounts_resolved" && (ev.payload.missing ?? []).length > 0)
+          patchAi((m) => ({ steps: [...m.steps, `⚠ 失效挂载：${ev.payload.missing.map((x: any) => x.name).join("、")}`] }))
+        if (ev.type === "agent_completed") patchAi({ done: true, followUps: ev.payload.followUps, fallback: ev.payload.fallback })
+        if (ev.type === "agent_failed") patchAi((m) => ({ done: true, text: m.text || `❌ ${ev.payload.error ?? "运行失败"}` }))
+      })
+      // 终态兜底：事件流结束后确保 done
+      setChat((c) => c.map((m, i) => (i === aiIdx ? { ...m, done: true } : m)))
     } catch (e) {
-      setChat((c) => [...c, { role: "ai", text: `❌ ${(e as Error).message}` }])
+      patchAi((m) => ({ done: true, text: m.text || `❌ ${(e as Error).message}` }))
     } finally {
       setRunning(false)
     }
@@ -149,7 +139,7 @@ function AutonomousEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: A
       <div className="flex-1 space-y-4 overflow-y-auto p-6">
         <div className="space-y-1">
           <Label className="text-xs">角色能力描述</Label>
-          <Textarea className="min-h-56 text-xs" value={cfg.rolePrompt ?? ""} onChange={(e) => setCfg({ ...cfg, rolePrompt: e.target.value })} />
+          <Textarea className="min-h-40 text-xs" value={cfg.rolePrompt ?? ""} onChange={(e) => setCfg({ ...cfg, rolePrompt: e.target.value })} />
           <div className="flex gap-1 pt-1">
             {["# 角色：", "## 目标：", "## 技能：", "## 限制："].map((t) => (
               <Button key={t} variant="outline" size="sm" className="h-6 text-[11px]" onClick={() => tpl(t)}>{t}</Button>
@@ -165,7 +155,6 @@ function AutonomousEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: A
           </select>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          {/* A-10：技能是注入提示词的文本，明示非资源绑定 */}
           <div className="space-y-1">
             <div className="text-xs" style={{ color: INK2 }}>技能说明（注入提示词的文本）</div>
             {(cfg.skills ?? []).map((v: string, i: number) => (
@@ -176,7 +165,6 @@ function AutonomousEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: A
             ))}
             <AddInline onAdd={(v) => setCfg({ ...cfg, skills: [...(cfg.skills ?? []), v] })} />
           </div>
-          {/* A-11：插件/工作流/知识来自真实注册表（A-10：记忆自由文本已删除，结构化表单见 Phase B） */}
           <RegistryPicker title="插件" ids={cfg.tools ?? []} invalid={invalid}
             onChange={(v) => setCfg({ ...cfg, tools: v })}
             load={() => resApi.registry("tool").then((r) => r.items)} />
@@ -186,21 +174,48 @@ function AutonomousEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: A
           <RegistryPicker title="知识" ids={cfg.knowledges ?? []} invalid={invalid}
             onChange={(v) => setCfg({ ...cfg, knowledges: v })}
             load={() => resApi.registry("knowledge").then((r) => r.items)} />
-          <RunsHistory agentId={agent.id} />
+          <MemorySchemaForm memories={cfg.memoriesSchema ?? []} onChange={(v) => setCfg({ ...cfg, memoriesSchema: v })} />
+          <ConversationPanel cfg={cfg} setCfg={setCfg} />
         </div>
         <Button size="sm" className="bg-black text-white hover:bg-neutral-800" onClick={save}>保存</Button>
       </div>
       <div className="flex w-[360px] max-w-[92vw] flex-col border-l bg-white" style={{ borderColor: CARD }}>
-        <div className="px-4 py-3 text-[15px] font-semibold" style={{ color: INK }}>预览调试</div>
+        <div className="px-4 py-3 text-[15px] font-semibold" style={{ color: INK }}>预览调试（流式）</div>
         <div className="flex-1 space-y-2 overflow-y-auto px-4">
           {chat.map((c, i) => (
-            <div key={i} className={`max-w-[85%] rounded-md px-2 py-1 text-xs ${c.role === "user" ? "ml-auto bg-neutral-900 text-white" : "bg-neutral-100"}`}>{c.text}</div>
+            <div key={i} className={c.role === "user" ? "ml-auto w-fit max-w-[85%]" : "w-full max-w-[92%]"}>
+              <div className={`rounded-md px-2 py-1 text-xs ${c.role === "user" ? "bg-neutral-900 text-white" : "bg-neutral-100"}`}>
+                {c.text || (!c.done ? "…" : "")}
+                {c.fallback === "chitchat" && <span className="ml-1 rounded bg-white px-1 text-[10px]" style={{ color: INK3 }}>闲聊兜底</span>}
+              </div>
+              {c.role === "ai" && c.steps.length > 0 && (
+                <div className="pt-0.5">
+                  <button className="text-[10px]" style={{ color: "#3D6BFF" }} onClick={() => setStepsOpen((s) => ({ ...s, [i]: !s[i] }))}>
+                    {stepsOpen[i] ? "收起" : `查看 ${c.steps.length} 个步骤`} <ChevronDown className="inline size-3" />
+                  </button>
+                  {stepsOpen[i] && (
+                    <div className="mt-0.5 space-y-0.5 rounded border bg-white p-1" style={{ borderColor: CARD }}>
+                      {c.steps.map((s, k) => <div key={k} className="break-all text-[10px]" style={{ color: INK2 }}>{s}</div>)}
+                    </div>
+                  )}
+                </div>
+              )}
+              {c.role === "ai" && c.done && (c.followUps ?? []).length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {c.followUps!.map((f, k) => (
+                    <button key={k} className="rounded-full border px-2 py-0.5 text-[10px] hover:bg-neutral-50"
+                      style={{ borderColor: CARD, color: "#3D6BFF" }} onClick={() => sendChat(f)}>{f}</button>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
+          <div ref={chatEndRef} />
         </div>
         <div className="flex gap-1 p-3">
           <Input className="h-8 text-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder="说出你的问题吧"
             onKeyDown={(e) => e.key === "Enter" && sendChat()} />
-          <Button size="sm" className="h-8" style={{ background: "#3D6BFF" }} disabled={running} onClick={sendChat}>
+          <Button size="sm" className="h-8" style={{ background: "#3D6BFF" }} disabled={running} onClick={() => sendChat()}>
             <Send className="size-3" />{running ? "运行中" : ""}
           </Button>
         </div>
@@ -209,7 +224,7 @@ function AutonomousEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: A
   )
 }
 
-/* ---------- 编排 Agent 专家组（A-02：路由在画布 Agent选择节点；此处只管成员池） ---------- */
+/* ---------- 编排 Agent 专家组（成员池；路由在画布 Agent选择节点） ---------- */
 function ExpertGroupEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: AgentInfo) => void }) {
   const navigate = useNavigate()
   const [cfg, setCfg] = useState(agent.config ?? {})
@@ -231,7 +246,12 @@ function ExpertGroupEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
   const trialRun = async () => {
     setRunning(true); setResult("")
     try {
-      setResult(await runAgentOnce(agent.id, "试运行：请处理该会话"))
+      const d = await agentApi.runOnce(agent.id, { userQuery: "试运行：请处理该会话" })
+      const steps = d.events.filter((e) => ["tool_call", "workflow_started", "agent_started"].includes(e.type))
+        .map((e) => (e.type === "tool_call" ? `🔧 ${e.payload.name ?? ""}` : `▸ ${e.type}`))
+      setResult(d.status === "succeeded"
+        ? [...steps, d.output?.content ?? ""].filter(Boolean).join("\n")
+        : [...steps, `❌ ${d.error?.message ?? d.status}`].join("\n"))
     } catch (e) {
       setResult(`❌ ${(e as Error).message}`)
     } finally {
@@ -246,13 +266,13 @@ function ExpertGroupEditor({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
       <RegistryPicker title="成员 Agent" ids={cfg.members ?? []}
         onChange={(v) => setCfg({ ...cfg, members: v })}
         load={() => agentApi.list({ pageSize: 100 }).then((r) => r.items.filter((a) => a.id !== agent.id))} />
+      <ConversationPanel cfg={cfg} setCfg={setCfg} />
       <div className="flex items-center gap-2">
         <Button size="sm" className="bg-black text-white hover:bg-neutral-800" onClick={save}>保存</Button>
         <Button size="sm" variant="outline" onClick={() => navigate(`/config/workflows/${agent.workflowId}`)}>打开画布编排</Button>
         <Button size="sm" variant="outline" disabled={running} onClick={trialRun}>{running ? "运行中…" : "试运行"}</Button>
       </div>
       {result && <pre className="whitespace-pre-wrap rounded border p-2 text-[11px]" style={{ borderColor: CARD, color: INK2 }}>{result}</pre>}
-      <RunsHistory agentId={agent.id} />
     </div>
   )
 }
@@ -263,6 +283,8 @@ export default function WfAgentEditorPage() {
   const navigate = useNavigate()
   const [agent, setAgent] = useState<AgentInfo | null>(null)
   const [legacy, setLegacy] = useState(false)
+  const [publishOpen, setPublishOpen] = useState(false)
+  const vs = useAgentVersionState(agent && agent.type !== "dialogue" ? agent.id : undefined)
   useEffect(() => {
     agentApi.get(agentId).then(setAgent).catch((e) => { if (String((e as Error).message).startsWith("404")) setLegacy(true) })
   }, [agentId])
@@ -279,11 +301,21 @@ export default function WfAgentEditorPage() {
         <span className="flex size-6 items-center justify-center rounded-md bg-[#1F2329]"><Bot className="size-3.5 text-white" /></span>
         <span className="text-[15px] font-semibold" style={{ color: INK }}>{agent.name}</span>
         <span className="rounded px-1.5 py-0.5 text-[11px]" style={{ background: "#FFF4EA", color: "#F97E2B" }}>{agent.typeLabel}</span>
+        {/* SDD B：版本徽标 + 环境部署状态 */}
+        <span className="rounded border px-1.5 py-0.5 text-[11px]" style={{ borderColor: CARD, color: INK2 }}>
+          {vs.latest ? `V${vs.latest.versionNo}` : "草稿"}
+        </span>
+        {vs.envs.sandbox && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-600">沙箱 V{vs.envs.sandbox}</span>}
+        {vs.envs.prod && <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[11px] text-blue-600">线上 V{vs.envs.prod}</span>}
+        <div className="ml-auto">
+          <Button size="sm" className="h-8 rounded-md bg-black text-white hover:bg-neutral-800" onClick={() => setPublishOpen(true)}>发布</Button>
+        </div>
       </div>
       <div className="min-h-0 flex-1">
         {agent.type === "autonomous" && <AutonomousEditor agent={agent} onSaved={setAgent} />}
         {agent.type === "expert-group" && <ExpertGroupEditor agent={agent} onSaved={setAgent} />}
       </div>
+      <AgentPublishDialog agentId={agent.id} open={publishOpen} onClose={() => setPublishOpen(false)} onPublished={vs.refresh} />
     </div>
   )
 }

@@ -1,6 +1,8 @@
 /** Agent Designer — quickservice 1:1 复刻版（16-ui-replication-spec.md）。
  *  后端契约不变（server/ :8100）。运行态为客户端 demo-run（P1 换真 SSE）。 */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { AgentPublishDialog, useAgentVersionState } from "@/components/agent-publish-dialog"
+import { ConversationPanel, MemorySchemaForm } from "@/components/agent-common-config"
 import { useNavigate, useParams } from "react-router-dom"
 import {
   ArrowLeft,
@@ -843,11 +845,16 @@ function AgentConfigDrawer({ agentId, inline, avatar, onAvatar, onClose }: { age
             </Dialog>
           </div>
         </div>
-        {/* A-10：闲聊兜底/高级设置/词库/经验库/记忆自由文本五处门面已删除，真实现随 Phase B 回归 */}
+        {/* A-10 门面已删除；Phase B：结构化记忆 Schema + 对话体验真实现 */}
         <KnowledgeFallbackPicker ids={cfg.knowledges ?? []} onChange={(v) => setCfg("knowledges", v)} />
-        <p className="text-[11px] leading-5" style={{ color: C.ink3 }}>
-          Agent 记忆为结构化声明（名称/类型/作用域/时长），将在 Phase B 提供表单；工作流中通过记忆变量节点读写。
-        </p>
+        <div className="space-y-2">
+          <span className="text-[13px] font-medium" style={{ color: C.ink }}>| Agent 记忆</span>
+          <MemorySchemaForm memories={cfg.memoriesSchema ?? []} onChange={(v) => setCfg("memoriesSchema", v)} />
+        </div>
+        <div className="space-y-2">
+          <span className="text-[13px] font-medium" style={{ color: C.ink }}>| 对话体验</span>
+          <ConversationPanel cfg={cfg} setCfg={(v) => setAgent({ ...agent, config: v })} />
+        </div>
         <Button size="sm" className="bg-black text-white hover:bg-neutral-800" onClick={save}>保存配置</Button>
       </div>
     </div>
@@ -995,6 +1002,9 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const [runState, setRunState] = useState<Record<string, "running" | "success" | "failed" | "skipped">>({})
   const [lastRunId, setLastRunId] = useState<string | null>(null)
   const [publishOpen, setPublishOpen] = useState(false)
+  const [agentPublishOpen, setAgentPublishOpen] = useState(false)
+  /* SDD B：Agent 级版本/部署状态（agentMeta 模式的徽标与发布对话框） */
+  const agentVersionState = useAgentVersionState(agentMeta && agentId ? agentId : undefined)
   const [pop, setPop] = useState<null | "add" | "zoom" | "search">(null)
   const [versions, setVersions] = useState<{ versionNo: number; publishedAt: string }[]>([])
   const [latestVersion, setLatestVersion] = useState<number | null>(null)
@@ -1226,9 +1236,15 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
             <span className="truncate text-[15px] font-semibold" style={{ color: C.ink }}>{agentMeta ? agentMeta.name : def.workflow.name}</span>
             {agentMeta ? (
               <button className="flex items-center gap-1 rounded border bg-white px-1.5 py-0.5 text-[11px]" style={{ borderColor: C.cardBorder, color: C.ink2 }} onClick={() => setDrawer("history")}>
-                {latestVersion ? `V${latestVersion}` : `草稿 V1.0.${revision}`} <ChevronDown className="size-3" />
+                {agentVersionState.latest ? `V${agentVersionState.latest.versionNo}` : (latestVersion ? `V${latestVersion}` : `草稿 V1.0.${revision}`)} <ChevronDown className="size-3" />
               </button>
             ) : null}
+            {agentMeta && agentVersionState.envs.sandbox != null && (
+              <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-600">沙箱 V{agentVersionState.envs.sandbox}</span>
+            )}
+            {agentMeta && agentVersionState.envs.prod != null && (
+              <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[11px] text-blue-600">线上 V{agentVersionState.envs.prod}</span>
+            )}
             {/* A-13：agentMeta 模式也显示发布状态（此前只有类型标签） */}
             <span className="rounded px-1.5 py-0.5 text-[11px]" style={{ background: C.tagBg, color: C.orange }}>
               {def.workflow.status === "published" ? "已发布" : "待发布"}
@@ -1303,7 +1319,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
           )}
           <Button variant="outline" size="sm" className="rounded-md" onClick={() => doSave(defRef.current!)}>保存</Button>
           <Button size="sm" className="rounded-md bg-black text-white hover:bg-neutral-800"
-            onClick={() => (issues.length ? setPublishOpen(true) : onPublish())}>发布</Button>
+            onClick={() => (agentMeta && agentId ? setAgentPublishOpen(true) : (issues.length ? setPublishOpen(true) : onPublish()))}>发布</Button>
         </div>
       </div>
 
@@ -1458,6 +1474,12 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* SDD B：Agent 级发布（生成不可变版本 → 沙箱/线上部署；回滚=重新部署旧版本） */}
+      {agentMeta && agentId && (
+        <AgentPublishDialog agentId={agentId} open={agentPublishOpen} onClose={() => setAgentPublishOpen(false)}
+          onPublished={agentVersionState.refresh} />
+      )}
     </div>
   )
 }

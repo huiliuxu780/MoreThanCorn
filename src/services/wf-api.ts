@@ -294,6 +294,51 @@ export const agentApi = {
       await new Promise((r) => setTimeout(r, 500))
     }
   },
+  /* ---------- SDD Phase B：Agent 版本与部署 ---------- */
+  versions: (id: string) =>
+    req<{ versionId: string; versionNo: number; note: string; artifactHash: string; createdAt: string }[]>(
+      `/api/agents/${id}/versions`),
+  createVersion: (id: string, note = "") =>
+    req<{ versionId: string; versionNo: number; artifactHash: string } | { detail: { code: string; issues?: { code: string; message: string }[]; message?: string } }>(
+      `/api/agents/${id}/versions`, { method: "POST", body: JSON.stringify({ note }) }),
+  versionDetail: (id: string, versionId: string) =>
+    req<Record<string, any>>(`/api/agents/${id}/versions/${versionId}`),
+  release: (id: string, versionId: string, environment: "sandbox" | "prod") =>
+    req<{ releaseId: string; environment: string; versionNo: number; status: string }>(
+      `/api/agents/${id}/releases`, { method: "POST", body: JSON.stringify({ versionId, environment }) }),
+  releases: (id: string) =>
+    req<{ releaseId: string; environment: string; status: string; versionNo: number | null; createdAt: string }[]>(
+      `/api/agents/${id}/releases`),
+  eventsUrl: (runId: string) => `${WF_BASE}/api/runs/${runId}/events`,
+}
+
+/** SSE 事件流消费（SDD B-08）：fetch + ReadableStream 解析，终态事件后返回。 */
+export async function streamRunEvents(runId: string, onEvent: (ev: { type: string; payload: Record<string, any> }) => void,
+                                      timeoutMs = 120000): Promise<void> {
+  const TERMINAL = ["workflow_completed", "workflow_failed", "agent_completed", "agent_failed"]
+  const resp = await fetch(`${WF_BASE}/api/runs/${runId}/events`)
+  if (!resp.ok || !resp.body) throw new Error(`事件流连接失败：${resp.status}`)
+  const reader = resp.body.getReader()
+  const dec = new TextDecoder()
+  let buf = ""
+  const t0 = Date.now()
+  for (; ;) {
+    if (Date.now() - t0 > timeoutMs) throw new Error("事件流超时")
+    const { done, value } = await reader.read()
+    if (done) return
+    buf += dec.decode(value, { stream: true })
+    let sep: number
+    while ((sep = buf.indexOf("\n\n")) >= 0) {
+      const block = buf.slice(0, sep)
+      buf = buf.slice(sep + 2)
+      const dataLine = block.split("\n").find((l) => l.startsWith("data:"))
+      if (!dataLine) continue
+      let ev: { type: string; payload: Record<string, any> }
+      try { ev = JSON.parse(dataLine.slice(5).trim()) } catch { continue }
+      onEvent(ev)
+      if (TERMINAL.includes(ev.type)) return
+    }
+  }
 }
 
 /* ---------- Phase A（SDD A-16）：评测与编辑锁也走服务层 ---------- */
