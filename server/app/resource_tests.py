@@ -157,7 +157,7 @@ _EXEC = {"model": _test_model, "tool": _test_tool, "mcp": _test_mcp,
          "knowledge": _test_knowledge, "datasource": _test_datasource, "asset": _test_asset}
 
 
-def search_knowledge(db: Session, ks_id: str, query: str, top_k: int = 5) -> list[dict]:
+def search_knowledge(db: Session, ks_id: str, query: str, top_k: int = 5, mode: str = "HYBRID") -> list[dict]:
     """knowledge-retrieval 节点与测试共用的检索入口；无真实后端时 mock 切片。"""
     obj = db.get(KnowledgeSource, ks_id)
     if not obj:
@@ -166,7 +166,7 @@ def search_knowledge(db: Session, ks_id: str, query: str, top_k: int = 5) -> lis
     if url.startswith(("http://", "https://")):
         try:
             with httpx.Client(timeout=5) as client:
-                r = client.post(url, json={"query": query, "topK": top_k})
+                r = client.post(url, json={"query": query, "topK": top_k, "mode": mode})
                 r.raise_for_status()
             return (r.json() or {}).get("slices", [])
         except Exception as exc:  # noqa: BLE001

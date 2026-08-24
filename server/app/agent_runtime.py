@@ -198,7 +198,9 @@ def _autonomous_loop(db: Session, agent, run: Run, run_input: dict, call_chain: 
     system = (cfg.get("rolePrompt") or "") + "\n## 挂载技能\n" + "\n".join(f"- {s}" for s in skills)
     memories_declared = common.get("memories") or []
     if memories_declared:
+        # R1 修复：description 一并注入（此前只写不读）
         lines = "\n".join(f"- {m.get('name')}（{m.get('dataType', 'STRING')}"
+                          + (f"：{m.get('description')}" if m.get("description") else "")
                           + (f"，默认 {m.get('defaultValue')}" if m.get("defaultValue") else "") + "）"
                           for m in memories_declared)
         system += f"\n## 可用记忆变量（仅可读写以下已声明键）\n{lines}"
@@ -308,10 +310,10 @@ def _dispatch(db: Session, ctx: _Ctx, kind: str, rid: str, args: dict, run_input
         return fresh.output or {}
     if kind == "knowledge":
         from .resource_tests import search_knowledge
-        # SDD D-1：知识高级配置（TopK）真消费；未配置默认 3
+        # SDD D-1 / R1：知识高级配置（TopK/匹配分/检索模式）真消费
         adv = ((ctx_agent_config(ctx) or {}).get("knowledgeAdvanced") or {}).get(rid) or {}
         top_k = int(adv.get("topK") or 3)
-        slices = search_knowledge(db, rid, str(args.get("query", "")), top_k)
+        slices = search_knowledge(db, rid, str(args.get("query", "")), top_k, mode=str(adv.get("mode") or "HYBRID"))
         threshold = adv.get("scoreThreshold")
         if threshold is not None:
             try:

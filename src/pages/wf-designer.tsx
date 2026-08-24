@@ -74,6 +74,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   agentApi,
   evalApi,
@@ -209,7 +210,7 @@ function SummaryRows({ n }: { n: WfNode }) {
     rows.push({ label: "如果", body: (cfg.branches as unknown[])?.length ? <span className="text-xs">已配置</span> : <span style={{ color: C.ink3 }} className="text-xs">未完成条件配置</span> })
     rows.push({ label: "否则", body: <span className="text-xs" style={{ color: C.ink2 }}>默认分支</span> })
   }
-  if (n.type === "transform") rows.push({ label: "表达式", body: cfg.expression ? <span className="text-xs">已配置</span> : un })
+  if (n.type === "transform") rows.push({ label: "表达式", body: cfg.template ? <span className="text-xs">已配置</span> : un })
   if (n.type === "end") {
     rows.push({ label: "输出", body: <span className="text-xs">output <TypeChip t="Str" /></span> })
   }
@@ -237,8 +238,8 @@ function WfNodeCard({ data, selected }: NodeProps) {
     selected ? `ring-[1.5px] ring-[#3D6BFF]` : ""
   return (
     <div className={`relative w-[300px] rounded-lg border bg-white p-3 shadow-sm ${ring}`} style={{ borderColor: selected ? C.primary : C.cardBorder }}>
-      {n.type !== "input" && <Handle type="target" position={Position.Left} style={{ width: 7, height: 7, background: C.primary, border: "none" }} />}
-      {n.type !== "end" && <Handle type="source" position={Position.Right} style={{ width: 7, height: 7, background: C.primary, border: "none" }} />}
+      {n.type !== "input" && <Handle type="target" position={Position.Left} style={{ width: 12, height: 12, background: "#fff", border: `2px solid ${C.primary}`, borderRadius: 6 }} />}
+      {n.type !== "end" && <Handle type="source" position={Position.Right} style={{ width: 12, height: 12, background: C.primary, border: "2px solid #fff", borderRadius: 6 }} />}
       <div className="flex items-center gap-2">
         <span className="flex size-6 shrink-0 items-center justify-center rounded-md" style={{ background: NEUTRAL }}>
           <TypeIcon type={n.type} className="size-3.5 text-white" />
@@ -410,7 +411,6 @@ function ConfigDrawer(props: {
 }) {
   const { node, defs, nodes, edges, agentId, onClose, onChange } = props
   const [varTarget, setVarTarget] = useState<"prompt" | string | null>(null)
-  const [mode, setMode] = useState<"单次" | "批处理">("单次")
   const [openBr, setOpenBr] = useState<Record<number, boolean>>({})
   if (!node) return null
   const def = defs.find((d) => d.type_key === node.type)
@@ -473,14 +473,7 @@ function ConfigDrawer(props: {
       </p>
       {node.type === "llm" && (
         <>
-          <div className="mb-3 grid grid-cols-2 rounded-md border p-0.5 text-xs" style={{ borderColor: C.cardBorder, background: "#F7F9FC" }}>
-            {(["单次", "批处理"] as const).map((m) => (
-              <button key={m} className="rounded py-1" style={mode === m ? { background: "#fff", color: C.ink, boxShadow: "0 1px 3px rgba(31,35,41,.12)" } : { color: C.ink2 }}
-                onClick={() => setMode(m)}>
-                {m}
-              </button>
-            ))}
-          </div>
+          {/* R1 修复：移除“单次/批处理”假开关（无后端语义，批处理未实现——宁缺勿假） */}
           <Section title="模型">
             <Popover>
               <PopoverTrigger asChild>
@@ -565,8 +558,7 @@ function ConfigDrawer(props: {
                 <div key={k} className="grid grid-cols-[1fr_auto_1.4fr] gap-1"><span style={{ color: C.ink }}>{k}</span><TypeChip t="Str" /><span style={{ color: C.ink3 }}>{dsc}</span></div>
               ))}
             </div>
-            <Button variant="outline" size="sm" className="h-7 rounded-md bg-white text-xs" onClick={() => toast.success("输出示例已生成")}>输出示例</Button>
-            <p className="pt-1 text-[11px] leading-4" style={{ color: C.ink3 }}>用于定义预期输出结果的数据示例，帮助大模型更准确的输出Json参数</p>
+            {/* R1 修复：移除“输出示例”假按钮（仅 toast，无生成无保存） */}
           </Section>
         </>
       )}
@@ -659,12 +651,37 @@ function ConfigDrawer(props: {
       )}
       {node.type === "end" && (
         <Section title="输出">
-          <div className="grid grid-cols-[1fr_auto_1.2fr] items-center gap-2 pb-1 text-xs" style={{ color: C.ink3 }}><span>变量名</span><span>类型</span><span>变量值</span></div>
+          <div className="grid grid-cols-[1fr_auto_1.4fr] items-center gap-2 pb-1 text-xs" style={{ color: C.ink3 }}><span>变量名</span><span>类型</span><span>变量值（可引用上游）</span></div>
           {(node.inputs ?? []).map((b) => (
-            <div key={b.name} className="grid grid-cols-[1fr_auto_1.2fr] items-center gap-2 py-1 text-xs">
+            <div key={b.name} className="grid grid-cols-[1fr_auto_1.4fr] items-center gap-2 py-1 text-xs">
               <span style={{ color: C.ink }}>{b.name}</span><TypeChip t="Str" />
-              <Input className="h-6 text-xs" placeholder="请输入或引用变量值" value={b.source.kind === "fixed" ? String(b.source.value ?? "") : ""}
-                onChange={(e) => onChange({ ...node, inputs: (node.inputs ?? []).map((x) => (x.name === b.name ? { ...x, source: { kind: "fixed", value: e.target.value } } : x)) })} />
+              {b.source.kind === "upstream" ? (
+                <div className="flex items-center gap-1">
+                  <span className="flex-1 truncate rounded border px-1 py-0.5" style={{ borderColor: C.cardBorder, color: C.primary }}>
+                    {`{{${(b.source as { nodeId: string }).nodeId}.outputs.${(b.source as { path: string }).path.replace(/^outputs\./, "")}}}`}
+                  </span>
+                  <button title="改为固定值" onClick={() => onChange({ ...node, inputs: (node.inputs ?? []).map((x) => (x.name === b.name ? { ...x, source: { kind: "fixed", value: "" } } : x)) })}>
+                    <X className="size-3 text-neutral-400" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <Input className="h-6 flex-1 text-xs" placeholder="固定值" value={String((b.source as { value?: unknown }).value ?? "")}
+                    onChange={(e) => onChange({ ...node, inputs: (node.inputs ?? []).map((x) => (x.name === b.name ? { ...x, source: { kind: "fixed", value: e.target.value } } : x)) })} />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="shrink-0 rounded border px-1 py-0.5 text-[10px]" style={{ borderColor: C.cardBorder, color: C.primary }} title="引用变量">引用</button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-72" align="start">
+                      <VarCascader nodes={nodes} edges={edges} selfId={node.id} defs={defs}
+                        onPick={(v) => {
+                          const m = /^\{\{(.+?)\.outputs\.(.+?)\}\}$/.exec(v)
+                          if (m) onChange({ ...node, inputs: (node.inputs ?? []).map((x) => (x.name === b.name ? { ...x, source: { kind: "upstream", nodeId: m[1], path: `outputs.${m[2]}` } } : x)) })
+                        }} />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              )}
             </div>
           ))}
           <button className="flex items-center gap-1 pt-1 text-xs" style={{ color: C.primary }}
@@ -674,6 +691,85 @@ function ConfigDrawer(props: {
         </Section>
       )}
       {node.type === "workflow-exec" && <WorkflowPicker value={(cfg.workflowCode as string) ?? ""} onPick={(v) => set("workflowCode", v)} />}
+      {/* 用户报告修复：代码编写/Query改写/决策分类 专项表单（原通用表单与执行器键不匹配=假功能） */}
+      {node.type === "code-write" && (
+        <Section title="代码（Python 沙箱，10s 超时）">
+          <textarea
+            className="min-h-48 w-full rounded-md border p-2 font-mono text-[11px] leading-4"
+            style={{ borderColor: C.cardBorder }}
+            placeholder={'def main(args):\n    # args.params 为输入绑定值字典\n    return {"output": args.params.get("input", "")}'}
+            value={typeof cfg.code === "string" ? cfg.code : ""}
+            onChange={(e) => set("code", e.target.value)}
+          />
+          <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>必须定义 main(args)，返回 dict；输入来自下方输入绑定（args.params）。</p>
+          <Section title="输入绑定">
+            {(node.inputs ?? []).map((b) => (
+              <div key={b.name} className="flex items-center gap-2 pb-1 text-xs">
+                <span className="w-20 truncate" style={{ color: C.ink }}>{b.name}</span>
+                <Input className="h-6 flex-1 text-xs" placeholder="固定值" value={b.source.kind === "fixed" ? String((b.source as { value?: unknown }).value ?? "") : ""}
+                  onChange={(e) => onChange({ ...node, inputs: (node.inputs ?? []).map((x) => (x.name === b.name ? { ...x, source: { kind: "fixed", value: e.target.value } } : x)) })} />
+              </div>
+            ))}
+            <button className="flex items-center gap-1 pt-1 text-xs" style={{ color: C.primary }}
+              onClick={() => onChange({ ...node, inputs: [...(node.inputs ?? []), { name: `in${(node.inputs ?? []).length + 1}`, type: "string", source: { kind: "fixed", value: "" } }] })}>
+              <Plus className="size-3" /> 添加输入
+            </button>
+          </Section>
+        </Section>
+      )}
+      {node.type === "query-rewrite" && (
+        <Section title="Query 改写">
+          <div className="flex items-center gap-2 pb-1 text-xs" style={{ color: C.ink2 }}>
+            <span>策略</span>
+            <Select value={(cfg.strategy as string) ?? "default"} onValueChange={(v) => set("strategy", v)}>
+              <SelectTrigger className="h-7 flex-1 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">默认（透传原问题）</SelectItem>
+                <SelectItem value="custom">自定义（LLM 改写）</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {cfg.strategy === "custom" && (
+            <textarea className="min-h-20 w-full rounded-md border p-2 text-xs" style={{ borderColor: C.cardBorder }}
+              placeholder="改写提示词（真 LLM 生效；无模型配置时回落透传）"
+              value={typeof cfg.template === "string" ? cfg.template : ""} onChange={(e) => set("template", e.target.value)} />
+          )}
+          <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>输出 queryList（数组）。输入绑定在下方输入区（query / chatHistory）。</p>
+          <Section title="输入绑定">
+            {(node.inputs ?? []).map((b) => (
+              <div key={b.name} className="flex items-center gap-2 pb-1 text-xs">
+                <span className="w-24 truncate" style={{ color: C.ink }}>{b.name}</span>
+                <Input className="h-6 flex-1 text-xs" placeholder="固定值或留空取 Start" value={b.source.kind === "fixed" ? String((b.source as { value?: unknown }).value ?? "") : ""}
+                  onChange={(e) => onChange({ ...node, inputs: (node.inputs ?? []).map((x) => (x.name === b.name ? { ...x, source: { kind: "fixed", value: e.target.value } } : x)) })} />
+              </div>
+            ))}
+            <button className="flex items-center gap-1 pt-1 text-xs" style={{ color: C.primary }}
+              onClick={() => onChange({ ...node, inputs: [...(node.inputs ?? []), { name: (node.inputs ?? []).length === 0 ? "query" : "chatHistory", type: "string", source: { kind: "fixed", value: "" } }] })}>
+              <Plus className="size-3" /> 添加输入
+            </button>
+          </Section>
+        </Section>
+      )}
+      {node.type === "decision-class" && (
+        <Section title="分类项（命中走对应分支，未命中走 else）">
+          {((cfg.branches as { title?: string; description?: string }[] | undefined) ?? []).map((br, i) => (
+            <div key={i} className="space-y-1 rounded border p-1.5" style={{ borderColor: C.cardBorder }}>
+              <div className="flex items-center gap-1">
+                <Input className="h-6 flex-1 text-xs" placeholder={`分类 ${i + 1} 名称`} value={br.title ?? ""}
+                  onChange={(e) => { const bs = [...((cfg.branches as object[]) ?? [])]; bs[i] = { ...bs[i], title: e.target.value }; set("branches", bs) }} />
+                <button onClick={() => set("branches", ((cfg.branches as object[]) ?? []).filter((_, j) => j !== i))}><X className="size-3 text-neutral-400" /></button>
+              </div>
+              <Input className="h-6 text-xs" placeholder="分类说明（供路由判断）" value={br.description ?? ""}
+                onChange={(e) => { const bs = [...((cfg.branches as object[]) ?? [])]; bs[i] = { ...bs[i], description: e.target.value }; set("branches", bs) }} />
+              <div className="text-[10px]" style={{ color: C.ink3 }}>分支出口：c{i}（在画布上从该节点拉线即分支）</div>
+            </div>
+          ))}
+          <button className="flex items-center gap-1 pt-1 text-xs" style={{ color: C.primary }}
+            onClick={() => set("branches", [...((cfg.branches as object[]) ?? []), { title: "", description: "" }])}>
+            <Plus className="size-3" /> 添加分类
+          </button>
+        </Section>
+      )}
       {/* SDD D-1：Agent 节点从成员池选择 */}
       {node.type === "agent-select" && (
         <Section title="主要 Agent（来自左侧成员池）">
@@ -690,27 +786,29 @@ function ConfigDrawer(props: {
             )
           })}
           <div className="pt-1 text-xs" style={{ color: C.ink2 }}>兜底 Agent（未命中主要时使用）</div>
-          <select className="h-7 w-full rounded border bg-white px-1 text-xs" style={{ borderColor: C.cardBorder }}
-            value={(cfg.fallbackAgent as string) ?? ""} onChange={(e) => set("fallbackAgent", e.target.value)}>
-            <option value="">不配置兜底</option>
-            {memberPool.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
+          <Select value={(cfg.fallbackAgent as string) || undefined} onValueChange={(v) => set("fallbackAgent", v)}>
+            <SelectTrigger className="h-7 w-full text-xs"><SelectValue placeholder="不配置兜底" /></SelectTrigger>
+            <SelectContent>
+              {memberPool.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </Section>
       )}
       {(node.type === "agent" || node.type === "agent-exec") && (
         <Section title={node.type === "agent" ? "固定 Agent（来自成员池）" : "执行 Agent"}>
-          <select className="h-7 w-full rounded border bg-white px-1 text-xs" style={{ borderColor: C.cardBorder }}
-            value={(cfg.agentCode as string) ?? ""} onChange={(e) => set("agentCode", e.target.value)}>
-            <option value="">请选择</option>
-            {memberPool.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
+          <Select value={(cfg.agentCode as string) || undefined} onValueChange={(v) => set("agentCode", v)}>
+            <SelectTrigger className="h-7 w-full text-xs"><SelectValue placeholder="请选择" /></SelectTrigger>
+            <SelectContent>
+              {memberPool.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
           {node.type === "agent-exec" && (
             <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>也可不选，通过输入绑定 agentCode（如 Agent选择 节点的输出）动态执行。</p>
           )}
         </Section>
       )}
       {/* SDD C-3：无专项表单的节点按注册表 schema 通用渲染（替代“暂无专项配置区”） */}
-      {!["llm", "tool", "knowledge-retrieval", "mcp-call", "condition", "end", "workflow-exec", "agent-select", "agent", "agent-exec"].includes(node.type) && (
+      {!["llm", "tool", "knowledge-retrieval", "mcp-call", "condition", "end", "workflow-exec", "agent-select", "agent", "agent-exec", "code-write", "query-rewrite", "decision-class"].includes(node.type) && (
         <GenericSchemaForm def={def} cfg={cfg} set={set} node={node} onChange={onChange} />
       )}
     </div>
@@ -1184,6 +1282,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const [savedAt, setSavedAt] = useState("")
   const [revision, setRevision] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [drawer, setDrawer] = useState<"config" | "debug" | "history" | "runs" | "schedule" | "agent" | "eval" | "evo" | null>(null)
   const [showMiniMap, setShowMiniMap] = useState(true)
   const [runState, setRunState] = useState<Record<string, "running" | "success" | "failed" | "skipped">>({})
@@ -1279,10 +1378,17 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
         if (e.shiftKey) redo()
         else undo()
       }
+      /* 用户报告修复：连线可删除——点选连线后按 Delete/Backspace */
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedEdgeId) {
+        e.preventDefault()
+        const d = defRef.current
+        if (d) mutate({ ...d, graph: { ...d.graph, edges: d.graph.edges.filter((x) => x.id !== selectedEdgeId) } })
+        setSelectedEdgeId(null)
+      }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [undo, redo])
+  }, [undo, redo, selectedEdgeId, mutate])
 
   const nodes: Node[] = useMemo(() => (def?.graph.nodes ?? []).map((n) => ({
     id: n.id, type: "wf",
@@ -1303,8 +1409,9 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
 
   const edges: Edge[] = useMemo(() => (def?.graph.edges ?? []).map((e) => ({
     id: e.id, source: e.source, target: e.target,
-    style: { stroke: "#A8B3C5", strokeWidth: 1.5 },
-  })), [def])
+    style: { stroke: selectedEdgeId === e.id ? "#F56C6C" : "#A8B3C5", strokeWidth: selectedEdgeId === e.id ? 2.5 : 1.5 },
+    interactionWidth: 24,
+  })), [def, selectedEdgeId])
 
   const families = useMemo(() => {
     // SDD C-2：按编排器类型过滤节点目录（调研 11 §7 editorKinds）
@@ -1552,8 +1659,9 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
             if (dimsChanged) setNodeDims((d) => ({ ...d, ...dims }))
           }}
           onConnect={onConnect}
-          onNodeClick={(_, n) => { setSelectedId(n.id); setDrawer("config"); setPop(null) }}
-          onPaneClick={() => { setSelectedId(null); setPop(null) }}
+          onNodeClick={(_, n) => { setSelectedId(n.id); setSelectedEdgeId(null); setDrawer("config"); setPop(null) }}
+          onEdgeClick={(_, e) => { setSelectedEdgeId(e.id); setSelectedId(null) }}
+          onPaneClick={() => { setSelectedId(null); setSelectedEdgeId(null); setPop(null) }}
           onMoveStart={() => setPop(null)}
           onNodeDragStart={() => setPop(null)}
           onMove={(_, vp) => setZoom(vp.zoom)}

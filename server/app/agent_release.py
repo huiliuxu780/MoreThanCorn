@@ -53,6 +53,8 @@ def build_common_config_dict(cfg: dict) -> dict:
             "chitchatFallback": {"enabled": bool(conv.get("chitchatFallback", {}).get("enabled")),
                                  "modelId": (conv.get("chitchatFallback") or {}).get("modelId") or "",
                                  "prompt": (conv.get("chitchatFallback") or {}).get("prompt") or ""},
+            # R1 修复：开场白纳入快照（此前发布时静默丢弃）
+            "greeting": str(conv.get("greeting") or ""),
         },
         "memories": list(cfg.get("memoriesSchema") or []),
         "knowledgeFallback": {"knowledgeIds": list(cfg.get("knowledges") or [])},

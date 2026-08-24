@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: frontend_app
-title: 质检工作台前端应用（React+Vite）
+title: 质检与 Agent 工作流前端工作台
 scope:
     - src/
 source_files: []

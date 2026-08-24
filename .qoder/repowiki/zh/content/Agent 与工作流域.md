@@ -4,10 +4,10 @@
 **本文引用的文件**
 - [wf-designer.tsx](file://src/pages/wf-designer.tsx)
 - [wf-agent-editor.tsx](file://src/pages/wf-agent-editor.tsx)
+- [agent-ops-panels.tsx](file://src/components/agent-ops-panels.tsx)
 - [wf-agents-list.tsx](file://src/pages/wf-agents-list.tsx)
 - [agent-publish-dialog.tsx](file://src/components/agent-publish-dialog.tsx)
 - [wf-api.ts](file://src/services/wf-api.ts)
-- [workflows.py](file://server/app/routers/workflows.py)
 - [agents.py](file://server/app/routers/agents.py)
 - [models.py](file://server/app/models.py)
 - [schemas.py](file://server/app/schemas.py)
@@ -16,8 +16,11 @@
 - [registry.py](file://server/app/routers/registry.py)
 - [b026phaseb0001_agent_version_release.py](file://server/alembic/versions/b026phaseb0001_agent_version_release.py)
 - [c027phasec0001_event_channels_memory.py](file://server/alembic/versions/c027phasec0001_event_channels_memory.py)
+- [d028phased1001_eval_sample_agent.py](file://server/alembic/versions/d028phased1001_eval_sample_agent.py)
+- [d029phased1002_eval_sample_workflow_nullable.py](file://server/alembic/versions/d029phased1002_eval_sample_workflow_nullable.py)
 - [test_phase_b.py](file://server/tests/test_phase_b.py)
 - [test_phase_c.py](file://server/tests/test_phase_c.py)
+- [test_phase_d1.py](file://server/tests/test_phase_d1.py)
 - [check-history.mjs](file://scripts/check-history.mjs)
 - [check-minimap.mjs](file://scripts/check-minimap.mjs)
 - [verify-fullstack.mjs](file://scripts/verify-fullstack.mjs)
@@ -25,15 +28,17 @@
 
 ## 更新摘要
 **变更内容**
-- **新增** Agent 版本显示增强：列表页展示三个版本字段（latestVersion、sandboxVersion、prodVersion），历史抽屉显示 Agent 特定版本与环境徽章
-- **修复** 画布验证 Bug：使用正确的 workflowId 参数进行校验
-- **新增** 小地图渲染兼容性修复：支持 @xyflow/system 的 dimensions/measured 字段兼容
-- **新增** Puppeteer 自动化验证脚本：历史版本抽屉验证、小地图渲染验证、全链路真实运行验证
+- **新增** Phase D-1 四标签 Agent 编辑器界面：Agent搭建/运行观测/效果评测/版本指标
+- **新增** Agent 级评估系统：样本管理、真实运行评测、成功率统计
+- **增强** 专家组功能：成员池管理、成员冻结版本摘要、画布化编排
+- **新增** 综合操作仪表板：运行指标、事件时间线、版本部署状态可视化
+- **新增** 高级知识检索配置：TopK、匹配分阈值、检索模式（混合/语义/全文）
+- **新增** AI Prompt 生成：基于角色描述自动生成中文提示词
 
 ## 产品概述
 本工作流聚焦于"Agent 编辑器（节点图/Inspector/变量选择器/测试运行）""工作流设计器""Agent 版本管理与发布流程"。平台以可视化节点图编排 AI 能力，支持对话编排、自主规划与专家组协作三类 Agent；通过工作流定义、校验、发布与版本快照，形成从编辑到上线的闭环。前端基于 React + @xyflow/react 实现画布与 Inspector，后端 FastAPI 提供工作流与 Agent 的 CRUD、校验、发布与运行接口，数据库使用 SQLAlchemy/Alembic。
 
-**更新** 已集成 Phase B 的 Agent 版本发布系统与 Phase C 的事件通道、跟踪基础设施及新节点类型，形成完整的版本化运行链路，并增强了版本显示的可视化效果。
+**更新** 已集成 Phase B 的 Agent 版本发布系统与 Phase C 的事件通道、跟踪基础设施及新节点类型，并新增 Phase D-1 的四标签 Agent 编辑器界面、Agent 级评估系统、专家组增强功能和综合操作仪表板，形成完整的 Agent 全生命周期管理能力。
 
 ## 核心业务流程
 - 创建工作流：创建默认包含"开始/结束"的工作流草稿，返回工作流 ID 与初始状态。
@@ -44,42 +49,39 @@
 - **新增** 新节点类型：exec_reply（回复节点）、exec_memory_variable（记忆读写）、exec_workflow_select（工作流语义选择）、exec_workflow_fixed（固定工作流子执行）。
 - 运行与调试：支持单节点试运行、整工作流测试运行；Agent 层提供异步入队与轮询终态；运行事件与结果可观测。
 - Agent 三型编辑：对话编排走工作流画布；自主规划提供角色提示词、模型、技能/工具/工作流/知识挂载与预览调试；专家组维护成员池与试运行。
+- **新增** 四标签 Agent 编辑器：自主规划 Agent 提供搭建/运行观测/效果评测/版本指标四个标签页，统一入口管理不同形态的 Agent。
 
 ```mermaid
 sequenceDiagram
 participant U as "用户"
-participant FE as "工作流设计器(wf-designer.tsx)"
-participant API as "后端(workflows.py)"
+participant FE as "Agent编辑器(wf-agent-editor.tsx)"
+participant API as "后端(agents.py)"
 participant DB as "数据库(models.py)"
 participant RUN as "运行层(runner.py)"
-U->>FE : 打开工作流并编辑节点/连线
-FE->>API : PUT /api/workflows/{id}/draft(baseRevision, definition)
-API->>DB : 写入 draft_definition, 递增 draft_revision
-API-->>FE : 返回 savedAt/draftVersion
-U->>FE : 点击"验证"
-FE->>API : GET /api/workflows/{id}/validation
-API->>DB : 读取 draft_definition
-API-->>FE : ValidationReport
-U->>FE : 点击"发布"
-FE->>API : POST /api/workflows/{id}/publish?note=...
-API->>DB : 写入 WorkflowVersion, 更新 status=published
-API-->>FE : versionId/versionNo
-Note over RUN : Phase B/C：运行阶段使用 AgentVersion + Release 解析版本
-RUN->>DB : 创建 Run 并记录 agent_version_id
-RUN->>DB : 事件写入 run_event (CONTROL/CONTENT 通道)
+U->>FE : 打开自主规划 Agent 编辑器
+FE->>FE : 切换四标签：搭建/观测/评测/版本
+U->>FE : 配置角色提示词、模型、技能、工具、知识
+FE->>API : POST /api/agents/{id} (保存配置)
+U->>FE : 切换到运行观测标签
+FE->>API : GET /api/agents/{id}/metrics
+API->>DB : 查询运行统计数据
+FE->>FE : 显示总运行、成功率、平均时长等指标
+U->>FE : 切换到效果评测标签
+FE->>API : POST /api/agents/{id}/eval-run
+API->>RUN : 逐个样本真实运行
+RUN->>DB : 记录运行结果和事件
+FE->>FE : 显示评测结果和成功率
 ```
 
 **图表来源**
-- [wf-designer.tsx:105-135](file://src/services/wf-api.ts#L105-L135)
-- [workflows.py:84-134](file://server/app/routers/workflows.py#L84-L134)
-- [models.py:31-62](file://server/app/models.py#L31-L62)
-- [runner.py:49-67](file://server/app/runner.py#L49-L67)
+- [wf-agent-editor.tsx:363-422](file://src/pages/wf-agent-editor.tsx#L363-L422)
+- [agents.py:283-358](file://server/app/routers/agents.py#L283-L358)
+- [agent-ops-panels.tsx:13-190](file://src/components/agent-ops-panels.tsx#L13-L190)
 
 **章节来源**
-- [wf-designer.tsx:1-1599](file://src/pages/wf-designer.tsx#L1-L1599)
-- [workflows.py:20-162](file://server/app/routers/workflows.py#L20-L162)
-- [schemas.py:92-107](file://server/app/schemas.py#L92-L107)
-- [runner.py:38-50](file://server/app/runner.py#L38-L50)
+- [wf-agent-editor.tsx:1-422](file://src/pages/wf-agent-editor.tsx#L1-L422)
+- [agents.py:200-358](file://server/app/routers/agents.py#L200-L358)
+- [agent-ops-panels.tsx:1-190](file://src/components/agent-ops-panels.tsx#L1-L190)
 
 ## 功能模块清单
 - 工作流设计器（画布与 Inspector）
@@ -91,6 +93,7 @@ RUN->>DB : 事件写入 run_event (CONTROL/CONTENT 通道)
   - 用户价值：统一入口管理不同形态的 Agent。
   - 验收要点：类型路由正确、配置保存带乐观锁、挂载项来自注册表、预览调试可用。
   - **新增** 记忆 Schema 声明：支持 STRING/NUMBER/BOOLEAN/JSON 类型，运行时校验写入键。
+  - **新增** 四标签界面：自主规划 Agent 提供搭建/运行观测/效果评测/版本指标四个标签页。
 - 变量选择器与资源选择器
   - 职责：根据拓扑可达性计算祖先集合，仅暴露上游输出；资源选择器拉取注册表 Enabled 项。
   - 用户价值：避免无效绑定，提升配置效率。
@@ -108,16 +111,27 @@ RUN->>DB : 事件写入 run_event (CONTROL/CONTENT 通道)
   - **新增** 事件通道：CONTROL 控制面事件（node_completed、memory_read/write）与 CONTENT 内容面事件（llm_delta、reply_sent）分离。
   - **新增** Trace 基础设施：每个事件携带 trace_id/span_id/parent_span_id，支持分布式追踪。
   - **新增** 新节点执行器：reply（回复）、memory-variable（记忆读写）、workflow-select（工作流选择）、workflow-fixed（固定工作流执行）。
+- **新增** Agent 级评估系统
+  - 职责：样本管理、真实运行评测、成功率统计、结果可视化。
+  - 用户价值：量化评估 Agent 表现，支持持续优化。
+  - 验收要点：样本增删改查、批量评测运行、成功率计算、结果详情展示。
+- **新增** 专家组成员池管理
+  - 职责：成员 Agent 选择、成员池配置、成员冻结版本摘要。
+  - 用户价值：灵活组合多个 Agent 形成专家组，支持版本化成员管理。
+  - 验收要点：成员选择器、画布节点联动、版本冻结信息展示。
+- **新增** 高级知识检索配置
+  - 职责：TopK 数量、匹配分阈值、检索模式（混合/语义/全文）配置。
+  - 用户价值：精细化控制知识检索效果，平衡性能与准确性。
+  - 验收要点：配置项生效、检索模式切换、阈值过滤效果。
 
 **章节来源**
 - [wf-designer.tsx:161-657](file://src/pages/wf-designer.tsx#L161-L657)
-- [wf-agent-editor.tsx:1-290](file://src/pages/wf-agent-editor.tsx#L1-L290)
+- [wf-agent-editor.tsx:127-344](file://src/pages/wf-agent-editor.tsx#L127-L344)
+- [agent-ops-panels.tsx:84-190](file://src/components/agent-ops-panels.tsx#L84-L190)
+- [agents.py:283-358](file://server/app/routers/agents.py#L283-L358)
 - [validator.py:54-163](file://server/app/validator.py#L54-L163)
 - [workflows.py:101-162](file://server/app/routers/workflows.py#L101-L162)
-- [agents.py:108-167](file://server/app/routers/agents.py#L108-L167)
-- [wf-api.ts:165-297](file://src/services/wf-api.ts#L165-L297)
-- [runner.py:435-525](file://server/app/runner.py#L435-L525)
-- [registry.py:14-17](file://server/app/routers/registry.py#L14-L17)
+- [wf-api.ts:315-333](file://src/services/wf-api.ts#L315-L333)
 
 ## 数据与状态
 - 核心数据模型
@@ -129,16 +143,19 @@ RUN->>DB : 事件写入 run_event (CONTROL/CONTENT 通道)
   - Agent：三型 Agent（autonomous/dialogue/expert-group），含配置与乐观锁 revision，以及环境版本指针。
   - 运行相关：Run、NodeRun、RunEvent、CallRecord 记录运行轨迹与外部调用。
   - 资源：Tool/Model/McpServer/KnowledgeSource 等供节点引用。
+  - **新增** 评估样本：EvalSample 表支持 agent_id 关联，存储样本名称、输入和期望输出。
 - 关键状态流转
   - 工作流状态：draft → testing → published → deprecated（由业务操作驱动，发布时置 published）。
   - Agent 状态：随其绑定的工作流发布而同步为 published；支持 sandbox_version_id/prod_version_id 环境隔离。
   - **新增** 版本状态：AgentVersion 不可变；Release 状态 active|rolled_back|offline。
   - 运行状态：queued → running → succeeded/failed/cancelled（前端轮询至终态）。
   - **新增** 事件通道：CONTROL（控制面）与 CONTENT（内容面）双通道事件。
+  - **新增** 评估状态：样本独立管理，评测运行实时返回结果。
 - 数据所有权边界
   - 前端负责画布交互与本地状态，后端负责持久化、校验与执行。
   - 资源引用以 ID 形式存储，运行时解析；发布快照固化引用关系。
   - **新增** 版本解析：运行阶段优先使用指定版本或环境解析的版本快照，而非活动草稿。
+  - **新增** 样本作用域：评估样本按 Agent 维度隔离，支持跨运行持久化。
 
 ```mermaid
 classDiagram
@@ -194,6 +211,14 @@ class Release {
 +string status
 +datetime created_at
 }
+class EvalSample {
++string id
++string agent_id
++string name
++jsonb input
++jsonb expected
++datetime created_at
+}
 class Run {
 +string id
 +string workflow_version_id
@@ -226,27 +251,21 @@ class RunEvent {
 +jsonb payload
 +datetime created_at
 }
-class MemoryRecord {
-+string id
-+string scope
-+string key
-+string value
-+datetime updated_at
-}
 Workflow "1" -- "0..*" WorkflowVersion : "versions"
 Agent "0..1" --> Workflow : "workflow_id"
 Agent "1" -- "0..*" AgentVersion : "versions"
 AgentVersion "1" -- "0..*" Release : "deployments"
+Agent "1" -- "0..*" EvalSample : "samples"
 Run "0..*" --> WorkflowVersion : "workflow_version_id"
 Run "0..*" --> Agent : "agent_id"
 Run "1" -- "0..*" RunEvent : "events"
-Run "0..*" --> MemoryRecord : "scope"
 ```
 
 **图表来源**
 - [models.py:31-62](file://server/app/models.py#L31-62)
 - [models.py:271-323](file://server/app/models.py#L271-323)
 - [models.py:221-251](file://server/app/models.py#L221-251)
+- [d028phased1001_eval_sample_agent.py:21-24](file://server/alembic/versions/d028phased1001_eval_sample_agent.py#L21-L24)
 
 **章节来源**
 - [models.py:31-62](file://server/app/models.py#L31-62)
@@ -254,6 +273,8 @@ Run "0..*" --> MemoryRecord : "scope"
 - [models.py:221-251](file://server/app/models.py#L221-251)
 - [b026phaseb0001_agent_version_release.py:1-21](file://server/alembic/versions/b026phaseb0001_agent_version_release.py#L1-L21)
 - [c027phasec0001_event_channels_memory.py:22-38](file://server/alembic/versions/c027phasec0001_event_channels_memory.py#L22-L38)
+- [d028phased1001_eval_sample_agent.py:1-31](file://server/alembic/versions/d028phased1001_eval_sample_agent.py#L1-L31)
+- [d029phased1002_eval_sample_workflow_nullable.py:1-29](file://server/alembic/versions/d029phased1002_eval_sample_workflow_nullable.py#L1-L29)
 
 ## 关键约束与边界
 - 非功能性需求
@@ -262,16 +283,19 @@ Run "0..*" --> MemoryRecord : "scope"
   - 性能：变量选择器基于拓扑祖先集缓存；资源选择器按需加载注册表；运行采用异步入队与轮询。
   - **新增** 版本一致性：Agent 运行强制使用版本快照，确保行为可重现；依赖冻结防止运行时漂移。
   - **新增** 事件完整性：所有事件必须携带 trace_id/span_id，支持端到端追踪；token 用量记录用于成本分析。
+  - **新增** 评估性能：评测运行同步等待终态，支持批量样本处理，限制单次评测样本数量。
 - 依赖与集成边界
   - 节点 IO 与执行器由 NodeDefinition 与 registry 决定；LLM/Tool/MCP/Knowledge 引用需处于 enabled/ready 状态。
   - 发布流程会收集节点对资源的引用，用于删除防护与审计。
   - **新增** 记忆 Schema 约束：写入记忆前必须验证键是否在 Agent 配置的 memoriesSchema 中声明。
   - **新增** 系统变量规范：14 个系统变量（tenantId、userId、userName、sysTime、language、memberId、formId、robotCode、nick、serviceId、serviceName、phoneNum、onlineChannelSource、initContext）通过注册表暴露。
+  - **新增** 知识检索约束：TopK 范围 1-20，匹配分阈值 0-1，检索模式限定 HYBRID/SEMANTIC/TEXT。
 - 业务约束
   - 工作流必须恰有一个开始节点与至少一个终端节点；条件分支与出边 handle 需一致；结构化输出键需被唯一节点产出。
   - Agent 名称长度上限为 20，前后端共用同一常量。
   - **新增** 版本发布约束：同一 Agent 在同一环境（sandbox/prod）只能有一个 active 的 Release；回滚通过重新部署旧版本实现。
   - **新增** 工作流选择约束：workflow-select 节点必须配置有效候选工作流；未命中时走 miss 分支。
+  - **新增** 评估样本约束：样本输入必须符合 Agent 配置的结构化输入；样本名称唯一性不强制但建议有意义。
 
 ```mermaid
 flowchart TD
@@ -283,110 +307,118 @@ R4 --> R5["R5: Tool/Knowledge/MCP 依赖存在且启用"]
 R5 --> R6["R6: 结构化输出键唯一产出"]
 R6 --> R7["R7: 条件分支与出边一致"]
 R7 --> R8["R8: Agent 版本依赖冻结"]
-R8 --> End(["返回 ValidationReport"])
+R8 --> R9["R9: 评估样本输入校验"]
+R9 --> End(["返回 ValidationReport"])
 ```
 
 **图表来源**
-- [validator.py:54-163](file://server/app/validator.py#L54-163)
+- [validator.py:54-163](file://server/app/validator.py#L54-L163)
+- [agents.py:297-321](file://server/app/routers/agents.py#L297-L321)
 
 **章节来源**
-- [validator.py:54-163](file://server/app/validator.py#L54-163)
+- [validator.py:54-163](file://server/app/validator.py#L54-L163)
 - [agents.py:17-22](file://server/app/routers/agents.py#L17-22)
-- [workflows.py:84-134](file://server/app/routers/workflows.py#L84-134)
+- [workflows.py:84-134](file://server/app/routers/workflows.py#L84-L134)
 - [runner.py:38-50](file://server/app/runner.py#L38-50)
-- [runner.py:435-469](file://server/app/runner.py#L435-469)
+- [runner.py:435-469](file://server/app/runner.py#L435-L469)
+- [agents.py:297-321](file://server/app/routers/agents.py#L297-L321)
 
 ## 新增特性详解
 
-### Agent 版本显示增强（Phase B 增强）
-- **三版本字段显示**：Agent 列表页展示 latestVersion（最新版本号）、sandboxVersion（沙箱环境版本）、prodVersion（线上环境版本）
-- **环境徽章**：沙箱环境显示绿色徽章"沙箱 V{version}"，线上环境显示蓝色徽章"线上 V{version}"
-- **历史抽屉增强**：Agent 历史版本抽屉显示每个版本的部署环境徽章和 artifact hash 前缀
-- **版本状态同步**：后端 list_agents 接口返回最新的版本信息和各环境生效版本
+### Phase D-1 四标签 Agent 编辑器界面
+- **四标签架构**：自主规划 Agent 编辑器提供 Agent搭建/运行观测/效果评测/版本指标四个标签页
+- **标签导航**：顶部导航栏显示当前 Agent 基本信息、版本状态和环境徽章，标签切换流畅
+- **构建标签**：完整的 Agent 配置界面，包括角色提示词、模型选择、技能/工具/工作流/知识挂载、记忆 Schema 配置
+- **运行观测标签**：显示 Agent 级运行指标（总运行、成功、失败、成功率、平均时长、最长时长）和运行记录列表
+- **效果评测标签**：样本管理、批量评测运行、结果统计和详情展示
+- **版本指标标签**：版本历史、部署状态、成员冻结版本摘要可视化
 
 **章节来源**
-- [wf-agents-list.tsx:147-153](file://src/pages/wf-agents-list.tsx#L147-L153)
-- [agents.py:64-77](file://server/app/routers/agents.py#L64-L77)
-- [test_phase_b.py:147-159](file://server/tests/test_phase_b.py#L147-L159)
+- [wf-agent-editor.tsx:363-422](file://src/pages/wf-agent-editor.tsx#L363-L422)
+- [agent-ops-panels.tsx:13-190](file://src/components/agent-ops-panels.tsx#L13-L190)
 
-### 画布验证 Bug 修复
-- **workflowId 参数修正**：修复了画布验证时使用错误参数的 Bug，确保校验请求传递正确的 workflowId
-- **验证流程优化**：确保工作流详情获取和校验流程使用一致的标识符
-
-**章节来源**
-- [workflows.py:74-82](file://server/app/routers/workflows.py#L74-L82)
-- [workflows.py:101-107](file://server/app/routers/workflows.py#L101-L107)
-
-### 小地图渲染兼容性修复
-- **尺寸字段兼容**：支持 @xyflow/system 新版本中的 dimensions 字段和旧版本的 measured 字段
-- **小地图节点同步**：确保画布节点与小地图缩略节点数量保持一致
-- **Puppeteer 验证**：新增 check-minimap.mjs 脚本验证小地图渲染正确性
+### Agent 级评估系统
+- **样本管理**：支持添加、删除、查看评估样本，每个样本包含名称、输入 JSON 和可选期望输出
+- **真实运行评测**：POST /api/agents/{aid}/eval-run 逐个样本真实运行，同步等待终态返回结果
+- **结果统计**：返回总样本数、成功数、每个样本的运行状态、耗时、输出内容和错误信息
+- **数据模型**：EvalSample 表支持 agent_id 关联，支持 workflow_id 为空（只挂 Agent 的场景）
+- **用户体验**：评测过程中显示进度，完成后展示成功率和详细结果列表
 
 **章节来源**
-- [wf-designer.tsx:1455-1457](file://src/pages/wf-designer.tsx#L1455-L1457)
-- [check-minimap.mjs:20-30](file://scripts/check-minimap.mjs#L20-L30)
+- [agents.py:297-341](file://server/app/routers/agents.py#L297-L341)
+- [agent-ops-panels.tsx:84-144](file://src/components/agent-ops-panels.tsx#L84-L144)
+- [test_phase_d1.py:48-67](file://server/tests/test_phase_d1.py#L48-L67)
+- [d028phased1001_eval_sample_agent.py:21-24](file://server/alembic/versions/d028phased1001_eval_sample_agent.py#L21-L24)
+- [d029phased1002_eval_sample_workflow_nullable.py:21-23](file://server/alembic/versions/d029phased1002_eval_sample_workflow_nullable.py#L21-L23)
 
-### Puppeteer 自动化验证脚本
-- **历史版本验证**：check-history.mjs 验证历史版本抽屉显示最新版本号、环境徽章和 artifact hash
-- **小地图验证**：check-minimap.mjs 验证画布节点与小地图缩略节点数量一致
-- **全链路验证**：verify-fullstack.mjs 提供完整的前后端集成测试，覆盖资源管理、工作流运行、Agent 执行等场景
-
-**章节来源**
-- [check-history.mjs:1-22](file://scripts/check-history.mjs#L1-L22)
-- [check-minimap.mjs:1-31](file://scripts/check-minimap.mjs#L1-L31)
-- [verify-fullstack.mjs:1-274](file://scripts/verify-fullstack.mjs#L1-L274)
-
-### Agent 版本发布系统（Phase B）
-- **版本快照**：AgentVersion 存储不可变的定义快照，包含 definition、common_config、dependency_snapshot 和 artifact_hash。
-- **环境部署**：Release 表管理 sandbox 和 prod 环境的部署状态，支持 active/rolled_back/offline 状态。
-- **运行解析**：POST /api/agents/{aid}/run 支持指定 versionId、草稿运行或环境解析三种模式。
-- **依赖冻结**：发布时解析工具到当前最新 ready ToolVersion 并写入 dependency_snapshot，确保运行期不漂移。
+### 专家组成员池增强
+- **成员池选择器**：在 Agent 编辑器中提供成员 Agent 选择界面，排除自身 Agent
+- **画布联动**：成员池配置后，画布中的 Agent 选择/执行节点可从成员池中选择目标 Agent
+- **成员冻结版本**：发布版本时记录成员的冻结版本信息，确保运行期成员版本稳定性
+- **版本摘要展示**：版本指标标签中显示每个版本的成员冻结信息，包括成员 ID 和目标版本
+- **降级策略**：如果成员未发布版本，运行时回退到草稿并留痕
 
 **章节来源**
-- [test_phase_b.py:1-27](file://server/tests/test_phase_b.py#L1-L27)
-- [models.py:294-323](file://server/app/models.py#L294-323)
+- [wf-designer.tsx:431-441](file://src/pages/wf-designer.tsx#L431-L441)
+- [wf-designer.tsx:1011-1031](file://src/pages/wf-designer.tsx#L1011-L1031)
+- [agents.py:218-231](file://server/app/routers/agents.py#L218-L231)
+- [agent-ops-panels.tsx:147-189](file://src/components/agent-ops-panels.tsx#L147-L189)
+- [test_phase_d1.py:75-101](file://server/tests/test_phase_d1.py#L75-L101)
 
-### 事件通道与跟踪基础设施（Phase C）
-- **双通道设计**：CONTROL 通道处理控制面事件（node_completed、memory_read/write），CONTENT 通道处理用户可见内容流（llm_delta、reply_sent）。
-- **Trace 骨架**：每个事件携带 trace_id（=run_id）、span_id（=node_run_id）、parent_span_id（=run_id），支持分布式追踪。
-- **Token 用量**：tokens 字段记录 token 使用情况，duration_ms 记录节点执行耗时。
-- **事件发射**：emit() 函数统一处理事件创建，自动分配通道和追踪信息。
-
-**章节来源**
-- [runner.py:49-67](file://server/app/runner.py#L49-L67)
-- [models.py:221-239](file://server/app/models.py#L221-239)
-- [test_phase_c.py:52-91](file://server/tests/test_phase_c.py#L52-L91)
-
-### 记忆持久化系统（Phase C）
-- **作用域隔离**：MemoryRecord 支持 agent:{agentId} 和 wf:{workflowId} 两种作用域，键空间内唯一。
-- **Schema 校验**：写入前验证键是否在 Agent 配置的 memoriesSchema 中声明，未声明的键写入会被拒绝。
-- **跨运行持久化**：记忆值在不同运行间持久化，支持多次运行共享状态。
-- **读写操作**：支持 read/write 模式，write 模式批量写入多个键，read 模式批量读取指定键。
+### 综合操作仪表板
+- **运行指标面板**：展示 Agent 级别的运行统计数据，包括总数、成功数、失败数、成功率、平均时长、最长时长
+- **运行记录列表**：显示最近 30 条运行记录，支持点击查看详情和事件时间线
+- **事件时间线**：按 run 聚合的事件列表，区分 CONTROL 和 CONTENT 通道事件
+- **版本部署状态**：显示各版本的部署环境和生效状态，支持线上/沙箱环境标识
+- **实时刷新**：支持手动刷新数据，确保仪表板信息最新
 
 **章节来源**
-- [runner.py:435-469](file://server/app/runner.py#L435-L469)
-- [models.py:242-251](file://server/app/models.py#L242-L251)
-- [test_phase_c.py:96-116](file://server/tests/test_phase_c.py#L96-L116)
+- [agent-ops-panels.tsx:13-82](file://src/components/agent-ops-panels.tsx#L13-L82)
+- [agents.py:283-294](file://server/app/routers/agents.py#L283-L294)
+- [test_phase_d1.py:27-46](file://server/tests/test_phase_d1.py#L27-L46)
 
-### 新节点执行器（Phase C）
-- **exec_reply**：回复节点，发送用户可见的内容到 CONTENT 通道。
-- **exec_memory_variable**：记忆变量节点，支持读写持久化记忆。
-- **exec_workflow_select**：工作流选择节点，基于语义路由选择候选工作流。
-- **exec_workflow_fixed**：固定工作流节点，执行绑定的工作流作为子运行。
-- **exec_decision_class**：决策分类节点，基于 LLM 分类结果路由到不同分支。
-- **exec_query_rewrite**：Query 改写节点，将用户查询改写为检索查询列表。
-- **exec_code_write**：代码编写节点，在沙箱中执行 Python 代码（超时保护）。
+### 高级知识检索配置
+- **TopK 配置**：设置检索返回的最大文档数量，范围 1-20，默认值 3
+- **匹配分阈值**：设置文档匹配的最低分数阈值，范围 0-1，默认值 0.5
+- **检索模式**：支持混合（HYBRID）、语义（SEMANTIC）、全文（TEXT）三种检索模式
+- **配置界面**：在知识挂载处提供高级配置按钮，展开后显示完整配置选项
+- **真消费**：配置项在后端实际生效，影响知识检索行为和性能
 
 **章节来源**
-- [runner.py:492-659](file://server/app/runner.py#L492-L659)
-- [test_phase_c.py:146-237](file://server/tests/test_phase_c.py#L146-L237)
+- [wf-agent-editor.tsx:98-121](file://src/pages/wf-agent-editor.tsx#L98-L121)
+- [wf-agent-editor.tsx:281-293](file://src/pages/wf-agent-editor.tsx#L281-L293)
 
-### 系统变量目录（Phase C）
-- **14 个系统变量**：tenantId、userId、userName、sysTime、language、memberId、formId、robotCode、nick、serviceId、serviceName、phoneNum、onlineChannelSource、initContext。
-- **注册表暴露**：通过 `/api/registry/system-variables` 接口暴露，前端可动态加载。
-- **变量解析**：在工作流模板中可通过 `{{system.outputs.variableName}}` 语法引用。
+### AI Prompt 生成
+- **智能生成**：基于 Agent 名称和角色描述，使用 LLM 生成中文角色提示词
+- **模板库**：提供通用、客户服务、活动咨询、商品导购、销售分析等预设模板
+- **生成接口**：POST /api/agents/generate-prompt 接收名称和提示，返回生成的 prompt
+- **错误处理**：生成失败时返回明确的错误信息，便于用户排查问题
+- **用户体验**：生成过程中显示加载状态，完成后自动填充到角色提示词区域
 
 **章节来源**
-- [runner.py:38-47](file://server/app/runner.py#L38-L47)
-- [registry.py:14-17](file://server/app/routers/registry.py#L14-L17)
-- [wf-designer.tsx:277-284](file://src/pages/wf-designer.tsx#L277-L284)
+- [wf-agent-editor.tsx:235-251](file://src/pages/wf-agent-editor.tsx#L235-L251)
+- [agents.py:344-358](file://server/app/routers/agents.py#L344-L358)
+- [test_phase_d1.py:69-73](file://server/tests/test_phase_d1.py#L69-L73)
+
+### 运行观测增强
+- **指标卡片**：以卡片形式展示关键运行指标，支持百分比和数值格式化
+- **运行记录表格**：显示运行 ID、触发方式、状态、耗时、错误信息和时间戳
+- **事件详情**：点击运行记录可查看该运行的事件时间线，区分控制面和内容面事件
+- **状态标识**：使用颜色标识运行状态（绿色成功、红色失败、黄色进行中）
+- **性能统计**：计算平均时长和最长时长，帮助识别性能瓶颈
+
+**章节来源**
+- [agent-ops-panels.tsx:13-82](file://src/components/agent-ops-panels.tsx#L13-L82)
+- [agents.py:283-294](file://server/app/routers/agents.py#L283-L294)
+
+### 版本指标增强
+- **版本历史**：显示所有版本的历史记录，包括版本号、备注、创建时间和 artifact hash
+- **部署状态**：显示每个版本的部署环境（线上/沙箱）和生效状态
+- **成员冻结**：显示版本发布时冻结的成员信息，包括成员 ID 和目标版本
+- **版本对比**：支持查看不同版本的差异，辅助版本管理和回滚决策
+- **环境徽章**：使用不同颜色标识线上和沙箱环境的部署状态
+
+**章节来源**
+- [agent-ops-panels.tsx:147-189](file://src/components/agent-ops-panels.tsx#L147-L189)
+- [agents.py:218-231](file://server/app/routers/agents.py#L218-L231)
+- [test_phase_d1.py:75-101](file://server/tests/test_phase_d1.py#L75-L101)

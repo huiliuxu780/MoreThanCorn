@@ -3,11 +3,11 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-08-24T22:10:18Z"
+exported_at: "2026-08-24T22:39:45Z"
 modules:
     "":
-        dir_name: AI 质量评价与工作流编排平台（单体仓库）
-        title: AI 质量评价与工作流编排平台（单体仓库）
+        dir_name: AI 质量评价与工作流编排平台单体仓库
+        title: AI 质量评价与工作流编排平台单体仓库
         scope:
             - README.md
             - .gitignore
@@ -67,8 +67,8 @@ modules:
         related_to:
             - path: backend_service/workflows_routers
     backend_service/tests:
-        dir_name: 后端服务端到端测试套件
-        title: 后端服务端到端测试套件
+        dir_name: 后端服务集成测试套件
+        title: 后端服务集成测试套件
         scope:
             - server/tests/
         source_files: []
@@ -95,8 +95,8 @@ modules:
             - path: frontend_app/services_and_mocks
             - path: scripts_and_e2e
     docs_and_design:
-        dir_name: 产品调研、UI_UX 设计与初始化文档集
-        title: 产品调研、UI/UX 设计与初始化文档集
+        dir_name: 轻量 Workflow 系统调研与资源管理 UI_UX 设计文档集
+        title: 轻量 Workflow 系统调研与资源管理 UI/UX 设计文档集
         scope:
             - docs/
             - uiux/
@@ -108,8 +108,8 @@ modules:
             - path: backend_service/workflows_routers
             - path: frontend_app/resources_feature
     frontend_app:
-        dir_name: 质检工作台前端应用（React+Vite）
-        title: 质检工作台前端应用（React+Vite）
+        dir_name: 质检与 Agent 工作流前端工作台
+        title: 质检与 Agent 工作流前端工作台
         scope:
             - src/
         source_files: []
@@ -127,8 +127,8 @@ modules:
         depends_on: []
         related_to: []
     frontend_app/agents_feature:
-        dir_name: Agent 工作流编排与模型管理页面集
-        title: Agent 工作流编排与模型管理页面集
+        dir_name: Agent 工作流与模型管理页面集
+        title: Agent 工作流与模型管理页面集
         scope:
             - src/pages/wf-agents-list.tsx
             - src/pages/wf-agent-editor.tsx
@@ -210,8 +210,8 @@ modules:
             - path: backend_service/shared_core
             - path: docs_and_design
     frontend_app/services_and_mocks:
-        dir_name: 业务服务层与 Mock 数据（质检_工作流_资源）
-        title: 业务服务层与 Mock 数据（质检/工作流/资源）
+        dir_name: 前端业务服务层与 Mock 数据
+        title: 前端业务服务层与 Mock 数据
         scope:
             - src/services/
             - src/mocks/
@@ -265,8 +265,8 @@ modules:
             - path: backend_service/shared_core
             - path: frontend_app/agents_feature
     scripts_and_e2e:
-        dir_name: E2E 验证与回归脚本集
-        title: E2E 验证与回归脚本集
+        dir_name: 端到端验收与回归脚本集
+        title: 端到端验收与回归脚本集
         scope:
             - scripts/
         source_files: []

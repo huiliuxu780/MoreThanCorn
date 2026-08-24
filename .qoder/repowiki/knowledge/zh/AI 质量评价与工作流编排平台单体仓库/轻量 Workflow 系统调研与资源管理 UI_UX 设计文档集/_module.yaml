@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: docs_and_design
-title: 产品调研、UI/UX 设计与初始化文档集
+title: 轻量 Workflow 系统调研与资源管理 UI/UX 设计文档集
 scope:
     - docs/
     - uiux/

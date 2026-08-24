@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: frontend_app/agents_feature
-title: Agent 工作流编排与模型管理页面集
+title: Agent 工作流与模型管理页面集
 scope:
     - src/pages/wf-agents-list.tsx
     - src/pages/wf-agent-editor.tsx

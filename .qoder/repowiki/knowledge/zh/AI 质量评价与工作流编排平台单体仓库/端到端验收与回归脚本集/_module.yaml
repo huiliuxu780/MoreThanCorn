@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: scripts_and_e2e
-title: E2E 验证与回归脚本集
+title: 端到端验收与回归脚本集
 scope:
     - scripts/
 source_files: []

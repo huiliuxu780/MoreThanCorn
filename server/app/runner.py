@@ -133,6 +133,9 @@ def exec_input(node, ctx) -> dict:
 def exec_llm(node, ctx) -> dict:
     cfg = node.get("config", {})
     prompt = render_refs(cfg.get("prompt", ""), ctx.outputs, ctx.run_input)
+    # R1 修复：outputFormat 真消费（此前表单配置被丢弃）
+    if cfg.get("outputFormat") == "JSON":
+        prompt += "\n请严格以单个 JSON 对象形式输出最终答案，不要包含其他说明文字。"
     model = (cfg.get("modelRef") or {}).get("modelId", "mock")
     inputs = resolve_bindings(node.get("inputs", []), ctx.outputs, ctx.run_input)
     t0 = time.time()
@@ -584,8 +587,9 @@ def exec_decision_class(node, ctx) -> dict:
     if not branches:
         raise RunError("决策分类未配置分类项")
     inputs = resolve_bindings(node.get("inputs", []), ctx.outputs, ctx.run_input)
-    query = str(render_refs(cfg.get("query", ""), ctx.outputs, ctx.run_input)
-                or inputs.get("query") or ctx.run_input.get("userQuery") or "")
+    # R1 修复：query 以输入绑定为准（此前读 schema 中不存在的 cfg.query）
+    query = str(inputs.get("query") or render_refs(cfg.get("query", ""), ctx.outputs, ctx.run_input)
+                or ctx.run_input.get("userQuery") or "")
     listing = "\n".join(f"{i + 1}. {b.get('title', '')}：{(b.get('description') or '')[:100]}"
                         for i, b in enumerate(branches))
     chosen_idx = None

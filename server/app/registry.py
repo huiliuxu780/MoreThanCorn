@@ -26,9 +26,7 @@ V1_NODE_DEFINITIONS: list[dict] = [
                     "providerId": {"type": "string"}, "modelId": {"type": "string"},
                     "params": {"type": "object"}}},
                 "prompt": {"type": "string", "x-control": "prompt-editor"},
-                "executionMode": {"type": "string", "enum": ["single", "batch"]},
                 "outputFormat": {"type": "string", "enum": ["Markdown", "JSON"]},
-                "outputExamples": {"type": "string"},
             },
             "required": ["modelRef", "prompt"],
         },
@@ -68,8 +66,7 @@ V1_NODE_DEFINITIONS: list[dict] = [
         "executor_key": "transform",
         "schema": {
             "type": "object",
-            "properties": {"expression": {"type": "string", "x-control": "expression-editor"},
-                           "template": {"type": "string"}},
+            "properties": {"template": {"type": "string", "x-control": "prompt-editor"}},
         },
         "io": {"outputs": "declared"},
     },
@@ -120,7 +117,6 @@ V1_NODE_DEFINITIONS: list[dict] = [
         "schema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "x-control": "expression-editor"},
                 "primaryAgents": {"type": "array", "x-control": "agent-picker-multi"},
                 "fallbackAgent": {"type": "string", "x-control": "agent-picker"},
             },
@@ -152,15 +148,17 @@ V1_NODE_DEFINITIONS: list[dict] = [
         "type_key": "query-rewrite", "family": "数据", "label": "Query改写", "icon": "pen", "accent": "#7B61FF",
         "editor_kinds": ["FLOW", "GROUP"],
         "executor_key": "query-rewrite",
-        "schema": {"type": "object", "properties": {"template": {"type": "string"}}},
+        "schema": {"type": "object", "properties": {
+            "strategy": {"type": "string", "enum": ["default", "custom"]},
+            "template": {"type": "string", "x-control": "prompt-editor"}}},
         "io": {"outputs": ["queryList:array"]},
     },
     {
         "type_key": "code-write", "family": "代码", "label": "代码编写", "icon": "code", "accent": "#7B61FF",
         "editor_kinds": ["FLOW", "GROUP"],
         "executor_key": "code-write",
-        "schema": {"type": "object", "properties": {"template": {"type": "string"}}},
-        "io": {"outputs": ["output:string"]},
+        "schema": {"type": "object", "properties": {"code": {"type": "string", "x-control": "code-editor"}}},
+        "io": {"outputs": "declared"},
     },
     {
         "type_key": "knowledge-retrieval", "family": "外部", "label": "知识检索", "icon": "book-open", "accent": "#0E9F6E",

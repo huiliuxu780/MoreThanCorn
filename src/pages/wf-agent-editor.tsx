@@ -10,13 +10,26 @@ import { AgentEvalPanel, AgentRunsPanel, AgentVersionsPanel } from "@/components
 import { ConversationPanel, MemorySchemaForm } from "@/components/agent-common-config"
 import { AgentPublishDialog, useAgentVersionState } from "@/components/agent-publish-dialog"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { resApi } from "@/services/resource-api"
 import { agentApi, streamRunEvents, wfApi, type AgentInfo } from "@/services/wf-api"
 import WfDesignerPage from "./wf-designer"
-import { avatarFor } from "./wf-agents-list"
+import { avatarFor, AVATARS } from "./wf-agents-list"
 
 const INK = "#1F2329"; const INK2 = "#5A6472"; const INK3 = "#B9C2CF"; const CARD = "#EDF0F4"
 
@@ -113,6 +126,10 @@ interface ChatMsg { role: "user" | "ai"; text: string; steps: string[]; followUp
 /* ---------- 自主规划搭建页 ---------- */
 function AutonomousBuilder({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: AgentInfo) => void }) {
   const [cfg, setCfg] = useState(agent.config ?? {})
+  const [name, setName] = useState(agent.name)
+  const [description, setDescription] = useState(agent.description ?? "")
+  const [avatar, setAvatar] = useState(agent.avatar ?? null)
+  const [avatarOpen, setAvatarOpen] = useState(false)
   const [revision, setRevision] = useState(agent.configRevision ?? 1)
   const [models, setModels] = useState<{ modelKey: string }[]>([])
   const [chat, setChat] = useState<ChatMsg[]>([])
@@ -124,7 +141,10 @@ function AutonomousBuilder({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
   const chatEndRef = useRef<HTMLDivElement>(null)
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [chat])
   useEffect(() => {
-    wfApi.models().then((r) => setModels(Array.isArray(r) ? r : [])).catch(() => undefined)
+    wfApi.models().then((r) => {
+      const list = Array.isArray(r) ? r : ((r as unknown as { items?: { modelKey: string }[] }).items ?? [])
+      setModels(list)
+    }).catch(() => setModels([]))
   }, [])
   useEffect(() => {
     agentApi.mountsHealth(agent.id)
@@ -133,13 +153,15 @@ function AutonomousBuilder({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
   }, [agent.id, cfg])
   const save = async () => {
     try {
-      const r = await agentApi.update(agent.id, { config: cfg }, revision)
+      // 用户报告修复：基础信息（名称/描述/头像）与配置一并保存
+      const r = await agentApi.update(agent.id, { config: cfg, name, description, avatar }, revision)
       setRevision(r.configRevision)
-      toast.success("Agent 配置已保存"); onSaved({ ...agent, config: r.config, configRevision: r.configRevision })
+      toast.success("Agent 配置已保存")
+      onSaved({ ...agent, config: r.config, configRevision: r.configRevision, name, description, avatar })
     } catch (e) {
       if (String((e as Error).message).startsWith("409")) {
         toast.error("配置已被更新，请刷新后重试")
-        agentApi.get(agent.id).then((a) => { setCfg(a.config); setRevision(a.configRevision); onSaved(a) })
+        agentApi.get(agent.id).then((a) => { setCfg(a.config); setRevision(a.configRevision); setName(a.name); setDescription(a.description ?? ""); onSaved(a) })
       } else toast.error((e as Error).message)
     }
   }
@@ -175,6 +197,38 @@ function AutonomousBuilder({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
   return (
     <div className="flex h-full min-h-0">
       <div className="flex-1 space-y-4 overflow-y-auto p-6">
+        {/* 用户报告修复：基础信息可编辑（名称/描述/头像） */}
+        <div className="space-y-2">
+          <Label className="text-xs">基本信息</Label>
+          <div className="flex items-start gap-3">
+            <div className="flex-1 space-y-2">
+              <div className="relative">
+                <Input value={name} maxLength={20} placeholder="Agent 名称" className="pr-12" onChange={(e) => setName(e.target.value)} />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px]" style={{ color: INK3 }}>{name.length}/20</span>
+              </div>
+              <div className="relative">
+                <Textarea value={description} maxLength={20000} placeholder="描述介绍（仅在管理平台展示）" className="min-h-16 pb-5 text-xs" onChange={(e) => setDescription(e.target.value)} />
+                <span className="absolute bottom-2 right-2 text-[11px]" style={{ color: INK3 }}>{description.length}/20000</span>
+              </div>
+            </div>
+            <button className="shrink-0 overflow-hidden rounded-lg border bg-white p-1" style={{ borderColor: CARD }} title="选择头像" onClick={() => setAvatarOpen(true)}>
+              <img src={avatarFor(agent.id, avatar)} alt="agent头像" className="size-20 rounded-md object-cover" />
+            </button>
+          </div>
+          <Dialog open={avatarOpen} onOpenChange={setAvatarOpen}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader><DialogTitle>选择头像</DialogTitle></DialogHeader>
+              <div className="grid grid-cols-6 gap-3">
+                {AVATARS.map((src) => (
+                  <button key={src} className={`overflow-hidden rounded-lg ${(avatar ?? avatarFor(agent.id)) === src ? "ring-2 ring-primary" : ""}`}
+                    onClick={() => { setAvatar(src); setAvatarOpen(false) }}>
+                    <img src={src} alt="" className="size-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
         <div className="space-y-1">
           <div className="flex items-center justify-between">
             <Label className="text-xs">角色能力描述</Label>
@@ -200,11 +254,12 @@ function AutonomousBuilder({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
         </div>
         <div className="space-y-1">
           <Label className="text-xs">模型</Label>
-          <select className="w-full rounded-md border p-2 text-sm" value={cfg.modelRef?.modelId ?? ""}
-            onChange={(e) => setCfg({ ...cfg, modelRef: { ...cfg.modelRef, modelId: e.target.value } })}>
-            <option value="">请选择模型</option>
-            {models.map((m) => <option key={m.modelKey} value={m.modelKey}>{m.modelKey}</option>)}
-          </select>
+          <Select value={cfg.modelRef?.modelId || undefined} onValueChange={(v) => setCfg({ ...cfg, modelRef: { ...cfg.modelRef, modelId: v } })}>
+            <SelectTrigger className="h-9 w-full text-sm"><SelectValue placeholder="请选择模型" /></SelectTrigger>
+            <SelectContent>
+              {models.map((m) => <SelectItem key={m.modelKey} value={m.modelKey}>{m.modelKey}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1">

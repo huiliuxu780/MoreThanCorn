@@ -24,12 +24,9 @@ export function MemorySchemaForm({ memories, onChange }: { memories: MemoryVar[]
             <select className="h-6 rounded border text-[11px]" style={{ borderColor: CARD }} value={m.dataType} onChange={(e) => setAt(i, { dataType: e.target.value })}>
               <option>STRING</option><option>NUMBER</option><option>BOOLEAN</option><option>JSON</option>
             </select>
-            <select className="h-6 rounded border text-[11px]" style={{ borderColor: CARD }} value={m.duration} onChange={(e) => setAt(i, { duration: e.target.value })}>
-              <option value="SESSION">单次会话</option><option value="LONG_TERM">长期</option>
-            </select>
             <button onClick={() => onChange(memories.filter((_, j) => j !== i))}><span className="text-neutral-400">×</span></button>
           </div>
-          <Input className="h-6 text-xs" placeholder="描述" value={m.description ?? ""} onChange={(e) => setAt(i, { description: e.target.value })} />
+          <Input className="h-6 text-xs" placeholder="描述（会注入提示词）" value={m.description ?? ""} onChange={(e) => setAt(i, { description: e.target.value })} />
           <Input className="h-6 text-xs" placeholder="默认值（可选）" value={m.defaultValue ?? ""} onChange={(e) => setAt(i, { defaultValue: e.target.value })} />
         </div>
       ))}
