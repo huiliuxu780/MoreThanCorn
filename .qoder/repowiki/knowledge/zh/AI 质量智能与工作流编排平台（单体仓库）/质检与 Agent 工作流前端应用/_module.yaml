@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: frontend_app
+title: 质检与 Agent 工作流前端应用
+scope:
+    - src/
+source_files: []
+depends_on: []
+related_to: []

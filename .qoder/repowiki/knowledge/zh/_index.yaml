@@ -3,11 +3,34 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-08-24T20:28:05Z"
+exported_at: "2026-08-24T21:10:00Z"
 modules:
+    "":
+        dir_name: AI 质量智能与工作流编排平台（单体仓库）
+        title: AI 质量智能与工作流编排平台（单体仓库）
+        scope:
+            - README.md
+            - .gitignore
+            - package.json
+            - package-lock.json
+            - vite.config.ts
+            - tsconfig.json
+            - tsconfig.app.json
+            - tsconfig.node.json
+            - eslint.config.js
+            - components.json
+            - index.html
+        source_files: []
+        children:
+            - backend_service
+            - docs_and_design
+            - frontend_app
+            - scripts_and_e2e
+        depends_on: []
+        related_to: []
     backend_service:
-        dir_name: backend_service
-        title: backend_service
+        dir_name: 后端服务（FastAPI + Alembic + Agent 运行时）
+        title: 后端服务（FastAPI + Alembic + Agent 运行时）
         scope:
             - server/
         source_files: []
@@ -18,18 +41,31 @@ modules:
         depends_on: []
         related_to: []
     backend_service/shared_core:
-        dir_name: 工作流内核后端服务与数据库迁移
-        title: 工作流内核后端服务与数据库迁移
+        dir_name: 后端共享核心（FastAPI 应用与 Alembic 迁移）
+        title: 后端共享核心（FastAPI 应用与 Alembic 迁移）
         scope:
             - server/app/
             - server/alembic/
         source_files: []
+        children:
+            - backend_service/shared_core/agent_release_domain
+        depends_on: []
+        related_to:
+            - path: frontend_app/services_and_mocks
+            - path: scripts_and_e2e
+    backend_service/shared_core/agent_release_domain:
+        dir_name: Agent 发布域（定义快照_依赖冻结_发布校验）
+        title: Agent 发布域（定义快照/依赖冻结/发布校验）
+        scope:
+            - server/app/agent_release.py
+        source_files: []
         children: []
         depends_on: []
-        related_to: []
+        related_to:
+            - path: backend_service/workflows_routers
     backend_service/tests:
-        dir_name: tests
-        title: tests
+        dir_name: 后端服务集成测试套件
+        title: 后端服务集成测试套件
         scope:
             - server/tests/
         source_files: []
@@ -37,8 +73,8 @@ modules:
         depends_on: []
         related_to: []
     backend_service/workflows_routers:
-        dir_name: workflows_routers
-        title: workflows_routers
+        dir_name: 工作流与运行 API 路由层
+        title: 工作流与运行 API 路由层
         scope:
             - server/app/routers/workflows.py
             - server/app/routers/registry.py
@@ -46,10 +82,13 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to: []
+        related_to:
+            - path: backend_service/shared_core/agent_release_domain
+            - path: frontend_app/services_and_mocks
+            - path: scripts_and_e2e
     docs_and_design:
-        dir_name: docs_and_design
-        title: docs_and_design
+        dir_name: 产品调研、UI_UX 设计与初始化文档集
+        title: 产品调研、UI/UX 设计与初始化文档集
         scope:
             - docs/
             - uiux/
@@ -59,8 +98,8 @@ modules:
         depends_on: []
         related_to: []
     frontend_app:
-        dir_name: frontend_app
-        title: frontend_app
+        dir_name: 质检与 Agent 工作流前端应用
+        title: 质检与 Agent 工作流前端应用
         scope:
             - src/
         source_files: []
@@ -78,8 +117,8 @@ modules:
         depends_on: []
         related_to: []
     frontend_app/agents_feature:
-        dir_name: Agent 工作流编排与模型管理页面
-        title: Agent 工作流编排与模型管理页面
+        dir_name: Agent 工作流编排与模型管理前端页面
+        title: Agent 工作流编排与模型管理前端页面
         scope:
             - src/pages/wf-agents-list.tsx
             - src/pages/wf-agent-editor.tsx
@@ -88,7 +127,8 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to: []
+        related_to:
+            - path: frontend_app/services_and_mocks
     frontend_app/app_entry:
         dir_name: 应用入口与路由装配
         title: 应用入口与路由装配
@@ -100,7 +140,8 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to: []
+        related_to:
+            - path: frontend_app/app_shell_and_ui
     frontend_app/app_shell_and_ui:
         dir_name: 应用外壳与共享 UI 组件层
         title: 应用外壳与共享 UI 组件层
@@ -111,7 +152,8 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to: []
+        related_to:
+            - path: frontend_app/app_entry
     frontend_app/data_assets_feature:
         dir_name: 数据资产与数据定义管理页面
         title: 数据资产与数据定义管理页面
@@ -123,7 +165,8 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to: []
+        related_to:
+            - path: frontend_app/services_and_mocks
     frontend_app/quality_feature:
         dir_name: 质检质量结果页面（总览_列表_详情）
         title: 质检质量结果页面（总览/列表/详情）
@@ -135,7 +178,8 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to: []
+        related_to:
+            - path: frontend_app/services_and_mocks
     frontend_app/resources_feature:
         dir_name: 资源管理（AI_Data Resources）页面与组件
         title: 资源管理（AI/Data Resources）页面与组件
@@ -147,17 +191,26 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to: []
+        related_to:
+            - path: frontend_app/services_and_mocks
     frontend_app/services_and_mocks:
-        dir_name: 服务层与 Mock 数据（质检_工作流_资源）
-        title: 服务层与 Mock 数据（质检/工作流/资源）
+        dir_name: 业务服务层与 Mock 数据（质检_工作流_资源）
+        title: 业务服务层与 Mock 数据（质检/工作流/资源）
         scope:
             - src/services/
             - src/mocks/
         source_files: []
         children: []
         depends_on: []
-        related_to: []
+        related_to:
+            - path: backend_service/shared_core
+            - path: backend_service/workflows_routers
+            - path: frontend_app/agents_feature
+            - path: frontend_app/data_assets_feature
+            - path: frontend_app/quality_feature
+            - path: frontend_app/resources_feature
+            - path: frontend_app/tasks_feature
+            - path: frontend_app/tools_feature
     frontend_app/shared_layers:
         dir_name: 共享 Hooks、工具库与领域类型定义
         title: 共享 Hooks、工具库与领域类型定义
@@ -181,7 +234,8 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to: []
+        related_to:
+            - path: frontend_app/services_and_mocks
     frontend_app/tools_feature:
         dir_name: 工具资产与工作流工具管理页面
         title: 工具资产与工作流工具管理页面
@@ -192,13 +246,16 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to: []
+        related_to:
+            - path: frontend_app/services_and_mocks
     scripts_and_e2e:
-        dir_name: scripts_and_e2e
-        title: scripts_and_e2e
+        dir_name: 端到端测试与 CDP 采集脚本集
+        title: 端到端测试与 CDP 采集脚本集
         scope:
             - scripts/
         source_files: []
         children: []
         depends_on: []
-        related_to: []
+        related_to:
+            - path: backend_service/shared_core
+            - path: backend_service/workflows_routers

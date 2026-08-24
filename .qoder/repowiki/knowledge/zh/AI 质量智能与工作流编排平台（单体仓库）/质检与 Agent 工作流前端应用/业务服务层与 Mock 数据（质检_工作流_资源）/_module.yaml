@@ -1,0 +1,17 @@
+schema_version: 1
+module_path: frontend_app/services_and_mocks
+title: 业务服务层与 Mock 数据（质检/工作流/资源）
+scope:
+    - src/services/
+    - src/mocks/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend_service/shared_core
+    - path: backend_service/workflows_routers
+    - path: frontend_app/agents_feature
+    - path: frontend_app/data_assets_feature
+    - path: frontend_app/quality_feature
+    - path: frontend_app/resources_feature
+    - path: frontend_app/tasks_feature
+    - path: frontend_app/tools_feature

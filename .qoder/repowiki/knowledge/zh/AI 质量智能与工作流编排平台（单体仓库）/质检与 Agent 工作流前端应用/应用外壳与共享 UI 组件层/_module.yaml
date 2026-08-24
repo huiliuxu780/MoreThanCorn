@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: frontend_app/app_shell_and_ui
+title: 应用外壳与共享 UI 组件层
+scope:
+    - src/components/ui/
+    - src/components/app/
+    - src/config/
+source_files: []
+depends_on: []
+related_to:
+    - path: frontend_app/app_entry

@@ -1133,7 +1133,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
       historyRef.current = [JSON.parse(JSON.stringify(d.definition))]
       pointerRef.current = 0
       setDef(d.definition); setRevision(d.draftRevision); setDefs(nd); setSavedAt(d.updatedAt)
-      wfApi.validate(agentId).then((r) => alive && setIssues(r.issues))
+      wfApi.validate(workflowId).then((r) => alive && setIssues(r.issues))
     })
     wfApi.versions(workflowId).then((vs) => alive && setLatestVersion(vs[0]?.versionNo ?? null)).catch(() => undefined)
     return () => { alive = false }
@@ -1143,7 +1143,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
     try {
       const res = await wfApi.saveDraft(workflowId, next, revision)
       setRevision((r) => r + 1); setSavedAt(res.savedAt)
-      setIssues((await wfApi.validate(agentId)).issues)
+      setIssues((await wfApi.validate(workflowId)).issues)
     } catch (e) { toast.error(`保存失败：${(e as Error).message}`) }
   }, [workflowId, revision])
 
