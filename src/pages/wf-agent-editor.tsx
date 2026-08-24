@@ -292,7 +292,7 @@ export default function WfAgentEditorPage() {
   if (!agent) return <div className="p-8 text-sm" style={{ color: INK2 }}>加载中…</div>
   if (agent.type === "dialogue") {
     const avatar = avatarFor(agent.id, agent.avatar)
-    return <div className="h-[calc(100dvh-3.5rem)] min-h-0"><WfDesignerPage workflowId={agent.workflowId ?? agentId} agentId={agent.id} agentMeta={{ name: agent.name, typeLabel: agent.typeLabel }} avatar={avatar} /></div>
+    return <div className="h-[calc(100dvh-3.5rem)] min-h-0"><WfDesignerPage workflowId={agent.workflowId ?? agentId} agentId={agent.id} agentMeta={{ name: agent.name, typeLabel: agent.typeLabel, agentType: agent.type }} avatar={avatar} /></div>
   }
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col">

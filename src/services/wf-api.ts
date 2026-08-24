@@ -87,6 +87,7 @@ export interface NodeDefinition {
   schema: Record<string, unknown>
   io: Record<string, unknown>
   executor_key: string
+  editor_kinds?: ("FLOW" | "GROUP" | "WORKFLOW")[]  // SDD C-2：节点可出现的编排器
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {

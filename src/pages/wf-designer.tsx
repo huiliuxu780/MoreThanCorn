@@ -83,6 +83,7 @@ import {
   runRetry,
   scheduleApi,
   wfApi,
+  WF_BASE,
   type NodeDefinition,
   type RunDetail,
   type ScheduleInfo,
@@ -273,7 +274,15 @@ function WfNodeCard({ data, selected }: NodeProps) {
 }
 const nodeTypes = { wf: WfNodeCard }
 
-/* ============ 变量级联（16 §6；SDD A-04：可达祖先 + 注册表 io + 按 id） ============ */
+/* ============ 变量级联（16 §6；SDD A-04：可达祖先 + 注册表 io + 按 id；C-5：系统变量组） ============ */
+let SYS_VARS_CACHE: { name: string; label: string }[] | null = null
+function loadSystemVars(): Promise<{ name: string; label: string }[]> {
+  if (SYS_VARS_CACHE) return Promise.resolve(SYS_VARS_CACHE)
+  return fetch(`${WF_BASE}/api/registry/system-variables`).then((r) => r.json())
+    .then((j) => { SYS_VARS_CACHE = j.items ?? []; return SYS_VARS_CACHE! })
+    .catch(() => [] as { name: string; label: string }[])
+}
+
 function parseIoOutputs(def: NodeDefinition | undefined): { name: string; type: string }[] | null {
   const io = (def?.io ?? {}) as { outputs?: unknown }
   if (!Array.isArray(io.outputs)) return null  // 动态输出（如 tool from-tool-version）
@@ -286,6 +295,8 @@ function parseIoOutputs(def: NodeDefinition | undefined): { name: string; type: 
 function VarCascader({ nodes, edges, selfId, defs, onPick }: {
   nodes: WfNode[]; edges: WfEdge[]; selfId: string; defs: NodeDefinition[]; onPick: (v: string) => void
 }) {
+  const [sysVars, setSysVars] = useState<{ name: string; label: string }[]>(SYS_VARS_CACHE ?? [])
+  useEffect(() => { if (!SYS_VARS_CACHE) loadSystemVars().then(setSysVars) }, [])
   // 与后端校验器 _ancestors 同构：只有控制流可达的祖先输出可见（调研 11 §5.2）
   const ancestors = useMemo(() => {
     const parents: Record<string, string[]> = {}
@@ -306,25 +317,25 @@ function VarCascader({ nodes, edges, selfId, defs, onPick }: {
   }, [edges, selfId])
   const startNode = nodes.find((n) => n.type === "input")
   const ancNodes = nodes.filter((n) => ancestors.has(n.id) && n.type !== "input" && n.type !== "end")
-  const firstId = startNode?.id ?? ancNodes[0]?.id ?? ""
+  const firstId = "system"
   const [group, setGroup] = useState<string>(firstId)
   const gid = group || firstId
-  const itemsFor = (id: string) => {
+  const itemsFor = (id: string): { name: string; type: string; label?: string }[] => {
+    if (id === "system") return sysVars.map((v) => ({ name: v.name, type: "string", label: v.label }))
     const node = nodes.find((n) => n.id === id)
     if (!node) return []
-    const outs = parseIoOutputs(defs.find((d) => d.type_key === node.type))
-    return outs ?? []
+    return parseIoOutputs(defs.find((d) => d.type_key === node.type)) ?? []
   }
   const dynHint = (id: string) => {
     const node = nodes.find((n) => n.id === id)
     const io = (defs.find((d) => d.type_key === node?.type)?.io ?? {}) as { outputs?: unknown }
     return typeof io.outputs === "string" && io.outputs
   }
-  const nameOf = (id: string) => (id === startNode?.id ? "开始" : nodes.find((n) => n.id === id)?.name ?? id)
+  const nameOf = (id: string) => (id === "system" ? "系统变量" : id === startNode?.id ? "开始" : nodes.find((n) => n.id === id)?.name ?? id)
   return (
     <div className="flex text-xs">
       <div className="w-28 border-r py-1" style={{ borderColor: C.cardBorder }}>
-        {[...(startNode ? [startNode.id] : []), ...ancNodes.map((n) => n.id)].map((id) => (
+        {["system", ...(startNode ? [startNode.id] : []), ...ancNodes.map((n) => n.id)].map((id) => (
           <button key={id} className={`flex w-full items-center justify-between px-2 py-1 hover:bg-neutral-50 ${gid === id ? "bg-neutral-100" : ""}`} onClick={() => setGroup(id)}>
             {nameOf(id)} <ChevronRight className="size-3 text-neutral-400" />
           </button>
@@ -333,8 +344,10 @@ function VarCascader({ nodes, edges, selfId, defs, onPick }: {
       </div>
       <div className="w-40 py-1">
         {itemsFor(gid).map((it) => (
-          <button key={it.name} className="flex w-full items-center gap-1 px-2 py-1 hover:bg-neutral-50" onClick={() => onPick(`{{${gid}.outputs.${it.name}}}`)}>
-            {it.name} <TypeChip t={it.type === "array" ? "Arr" : it.type === "object" ? "Obj" : "Str"} />
+          <button key={it.name} className="flex w-full items-center gap-1 px-2 py-1 hover:bg-neutral-50"
+            onClick={() => onPick(`{{${gid === "system" ? "system" : gid}.outputs.${it.name}}}`)}
+            title={it.label}>
+            {it.label ?? it.name} <TypeChip t={it.type === "array" ? "Arr" : it.type === "object" ? "Obj" : "Str"} />
           </button>
         ))}
         {dynHint(gid) && <div className="px-2 py-1 text-neutral-400">输出由资源配置决定</div>}
@@ -649,12 +662,96 @@ function ConfigDrawer(props: {
         </Section>
       )}
       {node.type === "workflow-exec" && <WorkflowPicker value={(cfg.workflowCode as string) ?? ""} onPick={(v) => set("workflowCode", v)} />}
-      {node.type !== "llm" && node.type !== "condition" && node.type !== "end" && node.type !== "workflow-exec" && (
-        <Section title="配置">
-          <p className="text-xs" style={{ color: C.ink3 }}>该节点暂无专项配置区</p>
-        </Section>
+      {/* SDD C-3：无专项表单的节点按注册表 schema 通用渲染（替代“暂无专项配置区”） */}
+      {!["llm", "tool", "knowledge-retrieval", "mcp-call", "condition", "end", "workflow-exec"].includes(node.type) && (
+        <GenericSchemaForm def={def} cfg={cfg} set={set} node={node} onChange={onChange} />
       )}
     </div>
+  )
+}
+
+/** 注册表 schema 驱动的通用节点配置（SDD C-3）。 */
+function GenericSchemaForm({ def, cfg, set, node, onChange }: {
+  def: NodeDefinition | undefined; cfg: Record<string, any>; set: (k: string, v: unknown) => void;
+  node: WfNode; onChange: (n: WfNode) => void
+}) {
+  const props = ((def?.schema as Record<string, any>)?.properties ?? {}) as Record<string, any>
+  const keys = Object.keys(props)
+  if (keys.length === 0) return null
+  return (
+    <Section title="配置">
+      {keys.map((k) => {
+        const p = props[k] ?? {}
+        const x = p["x-control"] as string | undefined
+        const label = k
+        if (x === "workflow-picker") {
+          return <WorkflowPicker key={k} value={(cfg[k] as string) ?? ""} onPick={(v) => set(k, v)} />
+        }
+        if (Array.isArray(p.enum)) {
+          return (
+            <div key={k} className="space-y-1">
+              <div className="text-xs" style={{ color: C.ink2 }}>{label}</div>
+              <select className="h-7 w-full rounded border bg-white px-1 text-xs" style={{ borderColor: C.cardBorder }}
+                value={(cfg[k] as string) ?? ""} onChange={(e) => set(k, e.target.value)}>
+                <option value="">请选择</option>
+                {p.enum.map((v: string) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+          )
+        }
+        if (p.type === "boolean") {
+          return (
+            <label key={k} className="flex items-center justify-between text-xs" style={{ color: C.ink2 }}>
+              <span>{label}</span>
+              <input type="checkbox" checked={!!cfg[k]} onChange={(e) => set(k, e.target.checked)} />
+            </label>
+          )
+        }
+        if (p.type === "number") {
+          return (
+            <div key={k} className="space-y-1">
+              <div className="text-xs" style={{ color: C.ink2 }}>{label}</div>
+              <Input className="h-7 text-xs" type="number" value={cfg[k] ?? ""} onChange={(e) => set(k, Number(e.target.value))} />
+            </div>
+          )
+        }
+        if (p.type === "array") {
+          const arr = Array.isArray(cfg[k]) ? cfg[k] : []
+          return (
+            <div key={k} className="space-y-1">
+              <div className="text-xs" style={{ color: C.ink2 }}>{label}（每行一项）</div>
+              <Textarea className="min-h-14 text-xs" value={arr.join("\n")}
+                onChange={(e) => set(k, e.target.value.split("\n").map((s: string) => s.trim()).filter(Boolean))} />
+            </div>
+          )
+        }
+        // string / object / 其他：多行文本（prompt-editor、code 等）
+        return (
+          <div key={k} className="space-y-1">
+            <div className="text-xs" style={{ color: C.ink2 }}>{label}</div>
+            <Textarea className={`min-h-20 text-xs ${x === "prompt-editor" || k === "code" ? "font-mono" : ""}`}
+              value={typeof cfg[k] === "string" ? cfg[k] : JSON.stringify(cfg[k] ?? "", null, 2)}
+              onChange={(e) => set(k, e.target.value)} />
+          </div>
+        )
+      })}
+      {node.type === "memory-variable" && cfg.mode === "write" && (
+        <Section title="写入值（输入绑定：变量名=记忆键）">
+          {(node.inputs ?? []).map((b) => (
+            <div key={b.name} className="flex items-center gap-2 pb-1 text-xs">
+              <span style={{ color: C.ink }}>{b.name}</span>
+              <Input className="h-6 text-xs" placeholder="请输入或引用变量值"
+                value={b.source.kind === "fixed" ? String(b.source.value ?? "") : `{{引用}}`}
+                onChange={(e) => onChange({ ...node, inputs: (node.inputs ?? []).map((x) => (x.name === b.name ? { ...x, source: { kind: "fixed", value: e.target.value } } : x)) })} />
+            </div>
+          ))}
+          <button className="flex items-center gap-1 pt-1 text-xs" style={{ color: C.primary }}
+            onClick={() => onChange({ ...node, inputs: [...(node.inputs ?? []), { name: `mem${(node.inputs ?? []).length + 1}`, type: "string", source: { kind: "fixed", value: "" } }] })}>
+            <Plus className="size-3" /> 添加写入键
+          </button>
+        </Section>
+      )}
+    </Section>
   )
 }
 
@@ -985,7 +1082,7 @@ function RunsDrawer({ workflowId, lastRunId, onClose }: { workflowId: string; la
 }
 
 /* ============ 主页面 ============ */
-function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avatar }: { workflowId?: string; agentId?: string; agentMeta?: { name: string; typeLabel: string }; avatar?: string }) {
+function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avatar }: { workflowId?: string; agentId?: string; agentMeta?: { name: string; typeLabel: string; agentType?: string }; avatar?: string }) {
   const params = useParams()
   const workflowId = wfProp ?? params.agentId ?? ""
   const agentId = agentProp ?? ""
@@ -1118,10 +1215,15 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   })), [def])
 
   const families = useMemo(() => {
+    // SDD C-2：按编排器类型过滤节点目录（调研 11 §7 editorKinds）
+    const kind: "FLOW" | "GROUP" | "WORKFLOW" = agentMeta
+      ? ((agentMeta as { agentType?: string }).agentType === "expert-group" ? "GROUP" : "FLOW")
+      : "WORKFLOW"
+    const visible = defs.filter((d) => (d.editor_kinds ?? ["WORKFLOW"]).includes(kind))
     const m = new Map<string, NodeDefinition[]>()
-    for (const d of defs) m.set(d.family, [...(m.get(d.family) ?? []), d])
+    for (const d of visible) m.set(d.family, [...(m.get(d.family) ?? []), d])
     return [...m.entries()]
-  }, [defs])
+  }, [defs, agentMeta])
 
   /* demo-run（16 §7，P1 换真 SSE） */
   /* P1：真执行 — POST /api/runs + SSE 事件驱动画布状态 */
@@ -1608,7 +1710,7 @@ function EvoPanel({ workflowId, onClose }: { workflowId: string; onClose: () => 
   )
 }
 
-export default function WfDesignerPage({ workflowId, agentId, agentMeta, avatar }: { workflowId?: string; agentId?: string; agentMeta?: { name: string; typeLabel: string }; avatar?: string }) {
+export default function WfDesignerPage({ workflowId, agentId, agentMeta, avatar }: { workflowId?: string; agentId?: string; agentMeta?: { name: string; typeLabel: string; agentType?: string }; avatar?: string }) {
   return (
     <ReactFlowProvider>
       <div className="h-[calc(100dvh-3.5rem)] min-h-0">
