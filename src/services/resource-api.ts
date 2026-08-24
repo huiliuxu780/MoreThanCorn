@@ -125,7 +125,11 @@ export const connApi = {
     if (p.search) q.set("search", p.search)
     return req<Paged<ConnectionDTO>>(`/api/connections?${q}`)
   },
-  create: (body: { name: string; protocol: string; endpoint: Record<string, unknown>; kind: string; secret?: string }) =>
+  create: (body: { name: string; protocol: string; endpoint: Record<string, unknown>; kind?: string; providerHint?: string; secret?: string }) =>
     req<{ id: string; name: string }>("/api/connections", { method: "POST", body: JSON.stringify(body) }),
+  /** secret 留空=保留原密钥，填写=轮换 */
+  update: (id: string, body: { name?: string; protocol?: string; endpoint?: Record<string, unknown>; kind?: string; providerHint?: string; secret?: string }) =>
+    req<{ id: string; name: string }>(`/api/connections/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   test: (id: string) => req<{ ok: boolean; error?: string }>("/api/connections/" + id + "/test", { method: "POST" }),
+  remove: (id: string) => req<{ ok: boolean }>(`/api/connections/${id}`, { method: "DELETE" }),
 }

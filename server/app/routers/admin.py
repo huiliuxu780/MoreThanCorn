@@ -41,6 +41,28 @@ def create_connection(payload: dict, db: Session = Depends(get_db)):
     return {"id": c.id, "name": c.name, "kind": c.kind, "protocol": c.protocol, "status": c.status}
 
 
+@router.put("/api/connections/{cid}")
+def update_connection(cid: str, payload: dict, db: Session = Depends(get_db)):
+    """编辑连接：secret 留空=保留原密钥，填写=轮换（不回显明文）。"""
+    c = db.get(Connection, cid)
+    if not c:
+        raise HTTPException(404, "connection not found")
+    if payload.get("name") is not None:
+        c.name = payload["name"]
+    if payload.get("kind") is not None:
+        c.kind = payload["kind"]
+    if payload.get("protocol") is not None:
+        c.protocol = payload["protocol"]
+    if payload.get("endpoint") is not None:
+        c.endpoint = payload["endpoint"]
+    if payload.get("providerHint") is not None:
+        c.provider_hint = payload["providerHint"]
+    if payload.get("secret"):
+        c.secret_ref = _encrypt(payload["secret"])
+    db.commit()
+    return {"id": c.id, "name": c.name, "kind": c.kind, "protocol": c.protocol, "status": c.status}
+
+
 @router.get("/api/connections")
 def list_connections(page: int = 1, pageSize: int = 20, search: str = "", type: str = "",
                      db: Session = Depends(get_db)):
