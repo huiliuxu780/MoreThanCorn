@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { agentApi, WF_BASE } from "@/services/wf-api"
 
 const INK = "#1F2329"; const INK2 = "#5A6472"; const INK3 = "#B9C2CF"; const CARD = "#EDF0F4"
@@ -121,12 +122,14 @@ export function AgentEvalPanel({ agentId }: { agentId: string }) {
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <select className="h-8 rounded-md border bg-white px-2 text-xs" style={{ borderColor: CARD }}
-          value={judge} onChange={(e) => setJudge(e.target.value as typeof judge)}>
-          <option value="rule">规则 Judge（期望包含匹配）</option>
-          <option value="model">模型 Judge（LLM 打 1-5 分）</option>
-          <option value="none">不 Judge（只看运行成败）</option>
-        </select>
+        <Select value={judge} onValueChange={(v) => setJudge(v as typeof judge)}>
+          <SelectTrigger className="h-8 w-56 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="rule">规则 Judge（期望包含匹配）</SelectItem>
+            <SelectItem value="model">模型 Judge（LLM 打 1-5 分）</SelectItem>
+            <SelectItem value="none">不 Judge（只看运行成败）</SelectItem>
+          </SelectContent>
+        </Select>
         <Button className="bg-black text-white hover:bg-neutral-800" disabled={running || samples.length === 0}
           onClick={async () => {
             setRunning(true)

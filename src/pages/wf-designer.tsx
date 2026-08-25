@@ -69,6 +69,7 @@ import "@xyflow/react/dist/style.css"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Switch } from "@/components/ui/switch"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import {
   Dialog,
   DialogContent,
@@ -712,11 +713,11 @@ function ConfigDrawer(props: {
               onPick={(m) => set("knowledgeSourceId", m.id)} />
           </Section>
           <Section title="检索配置">
-            <input className="w-full rounded-md border p-2 text-xs" style={{ borderColor: C.cardBorder }}
+            <Input className="h-8 w-full text-xs"
               value={cfg.query ?? ""} onChange={(e) => set("query", e.target.value)} placeholder="{{s.outputs.userQuery}}" />
             <div className="flex items-center gap-2 pt-2 text-xs" style={{ color: C.ink3 }}>
               topK
-              <input type="number" className="w-20 rounded-md border p-1.5 text-xs" style={{ borderColor: C.cardBorder }}
+              <Input type="number" className="h-7 w-20 text-xs"
                 value={cfg.topK ?? 5} onChange={(e) => set("topK", Number(e.target.value))} />
             </div>
           </Section>
@@ -749,13 +750,11 @@ function ConfigDrawer(props: {
                   <GripVertical className="size-3.5" />
                 </span>
                 <span className="flex-1 text-xs font-medium" style={{ color: C.ink }}>{bi === 0 ? "如果" : `否则如果 ${bi}`}</span>
-                <div className="flex overflow-hidden rounded border" style={{ borderColor: C.cardBorder }} title="组内多条件的连接方式">
-                  {(["AND", "OR"] as const).map((lg) => (
-                    <button key={lg} className="px-1.5 py-0.5 text-[10px]"
-                      style={{ background: b.logic === lg ? NEUTRAL : "#fff", color: b.logic === lg ? "#fff" : C.ink2 }}
-                      onClick={() => patchBranch(bi, { logic: lg })}>{lg === "AND" ? "且" : "或"}</button>
-                  ))}
-                </div>
+                <ToggleGroup type="single" size="sm" value={b.logic} title="组内多条件的连接方式"
+                  onValueChange={(v) => v && patchBranch(bi, { logic: v as "AND" | "OR" })}>
+                  <ToggleGroupItem value="AND" className="h-5 px-1.5 text-[10px]">且</ToggleGroupItem>
+                  <ToggleGroupItem value="OR" className="h-5 px-1.5 text-[10px]">或</ToggleGroupItem>
+                </ToggleGroup>
                 <button title="删除分支" onClick={() => removeBranch(bi)}><Trash2 className="size-3 text-neutral-400 hover:text-red-500" /></button>
               </div>
               {b.conditions.map((c, ci) => (
