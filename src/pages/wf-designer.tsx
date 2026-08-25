@@ -5,6 +5,7 @@ import CodeMirror from "@uiw/react-codemirror"
 import { python } from "@codemirror/lang-python"
 import { AgentPublishDialog, useAgentVersionState } from "@/components/agent-publish-dialog"
 import { AgentVersionDiffDialog } from "@/components/agent-version-diff"
+import { avatarFor } from "./wf-agents-list"
 import { ConversationPanel, MemorySchemaForm } from "@/components/agent-common-config"
 import { useNavigate, useParams } from "react-router-dom"
 import {
@@ -460,7 +461,12 @@ function ResourceSelect({ types, value, onPick, placeholder }: {
   placeholder: string
 }) {
   const [items, setItems] = useState<{ id: string; name: string; metadata: Record<string, unknown> }[]>([])
-  useEffect(() => { resApi.registry(types).then((r) => setItems(r.items)).catch(() => undefined) }, [types])
+  useEffect(() => {
+    resApi.registry(types).then((r) =>
+      // 同名资源行（测试残留）在选择器里显示重复项 → 按名去重（保留首条）
+      setItems(r.items.filter((m, i, arr) => arr.findIndex((x) => x.name === m.name) === i)))
+      .catch(() => undefined)
+  }, [types])
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -1299,8 +1305,8 @@ function AgentConfigDrawer({ agentId, inline, avatar, onAvatar, onClose }: { age
             </div>
             <button className="shrink-0 overflow-hidden rounded-lg border bg-white p-1" style={{ borderColor: C.cardBorder }} title="选择头像"
               onClick={() => setAvatarOpen(true)}>
-              {/* 头像优先级：本次会话新选 > 已保存头像 > 默认第一张（bugfix：此前漏读已保存头像） */}
-              <img src={avatar ?? agent.avatar ?? "/avatars/avatar-0.png"} alt="agent头像" className="size-24 rounded-md object-cover" />
+              {/* 头像优先级：本次会话新选 > 已保存头像 > 按 id 哈希回落（与列表/头部一致） */}
+              <img src={avatar ?? avatarFor(agentId ?? "", agent.avatar)} alt="agent头像" className="size-24 rounded-md object-cover" />
             </button>
             <Dialog open={avatarOpen} onOpenChange={setAvatarOpen}>
               <DialogContent className="max-w-2xl">
