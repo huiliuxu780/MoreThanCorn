@@ -414,13 +414,15 @@ export async function realQualityResults(params: { page?: number; pageSize?: num
   return {
     items: r.items.map((q) => ({
       interactionId: q.interactionId || q.id, interactionTime: q.interactionTime,
-      org: ORG, businessContext: BC_Q, requestType: "-", requestSummary: q.issueSummary ?? "-",
+      org: { ...ORG, agentName: q.agentName ?? "-", teamName: "-", departmentName: "-" },
+      businessContext: { ...BC_Q, serviceType: q.serviceType ?? "-" },
+      requestType: "-", requestSummary: q.requestSummary ?? q.issueSummary ?? "-",
       score: q.score ?? undefined, risk: q.risk ?? undefined, critical: !!q.critical,
       issueCount: q.issueCount ?? 0, issueSummary: q.issueSummary ?? undefined,
       review: { status: REVIEW_MAP[q.review] ?? "PENDING" }, hasAudio: false,
       execution: { runId: q.execution?.runId ?? "-", taskId: "-", status: q.execution?.status ?? "SUCCESS", agentVersion: "-" },
     })),
-    total: r.total, page: r.page, pageSize: r.pageSize,
+    total: r.total, page: r.page, pageSize: params.pageSize ?? 20,
   }
 }
 

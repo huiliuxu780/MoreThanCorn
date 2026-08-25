@@ -504,12 +504,45 @@ def list_quality_results(page: int = 1, pageSize: int = 20, review: str = "", db
     review_counts = dict(db.execute(select(QualityResult.review_status, func.count(QualityResult.id))
                                     .group_by(QualityResult.review_status)).all())
     all_total = db.query(func.count(QualityResult.id)).scalar()
-    return {"items": [{"id": r.id, "runId": r.run_id, "interactionId": r.interaction_ref,
-                       "interactionTime": r.interaction_time.isoformat(), "score": r.score,
-                       "risk": r.risk, "critical": r.critical, "issueCount": r.issue_count,
-                       "issueSummary": r.issue_summary, "review": r.review_status,
-                       "execution": {"runId": r.run_id or "-", "taskId": "-", "status": "SUCCESS", "agentVersion": "-"}}
-                      for r in rows],
+    # 视觉修复：接上真实字段——run→Agent 名称、structured_output 里的业务字段（此前全是"-"）
+    from ..models import Agent, Run, Workflow
+    items = []
+    for r in rows:
+        agent_name = "-"
+        service_type = "-"
+        request_summary = r.issue_summary or "-"
+        if r.run_id:
+            run = db.get(Run, r.run_id)
+            if run and run.agent_id:
+                a = db.get(Agent, run.agent_id)
+                if a:
+                    agent_name = a.name
+            elif run and run.workflow_id:
+                # 结果归属真实链路：优先绑定该工作流的 Agent；独立质检工作流显示工作流名
+                bound = db.query(Agent).filter(Agent.workflow_id == run.workflow_id).first()
+                if bound:
+                    agent_name = bound.name
+                else:
+                    wf = db.get(Workflow, run.workflow_id)
+                    if wf:
+                        agent_name = wf.name
+            if run and isinstance(run.input, dict):
+                service_type = str(run.input.get("serviceType") or run.input.get("scene") or "-")
+                if request_summary in ("-", None):
+                    request_summary = str(run.input.get("requestSummary") or run.input.get("userQuery") or "-")
+        so = r.structured_output if isinstance(r.structured_output, dict) else {}
+        if service_type == "-":
+            service_type = str(so.get("serviceType") or so.get("scene") or "-")
+        if request_summary in ("-", None):
+            request_summary = str(so.get("requestSummary") or so.get("userQuery") or "-")
+        items.append({"id": r.id, "runId": r.run_id, "interactionId": r.interaction_ref,
+                      "interactionTime": r.interaction_time.isoformat(), "score": r.score,
+                      "risk": r.risk, "critical": r.critical, "issueCount": r.issue_count,
+                      "issueSummary": r.issue_summary, "review": r.review_status,
+                      "agentName": agent_name, "serviceType": service_type,
+                      "requestSummary": request_summary,
+                      "execution": {"runId": r.run_id or "-", "taskId": "-", "status": "SUCCESS", "agentVersion": "-"}})
+    return {"items": items,
             "total": total, "page": page, "pageSize": pageSize,
             "counts": {"all": all_total,
                        "ai": review_counts.get("AI", 0),
