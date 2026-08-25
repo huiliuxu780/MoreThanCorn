@@ -307,7 +307,7 @@ function WfNodeCard({ data, selected }: NodeProps) {
     d.run === "skipped" ? `ring-[1.5px] ring-neutral-300` :
     selected ? `ring-[1.5px] ring-[#3D6BFF]` : ""
   return (
-    <div className={`relative w-[300px] overflow-hidden rounded-lg border bg-white p-3 shadow-sm ${ring}`} style={{ borderColor: selected ? C.primary : C.cardBorder }}>
+    <div className={`relative w-[300px] overflow-hidden rounded-[8px] border bg-white p-3 shadow-sm ${ring}`} style={{ borderColor: selected ? C.primary : C.cardBorder }}>
       {n.type !== "input" && <Handle type="target" position={Position.Left} style={{ width: 12, height: 12, background: "#fff", border: `2px solid ${C.primary}`, borderRadius: 6 }} />}
       {n.type !== "end" && n.type !== "condition" && <Handle type="source" position={Position.Right} style={{ width: 12, height: 12, background: C.primary, border: "2px solid #fff", borderRadius: 6 }} />}
       {n.type === "condition" && collapsed && condHandlesOf(n).map((h, i, arr) => (
