@@ -1,8 +1,0 @@
-schema_version: 1
-module_path: frontend_app
-title: 质检与资源编排前端应用
-scope:
-    - src/
-source_files: []
-depends_on: []
-related_to: []

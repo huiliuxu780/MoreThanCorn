@@ -44,25 +44,24 @@ import { useAsyncData } from "@/hooks/use-async-data"
 import { useListQuery } from "@/hooks/use-list-query"
 import { formatDateTime } from "@/lib/time"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
-import { getRun, listExecutions } from "@/services/mock-service"
-import { realRunDetail, runCancel, runRetry, wfEnabled, WF_BASE } from "@/services/wf-api"
+import { realRunDetail, runCancel, runRetry, WF_BASE } from "@/services/wf-api"
 import type { InteractionExecution } from "@/domain/types"
 
 export default function RunDetailPage() {
   const { taskId = "", runId = "" } = useParams()
   const navigate = useNavigate()
-  const { data: run, loading, error, retry } = useAsyncData(() => (wfEnabled() ? realRunDetail(runId).then((r) => r.run) : getRun(runId)), [runId])
+  const { data: run, loading, error, retry } = useAsyncData(() => realRunDetail(runId).then((r) => r.run), [runId])
   const { params, update } = useListQuery(50)
   const filters = useMemo(() => parseListFilters(params.filters), [params.filters])
   const [events, setEvents] = useState<{ sequence: number; type: string; nodeId: string | null; at: string }[]>([])
   useEffect(() => {
-    if (wfEnabled() && runId) {
+    if (runId) {
       fetch(`${WF_BASE}/api/runs/${runId}/events-list`).then((r) => r.json()).then((r) => setEvents(r.items ?? [])).catch(() => undefined)
     }
   }, [runId])
 
   const { data: executions, loading: execLoading } = useAsyncData(
-    () => (wfEnabled() ? realRunDetail(runId).then((r) => r.executions) : listExecutions(runId, params)),
+    () => realRunDetail(runId).then((r) => r.executions),
     [runId, params.search, params.page, params.pageSize, params.filters],
   )
 
@@ -105,13 +104,13 @@ export default function RunDetailPage() {
               ) : run.status === "FAILED" || run.status === "PARTIAL_SUCCESS" ? (
                 <Button variant="outline" size="sm" onClick={() => setRerunOpen(true)}>重新运行</Button>
               ) : null}
-                  {wfEnabled() && run?.status === "FAILED" && (
+                  {run?.status === "FAILED" && (
                     <Button variant="outline" size="sm" className="gap-1" onClick={async () => {
                       const r = await fetch(`${WF_BASE}/api/runs/${runId}/retry`, { method: "POST" })
                       if (r.ok) { toast.success("已创建重试 Run"); retry() } else toast.error("重试失败")
                     }}><RotateCw className="size-3.5" /> 重试</Button>
                   )}
-                  {wfEnabled() && (
+                  {(
                     <Button variant="outline" size="sm" className="gap-1" onClick={async () => {
                       await navigator.clipboard.writeText(JSON.stringify(run, null, 2))
                       toast.success("Run JSON 已复制")

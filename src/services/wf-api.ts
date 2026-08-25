@@ -429,7 +429,25 @@ export async function realQualityResultDetail(id: string) {
 }
 
 /* ---------- R3：质检页真数据适配（取代 mock 双轨） ---------- */
-import type { AgentAnalysisData, OverviewData } from "@/services/mock-service"
+/* D-5：类型从 mock-service 迁出（mock-service 已删除）。 */
+export interface OverviewData {
+  kpis: { label: string; value: string; delta: string; deltaTone: "success" | "danger" | "warning" | "neutral" }[]
+  trend: { date: string; avgScore: number; issueRate: number; critical: number }[]
+  attention: { id: string; title: string; detail: string; link: { label: string; filters: Record<string, string> } }[]
+  topIssues: { section: string; criterion: string; affected: number; rate: string; delta: string; risk: string; scene: string }[]
+  sceneQuality: { name: string; avgScore: number; count: number }[]
+}
+
+export interface AgentAnalysisData {
+  scopeSummary: { label: string; value: string }[]
+  trend: { date: string; avgScore: number; issueRate: number; critical: number }[]
+  teams: { team: string; department: string; valid: number; avgScore: number; issueRate: number; critical: number; topProblem: string; topScene: string; delta: string }[]
+  agents: { agent: string; team: string; valid: number; avgScore: number; issueRate: number; critical: number; topProblem: string; topScene: string }[]
+  attentionAgents: { agent: string; reason: string; criterion: string }[]
+  problems: { criterion: string; rate: string; affected: number }[]
+  scenes: { name: string; avgScore: number; count: number }[]
+  related: Record<string, any>[]
+}
 
 /** Tab 计数真数据（此前恒来自 mock）。 */
 export async function realQualityResultCounts(): Promise<{ all: number; pending: number; reviewed: number }> {
@@ -518,6 +536,7 @@ export const bizApi = {
   appendRows: (id: string, rows: unknown[]) =>
     req<Record<string, any>>(`/api/data-assets/${id}/rows`, { method: "POST", body: JSON.stringify({ rows }) }),
   tasks: () => req<Paged<Record<string, any>>>("/api/tasks").then((r) => r.items as AnalysisTask[]),
+  task: (id: string) => req<Record<string, any>>(`/api/tasks/${id}`),
   createTask: (body: Record<string, unknown>) => req<{ id: string; name: string }>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
   updateTask: (id: string, body: Record<string, unknown>) =>
     req<{ id: string; name: string; status: string }>(`/api/tasks/${id}`, { method: "PUT", body: JSON.stringify(body) }),
@@ -531,7 +550,7 @@ export const bizApi = {
     req<{ id: string; nextRunAt: string }>(`/api/tasks/${id}/schedule`, { method: "POST", body: JSON.stringify({ cron, timezone }) }),
 }
 
-export async function realQualityDetail(id: string) {
+export async function realQualityDetail(id: string): Promise<Record<string, any>> {
   const q = await req<Record<string, any>>(`/api/quality-results/${id}`)
   const hist = q.reviewHistory ?? q.review_history ?? []
   const last = hist[hist.length - 1]

@@ -39,8 +39,7 @@ import { useAsyncData } from "@/hooks/use-async-data"
 import { useListQuery } from "@/hooks/use-list-query"
 import { formatCallDuration, formatCompactDateTime } from "@/lib/time"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
-import { getQualityResultCounts, listQualityResults } from "@/services/mock-service"
-import { realQualityResultCounts, realQualityResults, wfEnabled } from "@/services/wf-api"
+import { realQualityResultCounts, realQualityResults } from "@/services/wf-api"
 import { BRANDS, CRITERIA_CATALOG, ISSUES, PRODUCT_CATEGORIES, REQUEST_TYPES, SERVICE_TYPES, TEAMS, DEPARTMENTS, SERVICERS } from "@/mocks/catalog"
 
 export default function QualityResultsPage() {
@@ -48,7 +47,7 @@ export default function QualityResultsPage() {
   const { params, update, queryString: searchParamsString } = useListQuery(50)
   const filters = useMemo(() => parseListFilters(params.filters), [params.filters])
 
-  const { data, loading, error, retry } = useAsyncData(() => (wfEnabled() ? realQualityResults(params) : listQualityResults(params)), [
+  const { data, loading, error, retry } = useAsyncData(() => realQualityResults(params), [
     params.search,
     params.page,
     params.pageSize,
@@ -57,7 +56,7 @@ export default function QualityResultsPage() {
     params.tab,
   ])
   const { data: counts } = useAsyncData(
-    () => (wfEnabled() ? realQualityResultCounts() : getQualityResultCounts()), [])
+    () => realQualityResultCounts(), [])
 
   const [searchInput, setSearchInput] = useState(params.search ?? "")
   useEffect(() => {

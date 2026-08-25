@@ -329,6 +329,19 @@ def batch_run(tid: str, payload: dict | None = None, db: Session = Depends(get_d
     return {"runIds": ids}
 
 
+@router.get("/api/tasks/{tid}")
+def get_task(tid: str, db: Session = Depends(get_db)):
+    """D-5：任务详情（此前前端走 mock）。"""
+    t = db.get(AnalysisTask, tid)
+    if not t:
+        raise HTTPException(404, "任务不存在")
+    return {"id": t.id, "name": t.name, "description": t.description,
+            "agentId": t.workflow_id, "agentVersionPolicy": t.version_policy,
+            "dataAssetId": t.data_asset_id, "dataDefinitionId": t.data_definition_id,
+            "scope": t.scope, "sampling": t.sampling, "dataWindow": t.data_window,
+            "status": t.status}
+
+
 @router.put("/api/tasks/{tid}")
 def update_task(tid: str, payload: dict, db: Session = Depends(get_db)):
     """R2：任务编辑保存（此前前端只 toast）。"""

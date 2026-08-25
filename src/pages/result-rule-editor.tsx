@@ -34,9 +34,8 @@ import { PageContainer, PageHeader, SectionHeader } from "@/components/app/page"
 import { StatusBadge } from "@/components/app/status-badge"
 import { StatusIcon } from "@/components/app/status-indicator"
 import { useAsyncData } from "@/hooks/use-async-data"
-import { getResultRule } from "@/services/mock-service"
-import { rbac } from "@/services/rbac"
 import { bizApi } from "@/services/wf-api"
+import { rbac } from "@/services/rbac"
 
 /**
  * Result Rules Editor（Design Spec §27）：
@@ -45,7 +44,10 @@ import { bizApi } from "@/services/wf-api"
 export default function ResultRuleEditorPage() {
   const { ruleSetId = "" } = useParams()
   const navigate = useNavigate()
-  const { data: rule } = useAsyncData(() => getResultRule(ruleSetId), [ruleSetId])
+  const { data: rule } = useAsyncData(() => bizApi.rule(ruleSetId).then((r) => ({
+    ...r, versionStatus: r.status === "published" ? "Published" : "Draft",
+    evaluationPriority: (r as { evaluationPriority?: string }).evaluationPriority ?? "Most Recent Completed",
+  }) as Record<string, any>), [ruleSetId])
 
   const [validateOpen, setValidateOpen] = useState(false)
   const [publishOpen, setPublishOpen] = useState(false)
@@ -149,7 +151,7 @@ export default function ResultRuleEditorPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rule.scoreRules.map((row) => (
+                {rule.scoreRules.map((row: any) => (
                   <TableRow key={row.id}>
                     <TableCell className="text-sm">{row.criterion}</TableCell>
                     <TableCell className="text-xs">{row.resultType}</TableCell>
@@ -168,7 +170,7 @@ export default function ResultRuleEditorPage() {
             <Input defaultValue={rule.overall.rule} />
           </FormField>
           <div className="space-y-1.5">
-            {rule.criticalRules.map((row) => (
+            {rule.criticalRules.map((row: any) => (
               <div key={row.id} className="flex items-center justify-between rounded-md border border-red-200 bg-red-50/60 px-3 py-2 text-xs dark:border-red-500/20 dark:bg-red-500/10">
                 <span className="font-mono">{row.condition}</span>
                 <span className="text-muted-foreground">→ {row.effect}</span>
@@ -182,7 +184,7 @@ export default function ResultRuleEditorPage() {
           <div>
             <div className="mb-1.5 text-xs font-medium text-muted-foreground">Risk Mapping</div>
             <div className="space-y-1.5">
-              {rule.riskMapping.map((row) => (
+              {rule.riskMapping.map((row: any) => (
                 <div key={row.id} className="flex items-center justify-between rounded-md border px-3 py-1.5 text-xs">
                   <span>{row.condition}</span>
                   <StatusBadge status={row.risk === "Critical" ? "FAILED" : row.risk === "High" ? "PARTIAL_SUCCESS" : "SUCCESS"} label={row.risk} />
@@ -194,7 +196,7 @@ export default function ResultRuleEditorPage() {
             <div>
               <div className="mb-1.5 text-xs font-medium text-muted-foreground">Level</div>
               <div className="space-y-1.5">
-                {rule.levels.map((row) => (
+                {rule.levels.map((row: any) => (
                   <div key={row.id} className="flex items-center justify-between rounded-md border px-3 py-1.5 text-xs">
                     <span className="tabular-nums">{row.range}</span>
                     <span className="font-medium">{row.level}</span>
@@ -208,7 +210,7 @@ export default function ResultRuleEditorPage() {
                 {rule.derivedLabels.length === 0 ? (
                   <p className="text-xs text-muted-foreground">暂无派生标签</p>
                 ) : (
-                  rule.derivedLabels.map((row) => (
+                  rule.derivedLabels.map((row: any) => (
                     <div key={row.id} className="flex items-center justify-between rounded-md border px-3 py-1.5 text-xs">
                       <span>{row.condition}</span>
                       <Badge variant="outline">{row.label}</Badge>
@@ -232,7 +234,7 @@ export default function ResultRuleEditorPage() {
             {[
               { label: "Evaluation Selection 完整", ok: true },
               { label: "规则引用有效（Criterion 来自正式 Schema）", ok: true },
-              { label: "必填配置完整（权重合计 = 100）", ok: rule.scoreRules.reduce((a, r) => a + r.weight, 0) === 100 },
+              { label: "必填配置完整（权重合计 = 100）", ok: rule.scoreRules.reduce((a: number, r: any) => a + r.weight, 0) === 100 },
               { label: "Mapping 可执行", ok: true },
               { label: "不存在明显冲突 / 无效规则", ok: true },
             ].map((check) => (
@@ -287,7 +289,7 @@ export default function ResultRuleEditorPage() {
             <SheetDescription>历史 Published Version 只读，可基于此版本创建 Draft</SheetDescription>
           </SheetHeader>
           <div className="mt-4 space-y-2">
-            {rule.versions.map((v) => (
+            {rule.versions.map((v: any) => (
               <div key={v.version} className="rounded-md border px-3 py-2 text-sm">
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{v.version}</span>

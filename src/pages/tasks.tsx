@@ -19,23 +19,28 @@ import { TableFrame } from "@/components/app/table-frame"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { useListQuery } from "@/hooks/use-list-query"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
-import { listTasks } from "@/services/mock-service"
-import { bizApi, wfEnabled } from "@/services/wf-api"
+import { bizApi, WF_BASE } from "@/services/wf-api"
 import { formatCompactDateTime } from "@/lib/time"
 import { toast } from "sonner"
-import { agents, dataAssets } from "@/mocks/data"
 import { rbac } from "@/services/rbac"
 
 export default function TasksPage() {
   const navigate = useNavigate()
   const { params, update } = useListQuery(20)
   const filters = useMemo(() => parseListFilters(params.filters), [params.filters])
-  const { data, loading, error, retry } = useAsyncData(() => (wfEnabled() ? bizApi.tasks().then((items) => ({ items, total: items.length, page: 1, pageSize: 50 })) : listTasks(params)), [
+  const { data, loading, error, retry } = useAsyncData(() => bizApi.tasks().then((items) => ({ items, total: items.length, page: 1, pageSize: 50 })), [
     params.search,
     params.page,
     params.pageSize,
     params.filters,
   ])
+  // D-5：筛选选项改真数据（此前来自 mocks/data）
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([])
+  const [dataAssets, setDataAssets] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => {
+    fetch(`${WF_BASE}/api/agents?pageSize=100`).then((r) => r.json()).then((r) => setAgents(r.items ?? [])).catch(() => undefined)
+    fetch(`${WF_BASE}/api/data-assets`).then((r) => r.json()).then((r) => setDataAssets(r.items ?? [])).catch(() => undefined)
+  }, [])
 
   const [searchInput, setSearchInput] = useState(params.search ?? "")
   useEffect(() => {
@@ -162,7 +167,7 @@ export default function TasksPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                        {wfEnabled() && (
+                        {(
                           <>
                             <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={async () => {
                               const r = await bizApi.batchRun(task.id)

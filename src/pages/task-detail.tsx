@@ -34,15 +34,20 @@ import { StatusBadge } from "@/components/app/status-badge"
 import { TableFrame } from "@/components/app/table-frame"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { formatCompactDateTime } from "@/lib/time"
-import { getTask, listRuns } from "@/services/mock-service"
-import { bizApi } from "@/services/wf-api"
+import { bizApi, WF_BASE } from "@/services/wf-api"
 import { rbac } from "@/services/rbac"
 
 export default function TaskDetailPage() {
   const { taskId = "" } = useParams()
   const navigate = useNavigate()
-  const { data: task, loading, error, retry } = useAsyncData(() => getTask(taskId), [taskId])
-  const { data: runs } = useAsyncData(() => listRuns(taskId, { page: 1, pageSize: 20 }), [taskId])
+  const { data: task, loading, error, retry } = useAsyncData(() => bizApi.task(taskId), [taskId])
+  // D-5：任务运行列表改真数据（该任务绑定工作流的 runs）
+  const { data: runs } = useAsyncData(async () => {
+    if (!task?.agentId) return []
+    const r = await fetch(`${WF_BASE}/api/runs?workflowId=${task.agentId}`)
+    const list = await r.json()
+    return Array.isArray(list) ? list : []
+  }, [taskId, task?.agentId])
 
   const [enabled, setEnabled] = useState<boolean | null>(null)
   const [backfillOpen, setBackfillOpen] = useState(false)
@@ -134,23 +139,23 @@ export default function TaskDetailPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(runs?.items ?? []).map((run) => (
-                <TableRow key={run.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/config/tasks/${task.id}/runs/${run.id}`)}>
-                  <TableCell className="text-sm tabular-nums">{formatCompactDateTime(run.startedAt)}</TableCell>
-                  <TableCell className="text-sm">{run.dataWindow.label}</TableCell>
-                  <TableCell className="text-sm">{run.snapshot.agentVersion}</TableCell>
-                  <TableCell className="text-sm">R{run.snapshot.dataAssetRevision}</TableCell>
-                  <TableCell className="text-right tabular-nums">{run.summary.input.toLocaleString("zh-CN")}</TableCell>
-                  <TableCell><StatusBadge status={run.status} context="run" /></TableCell>
-                  <TableCell className="text-right text-sm tabular-nums">{run.duration ?? "—"}</TableCell>
+              {(runs ?? []).map((run: { runId?: string; id?: string; status?: string; startedAt?: string; trigger?: string; durationMs?: number | null }) => (
+                <TableRow key={run.runId ?? run.id ?? "run"} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/config/tasks/${task.id}/runs/${run.runId ?? run.id}`)}>
+                  <TableCell className="text-sm tabular-nums">{run.startedAt ? formatCompactDateTime(run.startedAt) : "—"}</TableCell>
+                  <TableCell className="text-sm">{run.trigger ?? "—"}</TableCell>
+                  <TableCell className="text-sm">—</TableCell>
+                  <TableCell className="text-sm">—</TableCell>
+                  <TableCell className="text-right tabular-nums">—</TableCell>
+                  <TableCell><StatusBadge status={run.status ?? "PENDING"} context="run" /></TableCell>
+                  <TableCell className="text-right text-sm tabular-nums">{run.durationMs != null ? `${run.durationMs}ms` : "—"}</TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="size-7"><MoreHorizontal className="size-4" /></Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => navigate(`/config/tasks/${task.id}/runs/${run.id}`)}>查看详情</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setRerunId(run.id)}>重新运行</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => navigate(`/config/tasks/${task.id}/runs/${run.runId ?? run.id}`)}>查看详情</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setRerunId(run.runId ?? run.id ?? null)}>重新运行</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

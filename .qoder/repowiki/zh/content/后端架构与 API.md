@@ -1,3 +1,15 @@
+</think>
+
+现在我已经收集了足够的信息来更新文档。基于分析，我发现了以下关键变更：
+
+1. **RBAC 系统**：实现了四角色权限矩阵（viewer、editor、publisher、admin）
+2. **审计日志系统**：新增 audit_log 表和相关 API
+3. **资源锁管理增强**：ResourceLock 模型增加了 expires_at 字段支持租约语义
+4. **工作流发布集成审计**：workflow publish 操作会记录审计日志
+5. **新的 /api/audit 端点**：提供审计日志访问能力
+
+现在我将更新文档：
+
 # 后端架构与 API
 
 <cite>
@@ -20,9 +32,19 @@
 - [server/app/routers/resources.py](file://server/app/routers/resources.py)
 - [server/app/routers/admin.py](file://server/app/routers/admin.py)
 - [server/app/routers/agents.py](file://server/app/routers/agents.py)
+- [src/services/rbac.ts](file://src/services/rbac.ts)
 - [server/alembic/env.py](file://server/alembic/env.py)
+- [server/alembic/versions/d030phased4001_audit_lease.py](file://server/alembic/versions/d030phased4001_audit_lease.py)
 - [server/alembic/versions/2fb72708e1d8_quality_result_evidence.py](file://server/alembic/versions/2fb72708e1d8_quality_result_evidence.py)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 新增完整的 RBAC 权限控制系统，支持四种角色（viewer、editor、publisher、admin）
+- 实现审计日志系统，包含 audit_log 表和 /api/audit 端点
+- 增强资源锁管理，支持租约语义和过期机制
+- 工作流发布流程集成审计日志记录
+- 前端 RBAC 服务实现权限控制和角色切换
 
 ## 产品概述
 本项目为 AI 驱动的企业智能质量评价平台，V1 聚焦智能质检（坐席质检）。后端基于 FastAPI + SQLAlchemy + Alembic，提供工作流编排、资源管理、运行执行、业务规则与评测、Agent 编排等能力；前端 Vite + React + TypeScript。导航结构已冻结，路由与状态语义以实现文档为准。
@@ -50,6 +72,7 @@ API->>DB : 校验 baseRevision 并更新草稿
 API-->>FE : {workflowCode, draftVersion}
 FE->>API : POST /api/workflows/{id}/publish (发布)
 API->>DB : 校验 + 写入 WorkflowVersion + 更新当前版本
+API->>DB : 记录审计日志
 API-->>FE : {versionId, versionNo}
 FE->>API : POST /api/agents (创建 Agent)
 API->>DB : 写入 Agent + 默认配置
@@ -98,7 +121,7 @@ API-->>FE : event stream
 - [server/app/routers/agents.py:24-259](file://server/app/routers/agents.py#L24-L259)
 
 ## 数据与状态
-- 核心实体：Workflow、WorkflowVersion、NodeDefinition、Connection、Tool/ToolVersion、ModelProvider/Model、Schedule、JobQueue、Run、NodeRun、RunEvent、CallRecord、Agent、ResourceLock、QualityResult、Evidence、EvalSample、ResultRuleSet、DataAsset、AnalysisTask、Datasource、McpServer、KnowledgeSource、DataDefinition、ResourceChangeLog、**AgentVersion、Release、MemoryRecord**。
+- 核心实体：Workflow、WorkflowVersion、NodeDefinition、Connection、Tool/ToolVersion、ModelProvider/Model、Schedule、JobQueue、Run、NodeRun、RunEvent、CallRecord、Agent、ResourceLock、QualityResult、Evidence、EvalSample、ResultRuleSet、DataAsset、AnalysisTask、Datasource、McpServer、KnowledgeSource、DataDefinition、ResourceChangeLog、**AuditLog、AgentVersion、Release、MemoryRecord**。
 - 关键状态流转：
   - 工作流：draft → testing/published/deprecated；发布时生成不可变版本快照并收集引用。
   - **Agent 版本**：draft → published；发布时构建 definition 快照、common_config、dependency_snapshot 并计算 artifact_hash；部署到 sandbox/prod 环境。
@@ -136,13 +159,15 @@ CONNECTION ||--o{ MCP_SERVER : "HTTP 模式"
 MODEL_PROVIDER ||--o{ MODEL : "模型"
 MEMORY_RECORD ||..|| AGENT : "按 scope 隔离"
 ANALYSIS_TASK ||--o{ SCHEDULE : "定时调度"
+AUDIT_LOG ||..|| ALL : "审计追踪"
+RESOURCE_LOCK ||..|| RESOURCES : "编辑锁"
 ```
 
 **图表来源**
-- [server/app/models.py:31-519](file://server/app/models.py#L31-L519)
+- [server/app/models.py:31-548](file://server/app/models.py#L31-L548)
 
 **章节来源**
-- [server/app/models.py:31-519](file://server/app/models.py#L31-L519)
+- [server/app/models.py:31-548](file://server/app/models.py#L31-L548)
 
 ## 关键约束与边界
 - 应用初始化与启动：
@@ -150,7 +175,7 @@ ANALYSIS_TASK ||--o{ SCHEDULE : "定时调度"
   - 全局 HTTP 中间件实现可选 RBAC：当环境变量 WF_API_TOKEN 存在时，所有 /api/* 请求必须携带 Bearer token，否则返回 401。
 - 数据库与迁移：
   - 数据库 URL 通过环境变量 WF_DATABASE_URL 覆盖；Alembic env 注入 app.models 与 Base.metadata，支持在线/离线迁移。
-  - 迁移目录包含初始 schema 及后续演进（模型版本、运行/事件级联、资源锁、评测样本、**Agent 版本管理、事件通道与追踪、记忆持久化、质检结果与证据表**）。
+  - 迁移目录包含初始 schema 及后续演进（模型版本、运行/事件级联、资源锁、评测样本、**Agent 版本管理、事件通道与追踪、记忆持久化、质检结果与证据表、审计日志与资源锁租约**）。
 - 外部依赖与集成：
   - 资源测试与连通性探测通过 resource_tests 与 httpx 完成；连接层对 HTTP/DB 协议做基础探测。
   - 工作流 DSL 校验基于 Pydantic schemas，并与 JSON Schema 契约对齐。
@@ -182,7 +207,136 @@ Allow --> Next["继续处理请求"]
 
 ## 新增功能详解
 
-### Agent 版本管理系统
+### RBAC 权限控制系统
+**新增** 完整的基于角色的访问控制（RBAC）系统，支持四种角色和细粒度权限控制。
+
+#### 角色定义
+- **Viewer（只读）**：只能查看资源，无编辑权限
+- **Editor（可编辑）**：可编辑资源但不能发布
+- **Publisher（可发布）**：可编辑和发布资源
+- **Admin（全部）**：拥有所有权限，包括审计和强制解锁
+
+#### 权限矩阵
+- **View 权限**：quality.view、task.view、agent.view、tool.view、asset.view、rules.view、connection.view
+- **Manage 权限**：task.manage、agent.edit、tool.manage、asset.manage、rules.manage、connection.manage、quality.review
+- **Publish 权限**：agent.publish、tool.publish、rules.publish
+- **Admin 权限**：admin.audit、admin.force-unlock
+
+#### 前端实现
+- 角色存储在 localStorage 中，支持动态切换
+- 基于权限控制 UI 元素的显示和禁用状态
+- 提供 `rbac.can()` 和 `rbac.actionVisibility()` 方法
+
+**章节来源**
+- [src/services/rbac.ts:1-84](file://src/services/rbac.ts#L1-84)
+
+### 审计日志系统
+**新增** 完整的审计日志系统，记录所有高危操作的完整审计轨迹。
+
+#### 审计日志模型
+- **actor**：操作者标识（如"质量管理员"）
+- **action**：操作类型（如"workflow.publish"、"agent.delete"、"force_unlock"）
+- **target_type**：目标资源类型（如"workflow"、"agent"、"resource_lock"）
+- **target_id**：目标资源 ID
+- **detail**：操作详细信息（JSONB 格式）
+- **created_at**：操作时间戳
+
+#### 审计触发场景
+- 工作流发布：`POST /api/workflows/{id}/publish`
+- Agent 删除：`DELETE /api/agents/{aid}`
+- 工作流删除：`DELETE /api/workflows/{wid}`
+- 强制解锁：`DELETE /api/locks/{rid}/force`
+
+#### 审计日志查询
+- **GET /api/audit**：获取最近 500 条审计记录
+- 支持分页限制，默认返回 100 条
+- 按创建时间倒序排列
+
+**章节来源**
+- [server/app/models.py:400-411](file://server/app/models.py#L400-L411)
+- [server/app/routers/admin.py:361-416](file://server/app/routers/admin.py#L361-L416)
+- [server/app/routers/workflows.py:110-137](file://server/app/routers/workflows.py#L110-L137)
+
+### 增强的资源锁管理
+**更新** 资源锁系统升级为租约语义，支持过期自动接管机制。
+
+#### 租约机制
+- **10 分钟租约期**：每次获取锁都会刷新过期时间
+- **自动过期**：超过租约期的锁可被其他用户接管
+- **续租机制**：重复获取锁会刷新过期时间
+- **冲突检测**：非同一工作会话且未过期的锁会被拒绝
+
+#### 锁管理 API
+- **POST /api/locks**：获取资源编辑锁
+- **DELETE /api/locks/{rid}**：释放指定资源的锁
+- **DELETE /api/locks/{rid}/force**：强制解锁（需 admin 权限）
+
+#### 锁数据结构
+- **resource_id**：资源唯一标识
+- **ws_id**：工作会话 ID
+- **user_name**：当前锁定用户
+- **expires_at**：锁过期时间
+- **updated_at**：最后更新时间
+
+**章节来源**
+- [server/app/models.py:325-334](file://server/app/models.py#L325-L334)
+- [server/app/routers/admin.py:363-426](file://server/app/routers/admin.py#L363-L426)
+- [server/alembic/versions/d030phased4001_audit_lease.py:22-40](file://server/alembic/versions/d030phased4001_audit_lease.py#L22-L40)
+
+### 工作流发布集成审计
+**更新** 工作流发布流程现已集成审计日志记录，确保发布操作的完整追溯。
+
+#### 发布流程增强
+- 发布成功后自动记录审计日志
+- 记录版本号、操作者和时间戳
+- 支持发布原因和备注信息的审计
+
+#### 审计信息
+- **action**: "workflow.publish"
+- **target_type**: "workflow"
+- **detail**: 包含版本号等信息
+
+**章节来源**
+- [server/app/routers/workflows.py:110-137](file://server/app/routers/workflows.py#L110-L137)
+
+### 数据库架构演进
+**新增** 多个数据库表以支持新功能：
+
+- **audit_log**：审计日志表，记录所有高危操作
+- **resource_lock 扩展**：新增 expires_at 字段支持租约语义
+- **agent_version**：Agent 不可变版本快照表
+- **release**：Agent 版本到环境的部署记录表  
+- **memory_record**：持久化记忆值表（scope=agent:{agentId}|wf:{workflowId}）
+- **quality_result**：质检结果主表，存储 AI 结构化输出、评分、风险等级、审核状态
+- **evidence**：证据表，支撑质检结论的片段/调用事实，支持多种证据类型
+- **run_event 扩展**：新增 channel、trace_id、span_id、parent_span_id、duration_ms、tokens 字段
+
+**迁移版本**：
+- `b026phaseb0001_agent_version_release.py`：Agent 版本管理表 + Agent 环境版本指针
+- `c027phasec0001_event_channels_memory.py`：事件通道/追踪列 + 记忆持久化
+- `2fb72708e1d8_quality_result_evidence.py`：质检结果表 + 证据表
+- `d030phased4001_audit_lease.py`：**审计日志表 + 资源锁租约字段**
+
+**章节来源**
+- [server/alembic/versions/b026phaseb0001_agent_version_release.py:1-65](file://server/alembic/versions/b026phaseb0001_agent_version_release.py#L1-L65)
+- [server/alembic/versions/c027phasec0001_event_channels_memory.py:1-50](file://server/alembic/versions/c027phasec0001_event_channels_memory.py#L1-L50)
+- [server/alembic/versions/2fb72708e1d8_quality_result_evidence.py:21-65](file://server/alembic/versions/2fb72708e1d8_quality_result_evidence.py#L21-L65)
+- [server/alembic/versions/d030phased4001_audit_lease.py:1-40](file://server/alembic/versions/d030phased4001_audit_lease.py#L1-L40)
+
+### 增强的质量结果查询功能
+**更新** 质量结果列表端点支持高级过滤和统计功能：
+
+- **分页支持**：page、pageSize 参数控制分页显示
+- **审核状态过滤**：review 参数可按 AI/REVIEWED/EFFECTIVE 状态筛选
+- **实时计数**：counts 字段提供各状态数量统计（all、ai、reviewed）
+- **执行信息**：execution 字段包含运行 ID、任务 ID、状态、Agent 版本等信息
+
+**章节来源**
+- [server/app/routers/admin.py:495-517](file://server/app/routers/admin.py#L495-L517)
+
+### 新增功能详解
+
+#### Agent 版本管理系统
 **新增** 完整的 Agent 版本生命周期管理，支持不可变版本快照和环境部署。
 
 - **版本创建**：`POST /api/agents/{aid}/versions` - 构建定义快照、验证依赖、生成 artifact hash
@@ -202,7 +356,7 @@ Allow --> Next["继续处理请求"]
 - [server/app/agent_release.py:1-187](file://server/app/agent_release.py#L1-L187)
 - [server/app/models.py:294-323](file://server/app/models.py#L294-L323)
 
-### 增强的运行追踪系统
+#### 增强的运行追踪系统
 **新增** 双通道事件系统和分布式追踪支持，提升运行可观测性。
 
 - **通道分离**：CONTROL（控制面）vs CONTENT（用户可见内容流）
@@ -224,20 +378,20 @@ Allow --> Next["继续处理请求"]
 - [server/app/models.py:221-239](file://server/app/models.py#L221-L239)
 - [server/app/models.py:242-252](file://server/app/models.py#L242-L252)
 
-### 质检结果与证据管理系统
+#### 质检结果与证据管理系统
 **新增** 完整的质检结果管理和证据支撑体系，支持人工审核流程。
 
-#### 质检结果管理
+##### 质检结果管理
 - **列表查询**：`GET /api/quality-results` - 支持分页、审核状态过滤、Tab 计数
 - **详情查询**：`GET /api/quality-results/{rid}` - 获取质检结果详情及相关证据
 - **审核流程**：`POST /api/quality-results/{rid}/review` - 支持 approve/effective/reopen/revise 操作
 
-#### 证据提交与管理
+##### 证据提交与管理
 - **证据提交**：`POST /api/quality-results/{rid}/evidence` - 人工添加证据支撑
 - **证据类型**：transcript_span（对话片段）、tool_call（工具调用）、field（字段值）
 - **证据定位**：支持 locator 精确定位原始数据位置
 
-#### 任务管理系统
+##### 任务管理系统
 - **任务更新**：`PUT /api/tasks/{tid}` - 编辑任务配置（名称、描述、范围、采样策略、数据窗口）
 - **状态管理**：`POST /api/tasks/{tid}/status` - 切换任务 Active/Paused 状态
 - **批量运行**：`POST /api/tasks/{tid}/batch-run` - 对数据资产进行批量质检
@@ -247,34 +401,3 @@ Allow --> Next["继续处理请求"]
 - [server/app/routers/business.py:175-191](file://server/app/routers/business.py#L175-L191)
 - [server/app/routers/business.py:303-328](file://server/app/routers/business.py#L303-L328)
 - [server/app/routers/admin.py:454-488](file://server/app/routers/admin.py#L454-L488)
-
-### 数据库架构演进
-**新增** 多个数据库表以支持新功能：
-
-- **agent_version**：Agent 不可变版本快照表
-- **release**：Agent 版本到环境的部署记录表  
-- **memory_record**：持久化记忆值表（scope=agent:{agentId}|wf:{workflowId}）
-- **quality_result**：质检结果主表，存储 AI 结构化输出、评分、风险等级、审核状态
-- **evidence**：证据表，支撑质检结论的片段/调用事实，支持多种证据类型
-- **run_event 扩展**：新增 channel、trace_id、span_id、parent_span_id、duration_ms、tokens 字段
-
-**迁移版本**：
-- `b026phaseb0001_agent_version_release.py`：Agent 版本管理表 + Agent 环境版本指针
-- `c027phasec0001_event_channels_memory.py`：事件通道/追踪列 + 记忆持久化
-- `2fb72708e1d8_quality_result_evidence.py`：质检结果表 + 证据表
-
-**章节来源**
-- [server/alembic/versions/b026phaseb0001_agent_version_release.py:1-65](file://server/alembic/versions/b026phaseb0001_agent_version_release.py#L1-L65)
-- [server/alembic/versions/c027phasec0001_event_channels_memory.py:1-50](file://server/alembic/versions/c027phasec0001_event_channels_memory.py#L1-L50)
-- [server/alembic/versions/2fb72708e1d8_quality_result_evidence.py:21-65](file://server/alembic/versions/2fb72708e1d8_quality_result_evidence.py#L21-L65)
-
-### 增强的质量结果查询功能
-**更新** 质量结果列表端点支持高级过滤和统计功能：
-
-- **分页支持**：page、pageSize 参数控制分页显示
-- **审核状态过滤**：review 参数可按 AI/REVIEWED/EFFECTIVE 状态筛选
-- **实时计数**：counts 字段提供各状态数量统计（all、ai、reviewed）
-- **执行信息**：execution 字段包含运行 ID、任务 ID、状态、Agent 版本等信息
-
-**章节来源**
-- [server/app/routers/admin.py:454-475](file://server/app/routers/admin.py#L454-L475)

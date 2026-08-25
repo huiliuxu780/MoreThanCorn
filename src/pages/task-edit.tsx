@@ -13,13 +13,12 @@ import {
   type TaskFormState,
 } from "@/components/tasks/task-form-sections"
 import { useAsyncData } from "@/hooks/use-async-data"
-import { getTask } from "@/services/mock-service"
 import { bizApi } from "@/services/wf-api"
 
 export default function TaskEditPage() {
   const { taskId = "" } = useParams()
   const navigate = useNavigate()
-  const { data: task, loading } = useAsyncData(() => getTask(taskId), [taskId])
+  const { data: task, loading } = useAsyncData(() => bizApi.task(taskId), [taskId])
   const [form, setForm] = useState<TaskFormState>(emptyTaskForm)
   const [saving, setSaving] = useState(false)
 

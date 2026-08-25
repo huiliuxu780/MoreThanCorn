@@ -55,8 +55,7 @@ import { ErrorState } from "@/components/app/list-state"
 import { ReviewBadge, RiskBadge, StatusBadge } from "@/components/app/status-badge"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { formatDateTime, formatSeconds } from "@/lib/time"
-import { getQualityResult, listQualityResults } from "@/services/mock-service"
-import { bizApi, realQualityDetail, wfEnabled } from "@/services/wf-api"
+import { bizApi, realQualityDetail, realQualityResults } from "@/services/wf-api"
 import type { CriterionResult } from "@/domain/types"
 import { cn } from "@/lib/utils"
 
@@ -71,12 +70,12 @@ export default function QualityResultDetailPage() {
   const fromQuery = searchParams.get("from") ?? ""
 
   const { data: detail, loading, error, retry } = useAsyncData(
-    () => (wfEnabled() ? (realQualityDetail(interactionId) as unknown as ReturnType<typeof getQualityResult>) : getQualityResult(interactionId)),
+    () => realQualityDetail(interactionId) as Promise<any>,
     [interactionId],
   )
   const { data: siblingList } = useAsyncData(
     () =>
-      listQualityResults({
+      realQualityResults({
         ...Object.fromEntries(new URLSearchParams(fromQuery)),
         page: 1,
         pageSize: 100,
@@ -244,7 +243,7 @@ export default function QualityResultDetailPage() {
                     </div>
                   ) : null}
                   <div className="space-y-1.5">
-                    {detail.transcript.map((seg) => {
+                    {detail.transcript.map((seg: any) => {
                       const referenced = (seg.criterionRefs ?? []).length > 0
                       return (
                         <div
@@ -266,8 +265,8 @@ export default function QualityResultDetailPage() {
                           <div className="mt-0.5 leading-6">{seg.text}</div>
                           {referenced ? (
                             <div className="mt-1 flex flex-wrap gap-1">
-                              {seg.criterionRefs!.map((ref) => {
-                                const crit = detail.sections.flatMap((s) => s.criteria).find((c) => c.id === ref)
+                              {seg.criterionRefs!.map((ref: any) => {
+                                const crit = detail.sections.flatMap((s: any) => s.criteria).find((c: any) => c.id === ref)
                                 return crit ? (
                                   <Badge key={ref} variant={crit.result === "FAIL" ? "danger" : "neutral"} className="text-[10px]">
                                     {crit.criterion}
@@ -302,10 +301,10 @@ export default function QualityResultDetailPage() {
                     </div>
                   </div>
 
-                  {detail.sections.map((section) => (
+                  {detail.sections.map((section: any) => (
                     <div key={section.section} className="space-y-1.5">
                       <div className="text-xs font-medium text-muted-foreground">{section.section}</div>
-                      {section.criteria.map((criterion) => {
+                      {section.criteria.map((criterion: any) => {
                         const human = humanEdits[criterion.id] ?? criterion.human
                         const open = isCriterionOpen(criterion) || reviewMode || activeCriterion === criterion.id
                         return (
@@ -343,8 +342,8 @@ export default function QualityResultDetailPage() {
                                 {(criterion.evidenceSegmentIds ?? []).length > 0 ? (
                                   <div className="space-y-1">
                                     <div className="text-xs text-muted-foreground">Conversation 证据</div>
-                                    {(criterion.evidenceSegmentIds ?? []).map((segId) => {
-                                      const seg = detail.transcript.find((s) => s.id === segId)
+                                    {(criterion.evidenceSegmentIds ?? []).map((segId: any) => {
+                                      const seg = detail.transcript.find((s: any) => s.id === segId)
                                       return seg ? (
                                         <button
                                           key={segId}
@@ -362,8 +361,8 @@ export default function QualityResultDetailPage() {
                                 {(criterion.businessEvidenceIds ?? []).length > 0 ? (
                                   <div className="space-y-1">
                                     <div className="text-xs text-muted-foreground">Business Evidence</div>
-                                    {(criterion.businessEvidenceIds ?? []).map((factId) => {
-                                      const fact = detail.businessFacts.find((f) => f.id === factId)
+                                    {(criterion.businessEvidenceIds ?? []).map((factId: any) => {
+                                      const fact = detail.businessFacts.find((f: any) => f.id === factId)
                                       return fact ? (
                                         <button
                                           key={factId}
@@ -448,7 +447,7 @@ export default function QualityResultDetailPage() {
                   {detail.businessFacts.length === 0 ? (
                     <p className="py-6 text-center text-xs text-muted-foreground">暂无关联业务记录</p>
                   ) : (
-                    detail.businessFacts.map((fact) => (
+                    detail.businessFacts.map((fact: any) => (
                       <div
                         key={fact.id}
                         id={`fact-${fact.id}`}
@@ -456,7 +455,7 @@ export default function QualityResultDetailPage() {
                       >
                         <div className="text-sm font-medium">{fact.title}</div>
                         <div className="mt-1.5 space-y-1">
-                          {fact.fields.map((f) => (
+                          {fact.fields.map((f: any) => (
                             <div key={f.label} className="grid grid-cols-[72px_1fr] gap-2 text-xs">
                               <span className="text-muted-foreground">{f.label}</span>
                               <span>{f.value}</span>
@@ -502,9 +501,7 @@ export default function QualityResultDetailPage() {
               onClick={async () => {
                 setCompleteOpen(false)
                 setReviewMode(false)
-                if (wfEnabled()) {
-                  await bizApi.review(interactionId, { action: "effective", reviewer: "reviewer" })
-                }
+                await bizApi.review(interactionId, { action: "effective", reviewer: "reviewer" })
                 toast.success("复核完成，Effective Result 已更新")
                 retry()
               }}
@@ -544,7 +541,7 @@ export default function QualityResultDetailPage() {
               <div className="space-y-1.5">
                 <div className="text-xs font-medium text-muted-foreground">Structured Output</div>
                 <pre className="overflow-x-auto rounded-md bg-muted/60 p-3 text-[11px] leading-5">
-{JSON.stringify(detail.sections.map((s) => ({ section: s.section, criteria: s.criteria.map((c) => ({ criterion: c.criterion, result: c.result })) })), null, 2)}
+{JSON.stringify(detail.sections.map((s: any) => ({ section: s.section, criteria: s.criteria.map((c: any) => ({ criterion: c.criterion, result: c.result })) })), null, 2)}
                 </pre>
               </div>
               <p className="text-xs text-muted-foreground">

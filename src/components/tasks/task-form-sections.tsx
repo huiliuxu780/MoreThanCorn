@@ -15,11 +15,46 @@ import { Textarea } from "@/components/ui/textarea"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { FormField } from "@/components/app/form-field"
 import { SectionHeader } from "@/components/app/page"
-import { agents, agentDetails, dataAssets } from "@/mocks/data"
-import type { AgentDetail, DataAsset, DataAssetField } from "@/domain/types"
 import { defApi, type DefinitionDTO } from "@/services/resource-api"
-import { wfEnabled } from "@/services/wf-api"
+import { WF_BASE } from "@/services/wf-api"
+import type { AgentDetail, DataAsset, DataAssetField } from "@/domain/types"
 import { cn } from "@/lib/utils"
+
+/* D-5 mock 清退：agents/agentDetails/dataAssets 改为真实接口（模块级缓存+订阅）。
+   inputSchema 无真实来源时使用标准会话字段缺省（非 AI 猜测）。 */
+const DEFAULT_INPUT_SCHEMA: DataAssetField[] = []
+let agents: AgentDetail[] = []
+let dataAssets: DataAsset[] = []
+const agentDetails: Record<string, AgentDetail> = {}
+const subs = new Set<() => void>()
+let catalogLoaded = false
+function loadCatalog() {
+  if (catalogLoaded) return
+  catalogLoaded = true
+  fetch(`${WF_BASE}/api/agents?pageSize=100`).then((r) => r.json()).then((r) => {
+    agents = ((r.items ?? []) as { id: string; name: string; status: string }[]).map((a) => ({
+      id: a.id, name: a.name, status: a.status === "published" ? "Published" : "Draft",
+      inputSchema: DEFAULT_INPUT_SCHEMA,
+    } as unknown as AgentDetail))
+    for (const a of agents) agentDetails[a.id] = a
+    subs.forEach((f) => f())
+  }).catch(() => undefined)
+  fetch(`${WF_BASE}/api/data-assets`).then((r) => r.json()).then((r) => {
+    dataAssets = ((r.items ?? []) as { id: string; name: string; lifecycle?: string }[]).map((a) => ({
+      id: a.id, name: a.name, lifecycle: a.lifecycle ?? "Ready", fields: [],
+    } as unknown as DataAsset))
+    subs.forEach((f) => f())
+  }).catch(() => undefined)
+}
+function useCatalog() {
+  const [, force] = useState(0)
+  useEffect(() => {
+    const f = () => force((x) => x + 1)
+    subs.add(f)
+    loadCatalog()
+    return () => { subs.delete(f) }
+  }, [])
+}
 
 export interface ScopeCondition {
   field: string
@@ -121,6 +156,7 @@ export function BasicTaskFields({
   form: TaskFormState
   onChange: (next: TaskFormState) => void
 }) {
+  useCatalog()
   const set = (patch: Partial<TaskFormState>) => onChange({ ...form, ...patch })
   return (
     <div className="space-y-4">
@@ -193,16 +229,16 @@ export function DataTaskFields({
   form: TaskFormState
   onChange: (next: TaskFormState) => void
 }) {
+  useCatalog()
   const set = (patch: Partial<TaskFormState>) => onChange({ ...form, ...patch })
   const agent = agentOf(form)
   const [defs, setDefs] = useState<DefinitionDTO[]>([])
   const [selDef, setSelDef] = useState<DefinitionDTO | null>(null)
   useEffect(() => {
-    if (!wfEnabled()) return
     defApi.list({}).then((r) => setDefs(r.items.filter((d) => d.lifecycle === "Ready"))).catch(() => undefined)
   }, [])
   useEffect(() => {
-    if (form.definitionId && wfEnabled()) defApi.get(form.definitionId).then(setSelDef).catch(() => undefined)
+    if (form.definitionId) defApi.get(form.definitionId).then(setSelDef).catch(() => undefined)
   }, [form.definitionId])
 
   /** 真 API 模式：以 Data Definition 的 field_schema 构造映射视图（迭代自现有能力）。 */
@@ -215,46 +251,27 @@ export function DataTaskFields({
       schema: (d.fieldSchema ?? []) as DataAssetField[], eligibility: d.eligibility ?? [],
     }
   }
-  const asset = wfEnabled() ? shellFromDef(selDef) : assetOf(form)
+  const asset = shellFromDef(selDef) ?? assetOf(form)
   const issues = mappingIssues(form)
 
   return (
     <div className="space-y-5">
-      {wfEnabled() ? (
-        <FormField label="Data Definition" required description="选择 Ready 的数据定义（字段 schema + eligibility）；任务按定义字段执行分析。">
-          <Select
-            value={form.definitionId || undefined}
-            onValueChange={(definitionId) => {
-              const d = defs.find((x) => x.id === definitionId) ?? null
-              onChange({ ...form, definitionId, assetId: d?.assetId ?? "", mapping: autoMapping(agent, shellFromDef(d)), scope: [] })
-            }}
-          >
-            <SelectTrigger><SelectValue placeholder="选择 Data Definition" /></SelectTrigger>
-            <SelectContent>
-              {defs.map((d) => (
-                <SelectItem key={d.id} value={d.id}>{d.name} · {d.assetName} · R{d.revision}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </FormField>
-      ) : (
-      <FormField label="Data Asset" required description="只允许选择 Ready 资产；Run 创建时自动冻结当前 Ready Revision。">
+      <FormField label="Data Definition" required description="选择 Ready 的数据定义（字段 schema + eligibility）；任务按定义字段执行分析。">
         <Select
-          value={form.assetId || undefined}
-          onValueChange={(assetId) => {
-            const nextAsset = dataAssets.find((a) => a.id === assetId) ?? null
-            onChange({ ...form, assetId, mapping: autoMapping(agent, nextAsset), scope: [] })
+          value={form.definitionId || undefined}
+          onValueChange={(definitionId) => {
+            const d = defs.find((x) => x.id === definitionId) ?? null
+            onChange({ ...form, definitionId, assetId: d?.assetId ?? "", mapping: autoMapping(agent, shellFromDef(d)), scope: [] })
           }}
         >
-          <SelectTrigger><SelectValue placeholder="选择 Data Asset" /></SelectTrigger>
+          <SelectTrigger><SelectValue placeholder="选择 Data Definition" /></SelectTrigger>
           <SelectContent>
-            {dataAssets.filter((a) => a.lifecycle === "Ready").map((a) => (
-              <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+            {defs.map((d) => (
+              <SelectItem key={d.id} value={d.id}>{d.name} · {d.assetName} · R{d.revision}</SelectItem>
             ))}
           </SelectContent>
         </Select>
       </FormField>
-      )}
 
       {asset ? (
         <div className="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
