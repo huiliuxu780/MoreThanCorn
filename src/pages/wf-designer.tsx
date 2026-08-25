@@ -102,6 +102,7 @@ import {
 } from "@/services/wf-api"
 import { resApi } from "@/services/resource-api"
 import { rbac } from "@/services/rbac"
+import { AgentEvalPanel } from "@/components/agent-ops-panels"
 
 /* ============ 视觉令牌（16 §1） ============ */
 const C = {
@@ -1866,6 +1867,12 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
             onClick={() => setDrawer("runs")}>
             <Activity className="size-4" style={{ color: C.ink2 }} />
           </button>
+          {!agentMeta && (
+            <button className="rounded p-1.5 hover:bg-neutral-100" title="效果评测"
+              onClick={() => setDrawer("eval")}>
+              <ListChecks className="size-4" style={{ color: C.ink2 }} />
+            </button>
+          )}
           <button className="rounded p-1.5 hover:bg-neutral-100" title="定时任务"
             onClick={() => setDrawer("schedule")}>
             <CalendarDays className="size-4" style={{ color: C.ink2 }} />
@@ -1882,9 +1889,19 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
         </div>
       </div>
 
-      {/* 画布 */}
-      <div className="flex min-h-0 flex-1">
-      {drawer === "eval" && <EvalPanel workflowId={workflowId} onClose={() => setDrawer(null)} />}
+      {/* 画布（relative：抽屉层以此为定位基准，避免钻到顶栏下被遮挡） */}
+      <div className="relative flex min-h-0 flex-1">
+      {drawer === "eval" && (agentMeta && agentId ? (
+        <div className="absolute inset-y-0 right-0 z-20 flex w-[420px] max-w-[92vw] flex-col border-l bg-white" style={{ borderColor: C.cardBorder }}>
+          <div className="flex items-center justify-between px-4 py-3">
+            <span className="text-[15px] font-semibold" style={{ color: C.ink }}>效果评测</span>
+            <button onClick={() => setDrawer(null)}><X className="size-4 text-neutral-500" /></button>
+          </div>
+          <div className="min-h-0 flex-1"><AgentEvalPanel agentId={agentId} /></div>
+        </div>
+      ) : (
+        <EvalPanel workflowId={workflowId} onClose={() => setDrawer(null)} />
+      ))}
       {drawer === "evo" && <EvoPanel workflowId={workflowId} onClose={() => setDrawer(null)} />}
       {agentMeta && agentId && <AgentConfigDrawer agentId={agentId} onClose={() => undefined} inline avatar={agentAvatar} onAvatar={(v) => { setAgentAvatar(v); agentApi.update(agentId, { avatar: v }).catch(() => undefined) }} />}
       <div className="relative flex-1">
@@ -2104,17 +2121,33 @@ function NodeSearch({ nodes, onPick }: { nodes: WfNode[]; onPick: (id: string) =
 }
 
 
-/* ============ 效果评测面板 ============ */
+/* ============ 效果评测面板（对齐 Agent 级：期望答案 + rule/model Judge + 人评覆盖） ============ */
+interface EvalRunRow {
+  sampleId: string; name: string; runId?: string; status: string
+  durationMs?: number | null; output?: string; error?: string | null
+  judge?: { kind: string; score: number } | null
+}
 function EvalPanel({ workflowId, onClose }: { workflowId: string; onClose: () => void }) {
-  const [samples, setSamples] = useState<{ id: string; name: string; input: Record<string, unknown> }[]>([])
+  const [samples, setSamples] = useState<{ id: string; name: string; input: Record<string, unknown>; expected?: { text?: string } | null }[]>([])
   const [summary, setSummary] = useState<Record<string, any> | null>(null)
+  const [results, setResults] = useState<EvalRunRow[] | null>(null)
   const [name, setName] = useState("")
   const [inputJson, setInputJson] = useState('{ "userQuery": "你好" }')
+  const [expectedText, setExpectedText] = useState("")
+  const [judge, setJudge] = useState<"none" | "rule" | "model">("rule")
+  const [running, setRunning] = useState(false)
   const load = () => {
     evalApi.samples(workflowId).then((r) => setSamples(r.items)).catch(() => undefined)
     evalApi.summary(workflowId).then(setSummary).catch(() => undefined)
   }
   useEffect(() => { load() }, [workflowId])
+  const humanScore = async (sampleId: string, score: number) => {
+    try {
+      const r = await evalApi.humanScore(sampleId, score)
+      setResults((rs) => rs?.map((x) => (x.sampleId === sampleId ? { ...x, judge: r.judge } : x)) ?? rs)
+      toast.success(`已人评 ${score} 分`)
+    } catch (e) { toast.error((e as Error).message) }
+  }
   return (
     <div className="absolute inset-y-0 right-0 z-20 flex w-[420px] max-w-[92vw] flex-col border-l bg-white" style={{ borderColor: C.cardBorder }}>
       <div className="flex items-center justify-between px-4 py-3">
@@ -2133,36 +2166,60 @@ function EvalPanel({ workflowId, onClose }: { workflowId: string; onClose: () =>
           </div>
         )}
         <div className="space-y-2">
-          <div className="text-[13px] font-medium" style={{ color: C.ink }}>| 评测集</div>
+          <div className="text-[13px] font-medium" style={{ color: C.ink }}>| 评测集（样本 = 固定输入 + 可选期望答案）</div>
           {samples.map((sp) => (
             <div key={sp.id} className="flex items-center gap-2 rounded border px-2 py-1 text-xs" style={{ borderColor: C.cardBorder }}>
               <span className="flex-1 truncate" style={{ color: C.ink }}>{sp.name}</span>
+              {sp.expected?.text && <span className="truncate rounded bg-emerald-50 px-1 text-[10px] text-emerald-600">期望：{sp.expected.text.slice(0, 16)}</span>}
               <button className="text-neutral-400" onClick={async () => { await evalApi.delSample(sp.id); load() }}><X className="size-3" /></button>
             </div>
           ))}
           <Input className="h-7 text-xs" placeholder="样本名称" value={name} onChange={(e) => setName(e.target.value)} />
           <Textarea className="min-h-16 text-xs" value={inputJson} onChange={(e) => setInputJson(e.target.value)} />
-          <div className="flex gap-2">
+          <Input className="h-7 text-xs" placeholder="期望答案（可选；供规则/模型 Judge 对照）" value={expectedText} onChange={(e) => setExpectedText(e.target.value)} />
+          <div className="flex items-center gap-2">
+            <Select value={judge} onValueChange={(v) => setJudge(v as typeof judge)}>
+              <SelectTrigger className="h-7 flex-1 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="rule">规则 Judge（期望包含匹配）</SelectItem>
+                <SelectItem value="model">模型 Judge（LLM 打 1-5 分）</SelectItem>
+                <SelectItem value="none">不 Judge（只看运行成败）</SelectItem>
+              </SelectContent>
+            </Select>
             <Button size="sm" variant="outline" onClick={async () => {
               try {
-                await evalApi.addSample(workflowId, name || "样本", JSON.parse(inputJson || "{}"))
-                setName(""); load()
+                await evalApi.addSample(workflowId, name || "样本", JSON.parse(inputJson || "{}"), expectedText)
+                setName(""); setExpectedText(""); load()
               } catch { toast.error("输入 JSON 非法") }
             }}>添加样本</Button>
-            <Button size="sm" className="bg-black text-white hover:bg-neutral-800" onClick={async () => {
-              await evalApi.run(workflowId)
-              toast.success("评测已启动"); setTimeout(load, 4000)
-            }}>运行评测</Button>
+            <Button size="sm" className="bg-black text-white hover:bg-neutral-800" disabled={running || samples.length === 0}
+              onClick={async () => {
+                setRunning(true)
+                try {
+                  const r = await evalApi.run(workflowId, judge)
+                  setResults(r.results); load()
+                } catch (e) { toast.error((e as Error).message) }
+                finally { setRunning(false) }
+              }}>{running ? "评测中…" : "运行评测"}</Button>
           </div>
         </div>
-        {summary && summary.samples?.length > 0 && (
+        {results && (
           <div className="space-y-1">
-            <div className="text-[13px] font-medium" style={{ color: C.ink }}>| 评测结果</div>
-            {summary.samples.map((r: any) => (
-              <div key={r.runId} className="flex items-center gap-2 rounded border px-2 py-1 text-xs" style={{ borderColor: C.cardBorder }}>
-                <span className={`size-2 rounded-full ${r.status === "succeeded" ? "bg-emerald-400" : "bg-red-400"}`} />
-                <span className="w-24 font-mono" style={{ color: C.ink3 }}>{r.runId.slice(0, 8)}</span>
-                <span className="flex-1 truncate" style={{ color: C.ink2 }}>{r.output || "-"}</span>
+            <div className="text-[13px] font-medium" style={{ color: C.ink }}>| 评测结果（可人评覆盖）</div>
+            {results.map((r) => (
+              <div key={r.sampleId} className="flex items-center gap-2 rounded border px-2 py-1 text-xs" style={{ borderColor: C.cardBorder }}>
+                <span className={`size-2 shrink-0 rounded-full ${r.status === "succeeded" ? "bg-emerald-400" : "bg-red-400"}`} />
+                <span className="w-20 truncate" style={{ color: C.ink }}>{r.name}</span>
+                <span className="flex-1 truncate" style={{ color: C.ink2 }}>{r.error ?? r.output ?? "-"}</span>
+                {r.judge && (
+                  <span className={`shrink-0 rounded px-1 py-0.5 text-[10px] ${r.judge.score >= 3 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"}`}>
+                    {r.judge.kind === "human" ? "人评" : r.judge.kind === "model" ? "模型" : "规则"} {r.judge.score}
+                  </span>
+                )}
+                <span className="flex shrink-0 items-center gap-1">
+                  <button className="rounded border px-1 text-[10px]" style={{ borderColor: C.cardBorder }} title="人评 5 分" onClick={() => humanScore(r.sampleId, 5)}>👍</button>
+                  <button className="rounded border px-1 text-[10px]" style={{ borderColor: C.cardBorder }} title="人评 1 分" onClick={() => humanScore(r.sampleId, 1)}>👎</button>
+                </span>
                 <span style={{ color: C.ink3 }}>{r.durationMs != null ? `${r.durationMs}ms` : ""}</span>
               </div>
             ))}

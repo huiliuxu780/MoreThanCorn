@@ -617,16 +617,57 @@ def delete_eval_sample(sid: str, db: Session = Depends(get_db)):
 
 @router.post("/api/workflows/{wid}/eval-run")
 def eval_run(wid: str, payload: dict | None = None, db: Session = Depends(get_db)):
+    """工作流级评测：样本逐个真实运行（同步等待终态）+ rule/model Judge（对齐 Agent 级 D-1/D-3）。"""
     from ..models import EvalSample
+    from ..runner import create_run, execute_run
+    from .agents import _model_judge
+    judge = (payload or {}).get("judge") or "none"
     samples = db.query(EvalSample).filter_by(workflow_id=wid).all()
     ids = (payload or {}).get("sampleIds") or [s.id for s in samples]
-    run_ids = []
+    results = []
     for s in samples:
         if s.id not in ids:
             continue
-        run = create_run(db, wid, "eval", s.input or {})
-        run_ids.append(run.id)
-    return {"runIds": run_ids}
+        try:
+            run = create_run(db, wid, "eval", s.input or {}, enqueue=False)
+            execute_run(run.id)
+            db.expire_all()  # execute_run 用独立会话提交，需失效本会话缓存再读终态
+            r = db.get(Run, run.id)
+            output_text = str((r.output or {}).get("output", ""))
+            expected_text = str((s.expected or {}).get("text", "")) if s.expected else ""
+            judge_result = None
+            if judge == "rule" and expected_text:
+                judge_result = {"kind": "rule", "score": 1.0 if expected_text in output_text else 0.0,
+                                "passed": expected_text in output_text}
+            elif judge == "model" and (expected_text or output_text):
+                judge_result = _model_judge(db, str((s.input or {}).get("userQuery", "")),
+                                            expected_text, output_text)
+            if judge_result:
+                s.judge_result = judge_result
+            results.append({"sampleId": s.id, "name": s.name, "runId": r.id, "status": r.status,
+                            "durationMs": r.duration_ms, "output": output_text[:120],
+                            "judge": judge_result,
+                            "error": (r.error or {}).get("message") if r.status == "failed" else None})
+        except Exception as e:  # noqa: BLE001
+            results.append({"sampleId": s.id, "name": s.name, "status": "failed", "error": str(e)})
+    db.commit()
+    succeeded = sum(1 for r in results if r["status"] == "succeeded")
+    return {"total": len(results), "succeeded": succeeded, "results": results}
+
+
+@router.post("/api/eval-samples/{sid}/human-score")
+def human_score_sample(sid: str, payload: dict, db: Session = Depends(get_db)):
+    """人评：手动给样本打分 0-5（覆盖/补充机器 Judge；工作流/Agent 样本通用）。"""
+    from ..models import EvalSample
+    s = db.get(EvalSample, sid)
+    if not s:
+        raise HTTPException(404, "样本不存在")
+    score = (payload or {}).get("score")
+    if score is None or not (0 <= float(score) <= 5):
+        raise HTTPException(422, "score 必须在 0-5 之间")
+    s.judge_result = {"kind": "human", "score": float(score), "note": (payload or {}).get("note", "")}
+    db.commit()
+    return {"id": s.id, "judge": s.judge_result}
 
 
 @router.get("/api/workflows/{wid}/eval-summary")

@@ -3,7 +3,7 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-08-25T04:47:55Z"
+exported_at: "2026-08-25T06:18:54Z"
 modules:
     "":
         dir_name: AI 质量评价与工作流编排平台（单体仓库）
@@ -29,8 +29,8 @@ modules:
         depends_on: []
         related_to: []
     backend_service:
-        dir_name: 后端服务（FastAPI + SQLAlchemy + Alembic）
-        title: 后端服务（FastAPI + SQLAlchemy + Alembic）
+        dir_name: 后端服务（FastAPI + SQLAlchemy 工作流编排引擎）
+        title: 后端服务（FastAPI + SQLAlchemy 工作流编排引擎）
         scope:
             - server/
         source_files: []
@@ -41,8 +41,8 @@ modules:
         depends_on: []
         related_to: []
     backend_service/shared_core:
-        dir_name: 后端共享核心（FastAPI 运行时与 Alembic 迁移）
-        title: 后端共享核心（FastAPI 运行时与 Alembic 迁移）
+        dir_name: 后端共享核心（FastAPI 应用与数据库迁移）
+        title: 后端共享核心（FastAPI 应用与数据库迁移）
         scope:
             - server/app/
             - server/alembic/
@@ -62,8 +62,8 @@ modules:
         related_to:
             - path: backend_service/workflows_routers
     backend_service/tests:
-        dir_name: 后端服务集成测试套件
-        title: 后端服务集成测试套件
+        dir_name: 后端服务集成测试套件（pytest + FastAPI TestClient）
+        title: 后端服务集成测试套件（pytest + FastAPI TestClient）
         scope:
             - server/tests/
         source_files: []
@@ -100,8 +100,8 @@ modules:
         depends_on: []
         related_to: []
     frontend_app:
-        dir_name: 前端应用（工作流编排与质量复核工作台）
-        title: 前端应用（工作流编排与质量复核工作台）
+        dir_name: 前端应用：工作流编排与质量复核工作台
+        title: 前端应用：工作流编排与质量复核工作台
         scope:
             - src/
         source_files: []
@@ -117,8 +117,8 @@ modules:
         depends_on: []
         related_to: []
     frontend_app/agents_feature:
-        dir_name: Agent 工作流设计与编辑器页面
-        title: Agent 工作流设计与编辑器页面
+        dir_name: Agent 工作流设计与编辑器页面集
+        title: Agent 工作流设计与编辑器页面集
         scope:
             - src/pages/wf-agents-list.tsx
             - src/pages/wf-agent-editor.tsx

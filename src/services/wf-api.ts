@@ -381,12 +381,15 @@ export async function streamRunEvents(runId: string, onEvent: (ev: { type: strin
 /* ---------- Phase A（SDD A-16）：评测与编辑锁也走服务层 ---------- */
 export const evalApi = {
   samples: (workflowId: string) =>
-    req<{ items: { id: string; name: string; input: Record<string, unknown> }[] }>(`/api/eval-samples?workflowId=${workflowId}`),
-  addSample: (workflowId: string, name: string, input: Record<string, unknown>) =>
-    req<{ id: string }>("/api/eval-samples", { method: "POST", body: JSON.stringify({ workflowId, name, input }) }),
+    req<{ items: { id: string; name: string; input: Record<string, unknown>; expected?: { text?: string } | null }[] }>(`/api/eval-samples?workflowId=${workflowId}`),
+  addSample: (workflowId: string, name: string, input: Record<string, unknown>, expectedText?: string) =>
+    req<{ id: string }>("/api/eval-samples", { method: "POST", body: JSON.stringify({ workflowId, name, input, ...(expectedText?.trim() ? { expected: { text: expectedText.trim() } } : {}) }) }),
   delSample: (id: string) => req<{ ok: boolean }>(`/api/eval-samples/${id}`, { method: "DELETE" }),
-  run: (workflowId: string) =>
-    req<Record<string, unknown>>(`/api/workflows/${workflowId}/eval-run`, { method: "POST", body: "{}" }),
+  humanScore: (id: string, score: number) =>
+    req<{ id: string; judge: { kind: string; score: number } }>(`/api/eval-samples/${id}/human-score`, { method: "POST", body: JSON.stringify({ score }) }),
+  run: (workflowId: string, judge: "none" | "rule" | "model" = "rule") =>
+    req<{ total: number; succeeded: number; results: { sampleId: string; name: string; runId?: string; status: string; durationMs?: number | null; output?: string; error?: string | null; judge?: { kind: string; score: number } | null }[] }>(
+      `/api/workflows/${workflowId}/eval-run`, { method: "POST", body: JSON.stringify({ judge }) }),
   summary: (workflowId: string) => req<Record<string, any>>(`/api/workflows/${workflowId}/eval-summary`),
   versionMetrics: (workflowId: string) =>
     req<{ versions: { versionNo: number; runs: number; successRate: number }[]; failedCases: { runId: string; error: string }[] }>(
