@@ -50,6 +50,11 @@ import {
   FilePlus2,
   Bell,
   Server,
+  Route,
+  Code,
+  MessageSquare,
+  Brain,
+  PenLine,
   GripVertical,
   Trash2,
 } from "lucide-react"
@@ -128,10 +133,38 @@ const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   input: Play, llm: Bot, tool: Wrench, condition: GitBranch, transform: Braces,
   end: Flag, "create-record": FilePlus2, notification: Bell, "workflow-exec": Network,
   "knowledge-retrieval": BookOpen, "mcp-call": Server,
+  "workflow-select": Route, "workflow-fixed": Route, reply: MessageSquare,
+  "memory-variable": Brain, "code-write": Code, "query-rewrite": PenLine,
+  "decision-class": GitBranch, agent: Bot, "agent-select": Route, "agent-exec": Play,
 }
 const TypeIcon = ({ type, className }: { type: string; className?: string }) => {
   const I = TYPE_ICON[type] ?? Braces
   return <I className={className} />
+}
+
+/* 06-master-spec §2.5：抽屉头部一句节点描述（全量 21 节点，评审 08-25） */
+const NODE_DESC: Record<string, string> = {
+  input: "工作流的开始节点，定义公共输入变量，全节点可引用",
+  llm: "大模型节点可调用大语言模型，根据输入参数与提示词生成指定格式的回复",
+  tool: "绑定一个插件工具版本，按工具声明的参数发起外部调用",
+  condition: "条件判断节点可定义多个判断条件，对应多个流程分支。实现不同业务规则的分流",
+  "decision-class": "决策分类节点用大模型把输入归入预设分类，每个分类对应一条分支",
+  transform: "变量处理节点用声明式模板聚合/拼接上游变量，不执行任意代码",
+  "query-rewrite": "Query 改写节点在检索前改写查询，输出 queryList 数组",
+  "code-write": "代码编写节点在 Python 沙箱中执行 main(args)，10 秒超时",
+  end: "工作流的结束节点，在工作流完成运行后将相关信息通过Agent回答或通过API输入到其余工作流或外部系统中",
+  "create-record": "创建质检记录节点把结构化输出幂等写入质检业务层",
+  notification: "通知节点把消息写入运行日志（V1 渠道=日志）",
+  "workflow-exec": "工作流执行节点按编码同步调用另一个工作流",
+  "workflow-select": "工作流选择节点用大模型从候选工作流中路由出一个",
+  "workflow-fixed": "工作流节点绑定一个固定工作流并执行",
+  "knowledge-retrieval": "知识检索节点在指定知识源中按 query 召回切片",
+  "mcp-call": "MCP 工具节点调用 MCP Server 握手发现的具体工具",
+  reply: "对话回复节点把内容写入对话流",
+  "memory-variable": "记忆变量节点读写 run 内共享状态（跨会话 Future）",
+  agent: "Agent 节点调用一个固定的成员 Agent，输入按映射表解析",
+  "agent-select": "Agent 选择节点根据问题与 Agent 描述路由出一个成员，未命中走兜底",
+  "agent-exec": "Agent 执行节点按 agentCode 执行对应成员，支持输入绑定动态执行",
 }
 
 /* ============ Toast（16 §9：顶居中，红/绿边白底，2.5s 自隐） ============ */
@@ -193,7 +226,7 @@ function SummaryRows({ n }: { n: WfNode }) {
       label: "输入",
       body: (
         <span className="flex flex-wrap gap-1">
-          {["userQuery", "chatHistory", "userId"].map((k) => (
+          {["userQuery", "chatHistory", "userId", "conversationId", "chatId", "reference"].map((k) => (
             <span key={k} className="text-xs" style={{ color: C.ink }}>{k} <TypeChip t="Str" /></span>
           ))}
         </span>
@@ -205,7 +238,7 @@ function SummaryRows({ n }: { n: WfNode }) {
     const model = (cfg.modelRef as { modelId?: string })?.modelId
     rows.push({ label: "模型", body: model ? <span className="text-xs">{model}</span> : un })
     rows.push({ label: "提示词", body: cfg.prompt ? <span className="max-w-40 truncate text-xs">{String(cfg.prompt)}</span> : un })
-    rows.push({ label: "输出", body: <span className="flex flex-wrap gap-1 text-xs">output <TypeChip t="Str" /> thought <TypeChip t="Str" /></span> })
+    rows.push({ label: "输出", body: <span className="flex flex-wrap gap-1 text-xs">output <TypeChip t="Str" /> thought <TypeChip t="Str" /> answer <TypeChip t="Str" /></span> })
   }
   if (n.type === "tool") {
     rows.push({ label: "工具", body: cfg.toolVersionId ? <span className="text-xs">已绑定</span> : un })
@@ -283,6 +316,13 @@ function WfNodeCard({ data, selected }: NodeProps) {
           <TypeIcon type={n.type} className="size-3.5 text-white" />
         </span>
         <span className="flex-1 truncate text-sm font-medium" style={{ color: C.ink }}>{n.name}</span>
+        {/* 06-master-spec §2.4：节点卡错误红点+计数（原 issues 传入即弃，现渲染） */}
+        {d.issues.length > 0 && (
+          <span className="flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: "#FEF0F0", color: C.danger }}
+            title={d.issues.map((i) => i.message).join("；")}>
+            <CircleAlert className="size-3" />{d.issues.length}
+          </span>
+        )}
         {d.run === "running" && <span className="size-3 animate-spin rounded-full border-2 border-neutral-400 border-t-transparent" />}
         {selected && (
           <>
@@ -453,6 +493,49 @@ function describeVar(ref: string, nodes?: WfNode[]): string {
   return `${nm}.${m[2]}`
 }
 
+/* 06-master-spec §2.2：可 # 唤起变量的文本编辑区（prompt-editor / expression-editor 共用） */
+function PromptArea({ value, onChange, nodes, edges, selfId, defs, placeholder, minH = "min-h-20", mono = false }: {
+  value: string; onChange: (v: string) => void; nodes: WfNode[]; edges: WfEdge[]; selfId: string
+  defs: NodeDefinition[]; placeholder?: string; minH?: string; mono?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative">
+      <Textarea
+        className={`${minH} text-xs ${mono ? "font-mono" : ""}`}
+        placeholder={placeholder ?? "请输入"}
+        value={value}
+        onChange={(e) => { onChange(e.target.value); if (e.target.value.endsWith("#")) setOpen(true) }}
+      />
+      {open && (
+        <div className="absolute left-0 top-full z-30 rounded-md border bg-white shadow-lg" style={{ borderColor: C.cardBorder }}>
+          <VarCascader nodes={nodes} edges={edges} selfId={selfId} defs={defs}
+            onPick={(v) => { onChange(value.replace(/#$/, "") + v); setOpen(false) }} />
+        </div>
+      )}
+      <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>输入 “#” 唤起变量选择器，支持插入变量</p>
+    </div>
+  )
+}
+
+/* 06-master-spec §2.1：variable-picker 控件（⚙ 按钮 + 级联） */
+function VarButton({ value, nodes, edges, selfId, defs, onPick }: {
+  value: string; nodes: WfNode[]; edges: WfEdge[]; selfId: string; defs: NodeDefinition[]; onPick: (v: string) => void
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button className="flex w-full items-center justify-between rounded-md border bg-white px-2 py-1.5 text-left text-xs"
+          style={{ borderColor: value ? C.cardBorder : C.danger, color: value ? C.primary : C.ink3 }}>
+          <span className="truncate">{value ? describeVar(value, nodes) : "选择变量"}</span>
+          <Settings className="size-3 text-neutral-400" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start"><VarCascader nodes={nodes} edges={edges} selfId={selfId} defs={defs} onPick={onPick} /></PopoverContent>
+    </Popover>
+  )
+}
+
 /* ============ 配置抽屉（16 §6） ============ */
 function ResourceSelect({ types, value, onPick, placeholder }: {
   types: string
@@ -506,11 +589,12 @@ function ConfigDrawer(props: {
   nodes: WfNode[]
   edges: WfEdge[]
   agentId?: string
+  issues?: ValidationIssue[]
   onClose: () => void
   onChange: (n: WfNode) => void
   onRemoveBranchEdges?: (nodeId: string, handles: string[], nextNode: WfNode) => void
 }) {
-  const { node, defs, nodes, edges, agentId, onClose, onChange, onRemoveBranchEdges } = props
+  const { node, defs, nodes, edges, agentId, issues = [], onClose, onChange, onRemoveBranchEdges } = props
   const [varTarget, setVarTarget] = useState<"prompt" | string | null>(null)
   const [dragBr, setDragBr] = useState<number | null>(null)
   if (!node) return null
@@ -581,6 +665,10 @@ function ConfigDrawer(props: {
   const emptyCond: CondCondition = { variable: "", variableType: "string", operator: "eq", valueMode: "LITERAL", value: "", valueRef: "" }
   const insertVar = (v: string, t?: string) => {
     if (varTarget === "prompt") set("prompt", `${cfg.prompt ?? ""}${v}`)
+    else if (varTarget?.startsWith("__cfg:")) {
+      const key = varTarget.slice(6)
+      set(key, `${String(cfg[key] ?? "").replace(/#$/, "")}${v}`)
+    }
     else if (varTarget?.startsWith("__cL:")) {
       const [bi, ci] = varTarget.slice(5).split(":").map(Number)
       const vt = t && OPS_BY_TYPE[t] ? t : "string"
@@ -607,12 +695,17 @@ function ConfigDrawer(props: {
         <MoreHorizontal className="size-4 text-neutral-400" />
         <button onClick={onClose}><X className="size-4 text-neutral-500" /></button>
       </div>
-      <p className="pb-2 text-xs leading-5" style={{ color: C.ink2 }}>
-        {def?.family === "智能" ? "大模型节点可调用大语言模型，根据输入参数与提示词生成指定格式的回复" :
-         node.type === "end" ? "工作流的结束节点，在工作流完成运行后将相关信息通过Agent回答或通过API输入到其余工作流或外部系统中" :
-         node.type === "condition" ? "条件判断节点可定义多个判断条件，对应多个流程分支。实现不同业务规则的分流" :
-         "节点配置"}
-      </p>
+      <p className="pb-2 text-xs leading-5" style={{ color: C.ink2 }}>{NODE_DESC[node.type] ?? "节点配置"}</p>
+      {/* 06-master-spec §2.4：抽屉内节点级问题清单（与顶栏检查 Popover 同源） */}
+      {issues.length > 0 && (
+        <div className="mb-2 space-y-1 rounded-md border px-2 py-1.5" style={{ borderColor: C.danger, background: "#FEF0F0" }}>
+          {issues.map((i, idx) => (
+            <div key={idx} className="flex items-start gap-1 text-[11px]" style={{ color: C.danger }}>
+              <CircleAlert className="mt-0.5 size-3 shrink-0" /> {i.message}
+            </div>
+          ))}
+        </div>
+      )}
       {node.type === "llm" && (
         <>
           {/* R1 修复：移除“单次/批处理”假开关（无后端语义，批处理未实现——宁缺勿假） */}
@@ -669,23 +762,8 @@ function ConfigDrawer(props: {
             </button>
           </Section>
           <Section title="提示词">
-            <div className="relative">
-              <Textarea
-                className="min-h-24 text-xs"
-                placeholder="请输入提示词"
-                value={cfg.prompt ?? ""}
-                onChange={(e) => {
-                  set("prompt", e.target.value)
-                  if (e.target.value.endsWith("#")) setVarTarget("prompt")
-                }}
-              />
-              {varTarget === "prompt" && (
-                <div className="absolute left-0 top-full z-30 rounded-md border bg-white shadow-lg" style={{ borderColor: C.cardBorder }}>
-                  <VarCascader nodes={nodes} edges={edges} selfId={node.id} defs={defs} onPick={(v) => { set("prompt", `${(cfg.prompt ?? "").replace(/#$/, "")}${v}`); setVarTarget(null) }} />
-                </div>
-              )}
-            </div>
-            <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>输入 “#” 唤起变量选择器，支持插入变量</p>
+            <PromptArea value={cfg.prompt ?? ""} onChange={(v) => set("prompt", v)}
+              nodes={nodes} edges={edges} selfId={node.id} defs={defs} placeholder="请输入提示词" minH="min-h-24" />
           </Section>
           <Section title="输出">
             <div className="flex items-center gap-2 text-xs"><span style={{ color: C.ink2 }}>输出格式 :</span>
@@ -725,8 +803,8 @@ function ConfigDrawer(props: {
               onPick={(m) => set("knowledgeSourceId", m.id)} />
           </Section>
           <Section title="检索配置">
-            <Input className="h-8 w-full text-xs"
-              value={cfg.query ?? ""} onChange={(e) => set("query", e.target.value)} placeholder="{{s.outputs.userQuery}}" />
+            <PromptArea value={cfg.query ?? ""} onChange={(v) => set("query", v)}
+              nodes={nodes} edges={edges} selfId={node.id} defs={defs} placeholder="{{开始.outputs.userQuery}}" minH="min-h-14" />
             <div className="flex items-center gap-2 pt-2 text-xs" style={{ color: C.ink3 }}>
               topK
               <Input type="number" className="h-7 w-20 text-xs"
@@ -934,9 +1012,9 @@ function ConfigDrawer(props: {
             </Select>
           </div>
           {cfg.strategy === "custom" && (
-            <Textarea className="min-h-20 text-xs"
-              placeholder="改写提示词（真 LLM 生效；无模型配置时回落透传）"
-              value={typeof cfg.template === "string" ? cfg.template : ""} onChange={(e) => set("template", e.target.value)} />
+            <PromptArea value={typeof cfg.template === "string" ? cfg.template : ""} onChange={(v) => set("template", v)}
+              nodes={nodes} edges={edges} selfId={node.id} defs={defs}
+              placeholder="改写提示词（真 LLM 生效；无模型配置时回落透传）" />
           )}
           <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>输出 queryList（数组）。输入绑定在下方输入区（query / chatHistory）。</p>
           <Section title="输入绑定">
@@ -1013,28 +1091,171 @@ function ConfigDrawer(props: {
       )}
       {/* SDD C-3：无专项表单的节点按注册表 schema 通用渲染（替代“暂无专项配置区”） */}
       {!["llm", "tool", "knowledge-retrieval", "mcp-call", "condition", "end", "workflow-exec", "agent-select", "agent", "agent-exec", "code-write", "query-rewrite", "decision-class"].includes(node.type) && (
-        <GenericSchemaForm def={def} cfg={cfg} set={set} node={node} onChange={onChange} />
+        <GenericSchemaForm def={def} cfg={cfg} set={set} node={node} onChange={onChange} nodes={nodes} edges={edges} defs={defs} />
       )}
     </div>
   )
 }
 
-/** 注册表 schema 驱动的通用节点配置（SDD C-3）。 */
-function GenericSchemaForm({ def, cfg, set, node, onChange }: {
+/* 06-master-spec §2.1：x-control→组件 统一映射表（字段 label 中文化） */
+const FIELD_LABEL: Record<string, string> = {
+  modelRef: "模型", prompt: "提示词", template: "模板", code: "代码", query: "查询",
+  topK: "topK", keys: "记忆键", mode: "模式", candidates: "候选工作流", branches: "分支",
+  toolVersionId: "插件工具", knowledgeSourceId: "知识源", mcpServerId: "MCP Server",
+  toolName: "MCP 工具", workflowCode: "工作流", workflowId: "工作流", message: "消息内容",
+  content: "回复内容", outputKey: "输出键", strategy: "策略",
+}
+
+/** 注册表 schema 驱动的通用节点配置（SDD C-3；06-master-spec §2.1 x-control 映射表）。 */
+function GenericSchemaForm({ def, cfg, set, node, onChange, nodes, edges, defs }: {
   def: NodeDefinition | undefined; cfg: Record<string, any>; set: (k: string, v: unknown) => void;
-  node: WfNode; onChange: (n: WfNode) => void
+  node: WfNode; onChange: (n: WfNode) => void; nodes: WfNode[]; edges: WfEdge[]; defs: NodeDefinition[]
 }) {
   const props = ((def?.schema as Record<string, any>)?.properties ?? {}) as Record<string, any>
   const keys = Object.keys(props)
+  const [mcpTools, setMcpTools] = useState<string[]>([])
+  useEffect(() => {
+    const sid = cfg.mcpServerId as string | undefined
+    if (!sid) { setMcpTools([]); return }
+    resApi.get("mcp", sid).then((d) => setMcpTools(((d.config?.discoveredTools as { name?: string }[] | undefined) ?? []).map((t) => t.name ?? ""))).catch(() => undefined)
+  }, [cfg.mcpServerId])
+  const [wfList, setWfList] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => { wfApi.list({ pageSize: 100 }).then((r) => setWfList(r.items as { id: string; name: string }[])).catch(() => undefined) }, [])
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => { agentApi.list({ pageSize: 100 }).then((r) => setAgents(r.items.map((a) => ({ id: a.id, name: a.name })))).catch(() => undefined) }, [])
   if (keys.length === 0) return null
   return (
     <Section title="配置">
       {keys.map((k) => {
         const p = props[k] ?? {}
         const x = p["x-control"] as string | undefined
-        const label = k
+        const label = FIELD_LABEL[k] ?? k
         if (x === "workflow-picker") {
-          return <WorkflowPicker key={k} value={(cfg[k] as string) ?? ""} onPick={(v) => set(k, v)} />
+          return (
+            <div key={k} className="space-y-1">
+              <div className="text-xs" style={{ color: C.ink2 }}>{label}</div>
+              <Select value={(cfg[k] as string) || undefined} onValueChange={(v) => set(k, v)}>
+                <SelectTrigger className="h-7 w-full text-xs"><SelectValue placeholder="请选择工作流" /></SelectTrigger>
+                <SelectContent>{wfList.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          )
+        }
+        if (x === "workflow-picker-multi") {
+          const sel = Array.isArray(cfg[k]) ? (cfg[k] as string[]) : []
+          return (
+            <div key={k} className="space-y-1">
+              <div className="text-xs" style={{ color: C.ink2 }}>{label}（多选）</div>
+              <div className="max-h-36 space-y-0.5 overflow-y-auto rounded border p-1" style={{ borderColor: C.cardBorder }}>
+                {wfList.length === 0 && <div className="px-1 py-1 text-[11px]" style={{ color: C.ink3 }}>暂无工作流</div>}
+                {wfList.map((w) => (
+                  <label key={w.id} className="flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-xs hover:bg-neutral-50" style={{ color: C.ink }}>
+                    <Checkbox checked={sel.includes(w.id)}
+                      onCheckedChange={(v) => set(k, v ? [...sel, w.id] : sel.filter((id) => id !== w.id))} />
+                    <span className="truncate">{w.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )
+        }
+        if (x === "prompt-editor" || x === "expression-editor") {
+          return (
+            <div key={k} className="space-y-1">
+              <div className="text-xs" style={{ color: C.ink2 }}>{label}</div>
+              <PromptArea value={typeof cfg[k] === "string" ? cfg[k] : ""} onChange={(v) => set(k, v)}
+                nodes={nodes} edges={edges} selfId={node.id} defs={defs}
+                minH={x === "expression-editor" ? "min-h-10" : "min-h-20"} />
+            </div>
+          )
+        }
+        if (x === "variable-picker") {
+          return (
+            <div key={k} className="space-y-1">
+              <div className="text-xs" style={{ color: C.ink2 }}>{label}</div>
+              <VarButton value={(cfg[k] as string) ?? ""} nodes={nodes} edges={edges} selfId={node.id} defs={defs} onPick={(v) => set(k, v)} />
+            </div>
+          )
+        }
+        if (x === "tool-picker") {
+          return (
+            <div key={k} className="space-y-1">
+              <div className="text-xs" style={{ color: C.ink2 }}>{label}</div>
+              <ResourceSelect types="tool" value={(cfg[k] as string) ?? ""} placeholder="选择 Tool（仅 Enabled）"
+                onPick={async (m) => {
+                  let versionId = ""
+                  try { versionId = ((await resApi.toolVersions(m.id))[0]?.id) ?? "" } catch { /* 忽略 */ }
+                  set(k, versionId || m.id)
+                }} />
+            </div>
+          )
+        }
+        if (x === "knowledge-picker") {
+          return (
+            <div key={k} className="space-y-1">
+              <div className="text-xs" style={{ color: C.ink2 }}>{label}</div>
+              <ResourceSelect types="knowledge" value={(cfg[k] as string) ?? ""} placeholder="选择知识源" onPick={(m) => set(k, m.id)} />
+            </div>
+          )
+        }
+        if (x === "mcp-picker") {
+          return (
+            <div key={k} className="space-y-1">
+              <div className="text-xs" style={{ color: C.ink2 }}>{label}</div>
+              <ResourceSelect types="mcp" value={(cfg[k] as string) ?? ""} placeholder="选择 MCP Server" onPick={(m) => set(k, m.id)} />
+            </div>
+          )
+        }
+        if (x === "mcp-tool-picker") {
+          return (
+            <div key={k} className="space-y-1">
+              <div className="text-xs" style={{ color: C.ink2 }}>{label}</div>
+              <Select value={(cfg[k] as string) || undefined} onValueChange={(v) => set(k, v)}>
+                <SelectTrigger className="h-7 w-full text-xs"><SelectValue placeholder="选择工具" /></SelectTrigger>
+                <SelectContent>{mcpTools.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          )
+        }
+        if (x === "agent-picker") {
+          return (
+            <div key={k} className="space-y-1">
+              <div className="text-xs" style={{ color: C.ink2 }}>{label}</div>
+              <Select value={(cfg[k] as string) || undefined} onValueChange={(v) => set(k, v)}>
+                <SelectTrigger className="h-7 w-full text-xs"><SelectValue placeholder="请选择 Agent" /></SelectTrigger>
+                <SelectContent>{agents.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          )
+        }
+        if (x === "agent-picker-multi") {
+          const sel = Array.isArray(cfg[k]) ? (cfg[k] as string[]) : []
+          return (
+            <div key={k} className="space-y-1">
+              <div className="text-xs" style={{ color: C.ink2 }}>{label}（多选）</div>
+              <div className="max-h-36 space-y-0.5 overflow-y-auto rounded border p-1" style={{ borderColor: C.cardBorder }}>
+                {agents.length === 0 && <div className="px-1 py-1 text-[11px]" style={{ color: C.ink3 }}>暂无 Agent</div>}
+                {agents.map((a) => (
+                  <label key={a.id} className="flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-xs hover:bg-neutral-50" style={{ color: C.ink }}>
+                    <Checkbox checked={sel.includes(a.id)}
+                      onCheckedChange={(v) => set(k, v ? [...sel, a.id] : sel.filter((id) => id !== a.id))} />
+                    <span className="truncate">{a.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )
+        }
+        if (x === "code-editor") {
+          return (
+            <div key={k} className="space-y-1">
+              <div className="text-xs" style={{ color: C.ink2 }}>{label}</div>
+              <div className="overflow-hidden rounded-md border" style={{ borderColor: C.cardBorder }}>
+                <CodeMirror value={typeof cfg[k] === "string" ? cfg[k] : ""} onChange={(v) => set(k, v)} theme="light" height="160px"
+                  extensions={[python()]} basicSetup={{ lineNumbers: true, foldGutter: true, autocompletion: true, bracketMatching: true, highlightActiveLine: true }} style={{ fontSize: 12 }} />
+              </div>
+            </div>
+          )
         }
         if (Array.isArray(p.enum)) {
           return (
@@ -2049,7 +2270,8 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
 
         {/* 抽屉层 */}
         {drawer === "config" && selected && (
-          <ConfigDrawer node={selected} defs={defs} nodes={def.graph.nodes} edges={def.graph.edges} agentId={agentId || undefined} onClose={() => setDrawer(null)}
+          <ConfigDrawer node={selected} defs={defs} nodes={def.graph.nodes} edges={def.graph.edges} agentId={agentId || undefined}
+            issues={issues.filter((i) => i.nodeId === selected.id)} onClose={() => setDrawer(null)}
             onChange={(n) => mutate({ ...def, graph: { ...def.graph, nodes: def.graph.nodes.map((x) => (x.id === n.id ? n : x)) } })}
             onRemoveBranchEdges={(nodeId, handles, nextNode) => mutate({
               ...def,

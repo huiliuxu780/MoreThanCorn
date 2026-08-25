@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>工作流节点总纲原型 · 讨论稿（06-workflow-node-master-spec）</title>
+<style>
+  :root{
+    --canvas:#EEF1F6; --dot:#D9DEE7; --primary:#3D6BFF; --orange:#F97E2B;
+    --ink:#1F2329; --ink2:#5A6472; --ink3:#B9C2CF;
+    --chipbg:#F1F3F7; --chipink:#7A8699; --cardbd:#EDF0F4; --danger:#F56C6C;
+    --red-bg:#FEF0F0; --amber:#E6A23C; --amber-bg:#FDF6EC; --green:#67C23A;
+    --gray-bg:#F7F9FC;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#F5F6FA;color:var(--ink);font:13px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;padding:18px 26px 70px}
+  .mono{font-family:ui-monospace,Menlo,monospace;font-size:11.5px}
+  .topbar{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+  .topbar h1{font-size:15px;font-weight:650}
+  .topbar .note{color:var(--ink2);font-size:12px}
+  .tabs{display:flex;gap:4px;background:#fff;border:1px solid var(--cardbd);border-radius:8px;padding:3px;flex-wrap:wrap}
+  .tabs button{border:0;background:transparent;padding:5px 12px;border-radius:6px;font-size:12.5px;color:var(--ink2);cursor:pointer}
+  .tabs button.on{background:var(--ink);color:#fff;font-weight:600}
+  .screen{display:none}.screen.on{display:block}
+  .anno{margin-top:12px;background:#fff;border:1px dashed var(--ink3);border-radius:8px;padding:10px 14px;color:var(--ink2);font-size:12px}
+  .anno b{color:var(--ink)}
+  .anno ol{margin:6px 0 0 18px}
+  /* ===== 画布 ===== */
+  .canvas{position:relative;height:560px;background:var(--canvas);border:1px solid var(--cardbd);border-radius:10px;overflow:hidden;
+    background-image:radial-gradient(var(--dot) 1px,transparent 1px);background-size:16px 16px}
+  .node{position:absolute;width:300px;background:#fff;border:1px solid var(--cardbd);border-radius:8px;padding:10px 12px;
+    box-shadow:0 2px 8px rgba(31,35,41,.06)}
+  .node.sel{border-color:var(--primary);box-shadow:0 0 0 1.5px var(--primary)}
+  .node.waiting{box-shadow:0 0 0 1.5px var(--amber)}
+  .nhead{display:flex;align-items:center;gap:8px}
+  .nicon{width:24px;height:24px;border-radius:6px;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;flex:none}
+  .nicon.warn{background:var(--amber)}
+  .nname{flex:1;font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nbadge{display:flex;align-items:center;gap:3px;background:var(--red-bg);color:var(--danger);border-radius:999px;padding:1px 7px;font-size:10px}
+  .nrow{display:flex;gap:8px;font-size:11.5px;margin-top:6px}
+  .nrow .lb{width:42px;flex:none;color:var(--ink3)}
+  .nrow .vl{color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chip{background:var(--chipbg);color:var(--chipink);border-radius:3px;padding:0 4px;font-size:10px;line-height:16px}
+  .un{color:var(--ink3)}
+  .handle{position:absolute;width:12px;height:12px;border-radius:50%;background:var(--primary);border:2px solid #fff;box-shadow:0 0 0 1px var(--cardbd)}
+  .handle.in{left:-6px;top:50%}
+  .handle.out{right:-6px;top:50%}
+  .handle.err{right:-6px;top:70%;background:#fff;border:2px dashed var(--danger)}
+  .handle.body{right:-6px;top:38%}
+  .handle.done{right:-6px;top:62%}
+  .hlabel{position:absolute;right:10px;font-size:9px;color:var(--ink3)}
+  .prog{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:10.5px;color:var(--ink2)}
+  .prog .ring{width:12px;height:12px;border-radius:50%;border:2px solid var(--primary);border-top-color:transparent;transform:rotate(45deg)}
+  .pbar{height:4px;border-radius:99px;background:var(--chipbg);flex:1;overflow:hidden}
+  .pbar i{display:block;height:100%;width:9%;background:var(--primary)}
+  .waitchip{background:var(--amber-bg);color:var(--amber);border-radius:999px;padding:1px 7px;font-size:10px}
+  svg.edges{position:absolute;inset:0;width:100%;height:100%}
+  /* ===== 抽屉 ===== */
+  .wrap{display:flex;gap:16px;align-items:flex-start}
+  .drawer{width:380px;flex:none;background:#fff;border:1px solid var(--cardbd);border-radius:10px;padding:14px 16px;max-height:640px;overflow:auto}
+  .dhead{display:flex;align-items:center;gap:8px}
+  .dhead .t{flex:1;font-size:15px;font-weight:600}
+  .ddesc{color:var(--ink2);font-size:11.5px;margin:6px 0 10px}
+  .issues{background:var(--red-bg);border:1px solid var(--danger);border-radius:6px;padding:6px 10px;margin-bottom:10px;color:var(--danger);font-size:11px;display:flex;flex-direction:column;gap:3px}
+  .sec{border-bottom:1px solid var(--cardbd);padding:9px 0}
+  .sec .st{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:5px}
+  .sec .st::before{content:"⌄";color:var(--ink3)}
+  .sec .bd{padding-top:8px}
+  .lb{font-size:11.5px;color:var(--ink2);margin:6px 0 4px}
+  .ctl{display:flex;align-items:center;gap:6px;border:1px solid var(--cardbd);border-radius:6px;background:#fff;padding:5px 8px;font-size:11.5px;color:var(--ink)}
+  .ctl .ph{color:var(--ink3)}
+  .ctl .chev{margin-left:auto;color:var(--ink3)}
+  .seg{display:inline-flex;background:var(--chipbg);border-radius:6px;padding:2px;gap:2px}
+  .seg i{font-style:normal;padding:3px 10px;border-radius:5px;font-size:11px;color:var(--ink2)}
+  .seg i.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  table.tb{width:100%;border-collapse:collapse;font-size:11.5px}
+  table.tb th{color:var(--ink3);font-weight:400;text-align:left;padding:3px 4px}
+  table.tb td{padding:4px;border-top:1px solid var(--cardbd);color:var(--ink)}
+  .gear{border:1px solid var(--cardbd);border-radius:4px;padding:1px 6px;font-size:10px;color:var(--primary);background:#fff}
+  .addlink{color:var(--primary);font-size:11.5px;margin-top:6px;display:inline-block}
+  .ta{border:1px solid var(--cardbd);border-radius:6px;min-height:64px;padding:6px 8px;font-size:11.5px;color:var(--ink2);position:relative}
+  .hint{font-size:10.5px;color:var(--ink3);margin-top:4px}
+  .casc{position:absolute;left:0;top:100%;margin-top:2px;background:#fff;border:1px solid var(--cardbd);border-radius:6px;box-shadow:0 4px 12px rgba(31,35,41,.12);display:flex;z-index:5}
+  .casc .g{width:96px;border-right:1px solid var(--cardbd);padding:4px 0}
+  .casc .g div,.casc .i div{padding:3px 8px;font-size:11px;color:var(--ink)}
+  .casc .g div.on{background:var(--chipbg)}
+  .casc .i{width:150px;padding:4px 0}
+  .chk{display:flex;align-items:center;gap:6px;font-size:11.5px;padding:3px 2px;color:var(--ink)}
+  .chk .box{width:13px;height:13px;border:1px solid var(--ink3);border-radius:3px;background:#fff;flex:none}
+  .chk .box.on{background:var(--primary);border-color:var(--primary);color:#fff;font-size:9px;text-align:center;line-height:12px}
+  .refcard{border:1px solid var(--cardbd);border-radius:8px;padding:8px 10px;display:flex;gap:8px;align-items:center;background:var(--gray-bg)}
+  .refcard .av{width:28px;height:28px;border-radius:6px;background:var(--chipbg);display:flex;align-items:center;justify-content:center;font-size:13px}
+  .refcard .nm{font-weight:600;font-size:12px}
+  .refcard .ds{color:var(--ink2);font-size:10.5px}
+  .vtag{background:var(--chipbg);color:var(--chipink);border-radius:4px;padding:0 5px;font-size:10px}
+  .topchk{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--cardbd);background:#fff;border-radius:6px;padding:4px 10px;font-size:12px;position:relative}
+  .topchk .dot{position:absolute;top:-6px;right:-6px;background:var(--danger);color:#fff;border-radius:999px;padding:0 5px;font-size:10px}
+  .pop{position:absolute;top:32px;right:0;width:250px;background:#fff;border:1px solid var(--cardbd);border-radius:8px;box-shadow:0 6px 16px rgba(31,35,41,.12);padding:6px;z-index:6}
+  .pop div{display:flex;gap:6px;align-items:center;padding:5px 8px;font-size:11.5px;color:var(--ink);border-radius:5px}
+  .pop div:hover{background:var(--gray-bg)}
+  .pop .ic{color:var(--danger)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>工作流节点总纲 · 高保真原型</h1>
+  <span class="note">06-workflow-node-master-spec.md 的视觉确认稿 · 令牌继承 16-ui-replication-spec · 仅讨论不开发</span>
+</div>
+<div class="tabs" id="tabs">
+  <button class="on" data-s="s1">① 画布总览</button>
+  <button data-s="s2">② workflow-fixed</button>
+  <button data-s="s3">③ workflow-select</button>
+  <button data-s="s4">④ workflow-exec</button>
+  <button data-s="s5">⑤ llm 全量</button>
+  <button data-s="s6">⑥ loop</button>
+  <button data-s="s7">⑦ wait-review</button>
+  <button data-s="s8">⑧ data-read</button>
+  <button data-s="s9">⑨ 校验三处</button>
+  <button data-s="s10">⑩ input</button>
+  <button data-s="s11">⑪ end</button>
+  <button data-s="s12">⑫ condition</button>
+  <button data-s="s13">⑬ decision-class</button>
+  <button data-s="s14">⑭ transform</button>
+  <button data-s="s15">⑮ query-rewrite</button>
+  <button data-s="s16">⑯ code-write</button>
+  <button data-s="s17">⑰ tool</button>
+  <button data-s="s18">⑱ mcp-call</button>
+  <button data-s="s19">⑲ knowledge</button>
+  <button data-s="s20">⑳ create-record</button>
+  <button data-s="s21"> notification</button>
+  <button data-s="s22">㉒ reply</button>
+  <button data-s="s23">㉓ memory-variable</button>
+  <button data-s="s24">㉔ 公共机制</button>
+</div>
+
+<!-- ① 画布总览 -->
+<div class="screen on" id="s1">
+  <div class="canvas">
+    <svg class="edges">
+      <path d="M 300 90 C 340 90, 340 90, 380 90" stroke="#A8B3C5" stroke-width="1.5" fill="none"/>
+      <path d="M 680 90 C 720 90, 720 90, 760 90" stroke="#A8B3C5" stroke-width="1.5" fill="none"/>
+      <path d="M 530 170 C 530 230, 450 230, 450 176" stroke="#A8B3C5" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+      <path d="M 680 130 C 740 130, 740 300, 800 300" stroke="#A8B3C5" stroke-width="1.5" fill="none"/>
+      <path d="M 640 340 C 700 340, 700 90, 760 90" stroke="#F56C6C" stroke-width="1.5" stroke-dasharray="4 3" fill="none"/>
+      <defs><marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="none" stroke="#A8B3C5"/></marker></defs>
+    </svg>
+    <div class="node" style="left:20px;top:60px">
+      <div class="nhead"><span class="nicon">▶</span><span class="nname">开始</span></div>
+      <div class="nrow"><span class="lb">输入</span><span class="vl">userQuery <span class="chip">Str</span> chatHistory <span class="chip">Str</span> userId <span class="chip">Str</span> conversationId <span class="chip">Str</span> chatId <span class="chip">Str</span> reference <span class="chip">Str</span></span></div>
+      <span class="handle out"></span>
+    </div>
+    <div class="node" style="left:380px;top:60px">
+      <div class="nhead"><span class="nicon">▤</span><span class="nname">取弹幕样本</span></div>
+      <div class="nrow"><span class="lb">资产</span><span class="vl">ECC弹幕数据</span></div>
+      <div class="nrow"><span class="lb">窗口</span><span class="vl">last_7d · 抽样 all</span></div>
+      <div class="nrow"><span class="lb">输出</span><span class="vl">rows <span class="chip">Arr</span> count <span class="chip">Num</span></span></div>
+      <span class="handle in"></span><span class="handle out"></span>
+    </div>
+    <div class="node" style="left:760px;top:52px">
+      <div class="nhead"><span class="nicon">⟳</span><span class="nname">逐条质检</span><span class="nbadge">⚠ 1</span></div>
+      <div class="nrow"><span class="lb">循环源</span><span class="vl">{{取弹幕样本.outputs.rows}} <span class="chip">Arr</span></span></div>
+      <div class="nrow"><span class="lb">体/上限</span><span class="vl">item · index · ≤1000 · 并发 1</span></div>
+      <div class="prog"><span class="ring"></span>12/128<span class="pbar"><i></i></span></div>
+      <span class="handle in"></span><span class="handle body"></span><span class="handle done"></span>
+      <span class="hlabel" style="top:34%">body</span><span class="hlabel" style="top:58%">done</span>
+    </div>
+    <div class="node" style="left:380px;top:240px">
+      <div class="nhead"><span class="nicon">✦</span><span class="nname">大模型·违规判断</span></div>
+      <div class="nrow"><span class="lb">模型</span><span class="vl">qwen3.7-max</span></div>
+      <div class="nrow"><span class="lb">提示词</span><span class="vl">你是质检员…{{item}}</span></div>
+      <span class="handle in"></span><span class="handle out"></span><span class="handle err" title="error handle（失败策略=走错误分支时出现）"></span>
+    </div>
+    <div class="node waiting" style="left:380px;top:400px">
+      <div class="nhead"><span class="nicon warn">⏸</span><span class="nname">人工复核</span><span class="waitchip">待审核</span></div>
+      <div class="nrow"><span class="lb">类型</span><span class="vl">人审 · 超时 24h → 升级</span></div>
+      <div class="nrow"><span class="lb">输出</span><span class="vl">decision <span class="chip">Str</span> comment <span class="chip">Str</span></span></div>
+      <span class="handle in"></span><span class="handle out" style="top:38%"></span><span class="handle out" style="top:66%;background:#94A3B8"></span>
+      <span class="hlabel" style="top:34%">pass</span><span class="hlabel" style="top:62%">reject</span>
+    </div>
+    <div class="node" style="left:800px;top:270px">
+      <div class="nhead"><span class="nicon">⊕</span><span class="nname">创建质检记录</span></div>
+      <div class="nrow"><span class="lb">输出键</span><span class="vl">quality_result</span></div>
+      <span class="handle in"></span>
+    </div>
+  </div>
+  <div class="anno"><b>画布要点</b>
+    <ol>
+      <li>loop 节点双口：<b>body</b>（循环体回边，validator 白名单合法环）+ <b>done</b>（循环结束下游）；卡内进度环 i/total。</li>
+      <li>大模型节点右侧红色虚线 = <b>error handle</b>，仅当该节点失败策略=走错误分支时出现；红色虚线边接错误处理子图。</li>
+      <li>wait-review 等待中 = 橙色环 + “待审核”chip；pass/reject 双出口。</li>
+      <li>节点卡右上角红点+计数 = 该节点校验问题数（hover 出文案）。</li>
+      <li>开始节点卡展示全量 6 公共变量（P0 已实现）。</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ② workflow-fixed -->
+<div class="screen" id="s2">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">⛶</span><span class="t">调用·需求池汇总流程</span></div>
+    <div class="ddesc">工作流节点绑定一个固定工作流并执行</div>
+    <div class="sec"><div class="st">工作流</div><div class="bd">
+      <div class="ctl">需求池汇总流程 <span class="vtag">v3</span><span class="chev">⌄</span></div>
+      <div class="lb">版本策略</div>
+      <div class="seg"><i class="on">最新已发布</i><i>钉版本</i></div>
+      <div class="hint">钉版本时进入发布快照；不回退草稿。</div>
+    </div></div>
+    <div class="sec"><div class="st">输入变量映射</div><div class="bd">
+      <table class="tb"><tr><th>变量名</th><th>类型</th><th>值</th></tr>
+        <tr><td>userQuery</td><td><span class="chip">Str</span></td><td><span class="mono">{{开始.outputs.userQuery}}</span> <span class="gear">⚙</span></td></tr>
+        <tr><td>window</td><td><span class="chip">Str</span></td><td><span class="un">请输入或引用变量值</span> <span class="gear">⚙</span></td></tr>
+      </table>
+      <span class="addlink">＋ 添加</span>
+      <div class="hint">默认按同名透传 run_input；可改可清空。</div>
+    </div></div>
+    <div class="sec"><div class="st">输出变量</div><div class="bd">
+      <table class="tb"><tr><th>变量名</th><th>类型</th><th>来源</th></tr>
+        <tr><td>summary</td><td><span class="chip">Str</span></td><td class="mono">$.outputs.summary</td></tr>
+      </table>
+      <span class="addlink">＋ 添加</span>
+    </div></div>
+    <div class="sec"><div class="st">健壮性</div><div class="bd">
+      <div class="lb">超时 30s · 重试 0 · 失败策略</div>
+      <div class="seg"><i class="on">停止</i><i>跳过</i><i>走错误分支</i></div>
+    </div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>workflow-fixed（吸收原 agent 节点）</b>
+    <ol><li>版本策略 Select 与 tool 节点同款；钉版本进快照。</li>
+    <li>输入映射表 = 原 Agent 节点的标准映射表形态（⚙ 级联引用）。</li>
+    <li>输出变量表支持 jsonPath 抽取子 Run 输出。</li>
+    <li>健壮性分区为全节点公共分区（§2.3）。</li></ol>
+  </div></div>
+</div>
+
+<!-- ③ workflow-select -->
+<div class="screen" id="s3">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">⛶</span><span class="t">工作流选择</span></div>
+    <div class="ddesc">工作流选择节点用大模型从候选工作流中路由出一个</div>
+    <div class="sec"><div class="st">路由输入</div><div class="bd">
+      <div class="ctl">query ← <span class="mono">{{开始.outputs.userQuery}}</span> <span class="gear">⚙</span></div>
+    </div></div>
+    <div class="sec"><div class="st">候选工作流（多选）</div><div class="bd">
+      <div class="chk"><span class="box on">✓</span>需求池汇总流程 <span class="vtag">v3</span></div>
+      <div class="chk"><span class="box on">✓</span>告警归因流程 <span class="vtag">v1</span></div>
+      <div class="chk"><span class="box"></span>周报生成流程</div>
+      <div class="hint">未命中任何候选 → 走 else 分支。</div>
+    </div></div>
+    <div class="sec"><div class="st">路由模型</div><div class="bd">
+      <div class="ctl">qwen-plus <span class="chev">⌄</span></div>
+      <div class="hint">默认 qwen-plus；路由超时 10s，失败走 else。</div>
+    </div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>workflow-select（吸收原 agent-select）</b>
+    <ol><li>候选多选卡（P0 已实现 workflow-picker-multi）。</li>
+    <li>路由模型可配，替换硬编码 qwen-plus。</li>
+    <li>组合校验：候选非空；else 兜底语义保留。</li></ol>
+  </div></div>
+</div>
+
+<!-- ④ workflow-exec -->
+<div class="screen" id="s4">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">⛶</span><span class="t">工作流执行</span></div>
+    <div class="ddesc">工作流执行节点按编码同步调用另一个工作流</div>
+    <div class="sec"><div class="st">绑定模式</div><div class="bd">
+      <div class="seg"><i>固定</i><i class="on">动态</i></div>
+      <div class="lb" style="margin-top:8px">workflowCode 来自输入绑定</div>
+      <div class="ctl"><span class="mono">{{工作流选择.outputs.workflowCode}}</span> <span class="gear">⚙</span></div>
+      <div class="hint">动态模式接路由输出；固定模式显示 WorkflowPicker。</div>
+    </div></div>
+    <div class="sec"><div class="st">版本策略</div><div class="bd">
+      <div class="seg"><i class="on">最新已发布</i><i>钉版本</i></div>
+    </div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>workflow-exec（吸收原 agent-exec 动态执行）</b>
+    <ol><li>固定｜动态 segmented；动态 = workflowCode 输入绑定行。</li>
+    <li>子 Run 挂调用记录，Trace 递归展开（E-3.3）。</li></ol>
+  </div></div>
+</div>
+
+<!-- ⑤ llm -->
+<div class="screen" id="s5">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">✦</span><span class="t">大模型</span></div>
+    <div class="ddesc">大模型节点可调用大语言模型，根据输入参数与提示词生成指定格式的回复</div>
+    <div class="sec"><div class="st">模型</div><div class="bd">
+      <div class="ctl"><span style="background:#5B8DEF;color:#fff;border-radius:4px;padding:0 4px;font-size:10px">⚡</span> qwen3.7-max <span class="chip">文本生成</span><span class="chev">⌄</span></div>
+      <div class="hint">切换模型时自动清洗非法参数并 toast 列出被移除项（Dify 对账）。</div>
+    </div></div>
+    <div class="sec"><div class="st">系统设定（新增）</div><div class="bd">
+      <div class="ta">你是质检域的裁判，输出必须可审计…</div>
+      <div class="hint">systemPrompt 可选；优先级高于提示词；支持 # 唤起。</div>
+    </div></div>
+    <div class="sec"><div class="st">提示词</div><div class="bd">
+      <div class="ta">判断以下弹幕是否违规：#<div class="casc"><div class="g"><div>系统变量</div><div class="on">开始</div><div>取弹幕样本</div></div><div class="i"><div>userQuery <span class="chip">Str</span></div><div>rows <span class="chip">Arr</span></div><div>item <span class="chip">Obj</span></div></div></div></div>
+      <div class="hint">输入 “#” 唤起变量选择器 <span style="color:var(--primary);border:1px solid var(--cardbd);border-radius:4px;padding:0 5px">润色</span>（AI 优化指令：替换/重试/取消）</div>
+    </div></div>
+    <div class="sec"><div class="st">输出</div><div class="bd">
+      <div class="seg"><i>Markdown</i><i class="on">JSON Schema</i></div>
+      <table class="tb"><tr><th>字段</th><th>类型</th><th>说明</th></tr>
+        <tr><td>verdict</td><td><span class="chip">Str</span><span class="chip">enum</span></td><td style="color:var(--ink3)">pass/fail</td></tr>
+        <tr><td>reasons</td><td><span class="chip">Arr</span>→<span class="chip">Obj</span></td><td style="color:var(--ink3)">支持嵌套子字段</td></tr></table>
+      <span class="addlink">＋ 添加字段</span>
+      <div class="hint">JSON 模式升级为 Schema 编辑器（object 嵌套/array items/enum，Dify structured_output 对账）；合并原“输出示例”。</div>
+      <table class="tb"><tr><td>output</td><td><span class="chip">Str</span></td><td style="color:var(--ink3)">全部输出</td></tr>
+      <tr><td>thought</td><td><span class="chip">Str</span></td><td style="color:var(--ink3)">思考过程</td></tr>
+      <tr><td>answer</td><td><span class="chip">Str</span></td><td style="color:var(--ink3)">回复答案</td></tr></table>
+    </div></div>
+    <div class="sec"><div class="st">批处理</div><div class="bd">
+      <div class="seg"><i class="on">单次</i><i>批处理</i></div>
+      <div class="hint">批处理：批量列表变量(Array)+最大批次(100)+并发(10) → outputList:Array。</div>
+    </div></div>
+    <div class="sec"><div class="st">健壮性</div><div class="bd">
+      <div class="lb">超时 60s · 重试 1（仅 retryable）· 失败策略</div>
+      <div class="seg"><i class="on">停止</i><i>跳过</i><i>走错误分支</i></div>
+    </div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>llm 全量增强（已决策）</b>
+    <ol><li>systemPrompt 独立分区；# 唤起级联打开态如提示词区所示（左组右项）。</li>
+    <li>润色按钮 = 飞书实测形态；测试生成并入节点单测对话框（⋯ 菜单）。</li>
+    <li>JSON 示例模式与输出示例合并；批处理 segmented 为语义先导（loop 为子图级）。</li></ol>
+  </div></div>
+</div>
+
+<!-- ⑥ loop -->
+<div class="screen" id="s6">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">⟳</span><span class="t">循环迭代</span></div>
+    <div class="ddesc">对 Array 变量逐条执行循环体子图，输出聚合</div>
+    <div class="sec"><div class="st">循环源</div><div class="bd">
+      <div class="ctl"><span class="mono">{{取弹幕样本.outputs.rows}}</span> <span class="chip">Arr</span> <span class="gear">⚙</span></div>
+      <div class="hint">variable-picker 限 Array 类型（类型过滤）。</div>
+    </div></div>
+    <div class="sec"><div class="st">迭代变量</div><div class="bd">
+      <table class="tb"><tr><th>迭代变量名</th><th>索引变量名</th></tr>
+      <tr><td><div class="ctl" style="width:120px">item</div></td><td><div class="ctl" style="width:120px">index</div></td></tr></table>
+    </div></div>
+    <div class="sec"><div class="st">执行限制</div><div class="bd">
+      <table class="tb"><tr><th>最大迭代数</th><th>并发数</th></tr>
+      <tr><td><div class="ctl" style="width:100px">1000</div></td><td><div class="ctl" style="width:100px">1</div></td></tr></table>
+      <div class="hint">并发 &gt;1 走执行器并发消费（§4.5）。</div>
+    </div></div>
+    <div class="sec"><div class="st">循环变量（循环内可变）</div><div class="bd">
+      <table class="tb"><tr><th>名</th><th>类型</th><th>初始值</th></tr>
+        <tr><td>acc_score</td><td><span class="chip">Num</span></td><td>0</td></tr></table>
+      <span class="addlink">＋ 添加</span>
+    </div></div>
+    <div class="sec"><div class="st">退出条件（break）</div><div class="bd">
+      <div class="ctl">{{大模型.outputs.verdict}} == fail <span class="gear">⚙</span></div>
+      <div class="hint">复用条件模型，可引循环体内子节点输出；AND/OR 切换。</div>
+    </div></div>
+    <div class="sec"><div class="st">并行与错误策略</div><div class="bd">
+      <div class="chk"><span class="box on">✓</span>并行执行</div>
+      <div class="lb">并行度 10（数字输入+滑杆联动）</div>
+      <div class="pbar" style="width:140px"><i style="width:30%"></i></div>
+      <div class="lb">错误响应</div>
+      <div class="ctl">ContinueOnError <span class="chev">⌄</span></div>
+      <div class="hint">Terminated / ContinueOnError / RemoveAbnormalOutput（Dify iteration 对账）。</div>
+      <div class="chk" style="margin-top:6px"><span class="box on">✓</span>展平输出 flatten_output</div>
+    </div></div>
+    <div class="sec"><div class="st">输出</div><div class="bd">
+      <table class="tb"><tr><td>outputList</td><td><span class="chip">Arr</span></td></tr>
+      <tr><td>successCount / failCount</td><td><span class="chip">Num</span></td></tr></table>
+    </div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>loop（草图已确认 + 08-26 对账增强）</b>
+    <ol><li>画布 body/done 双口 + 回边合法环；卡内进度环。</li>
+    <li>单条失败 + 错误响应=ContinueOnError → 记 failCount 继续下一条（整批不死）。</li>
+    <li>每轮一条子 NodeRun，Trace 嵌套展开；运行详情有容器专属日志（逐轮状态/失败项，Dify iteration-log 对账）。</li>
+    <li>循环变量 + break 退出条件为新增（Dify loop 对账）。</li></ol>
+  </div></div>
+</div>
+
+<!-- ⑦ wait-review -->
+<div class="screen" id="s7">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon warn">⏸</span><span class="t">等待 / 人工审核</span></div>
+    <div class="ddesc">暂停 Run 等待人工或定时，落盘可恢复</div>
+    <div class="sec"><div class="st">恢复方式</div><div class="bd">
+      <div class="seg"><i class="on">人审表单</i><i>定时间隔</i><i>指定时刻</i><i style="opacity:.4">外部回调（预留）</i></div>
+      <div class="hint">恢复 URL 运行时生成，画布节点 tooltip 回显（n8n Wait 对账）。</div>
+    </div></div>
+    <div class="sec"><div class="st">审核表单（类型化字段）</div><div class="bd">
+      <div class="lb">表单说明（markdown，可预览）</div>
+      <div class="ta">请复核该条质检结论：{{大模型.outputs.answer}}</div>
+      <table class="tb" style="margin-top:6px"><tr><th>字段</th><th>类型</th><th>说明</th></tr>
+        <tr><td>opinion</td><td><span class="chip">paragraph</span></td><td style="color:var(--ink3)">常量/变量双源</td></tr>
+        <tr><td>level</td><td><span class="chip">select</span></td><td style="color:var(--ink3)">选项=常量列表或变量</td></tr>
+        <tr><td>evidence</td><td><span class="chip">multiFiles</span></td><td style="color:var(--ink3)">≤5 · 扩展名白名单</td></tr></table>
+      <div class="lb">操作按钮</div>
+      <div style="display:flex;gap:6px;align-items:center"><span class="seg"><i class="on">通过(primary)</i></span><span class="seg"><i>驳回(default)</i></span><span class="addlink">＋</span></div>
+      <div class="hint">输出变量由表单字段动态生成（Dify human-input 对账）。</div>
+    </div></div>
+    <div class="sec"><div class="st">超时</div><div class="bd">
+      <table class="tb"><tr><th>值</th><th>单位</th><th>超时策略</th></tr>
+      <tr><td><div class="ctl" style="width:70px">24</div></td><td><div class="ctl">hour <span class="chev">⌄</span></div></td><td><div class="ctl">升级 <span class="chev">⌄</span></div></td></tr></table>
+      <div class="hint">超时策略：自动通过｜自动驳回｜升级。</div>
+    </div></div>
+    <div class="sec"><div class="st">输出与出口</div><div class="bd">
+      <table class="tb"><tr><td>decision</td><td><span class="chip">Str</span></td><td style="color:var(--ink3)">pass/reject/timeout</td></tr>
+      <tr><td>comment</td><td><span class="chip">Str</span></td><td style="color:var(--ink3)">审核意见</td></tr>
+      <tr><td>waitedMs</td><td><span class="chip">Num</span></td><td style="color:var(--ink3)">等待时长</td></tr></table>
+      <div class="hint">画布 pass / reject 双 handle；审核动作在运行详情页完成。</div>
+    </div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>wait-review（已确认）</b>
+    <ol><li>run.status=paused；恢复 = POST /runs/{id}/resume，幂等防双恢复。</li>
+    <li>定时等待：时长或 cron（复用 compute_next）。</li></ol>
+  </div></div>
+</div>
+
+<!-- ⑧ data-read -->
+<div class="screen" id="s8">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">▤</span><span class="t">数据读取 / 抽样</span></div>
+    <div class="ddesc">从 DataAsset 按窗口/抽样取数，与创建质检记录对称</div>
+    <div class="sec"><div class="st">数据资产</div><div class="bd">
+      <div class="ctl">ECC弹幕数据 <span class="chev">⌄</span></div>
+    </div></div>
+    <div class="sec"><div class="st">窗口与抽样</div><div class="bd">
+      <div class="lb">数据窗口</div>
+      <div class="ctl">last_7d <span class="chev">⌄</span></div>
+      <div class="lb">抽样</div>
+      <div class="ctl">all <span class="chev">⌄</span></div>
+      <div class="hint">词表与 AnalysisTask 一致；触发参数注入 run_input 可覆盖。</div>
+    </div></div>
+    <div class="sec"><div class="st">范围过滤（简化版）</div><div class="bd">
+      <div class="ctl">字段 <span class="gear">⚙</span> ｜ 等于 ｜ 值</div>
+    </div></div>
+    <div class="sec"><div class="st">访问身份</div><div class="bd">
+      <div class="seg"><i class="on">流程创建者</i><i style="opacity:.4">流程触发者（预留）</i></div>
+    </div></div>
+    <div class="sec"><div class="st">输出</div><div class="bd">
+      <table class="tb"><tr><td>rows</td><td><span class="chip">Arr</span></td></tr><tr><td>count</td><td><span class="chip">Num</span></td></tr></table>
+    </div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>data-read（已确认）</b>：画布仅 WORKFLOW；触发者身份置灰预留。</div></div>
+</div>
+
+<!-- ⑨ 校验三处 -->
+<div class="screen" id="s9">
+  <div class="wrap">
+    <div style="flex:1">
+      <div style="display:flex;gap:10px;align-items:center;background:#fff;border:1px solid var(--cardbd);border-radius:8px;padding:8px 12px">
+        <span style="font-weight:600">顶栏</span>
+        <span class="topchk">⧉ 检查<span class="dot">2</span>
+          <span class="pop">
+            <div><span class="ic">⚠</span>逐条质检 · 节点未连接完整</div>
+            <div><span class="ic">⚠</span>逐条质检 · 节点未完整配置：循环源</div>
+          </span>
+        </span>
+        <span class="hint">点击条目 → 定位节点 + 打开抽屉（保持现状）</span>
+      </div>
+      <div class="canvas" style="height:180px;margin-top:12px">
+        <div class="node" style="left:30px;top:60px">
+          <div class="nhead"><span class="nicon">⟳</span><span class="nname">逐条质检</span><span class="nbadge">⚠ 2</span></div>
+          <div class="nrow"><span class="lb">循环源</span><span class="un">未配置</span></div>
+        </div>
+      </div>
+      <div class="hint" style="margin-top:6px">节点卡：红点+计数，hover 出文案（P0 已实现）。</div>
+    </div>
+    <div class="drawer" style="width:340px">
+      <div class="dhead"><span class="nicon">⟳</span><span class="t">逐条质检</span></div>
+      <div class="ddesc">对 Array 变量逐条执行循环体子图，输出聚合</div>
+      <div class="issues"><span>⚠ 节点未连接完整</span><span>⚠ 节点未完整配置：循环源</span></div>
+      <div class="sec"><div class="st">循环源</div><div class="bd">
+        <div class="ctl" style="border-color:var(--danger)"><span class="ph">选择变量（限 Array）</span> <span class="gear">⚙</span></div>
+      </div></div>
+    </div>
+  </div>
+  <div class="anno"><b>校验三处同源</b>：顶栏 Popover（保持）+ 节点卡红点 + 抽屉问题清单（P0 已实现后两者）；字段级红框（循环源控件红边）。</div>
+</div>
+
+<!-- ⑩ input -->
+<div class="screen" id="s10">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">▶</span><span class="t">开始</span></div>
+    <div class="ddesc">工作流的开始节点，定义公共输入变量，全节点可引用</div>
+    <div class="sec"><div class="st">输入变量</div><div class="bd">
+      <table class="tb"><tr><th>变量名</th><th>类型</th><th>必填</th><th>描述</th></tr>
+        <tr><td>userQuery 🔒</td><td><span class="chip">Str</span></td><td>✓</td><td style="color:var(--ink3)">用户问题</td></tr>
+        <tr><td>chatHistory 🔒</td><td><span class="chip">Str</span></td><td></td><td style="color:var(--ink3)">历史对话</td></tr>
+        <tr><td>userId 🔒</td><td><span class="chip">Str</span></td><td></td><td style="color:var(--ink3)">用户 ID</td></tr>
+        <tr><td>conversationId 🔒</td><td><span class="chip">Str</span></td><td></td><td style="color:var(--ink3)">会话 ID</td></tr>
+        <tr><td>chatId 🔒</td><td><span class="chip">Str</span></td><td></td><td style="color:var(--ink3)">对话 ID</td></tr>
+        <tr><td>reference 🔒</td><td><span class="chip">Str</span></td><td></td><td style="color:var(--ink3)">引用内容</td></tr>
+        <tr><td>bizLine</td><td><span class="chip">Str</span></td><td></td><td style="color:var(--ink3)">自定义变量示例</td></tr>
+      </table>
+      <span class="addlink">＋ 添加自定义变量</span>
+      <div class="hint">预置 6 项锁定不可删；自定义可增删；空态=插画+No data。</div>
+    </div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>input（已确认）</b>：三 Kind 画布；校验=恰一个；画布卡展示 6 变量（P0 已实现）。</div></div>
+</div>
+
+<!-- ⑪ end -->
+<div class="screen" id="s11">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">⚑</span><span class="t">结束</span></div>
+    <div class="ddesc">工作流的结束节点，收集结构化输出</div>
+    <div class="sec"><div class="st">输出绑定</div><div class="bd">
+      <table class="tb"><tr><th>变量名</th><th>类型</th><th>变量值（固定/引用切换）</th></tr>
+        <tr><td>output</td><td><span class="chip">Str</span></td><td><span class="mono">{{大模型.outputs.answer}}</span> <span class="gear">⚙</span> ✕</td></tr>
+        <tr><td>verdict</td><td><span class="chip">Str</span></td><td><div class="ctl" style="display:inline-flex;min-width:120px">固定值…</div></td></tr>
+      </table>
+      <span class="addlink">＋ 添加</span>
+    </div></div>
+    <div class="sec"><div class="st">结构化输出绑定状态</div><div class="bd">
+      <div class="chk"><span class="box on">✓</span>quality_result ← 创建质检记录</div>
+      <div class="hint">每个 structuredOutputs key 恰被一个终端产出（R6）。</div>
+    </div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>end（已确认）</b>：三 Kind；≥1 终端；固定/引用切换保持现状。</div></div>
+</div>
+
+<!-- ⑫ condition -->
+<div class="screen" id="s12">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">⑂</span><span class="t">条件判断</span></div>
+    <div class="ddesc">条件判断节点可定义多个判断条件，对应多个流程分支。实现不同业务规则的分流</div>
+    <div class="sec"><div class="st">条件分支</div><div class="bd">
+      <div style="background:var(--gray-bg);border-radius:6px;padding:8px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:6px"><span style="cursor:grab"></span><b style="font-size:11.5px">如果</b>
+          <span class="seg" style="margin-left:auto"><i class="on">且</i><i>或</i></span><span style="color:var(--ink3)">🗑</span></div>
+        <div style="background:#fff;border:1px solid var(--cardbd);border-radius:6px;padding:6px;margin-top:6px">
+          <div class="ctl" style="margin-bottom:4px">{{取弹幕样本.outputs.count}} <span class="gear">⚙</span></div>
+          <div style="display:flex;gap:4px"><div class="ctl">大于 <span class="chev">⌄</span></div><div class="ctl" style="flex:1">0</div><span class="gear">引用</span></div>
+        </div>
+        <span class="addlink">＋ 添加条件</span>
+      </div>
+      <div style="background:var(--gray-bg);border-radius:6px;padding:8px">
+        <div style="display:flex;align-items:center;gap:6px"><span style="cursor:grab">⠿</span><b style="font-size:11.5px">否则如果 1</b><span class="seg" style="margin-left:auto"><i class="on">或</i><i>且</i></span><span style="color:var(--ink3)">🗑</span></div>
+        <div class="hint" style="margin-top:4px">0 个条件</div>
+      </div>
+      <span class="addlink">＋ 添加分支（可拖拽排序）</span>
+      <div style="margin-top:6px;background:var(--gray-bg);border-radius:6px;padding:6px 8px;display:flex;justify-content:space-between;font-size:11px"><span>否则（Else）</span><span style="color:var(--ink3)">兜底分支 · 不可删除</span></div>
+    </div></div>
+    <div class="sec"><div class="st">高级</div><div class="bd">
+      <div class="chk"><span class="box on">✓</span>大小写不敏感（ignoreCase）</div>
+      <div class="chk"><span class="box"></span>宽松类型校验（looseTypeValidation）</div>
+      <div class="hint">操作符族补 in/not in/exists/not exists/is(null) 系；object/file 变量支持子属性条件（file.size 式，element schema 对账）；分支名可编辑，画布 handle 标签跟随。</div>
+    </div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>condition（已确认，保持现状构建器）</b>：操作符按变量类型过滤（数值/布尔/数组已补）；字段级红框；画布卡每分支一行+handle。</div></div>
+</div>
+
+<!-- ⑬ decision-class -->
+<div class="screen" id="s13">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">⑂</span><span class="t">决策分类</span></div>
+    <div class="ddesc">决策分类节点用大模型把输入归入预设分类，每个分类对应一条分支</div>
+    <div class="sec"><div class="st">分类项（2–10）</div><div class="bd">
+      <div style="border:1px solid var(--cardbd);border-radius:6px;padding:6px;margin-bottom:6px">
+        <div class="ctl" style="margin-bottom:4px">违规承诺</div>
+        <div class="ctl">承诺了价格优惠、赠品等无法兑现的内容 <span style="margin-left:auto;color:var(--ink3)">✕</span></div>
+        <div class="hint">分支出口：c0（画布拉线即分支）</div>
+      </div>
+      <div style="border:1px solid var(--cardbd);border-radius:6px;padding:6px">
+        <div class="ctl" style="margin-bottom:4px">正常话术</div>
+        <div class="ctl">合规的标准回复</div>
+      </div>
+      <span class="addlink">＋ 添加分类</span>
+    </div></div>
+    <div class="sec"><div class="st">全局分类规则（可选）</div><div class="bd">
+      <div class="ta">整体倾向从严判断；涉及价格一律归违规承诺…</div>
+    </div></div>
+    <div class="sec"><div class="st">没有匹配的分类时</div><div class="bd">
+      <div class="seg"><i class="on">归"其他"分类</i><i>节点失败</i></div>
+    </div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>decision-class（已确认）</b>：每分类一个 source handle + 其他；画布卡每分类一行（替换 c{i} 文字提示）；可嵌套 loop。</div></div>
+</div>
+
+<!-- ⑭ transform -->
+<div class="screen" id="s14">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">{}</span><span class="t">变量处理</span></div>
+    <div class="ddesc">变量处理节点用声明式模板聚合/拼接上游变量，不执行任意代码</div>
+    <div class="sec"><div class="st">处理模式</div><div class="bd">
+      <div class="seg"><i class="on">多输出聚合</i><i>多输出拼接</i></div>
+    </div></div>
+    <div class="sec"><div class="st">输入</div><div class="bd">
+      <table class="tb"><tr><th>变量名</th><th>类型</th><th>值</th></tr>
+        <tr><td>transcript</td><td><span class="chip">Str</span></td><td><span class="mono">{{开始.outputs.userQuery}}</span> <span class="gear">⚙</span></td></tr>
+      </table>
+      <span class="addlink">＋ 添加</span>
+    </div></div>
+    <div class="sec"><div class="st">模板</div><div class="bd">
+      <div class="ta mono">工单：{{transcript}} ｜ 线别：{{bizLine}}</div>
+      <div class="hint">输入 “#” 唤起变量选择器（P0 已实现）。</div>
+    </div></div>
+    <div class="sec"><div class="st">输出</div><div class="bd">
+      <table class="tb"><tr><td>output</td><td><span class="chip">Str</span></td></tr></table>
+    </div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>transform（已确认）</b>：FLOW+WORKFLOW；画布卡=表达式行。</div></div>
+</div>
+
+<!-- ⑮ query-rewrite -->
+<div class="screen" id="s15">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">✎</span><span class="t">Query 改写</span></div>
+    <div class="ddesc">Query 改写节点在检索前改写查询，输出 queryList 数组</div>
+    <div class="sec"><div class="st">策略</div><div class="bd">
+      <div class="seg"><i>默认（透传）</i><i class="on">自定义（LLM 改写）</i></div>
+    </div></div>
+    <div class="sec"><div class="st">改写提示词</div><div class="bd">
+      <div class="ta">把用户问题拆成 3 个检索友好的子查询…#</div>
+      <div class="hint"># 唤起（P0 已实现）；无模型配置时回落透传。</div>
+    </div></div>
+    <div class="sec"><div class="st">输入绑定</div><div class="bd">
+      <table class="tb"><tr><td>query</td><td><span class="chip">Str</span></td><td><span class="gear">⚙</span> 留空取 Start</td></tr>
+      <tr><td>chatHistory</td><td><span class="chip">Str</span></td><td><span class="gear">⚙</span></td></tr></table>
+    </div></div>
+    <div class="sec"><div class="st">输出</div><div class="bd"><table class="tb"><tr><td>queryList</td><td><span class="chip">Arr</span></td></tr></table></div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>query-rewrite（已确认）</b>：FLOW+GROUP+WORKFLOW。</div></div>
+</div>
+
+<!-- ⑯ code-write -->
+<div class="screen" id="s16">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">&lt;/&gt;</span><span class="t">代码编写</span></div>
+    <div class="ddesc">代码编写节点在 Python 沙箱中执行 main(args)，10 秒超时</div>
+    <div class="sec"><div class="st">代码（Python 沙箱）</div><div class="bd">
+      <div class="ta mono" style="min-height:110px;background:#1E222A;color:#D7DBE4;border-color:#1E222A">def main(args):<br>&nbsp;&nbsp;rows = args.params.get("rows", [])<br>&nbsp;&nbsp;return {"n": len(rows)}</div>
+      <div class="hint">必须定义 main(args) 返回 dict；无网络。</div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:6px"><span class="seg"><i class="on">全量一次</i><i>逐条执行</i></span><span class="addlink">⇄ 同步函数签名</span></div>
+      <div class="hint">同步签名=解析代码参数自动回填输入变量、解析返回值回填输出类型（Dify code 对账）；标题栏含 AI 生成代码按钮。</div>
+    </div></div>
+    <div class="sec"><div class="st">输入绑定（支持 ⚙ 引用，升级）</div><div class="bd">
+      <table class="tb"><tr><td>rows</td><td><span class="chip">Arr</span></td><td><span class="mono">{{取弹幕样本.outputs.rows}}</span> <span class="gear">⚙</span></td></tr></table>
+      <span class="addlink">＋ 添加输入</span>
+    </div></div>
+    <div class="sec"><div class="st">输出变量表</div><div class="bd"><table class="tb"><tr><td>n</td><td><span class="chip">Num</span></td></tr></table></div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>code-write（已确认）</b>：FLOW+GROUP+WORKFLOW；输入绑定从仅固定值升级为 ⚙ 引用。</div></div>
+</div>
+
+<!-- ⑰ tool -->
+<div class="screen" id="s17">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">🔧</span><span class="t">插件工具</span></div>
+    <div class="ddesc">绑定一个插件工具版本，按工具声明的参数发起外部调用</div>
+    <div class="sec"><div class="st">插件工具</div><div class="bd">
+      <div class="ctl">SLS 查询工具 <span class="chev">⌄</span></div>
+      <div class="lb">版本策略</div>
+      <div class="seg"><i class="on">最新 Ready</i><i>钉版本 v2</i></div>
+    </div></div>
+    <div class="sec"><div class="st">输入（按 tool spec params 动态生成）</div><div class="bd">
+      <table class="tb"><tr><th>参数</th><th>类型</th><th>常量|变量</th><th>值</th></tr>
+        <tr><td>project</td><td><span class="chip">Str</span></td><td><span class="seg"><i class="on">常量</i><i>变量</i></span></td><td><div class="ctl" style="min-width:90px">corn-prod</div></td></tr>
+        <tr><td>query</td><td><span class="chip">Str</span></td><td><span class="seg"><i>常量</i><i class="on">变量</i></span></td><td><span class="mono">{{开始.outputs.userQuery}}</span></td></tr>
+      </table>
+      <div class="hint">每参数独立常量/变量双模式（Dify ToolVarInputs 对账）。</div>
+    </div></div>
+    <div class="sec"><div class="st">工具设置（Settings 折叠区）</div><div class="bd">
+      <div class="ctl">与输入参数分区 <span class="chev">⌄</span></div>
+      <div class="hint">未授权时整面板替换为授权按钮。</div>
+    </div></div>
+    <div class="sec"><div class="st">输出（spec schema 树）</div><div class="bd">
+      <div class="mono" style="color:var(--ink2)">result <span class="chip">Obj</span><br>├─ logs <span class="chip">Arr</span><br>└─ count <span class="chip">Num</span></div>
+    </div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>tool（已确认）</b>：画布卡=工具名+版本；删除防护计入引用。</div></div>
+</div>
+
+<!-- ⑱ mcp-call -->
+<div class="screen" id="s18">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">🖧</span><span class="t">MCP 工具</span></div>
+    <div class="ddesc">MCP 工具节点调用 MCP Server 握手发现的具体工具</div>
+    <div class="sec"><div class="st">MCP Server</div><div class="bd"><div class="ctl">飞书云文档 MCP <span class="chev">⌄</span></div></div></div>
+    <div class="sec"><div class="st">工具</div><div class="bd"><div class="ctl">docx_get_content <span class="chev">⌄</span></div>
+      <div class="hint">列表来自握手发现。</div></div></div>
+    <div class="sec"><div class="st">参数（按 inputSchema 动态生成）</div><div class="bd">
+      <table class="tb"><tr><td>doc_token</td><td><span class="chip">Str</span></td><td><span class="mono">{{…}}</span> <span class="gear">⚙</span></td></tr>
+      <tr><td>format</td><td><span class="chip">Str</span></td><td><div class="ctl" style="min-width:100px">markdown <span class="chev">⌄</span></div></td></tr></table>
+    </div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>mcp-call（已确认）</b>：参数区从裸 Textarea 升级为 inputSchema 动态表单。</div></div>
+</div>
+
+<!-- ⑲ knowledge -->
+<div class="screen" id="s19">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">📖</span><span class="t">知识检索</span></div>
+    <div class="ddesc">知识检索节点在指定知识源中按 query 召回切片</div>
+    <div class="sec"><div class="st">Knowledge Source</div><div class="bd"><div class="ctl">质检话术知识库 <span class="chev">⌄</span></div></div></div>
+    <div class="sec"><div class="st">检索配置</div><div class="bd">
+      <div class="ta" style="min-height:40px">{{开始.outputs.userQuery}}#</div>
+      <div class="hint"># 唤起（P0 已实现）。</div>
+      <div class="lb">检索模式</div>
+      <div class="seg"><i>单路</i><i class="on">多路</i></div>
+      <table class="tb" style="margin-top:6px"><tr><th>topK</th><th>分数阈值</th><th>rerank</th></tr>
+      <tr><td><div class="ctl" style="width:56px">5</div></td><td><div class="ctl" style="width:56px">0.5</div></td><td><span class="seg"><i>关</i><i class="on">开</i></span></td></tr></table>
+      <div class="hint">多路含向量-关键词权重；元数据过滤（automatic/manual）预留（Dify knowledge-retrieval 对账）。</div>
+    </div></div>
+    <div class="sec"><div class="st">输出</div><div class="bd"><table class="tb"><tr><td>slices</td><td><span class="chip">Str</span></td></tr><tr><td>sources</td><td><span class="chip">Str</span></td></tr></table></div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>knowledge-retrieval（已确认）</b>：画布卡=知识源+查询截断。</div></div>
+</div>
+
+<!-- ⑳ create-record -->
+<div class="screen" id="s20">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">⊕</span><span class="t">创建质检记录</span></div>
+    <div class="ddesc">创建质检记录节点把结构化输出幂等写入质检业务层</div>
+    <div class="sec"><div class="st">输出键</div><div class="bd">
+      <div class="ctl">quality_result <span class="chev">⌄</span></div>
+      <div class="hint">下拉来自 workflow io.structuredOutputs（替换现 Textarea）。</div>
+    </div></div>
+    <div class="sec"><div class="st">幂等</div><div class="bd"><div class="hint">键 = run_id + node_id，重放安全。</div></div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>create-record（已确认）</b>：三 Kind；画布卡=输出 key。</div></div>
+</div>
+
+<!-- ㉑ notification -->
+<div class="screen" id="s21">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">🔔</span><span class="t">通知</span></div>
+    <div class="ddesc">通知节点把消息写入运行日志（V1 渠道=日志）</div>
+    <div class="sec"><div class="st">消息内容</div><div class="bd">
+      <div class="ta">质检完成：{{创建质检记录.outputs.quality_result}}#</div>
+      <div class="hint"># 唤起（P0 起）。</div>
+    </div></div>
+    <div class="sec"><div class="st">渠道</div><div class="bd">
+      <div class="seg"><i class="on">运行日志</i><i style="opacity:.4">IM webhook（预留）</i></div>
+    </div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>notification（已确认）</b>：三 Kind；画布卡=消息截断。</div></div>
+</div>
+
+<!-- ㉒ reply -->
+<div class="screen" id="s22">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">💬</span><span class="t">对话回复</span></div>
+    <div class="ddesc">对话回复节点把内容写入对话流</div>
+    <div class="sec"><div class="st">回复内容</div><div class="bd">
+      <div class="ta">您好，复核结论是：{{人工复核.outputs.decision}}#</div>
+      <div class="hint"># 唤起（P0 已实现）。</div>
+    </div></div>
+    <div class="sec"><div class="st">输出去向</div><div class="bd">
+      <div class="hint">FLOW=对话流（SSE 内容流）；WORKFLOW 页=run 事件日志。<span style="color:var(--amber)">（默认提案，待复核）</span></div>
+    </div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>reply（默认提案待复核）</b>：FLOW+WORKFLOW。</div></div>
+</div>
+
+<!-- ㉓ memory-variable -->
+<div class="screen" id="s23">
+  <div class="wrap"><div class="drawer">
+    <div class="dhead"><span class="nicon">🧠</span><span class="t">记忆变量</span></div>
+    <div class="ddesc">记忆变量节点读写 run 内共享状态（跨会话 Future）</div>
+    <div class="sec"><div class="st">模式</div><div class="bd">
+      <div class="seg"><i>读</i><i class="on">写</i></div>
+    </div></div>
+    <div class="sec"><div class="st">记忆键</div><div class="bd">
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip" style="padding:2px 8px">risk_score</span><span class="chip" style="padding:2px 8px">last_verdict</span><span class="addlink">＋</span></div>
+      <div class="hint">读模式=多选 chips；写模式=keys+绑定表。</div>
+    </div></div>
+    <div class="sec"><div class="st">写入值（输入绑定，支持 ⚙ 引用）</div><div class="bd">
+      <table class="tb"><tr><td>risk_score</td><td><span class="mono">{{大模型.outputs.answer}}</span> <span class="gear">⚙</span></td></tr></table>
+    </div></div>
+  </div>
+  <div class="anno" style="flex:1"><b>memory-variable（默认提案待复核）</b>：FLOW+WORKFLOW；state 为 run 内作用域。</div></div>
+</div>
+
+<!-- ㉔ 公共机制 -->
+<div class="screen" id="s24">
+  <div class="wrap">
+    <div class="drawer" style="width:360px">
+      <div class="dhead"><span class="nicon">✦</span><span class="t">Test Run · 大模型</span></div>
+      <div class="ddesc">单节点试跑覆盖层（Dify before-run-form 对账）</div>
+      <div class="sec"><div class="st">自动生成的输入表单</div><div class="bd">
+        <div class="lb">userQuery（解析自提示词引用）</div>
+        <div class="ctl">这条弹幕算违规吗</div>
+        <div class="lb">context（#context# 预填示例）</div>
+        <div class="ctl mono">[{"content":"…"}]</div>
+        <div class="hint">无必填输入时自动直接运行；defaultRunInputData 预填示例。</div>
+        <div class="seg" style="margin-top:8px"><i class="on">运行</i></div>
+      </div></div>
+      <div class="sec"><div class="st">失败策略（四值）</div><div class="bd">
+        <div class="seg"><i class="on">停止</i><i>跳过</i><i>走错误分支</i><i>默认值</i></div>
+        <table class="tb" style="margin-top:6px"><tr><th>输出变量</th><th>失败时默认值</th></tr>
+          <tr><td>answer</td><td><div class="ctl" style="min-width:120px">"未判定"</div></td></tr></table>
+        <div class="hint">“默认值”=失败时按输出变量逐个填默认值并继续（Dify default-value 对账，待复核）。</div>
+      </div></div>
+      <div class="sec"><div class="st">重试</div><div class="bd">
+        <div class="chk"><span class="box on">✓</span>retry_enabled</div>
+        <table class="tb"><tr><th>max_retries</th><th>retry_interval</th></tr>
+        <tr><td><div class="ctl" style="width:60px">3</div></td><td><div class="ctl" style="width:80px">100ms</div></td></tr></table>
+        <div class="hint">HTTP 类节点默认开启（Dify http 对账）。</div>
+      </div></div>
+      <div class="sec"><div class="st">输出变量（底部统一区，可折叠）</div><div class="bd">
+        <div class="mono" style="color:var(--ink2)">output <span class="chip">Str</span><br>thought <span class="chip">Str</span><br>answer <span class="chip">Str</span></div>
+        <div class="hint">全节点面板底部固定；object 输出可展开子字段树。</div>
+      </div></div>
+    </div>
+    <div class="anno" style="flex:1"><b>公共机制（08-26 Dify/n8n 对账）</b>
+      <ol><li><b>试跑表单</b>：按节点引用变量自动生成输入项，升级现有“单测此节点”（E-4.3）。</li>
+      <li><b>失败策略四值</b>：停止｜跳过｜走错误分支｜默认值（第四值待复核）。</li>
+      <li><b>重试三件</b>：retry_enabled/max_retries/retry_interval，替换原“重试 0–3”单值。</li>
+      <li><b>输出变量统一区</b> + 子字段树；<b>notice 内联引导</b>与<b>画布卡 subtitle 回显</b>（如 tool 显示“SLS 查询 · v2”、wait 显示恢复 URL）。</li>
+      <li><b>校验聚合</b>：节点卡显示首条错误文案（hover）+ 面板字段 warningDot 橙点。</li>
+      <li>HTTP 请求节点本周期不做（tool 声明式配方覆盖，08 §3 设计决策）。</li></ol>
+    </div>
+  </div>
+</div>
+
+<script>
+  const tabs = document.getElementById('tabs');
+  tabs.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    tabs.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('on', s.id === b.dataset.s));
+  });
+</script>
+</body>
+</html>

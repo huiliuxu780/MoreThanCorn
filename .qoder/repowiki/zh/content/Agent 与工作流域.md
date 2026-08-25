@@ -20,33 +20,39 @@
 - [runner.py](file://server/app/runner.py)
 - [registry.py](file://server/app/routers/registry.py)
 - [agent_runtime.py](file://server/app/agent_runtime.py)
+- [runs.py](file://server/app/routers/runs.py)
+- [trace-view.tsx](file://src/components/run/trace-view.tsx)
+- [run-detail.tsx](file://src/pages/run-detail.tsx)
 - [b026phaseb0001_agent_version_release.py](file://server/alembic/versions/b026phaseb0001_agent_version_release.py)
 - [c027phasec0001_event_channels_memory.py](file://server/alembic/versions/c027phasec0001_event_channels_memory.py)
 - [d028phased1001_eval_sample_agent.py](file://server/alembic/versions/d028phased1001_eval_sample_agent.py)
 - [d029phased1002_eval_sample_workflow_nullable.py](file://server/alembic/versions/d029phased1002_eval_sample_workflow_nullable.py)
 - [d029phased3001_judge_evolution.py](file://server/alembic/versions/d029phased3001_judge_evolution.py)
+- [e031phasee2001_archived_canary.py](file://server/alembic/versions/e031phasee2001_archived_canary.py)
 - [test_phase_a.py](file://server/tests/test_phase_a.py)
 - [test_phase_b.py](file://server/tests/test_phase_b.py)
 - [test_phase_c.py](file://server/tests/test_phase_c.py)
 - [test_phase_d1.py](file://server/tests/test_phase_d1.py)
+- [test_phase_e.py](file://server/tests/test_phase_e.py)
 - [check-history.mjs](file://scripts/check-history.mjs)
 - [check-minimap.mjs](file://scripts/check-minimap.mjs)
 - [verify-fullstack.mjs](file://scripts/verify-fullstack.mjs)
 - [design-condition-rule-builder.md](file://docs/sdd/design-condition-rule-builder.md)
+- [design-run-observability.md](file://docs/sdd/design-run-observability.md)
+- [05-phase-e-gap-closing.md](file://docs/sdd/05-phase-e-gap-closing.md)
 </cite>
 
 ## 更新摘要
 **变更内容**
-- **新增** 工作流级评估系统：支持同步执行、多评判模式（rule/model/human）、人类评审集成
-- **增强** 评估样本管理：支持工作流和Agent双维度样本管理，judge_result字段存储评判结果
-- **新增** 模型评判功能：使用LLM进行智能打分（1-5分），支持失败回退到规则评判
-- **新增** 人类评审集成：允许人工评分覆盖或补充机器评判结果，支持备注说明
-- **对齐** Agent级评估系统：工作流评估与Agent评估统一至D-1/D-3标准
+- **新增 Phase E 发布控制面**：Agent 复制/归档、版本对比（草稿 vs 版本行级 diff）、灰度发布（0-100% 流量分流 + 停止灰度）、编辑锁（resourceId=agent:{id}，占用提示+管理员强解锁）
+- **增强观测能力**：Trace JSON 导出、重试谱系可视化（origin_run_id 双向跳转）、嵌套子 Run span（kind=agent 调用挂子树）、首 token 耗时指标（avg/p50）
+- **改进对话体验**：预览消息复制/赞踩操作、Prompt `#` mention 资源提及展开（技能/插件/知识/记忆 → 引用资源描述摘要）、节点单测入口（输入 JSON 执行单个节点）
+- **完善数据模型**：Release.canary_percent、Agent.archived、ResourceLock 编辑锁表、RunEvent 首 token 统计、EvolutionPatch 进化补丁
 
 ## 产品概述
 本工作流聚焦于"Agent 编辑器（节点图/Inspector/变量选择器/测试运行）""工作流设计器""Agent 版本管理与发布流程"。平台以可视化节点图编排 AI 能力，支持对话编排、自主规划与专家组协作三类 Agent；通过工作流定义、校验、发布与版本快照，形成从编辑到上线的闭环。前端基于 React + @xyflow/react 实现画布与 Inspector，后端 FastAPI 提供工作流与 Agent 的 CRUD、校验、发布与运行接口，数据库使用 SQLAlchemy/Alembic。
 
-**更新** 已集成 Phase B 的 Agent 版本发布系统与 Phase C 的事件通道、跟踪基础设施及新节点类型，并新增 Phase D-1 的四标签 Agent 编辑器界面、Agent 级评估系统、专家组增强功能和综合操作仪表板，形成完整的 Agent 全生命周期管理能力。同时对工作流设计器进行了重大改进，包括LLM节点配置优化、transform节点schema统一、agent-select查询参数改进和内存描述正确注入等。**最新增强** 包括模型语义参数控制（温度调节、历史轮次管理、工具调用辅助模型）、预览模型对比功能、语音合成集成以及增强的聊天历史上下文管理。**新增 Phase D-3** 增强了评估系统，支持三种评判模式和进化补丁管理，形成了从问题发现到自动修复的完整闭环。**新增工作流级评估系统**，支持与Agent级评估系统对齐至D-1/D-3标准，提供同步执行、多评判模式和人类评审集成功能。**新增高级条件分支规则构建器**，支持多条件逻辑分组、类型感知操作符、变量引用比较和拖拽分支管理，大幅提升条件判断的灵活性和易用性。**新增CodeMirror 6代码编辑器**，为代码编写节点提供专业的编程体验。
+**更新** 已集成 Phase B 的 Agent 版本发布系统与 Phase C 的事件通道、跟踪基础设施及新节点类型，并新增 Phase D-1 的四标签 Agent 编辑器界面、Agent 级评估系统、专家组增强功能和综合操作仪表板，形成完整的 Agent 全生命周期管理能力。同时对工作流设计器进行了重大改进，包括LLM节点配置优化、transform节点schema统一、agent-select查询参数改进和内存描述正确注入等。**最新增强** 包括模型语义参数控制（温度调节、历史轮次管理、工具调用辅助模型）、预览模型对比功能、语音合成集成以及增强的聊天历史上下文管理。**新增 Phase D-3** 增强了评估系统，支持三种评判模式和进化补丁管理，形成了从问题发现到自动修复的完整闭环。**新增工作流级评估系统**，支持与Agent级评估系统对齐至D-1/D-3标准，提供同步执行、多评判模式和人类评审集成功能。**新增 Phase E** 实现了全面的 Agent 发布控制平面，包括版本管理、灰度发布、编辑锁机制和版本对比功能，同时增强了可观测性（Trace导出、重试谱系、嵌套子Run、首token延迟）和对话体验（预览消息操作、Prompt提及功能、节点测试）。
 
 ## 核心业务流程
 - 创建工作流：创建默认包含"开始/结束"的工作流草稿，返回工作流 ID 与初始状态。
@@ -62,6 +68,9 @@
 - **新增** 工作流引用可视化：工作流列表显示 Agent 绑定状态，帮助用户快速识别被引用的工作流。
 - **新增** 高级条件分支：支持多条件AND/OR逻辑分组、类型感知操作符、变量引用比较、拖拽分支管理。
 - **新增** 工作流级评估：支持同步执行、多评判模式（rule/model/human）、人类评审集成，与Agent级评估系统对齐。
+- **新增 Phase E** 发布控制面：Agent 复制/归档、版本对比、灰度发布（0-100%流量分流）、编辑锁机制。
+- **新增 Phase E** 观测深化：Trace JSON导出、重试谱系可视化、嵌套子Run span、首token耗时指标。
+- **新增 Phase E** 对话体验：预览消息操作、Prompt #mention 资源提及、节点单测入口。
 
 ```mermaid
 sequenceDiagram
@@ -98,6 +107,7 @@ U->>FE : 查看被 Agent 引用的高亮工作流
   - **重大改进** transform节点schema统一：现在统一使用template字段而非expression，简化了配置结构。
   - **重大改进** agent-select查询参数改进：移除了query参数，改用决策类查询绑定，提升了查询准确性。
   - **重大改进** 高级条件分支规则构建器：支持多条件AND/OR逻辑分组、类型感知操作符、变量引用比较、拖拽分支管理。
+  - **新增 Phase E** 编辑锁机制：基于 resource_lock 表的租约语义，防止多人同时编辑冲突，支持管理员强制解锁。
 - Agent 编辑器（三型分发）
   - 职责：对话编排（复用工作流画布）、自主规划（角色/模型/技能/工具/工作流/知识挂载+预览）、专家组（成员池+试运行）。
   - 用户价值：统一入口管理不同形态的 Agent。
@@ -108,16 +118,20 @@ U->>FE : 查看被 Agent 引用的高亮工作流
   - **新增** 模型语义参数控制：支持温度调节（严谨/平衡/创意）、历史轮次管理、工具调用辅助模型配置。
   - **新增** 预览模型对比：支持主模型与对比模型的实时对比调试。
   - **新增** 语音合成集成：基于浏览器SpeechSynthesis API的语音播报功能。
+  - **新增 Phase E** 灰度发布徽标：头部显示当前进行中的灰度发布信息，支持停止灰度操作。
 - 变量选择器与资源选择器
   - 职责：根据拓扑可达性计算祖先集合，仅暴露上游输出；资源选择器拉取注册表 Enabled 项。
   - 用户价值：避免无效绑定，提升配置效率。
   - 验收要点：变量路径格式 {{node.outputs.field}}；资源列表过滤 Enabled。
   - **新增** 系统变量支持：通过 `/api/registry/system-variables` 获取 14 个系统变量（tenantId、userId、sysTime 等）。
+  - **新增 Phase E** Prompt #mention：支持在角色提示词中插入 #tool:#skill:#knowledge:#memory 等资源提及，运行时展开为描述摘要。
 - 校验与发布
   - 职责：七条校验规则（开始/终端、无环/孤儿、必填配置、可达引用、依赖存在、结构化产出唯一、分支与出边一致）；发布生成不可变版本快照并收集引用。
   - 用户价值：保障工作流质量与可追溯性。
   - 验收要点：错误定位到节点与问题类型；发布后状态同步。
   - **新增** Agent 版本发布：生成 AgentVersion 快照，冻结依赖（dependency_snapshot），创建 Release 记录。
+  - **新增 Phase E** 版本对比：支持草稿与版本、版本与版本之间的行级差异对比，直观展示修改内容。
+  - **新增 Phase E** 灰度发布：Release 表增加 canary_percent 字段，支持 0-100% 流量分流，与稳定版并存。
 - 运行与观测
   - 职责：工作流运行、Agent 运行（异步入队+轮询）、事件流、重试/导出。
   - 用户价值：快速验证与排障。
@@ -125,6 +139,10 @@ U->>FE : 查看被 Agent 引用的高亮工作流
   - **新增** 事件通道：CONTROL 控制面事件（node_completed、memory_read/write）与 CONTENT 内容面事件（llm_delta、reply_sent）分离。
   - **新增** Trace 基础设施：每个事件携带 trace_id/span_id/parent_span_id，支持分布式追踪。
   - **新增** 新节点执行器：reply（回复）、memory-variable（记忆读写）、workflow-select（工作流选择）、workflow-fixed（固定工作流执行）。
+  - **新增 Phase E** Trace导出：支持将完整 Trace 数据导出为 JSON 文件，便于离线分析。
+  - **新增 Phase E** 重试谱系：显示 run 的上游来源和下游派生关系，支持点击跳转到相关运行。
+  - **新增 Phase E** 嵌套子Run span：Agent 调用子运行时，将子运行树递归挂载到父运行的 span 树中。
+  - **新增 Phase E** 首token耗时：统计首个 llm_delta 事件与 run.started_at 的时间差，提供 avg/p50 指标。
 - **新增** 工作流级评估系统（Phase D-1/D-3）
   - 职责：样本管理、真实运行评测、三种评判模式（规则/模型/人工）、结果统计、人类评审集成。
   - 用户价值：量化评估工作流表现，支持持续优化和问题自动修复。
@@ -157,6 +175,10 @@ U->>FE : 查看被 Agent 引用的高亮工作流
   - **后端统计**：查询 Agent 表中 workflow_id 字段统计引用数量。
   - **前端展示**：ResourceCard 组件根据 boundAgent 标志显示'Agent Canvas'徽章。
   - **用户体验**：徽章样式与其他元数据徽章保持一致，易于识别。
+- **新增 Phase E** Agent 复制与归档
+  - 职责：支持复制现有 Agent 创建副本，支持归档不常用的 Agent。
+  - 用户价值：快速创建相似 Agent，管理 Agent 生命周期。
+  - 验收要点：复制后名称自动添加"副本"后缀，归档后默认隐藏但可通过筛选显示。
 
 **章节来源**
 - [wf-designer.tsx:161-657](file://src/pages/wf-designer.tsx#L161-L657)
@@ -184,6 +206,7 @@ U->>FE : 查看被 Agent 引用的高亮工作流
   - 资源：Tool/Model/McpServer/KnowledgeSource 等供节点引用。
   - **新增** 评估样本：EvalSample 表支持 agent_id 关联，存储样本名称、输入和期望输出，新增 judge_result 字段存储评判结果。
   - **新增** 进化补丁：EvolutionPatch 表管理失败归因、候选补丁、审批状态和应用历史。
+  - **新增 Phase E** 编辑锁：ResourceLock 表管理资源编辑权限，支持租约语义和过期接管。
 - 关键状态流转
   - 工作流状态：draft → testing → published → deprecated（由业务操作驱动，发布时置 published）。
   - Agent 状态：随其绑定的工作流发布而同步为 published；支持 sandbox_version_id/prod_version_id 环境隔离。
@@ -192,6 +215,8 @@ U->>FE : 查看被 Agent 引用的高亮工作流
   - **新增** 事件通道：CONTROL（控制面）与 CONTENT（内容面）双通道事件。
   - **新增** 评估状态：样本独立管理，评测运行实时返回结果，评判结果持久化存储。
   - **新增** 进化状态：补丁状态 pending|applied|rejected，支持完整的审批工作流。
+  - **新增 Phase E** 灰度状态：Release 支持 canary_percent 字段，同一环境可同时存在稳定版和灰度版。
+  - **新增 Phase E** 编辑锁状态：ResourceLock 支持 expires_at 过期时间，支持续租和强制解锁。
 - 数据所有权边界
   - 前端负责画布交互与本地状态，后端负责持久化、校验与执行。
   - 资源引用以 ID 形式存储，运行时解析；发布快照固化引用关系。
@@ -199,6 +224,8 @@ U->>FE : 查看被 Agent 引用的高亮工作流
   - **新增** 样本作用域：评估样本按 Agent 维度隔离，支持跨运行持久化。
   - **新增** 评判结果继承：人工评判可覆盖机器评判结果，形成评判历史。
   - **新增** 引用统计：工作流列表通过查询 Agent 表的 workflow_id 字段统计引用数量。
+  - **新增 Phase E** 灰度分流：运行解析版本时按 run_id 哈希落桶选择 canary/稳定版本。
+  - **新增 Phase E** 编辑锁保护：resourceId=agent:{id} 的编辑操作受 ResourceLock 保护，防止并发修改。
 
 ```mermaid
 classDiagram
@@ -234,6 +261,7 @@ class Agent {
 +int config_revision
 +string sandbox_version_id
 +string prod_version_id
++boolean archived
 }
 class AgentVersion {
 +string id
@@ -252,7 +280,15 @@ class Release {
 +string agent_version_id
 +string environment
 +string status
++int canary_percent
 +datetime created_at
+}
+class ResourceLock {
++string resource_id
++string ws_id
++string user_name
++datetime expires_at
++datetime updated_at
 }
 class EvalSample {
 +string id
@@ -289,6 +325,7 @@ class Run {
 +string parent_run_id
 +string agent_version_id
 +string definition_source
++string origin_run_id
 }
 class RunEvent {
 +string id
@@ -322,19 +359,23 @@ Run "1" -- "0..*" RunEvent : "events"
 - [models.py:271-323](file://server/app/models.py#L271-323)
 - [models.py:221-251](file://server/app/models.py#L221-L251)
 - [models.py:371-398](file://server/app/models.py#L371-398)
+- [models.py:313-335](file://server/app/models.py#L313-335)
 - [d028phased1001_eval_sample_agent.py:21-24](file://server/alembic/versions/d028phased1001_eval_sample_agent.py#L21-L24)
 - [d029phased3001_judge_evolution.py:24-35](file://server/alembic/versions/d029phased3001_judge_evolution.py#L24-L35)
+- [e031phasee2001_archived_canary.py:21-24](file://server/alembic/versions/e031phasee2001_archived_canary.py#L21-L24)
 
 **章节来源**
 - [models.py:31-62](file://server/app/models.py#L31-62)
 - [models.py:271-323](file://server/app/models.py#L271-323)
 - [models.py:221-251](file://server/app/models.py#L221-L251)
 - [models.py:371-398](file://server/app/models.py#L371-398)
+- [models.py:313-335](file://server/app/models.py#L313-335)
 - [b026phaseb0001_agent_version_release.py:1-21](file://server/alembic/versions/b026phaseb0001_agent_version_release.py#L1-L21)
 - [c027phasec0001_event_channels_memory.py:22-38](file://server/alembic/versions/c027phasec0001_event_channels_memory.py#L22-L38)
 - [d028phased1001_eval_sample_agent.py:1-31](file://server/alembic/versions/d028phased1001_eval_sample_agent.py#L1-L31)
 - [d029phased1002_eval_sample_workflow_nullable.py:1-29](file://server/alembic/versions/d029phased1002_eval_sample_workflow_nullable.py#L1-L29)
 - [d029phased3001_judge_evolution.py:1-41](file://server/alembic/versions/d029phased3001_judge_evolution.py#L1-L41)
+- [e031phasee2001_archived_canary.py:1-31](file://server/alembic/versions/e031phasee2001_archived_canary.py#L1-L31)
 
 ## 关键约束与边界
 - 非功能性需求
@@ -354,6 +395,10 @@ Run "1" -- "0..*" RunEvent : "events"
   - **新增** 评判模式约束：judge 参数限定 none/rule/model/human，评分范围 0-5 分。
   - **新增** 样本作用域约束：评估样本可同时关联工作流和Agent，支持灵活的评测场景。
   - **新增** judge_result存储约束：评判结果以JSONB格式存储，支持kind、score、passed、note等字段。
+  - **新增 Phase E** 编辑锁约束：ResourceLock 支持10分钟过期时间，支持续租和强制解锁。
+  - **新增 Phase E** 灰度约束：canary_percent 必须在 0-100 范围内，同一环境只能有一个 active 的灰度发布。
+  - **新增 Phase E** Trace导出约束：导出包含完整 trace 数据和 events，文件大小可能较大需考虑性能。
+  - **新增 Phase E** 重试谱系约束：origin_run_id 建立运行间的父子关系，支持双向跳转导航。
 - 依赖与集成边界
   - 节点 IO 与执行器由 NodeDefinition 与 registry 决定；LLM/Tool/MCP/Knowledge 引用需处于 enabled/ready 状态。
   - 发布流程会收集节点对资源的引用，用于删除防护与审计。
@@ -368,6 +413,9 @@ Run "1" -- "0..*" RunEvent : "events"
   - **新增** 代码编辑器约束：CodeMirror 6配置限制在Python语言模式，支持基本设置如行号、折叠、自动补全。
   - **新增** 样本关联约束：eval_sample.workflow_id和agent_id均为可选字段，支持灵活关联。
   - **新增** 评判结果约束：judge_result字段存储评判模式、分数、通过状态和备注信息。
+  - **新增 Phase E** 灰度分流约束：run_id 哈希算法确保相同 run_id 始终落入同一桶，保证灰度稳定性。
+  - **新增 Phase E** 编辑锁约束：resourceId 格式为 agent:{id} 或 workflowId，wsId 标识客户端会话。
+  - **新增 Phase E** Prompt mention 约束：#type:name 语法，type 限定 tool/skill/knowledge/memory，name 必须存在于对应资源表。
 - 业务约束
   - 工作流必须恰有一个开始节点与至少一个终端节点；条件分支与出边 handle 需一致；结构化输出键需被唯一节点产出。
   - Agent 名称长度上限为 20，前后端共用同一常量。
@@ -379,6 +427,9 @@ Run "1" -- "0..*" RunEvent : "events"
   - **新增** 条件分支约束：else分支固定兜底不可删除，分支handle对应画布出边，条件变量引用格式为{{node.outputs.field}}。
   - **新增** 评估执行约束：工作流评估使用同步执行模式，确保每个样本评测完成后立即返回结果。
   - **新增** 评判覆盖约束：人工评判可完全覆盖机器评判结果，支持后续分析和修正。
+  - **新增 Phase E** 复制约束：Agent 复制后名称自动添加"副本"后缀，长名称截断到20字以内。
+  - **新增 Phase E** 归档约束：archived=true 的 Agent 默认不在列表中显示，需通过筛选参数查看。
+  - **新增 Phase E** 版本对比约束：支持草稿vs版本、版本vs版本的JSON差异对比，行级高亮显示增删内容。
 
 ```mermaid
 flowchart TD
@@ -396,7 +447,9 @@ R10 --> R11["R11: 进化补丁状态约束"]
 R11 --> R12["R12: 工作流引用统计"]
 R12 --> R13["R13: 样本关联约束检查"]
 R13 --> R14["R14: judge_result存储验证"]
-R14 --> End(["返回 ValidationReport"])
+R14 --> R15["R15: 灰度百分比范围校验"]
+R15 --> R16["R16: 编辑锁状态检查"]
+R16 --> End(["返回 ValidationReport"])
 ```
 
 **图表来源**
@@ -405,37 +458,61 @@ R14 --> End(["返回 ValidationReport"])
 - [agents.py:303-377](file://server/app/routers/agents.py#L303-L377)
 - [agents.py:379-446](file://server/app/routers/agents.py#L379-L446)
 - [workflows.py:53-71](file://server/app/routers/workflows.py#L53-L71)
-- [admin.py:618-670](file://server/app/routers/admin.py#L618-L670)
+- [admin.py:618-670](file://server/app/routers/admin.py#L618-670)
 
 **章节来源**
 - [validator.py:54-163](file://server/app/validator.py#L54-L163)
 - [agents.py:17-22](file://server/app/routers/agents.py#L17-22)
-- [workflows.py:84-134](file://server/app/routers/workflows.py#L84-L134)
+- [workflows.py:84-134](file://server/app/routers/workflows.py#L84-134)
 - [runner.py:38-50](file://server/app/runner.py#L38-50)
 - [runner.py:435-469](file://server/app/runner.py#L435-469)
 - [agents.py:297-321](file://server/app/routers/agents.py#L297-321)
 - [agents.py:303-377](file://server/app/routers/agents.py#L303-L377)
 - [agents.py:379-446](file://server/app/routers/agents.py#L379-L446)
 - [workflows.py:53-71](file://server/app/routers/workflows.py#L53-L71)
-- [admin.py:618-670](file://server/app/routers/admin.py#L618-L670)
+- [admin.py:618-670](file://server/app/routers/admin.py#L618-670)
 
 ## 新增特性详解
 
-### 工作流级评估系统（Phase D-1/D-3）
-- **同步执行**：使用 `enqueue=False` 参数确保评测过程中同步等待每个样本运行完成，提供即时反馈。
-- **多评判模式**：支持 none（仅运行成败）、rule（期望文本匹配）、model（LLM智能打分）三种评判模式。
-- **人类评审集成**：支持人工评分覆盖或补充机器评判结果，评分范围 0-5 分，支持备注说明。
-- **judge_result存储**：评判结果持久化存储在 EvalSample.judge_result 字段中，包含 kind、score、passed、note 等信息。
-- **批量评测**：支持一次性对多个样本进行评测，返回详细结果统计和成功率计算。
-- **样本管理**：支持工作流和Agent双维度的样本管理，灵活关联评测场景。
-- **用户体验**：评测过程中显示进度，完成后展示成功率和详细结果列表。
+### Phase E 发布控制面
+- **Agent 复制/归档**：支持复制现有 Agent 创建副本，名称自动添加"副本"后缀；支持归档不常用 Agent，默认隐藏但可通过筛选查看。
+- **版本对比**：支持草稿与版本、版本与版本之间的行级差异对比，直观展示 JSON 定义的增删内容，绿色表示新增，红色表示删除。
+- **灰度发布**：Release 表增加 canary_percent 字段，支持 0-100% 流量分流；同一环境可同时存在稳定版和灰度版；支持停止灰度操作。
+- **编辑锁机制**：基于 resource_lock 表的租约语义，防止多人同时编辑冲突；支持10分钟过期时间和续租；管理员可强制解锁他人持有的锁。
+- **灰度徽标**：Agent 编辑器头部显示当前进行中的灰度发布信息，包括环境和百分比。
 
 **章节来源**
-- [admin.py:618-670](file://server/app/routers/admin.py#L618-L670)
 - [agents.py:303-377](file://server/app/routers/agents.py#L303-L377)
-- [wf-designer.tsx:2124-2203](file://src/pages/wf-designer.tsx#L2124-L2203)
-- [agent-ops-panels.tsx:86-172](file://src/components/agent-ops-panels.tsx#L86-L172)
-- [wf-api.ts:381-393](file://src/services/wf-api.ts#L381-L393)
+- [agents.py:348-360](file://server/app/routers/agents.py#L348-L360)
+- [admin.py:379-402](file://server/app/routers/admin.py#L379-L402)
+- [wf-designer.tsx:1773-1782](file://src/pages/wf-designer.tsx#L1773-L1782)
+- [wf-agent-editor.tsx:560-572](file://src/pages/wf-agent-editor.tsx#L560-L572)
+- [e031phasee2001_archived_canary.py:21-24](file://server/alembic/versions/e031phasee2001_archived_canary.py#L21-L24)
+
+### 观测能力增强（Phase E）
+- **Trace JSON 导出**：支持将完整 Trace 数据导出为 JSON 文件，包含根 span、子 span 树和所有事件，便于离线分析和分享。
+- **重试谱系可视化**：显示 run 的上游来源（origin_run_id）和下游派生关系，支持点击跳转到相关运行，形成双向导航链。
+- **嵌套子 Run span**：Agent 调用子运行时，将子运行树递归挂载到父运行的 span 树中，保持完整的调用层次结构。
+- **首 token 耗时指标**：统计首个 llm_delta 事件与 run.started_at 的时间差，提供平均耗时（avgMs）和第50百分位（p50Ms）指标。
+- **观测面板增强**：Agent 级别观测面板新增首 token 耗时卡片，展示性能指标趋势。
+
+**章节来源**
+- [runs.py:206-218](file://server/app/routers/runs.py#L206-L218)
+- [trace-view.tsx:1-217](file://src/components/run/trace-view.tsx#L1-L217)
+- [run-detail.tsx:167-186](file://src/pages/run-detail.tsx#L167-L186)
+- [agents.py:377-411](file://server/app/routers/agents.py#L377-L411)
+- [test_phase_e.py:133-182](file://server/tests/test_phase_e.py#L133-L182)
+
+### 对话体验改进（Phase E）
+- **预览消息操作**：支持复制、点赞、点踩预览会话中的每条 agent 消息，操作结果本地持久化并可取消。
+- **Prompt #mention**：在角色提示词中输入 `#` 唤起资源选择浮层（技能/插件/知识/记忆），插入 `#type:name` token；运行时展开为「引用资源：描述摘要」格式。
+- **节点单测入口**：节点卡菜单提供"单测此节点"功能，支持输入 JSON 参数执行单个节点，即时展示输出或错误信息。
+- **资源提及展开**：后端 `_expand_mentions` 函数将 `#tool:`、`#skill:`、`#knowledge:`、`#memory:` 等 token 展开为中文描述的引用格式。
+
+**章节来源**
+- [agents.py:488-594](file://server/app/routers/agents.py#L488-L594)
+- [test_phase_e.py:184-201](file://server/tests/test_phase_e.py#L184-L201)
+- [workflows.py:167-230](file://server/app/routers/workflows.py#L167-L230)
 
 ### CodeMirror 6专业代码编辑器集成
 - **Python语法高亮**：为code-write节点提供完整的Python语言支持和语法高亮
@@ -655,3 +732,19 @@ R14 --> End(["返回 ValidationReport"])
 - [runner.py:258-281](file://server/app/runner.py#L258-L281)
 - [design-condition-rule-builder.md:1-104](file://docs/sdd/design-condition-rule-builder.md#L1-L104)
 - [test_phase_a.py:230-268](file://server/tests/test_phase_a.py#L230-L268)
+
+### Phase E 工作流级评估系统增强
+- **同步执行**：使用 `enqueue=False` 参数确保评测过程中同步等待每个样本运行完成，提供即时反馈。
+- **多评判模式**：支持 none（仅运行成败）、rule（期望文本匹配）、model（LLM智能打分）三种评判模式。
+- **人类评审集成**：支持人工评分覆盖或补充机器评判结果，评分范围 0-5 分，支持备注说明。
+- **judge_result存储**：评判结果持久化存储在 EvalSample.judge_result 字段中，包含 kind、score、passed、note 等信息。
+- **批量评测**：支持一次性对多个样本进行评测，返回详细结果统计和成功率计算。
+- **样本管理**：支持工作流和Agent双维度的样本管理，灵活关联评测场景。
+- **用户体验**：评测过程中显示进度，完成后展示成功率和详细结果列表。
+
+**章节来源**
+- [admin.py:618-670](file://server/app/routers/admin.py#L618-670)
+- [agents.py:303-377](file://server/app/routers/agents.py#L303-L377)
+- [wf-designer.tsx:2124-2203](file://src/pages/wf-designer.tsx#L2124-L2203)
+- [agent-ops-panels.tsx:86-172](file://src/components/agent-ops-panels.tsx#L86-L172)
+- [wf-api.ts:381-393](file://src/services/wf-api.ts#L381-L393)

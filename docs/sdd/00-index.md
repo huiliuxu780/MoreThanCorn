@@ -21,6 +21,9 @@
 | [02](02-phase-b-agent-aggregate-and-release.md) | B：Agent 聚合根与发布闭环 | 可执行细节 | 草稿（待冻结） |
 | [03](03-phase-c-observability-and-node-system.md) | C：运行可观测与节点系统 | 范围 + 验收基线（开工前细化） | 大纲 |
 | [04](04-phase-d-product-surface-and-governance.md) | D：产品面与治理 | 范围 + 验收基线（开工前细化） | 大纲 |
+| [05](05-phase-e-gap-closing.md) | E：缺口收尾（对话/画布/观测/发布四批） | 可执行细节 | 已完成（2026-08-25） |
+| [06](06-workflow-node-master-spec.md) | 节点总纲讨论稿（22 节点 × UI/交互/后端 + 原型 v3 24 屏） | 字段级 | 讨论稿 |
+| [07](07-node-system-reform-sdd.md) | 节点体系改造 SDD（实施契约 + 验收标准） | 可执行细节 | **待用户确认** |
 
 ## 2. 阶段状态看板
 

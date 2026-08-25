@@ -3,11 +3,11 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-08-25T06:51:05Z"
+exported_at: "2026-08-25T16:52:40Z"
 modules:
     "":
-        dir_name: AI 质量评价与工作流编排平台（单体仓库）
-        title: AI 质量评价与工作流编排平台（单体仓库）
+        dir_name: AI 质量评价与工作流编排平台（全仓根）
+        title: AI 质量评价与工作流编排平台（全仓根）
         scope:
             - README.md
             - .gitignore
@@ -29,8 +29,8 @@ modules:
         depends_on: []
         related_to: []
     backend_service:
-        dir_name: 后端服务（FastAPI 工作流编排与 Agent 运行时）
-        title: 后端服务（FastAPI 工作流编排与 Agent 运行时）
+        dir_name: 后端服务（FastAPI + Agent 运行时 + Alembic）
+        title: 后端服务（FastAPI + Agent 运行时 + Alembic）
         scope:
             - server/
         source_files: []
@@ -41,8 +41,8 @@ modules:
         depends_on: []
         related_to: []
     backend_service/shared_core:
-        dir_name: 后端共享核心（FastAPI 运行时 + Alembic 迁移）
-        title: 后端共享核心（FastAPI 运行时 + Alembic 迁移）
+        dir_name: 后端共享核心（FastAPI 应用 + Alembic 迁移）
+        title: 后端共享核心（FastAPI 应用 + Alembic 迁移）
         scope:
             - server/app/
             - server/alembic/
@@ -62,8 +62,8 @@ modules:
         related_to:
             - path: backend_service/workflows_routers
     backend_service/tests:
-        dir_name: 后端服务集成测试套件（pytest + FastAPI TestClient）
-        title: 后端服务集成测试套件（pytest + FastAPI TestClient）
+        dir_name: 后端集成测试套件（pytest + FastAPI TestClient）
+        title: 后端集成测试套件（pytest + FastAPI TestClient）
         scope:
             - server/tests/
         source_files: []
@@ -72,8 +72,8 @@ modules:
         related_to:
             - path: backend_service/workflows_routers
     backend_service/workflows_routers:
-        dir_name: 工作流与运行 API 路由层
-        title: 工作流与运行 API 路由层
+        dir_name: 工作流与运行 HTTP 路由层
+        title: 工作流与运行 HTTP 路由层
         scope:
             - server/app/routers/workflows.py
             - server/app/routers/registry.py
@@ -100,8 +100,8 @@ modules:
         depends_on: []
         related_to: []
     frontend_app:
-        dir_name: 工作流编排与质量复核前端应用
-        title: 工作流编排与质量复核前端应用
+        dir_name: 工作流编排与质量复核工作台前端应用
+        title: 工作流编排与质量复核工作台前端应用
         scope:
             - src/
         source_files: []
@@ -179,8 +179,8 @@ modules:
         depends_on: []
         related_to: []
     frontend_app/services_and_mocks:
-        dir_name: 工作流与质检服务层及 Mock 数据
-        title: 工作流与质检服务层及 Mock 数据
+        dir_name: 工作流与资源服务层（真实 API 客户端、RBAC 权限矩阵）
+        title: 工作流与资源服务层（真实 API 客户端、RBAC 权限矩阵）
         scope:
             - src/services/
             - src/mocks/
@@ -215,8 +215,8 @@ modules:
         related_to:
             - path: backend_service/workflows_routers
     scripts_and_e2e:
-        dir_name: 端到端验收与回归脚本集
-        title: 端到端验收与回归脚本集
+        dir_name: E2E 与回归测试脚本集
+        title: E2E 与回归测试脚本集
         scope:
             - scripts/
         source_files: []

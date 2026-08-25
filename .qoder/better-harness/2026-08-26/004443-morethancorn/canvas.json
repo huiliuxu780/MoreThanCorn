@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 2,
+  "summary": {
+    "projectName": "ai-quality-intelligence-platform",
+    "locale": "en",
+    "modelId": "agent-work-loop-v4",
+    "reportContractVersion": 26,
+    "overview": "The project has runnable scripts and a typed domain layer, but agent edits lack post-change validation, the frontend has no test coverage for its highest-churn files, and no project instructions guide agent context or scope. Bootstrap track: foundational navigation and validation routes are missing.",
+    "dimensions": [
+      {
+        "id": "task-understanding",
+        "label": "Task Understanding",
+        "score": 62,
+        "summary": "A README and domain types exist, but no project instructions route agent context, boundaries, or scope for this 151-source-file repository.",
+        "findingRefs": [
+          "no-project-instructions-for-agent-context-routing"
+        ]
+      },
+      {
+        "id": "controlled-execution",
+        "label": "Controlled Execution",
+        "score": 68,
+        "summary": "package.json declares dev, build, test, lint, and typecheck scripts, but no instruction file connects them to agent startup or ongoing operation.",
+        "findingRefs": [
+          "no-project-instructions-for-agent-context-routing"
+        ]
+      },
+      {
+        "id": "change-validation",
+        "label": "Change Validation",
+        "score": 52,
+        "summary": "Test and lint scripts exist, but 82 TSX source files have zero tests, session evidence show 277 edits with no validation command, and the highest-churn file has no focused checks.",
+        "findingRefs": [
+          "edits-without-post-change-validation",
+          "frontend-test-coverage-gap-on-high-churn-files"
+        ]
+      },
+      {
+        "id": "reliable-delivery",
+        "label": "Reliable Delivery",
+        "score": 48,
+        "summary": "No delivery acceptance, CI, or merge-guard evidence is observable; recovery routes are unverified.",
+        "findingRefs": []
+      },
+      {
+        "id": "learning-capture",
+        "label": "Learning Capture",
+        "score": 35,
+        "summary": "No recurring candidates, no project Memories, and no comparable later outcome window support a reusable improvement claim.",
+        "findingRefs": []
+      }
+    ],
+    "aiAgentPractice": {
+      "inspectedSurfaces": [],
+      "coverageRows": [
+        {
+          "surface": "Skills",
+          "scopes": [
+            "Global",
+            "Plugin"
+          ],
+          "count": 57,
+          "paths": [
+            "~/.agents/skills/design-taste-frontend/SKILL.md",
+            "~/.agents/skills/grill-me/SKILL.md",
+            "~/.agents/skills/grilling/SKILL.md",
+            "~/.agents/skills/lark-approval/SKILL.md",
+            "~/.agents/skills/lark-apps/SKILL.md"
+          ]
+        },
+        {
+          "surface": "Hooks",
+          "scopes": [
+            "Plugin"
+          ],
+          "count": 3,
+          "paths": [
+            "~/.qoder/plugins/cache/qoder-bundler/security-scan/.qoder-plugin/qoder-hooks.json",
+            "~/.qoder/plugins/cache/qoder-marketplace/superpowers/5.1.0/hooks/hooks.json"
+          ]
+        },
+        {
+          "surface": "Plugins",
+          "scopes": [
+            "Plugin"
+          ],
+          "count": 5,
+          "paths": [
+            "~/.qoder/plugins/cache/qoder-bundler/better-harness/.qoder-plugin/plugin.json",
+            "~/.qoder/plugins/cache/qoder-marketplace/design-review/0.1.0/.qoder-plugin/plugin.json",
+            "~/.qoder/plugins/cache/qoder-bundler/qoder-create-plugin",
+            "~/.qoder/plugins/cache/qoder-bundler/security-scan/.qoder-plugin/plugin.json",
+            "~/.qoder/plugins/cache/qoder-marketplace/superpowers/5.1.0/.qoder-plugin/plugin.json"
+          ]
+        },
+        {
+          "surface": "Rules",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        },
+        {
+          "surface": "Commands",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        },
+        {
+          "surface": "Custom Agents",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        },
+        {
+          "surface": "MCP",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        },
+        {
+          "surface": "Workflows",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        },
+        {
+          "surface": "Memories",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        }
+      ],
+      "repositorySourceRows": [],
+      "memoryDetails": {
+        "contentPolicy": "metadata-only",
+        "scanState": "scanned-empty",
+        "scopeCounts": [],
+        "integrity": {
+          "status": "reviewed",
+          "titleCount": 0,
+          "reviewedTitleCount": 0,
+          "truncated": false,
+          "exactCollisionGroups": 0,
+          "similarityCandidates": 0
+        }
+      }
+    },
+    "assignmentSummaries": []
+  },
+  "findings": [
+    {
+      "id": "edits-without-post-change-validation",
+      "title": "Edits proceed without post-change validation, leaving regressions undetected",
+      "severity": "Medium",
+      "reason": "Session evidence observed 277 edit events across 38 sessions but zero validation commands (test, lint, typecheck, or build). The project declares npm test, npm run lint, and npm run typecheck in package.json, and 15 test files exist under server/tests/, but no project instruction routes the agent to run these checks after edits. The change-validation dimension is capped at Missing because no relevant-check was observed. Confidence: High for the edit/validation gap; Medium for the causal link to missing instructions.",
+      "dimensionRefs": [
+        "change-validation"
+      ],
+      "subdimensionRefs": [
+        "relevant-check"
+      ],
+      "expectedArtifact": "Document",
+      "expectedOutput": [
+        "Update the existing Document owner identified by the reviewed evidence and retain a focused validation result."
+      ],
+      "aiFixPrompt": "/better-harness fix this issue\n\nAdd a root AGENTS.md that routes the agent to run validation after edits.\n\n## Project facts to preserve\n- package.json scripts: test (pytest), lint (eslint), typecheck (tsc)\n- Source roots: src/ (92 files), server/ (42 files), scripts/ (14 files)\n- 15 test files exist under server/tests/; 0 test files for TSX sources\n\n## Validation\n- Run `npm test && npm run lint && npm run typecheck` from the project root\n- Confirm exit code 0\n- Add a validation section to AGENTS.md that names these commands for post-edit checks"
+    },
+    {
+      "id": "frontend-test-coverage-gap-on-high-churn-files",
+      "title": "Highest-churn frontend files have no test coverage, so behavior changes cannot be verified",
+      "severity": "Medium",
+      "reason": "The project profile shows 82 TSX source files with 0 test files. The hottest file, src/pages/wf-designer.tsx, has 27 commits and 3090 lines of churn in a 4-day history, with no corresponding test. The second hottest frontend file, src/pages/wf-agent-editor.tsx, has 14 commits and 1258 lines of churn, also with no test. The project declares npm test (pytest) which covers only server/tests/. The frontend test infrastructure has only 2 TypeScript test files (src/lib/list-filters.test.ts and src/pages/wf-agents-list.test.ts). Without focused checks, behavior changes in the most actively developed UI files cannot be mechanically verified. Confidence: High for the coverage gap; Medium for the causal link to missing test infrastructure guidance.",
+      "dimensionRefs": [
+        "change-validation"
+      ],
+      "subdimensionRefs": [
+        "relevant-check"
+      ],
+      "expectedArtifact": "Test",
+      "expectedOutput": [
+        "Update the existing Test owner identified by the reviewed evidence and retain a focused validation result."
+      ],
+      "aiFixPrompt": "/better-harness fix this issue\n\nAdd focused tests for the highest-churn frontend files.\n\n## Project facts to preserve\n- Hottest TSX files: src/pages/wf-designer.tsx (27 commits, 3090 churn), src/pages/wf-agent-editor.tsx (14 commits, 1258 churn)\n- Existing test pattern: src/lib/list-filters.test.ts, src/pages/wf-agents-list.test.ts\n- Frontend stack: Vite + React 19 + TypeScript\n\n## Validation\n- Create at least one test file for wf-designer.tsx\n- Run `npm test` and confirm it passes\n- Add the test command to AGENTS.md post-edit validation steps"
+    },
+    {
+      "id": "no-project-instructions-for-agent-context-routing",
+      "title": "No project instructions guide agent context, validation, or scope boundaries",
+      "severity": "Low",
+      "reason": "The project has 151 source files across src/, server/, and scripts/ but no AGENTS.md or equivalent instruction file. The agent-lint envelope confirms 0 tracked AGENTS.md files. Without instructions, the agent lacks routing to canonical owners (e.g., src/domain/types.ts for contracts, server/app/models.py for ORM, docs/sdd/ for design specs), validation commands after edits, and scope boundaries for high-risk paths. This amplifies findings 1 and 2: the validation gap and test gap persist partly because no instruction routes the agent to them. Confidence: High for the absence; Medium for the causal contribution to validation drift.",
+      "dimensionRefs": [
+        "controlled-execution",
+        "task-understanding"
+      ],
+      "subdimensionRefs": [
+        "instruction-led-start",
+        "relevant-context"
+      ],
+      "expectedArtifact": "Document",
+      "expectedOutput": [
+        "Update the existing Document owner identified by the reviewed evidence and retain a focused validation result."
+      ],
+      "aiFixPrompt": "/better-harness fix this issue\n\nCreate a root AGENTS.md for the AI Quality Intelligence Platform.\n\n## Project facts to preserve\n- Project: AI Quality Intelligence Platform (Vite + React 19 frontend, FastAPI + SQLAlchemy backend)\n- Source roots: src/ (92 files), server/ (42 files), scripts/ (14 files)\n- Key owners: src/domain/types.ts (frontend contracts), server/app/models.py (ORM models), docs/sdd/ (design specs)\n- Validation: npm test, npm run lint, npm run typecheck\n- Startup: npm run dev (frontend), uvicorn server.app.main:app (backend)\n\n## Validation\n- Confirm AGENTS.md exists at the project root\n- Confirm it references the key owners and validation commands\n- Run `npm run typecheck` and confirm exit code 0"
+    }
+  ]
+}

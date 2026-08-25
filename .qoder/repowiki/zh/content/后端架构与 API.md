@@ -34,13 +34,11 @@
 
 ## 更新摘要
 **变更内容**
-- 新增完整的工作流评估系统，支持 /api/workflows/{wid}/eval-run 端点进行工作流级评测
-- 实现人评机制，支持 /api/eval-samples/{sid}/human-score 进行人工评分（0-5分）
-- 增强Agent评估功能，支持同步执行和多评判模式（rule/model/human）
-- 扩展EvalSample模型，新增judge_result字段存储评判结果
-- 支持批量样本评测，可指定sampleIds进行选择性评测
-- **新增 /api/runs/{run_id}/trace 端点，提供完整的运行追踪数据，包括 span 树结构、token 使用统计和模型调用计数**
-- **增强事件列表端点支持按 nodeRunId 过滤**
+- 增强 `/api/runs/{id}/trace` 端点，实现标准化的 span 类型映射（LLM/TOOL/KNOWLEDGE）
+- 规范化 token 使用结构，统一 inputTokens/outputTokens 格式
+- 改进错误处理机制，标准化错误响应格式
+- Agent metrics 端点新增 totalTokens 计算功能
+- 完善运行追踪系统的可观测性能力
 
 ## 产品概述
 本项目为 AI 驱动的企业智能质量评价平台，V1 聚焦智能质检（坐席质检）。后端基于 FastAPI + SQLAlchemy + Alembic，提供工作流编排、资源管理、运行执行、业务规则与评测、Agent 编排等能力；前端 Vite + React + TypeScript。导航结构已冻结，路由与状态语义以实现文档为准。
@@ -87,12 +85,15 @@ API-->>FE : {root : SpanNode, totalTokens, modelCalls}
 FE->>API : GET /api/runs/{runId}/events-list?nodeRunId=xxx (事件过滤)
 API->>DB : 按 nodeRunId 过滤事件
 API-->>FE : {items : Event[]}
+FE->>API : GET /api/agents/{aid}/metrics (Agent指标)
+API->>DB : 计算总token使用量
+API-->>FE : {totalTokens, ...其他指标}
 ```
 
 **图表来源**
 - [server/app/routers/workflows.py:41-134](file://server/app/routers/workflows.py#L41-L134)
 - [server/app/routers/admin.py:618-670](file://server/app/routers/admin.py#L618-L670)
-- [server/app/routers/agents.py:303-374](file://server/app/routers/agents.py#L303-L374)
+- [server/app/routers/agents.py:289-304](file://server/app/routers/agents.py#L289-L304)
 - [server/app/routers/runs.py:133-184](file://server/app/routers/runs.py#L133-L184)
 
 **章节来源**
@@ -108,7 +109,7 @@ API-->>FE : {items : Event[]}
 - business：结果规则引擎、复核流程、数据资产与批量运行、分析与调度。
 - resources：AI/Data 资源统一 CRUD、测试、启用/停用、删除防护、变更日志、Data Definitions 管理、Picker 供给。
 - admin：Connections、Models/Providers、Tools、Schedules、运行重试/导出、指标、编辑锁、**评测样本管理、工作流评估、人评打分**。
-- agents：Agent 三型管理、默认配置、运行入口、运行列表与详情、挂载健康检查、**版本管理与发布部署、Agent级评测与人评**。
+- agents：Agent 三型管理、默认配置、运行入口、运行列表与详情、挂载健康检查、**版本管理与发布部署、Agent级评测与人评、Agent指标统计**。
 
 **章节来源**
 - [server/app/routers/workflows.py:17-162](file://server/app/routers/workflows.py#L17-L162)
@@ -213,6 +214,70 @@ Allow --> Next["继续处理请求"]
 
 ## 新增功能详解
 
+### 增强的运行追踪系统
+**更新** 运行追踪系统现已实现标准化的 span 类型映射和规范化的 token 使用结构，提供更强大的可观测性能力。
+
+#### 标准化 Span 类型映射
+- **LLM**：对应模型类型为 `model` 的调用记录
+- **TOOL**：对应模型类型为 `tool` 或 `mcp` 的调用记录  
+- **KNOWLEDGE**：对应模型类型为 `knowledge` 的调用记录
+- **WORKFLOW**：对应 NodeRun 级别的节点执行
+- **AGENT**：对应 Agent 级别的运行根节点
+
+#### 规范化的 Token 使用结构
+- 统一使用 `inputTokens` 和 `outputTokens` 字段表示 token 消耗
+- 支持向后兼容旧的 `prompt` 和 `completion` 字段格式
+- 自动计算总 token 数量：`total = prompt + completion`
+
+#### 改进的错误处理机制
+- 标准化错误响应格式：`{code, message, retryable}`
+- 统一的错误码体系：`RUN_ERROR` 作为默认错误码
+- 支持可重试错误的标识
+
+#### Trace 端点增强
+- **GET /api/runs/{run_id}/trace**：获取完整的运行追踪数据
+- 返回数据结构包含：
+  - `root`：根 span（Run 级别）
+  - `totalTokens`：总 token 使用量
+  - `modelCalls`：LLM 调用次数
+
+#### Span 树结构
+- **Run Span**：根节点，包含运行基本信息、输入输出、错误信息
+- **NodeRun Spans**：子节点，对应工作流中的每个节点执行
+- **CallRecord Spans**：叶子节点，对应具体的工具调用、模型调用等
+
+**章节来源**
+- [server/app/routers/runs.py:112-184](file://server/app/routers/runs.py#L112-L184)
+
+### Agent 指标统计增强
+**更新** Agent 指标端点现已支持总 token 使用量统计，提供更全面的性能监控能力。
+
+#### 指标端点增强
+- **GET /api/agents/{aid}/metrics**：获取 Agent 级观测指标
+- 新增 `totalTokens` 字段：累计所有运行的 token 使用量
+- 保持原有指标：总数、成功率、平均时长、最大时长等
+
+#### Token 使用量计算
+- 聚合所有相关运行的 token 使用情况
+- 支持多种 token 格式：`{total}`、`{prompt, completion}`
+- 自动计算总 token 数：`total = prompt + completion`
+
+#### 指标数据结构
+```json
+{
+  "total": 100,
+  "succeeded": 85,
+  "failed": 15,
+  "successRate": 0.85,
+  "avgDurationMs": 1234,
+  "maxDurationMs": 5678,
+  "totalTokens": 123456
+}
+```
+
+**章节来源**
+- [server/app/routers/agents.py:289-304](file://server/app/routers/agents.py#L289-L304)
+
 ### 工作流评估系统
 **新增** 完整的工作流评估系统，支持对工作流进行真实的端到端评测。
 
@@ -281,8 +346,7 @@ Allow --> Next["继续处理请求"]
 ```
 
 **章节来源**
-- [server/app/routers/admin.py:658-670](file://server/app/routers/admin.py#L658-L670)
-- [server/app/routers/agents.py:362-374](file://server/app/routers/agents.py#L362-L374)
+- [server/app/routers/admin.py:658-670](file://server/app/routers/agents.py:362-374)(file://server/app/routers/agents.py#L362-L374)
 
 ### Agent评估增强
 **更新** Agent评估功能现已支持更丰富的评判模式和同步执行。
@@ -346,40 +410,6 @@ Allow --> Next["继续处理请求"]
 
 **章节来源**
 - [server/app/routers/workflows.py:110-137](file://server/app/routers/workflows.py#L110-L137)
-
-### 运行追踪与观测系统
-**新增** 完整的运行追踪系统，提供详细的执行过程可视化。
-
-#### 追踪端点
-- **GET /api/runs/{run_id}/trace**：获取完整的运行追踪数据
-- 返回数据结构包含：
-  - `root`: 根 span（Run 级别）
-  - `totalTokens`: 总 token 使用量
-  - `modelCalls`: LLM 调用次数
-
-#### Span 树结构
-- **Run Span**：根节点，包含运行基本信息、输入输出、错误信息
-- **NodeRun Spans**：子节点，对应工作流中的每个节点执行
-- **CallRecord Spans**：叶子节点，对应具体的工具调用、模型调用等
-
-#### Token 使用统计
-- 支持 inputTokens 和 outputTokens 统计
-- 聚合所有节点的 token 使用情况
-- 提供总 token 使用量的快速查看
-
-#### 模型调用计数
-- 自动统计 LLM 调用次数
-- 支持不同模型类型的识别（model/tool/mcp/knowledge）
-
-#### 前端集成
-- 提供可视化的 span 树展示
-- 支持展开/折叠节点查看详细信息
-- 显示每个 span 的耗时、状态、token 使用情况
-
-**章节来源**
-- [server/app/routers/runs.py:133-184](file://server/app/routers/runs.py#L133-L184)
-- [src/components/run/trace-view.tsx:1-279](file://src/components/run/trace-view.tsx#L1-L279)
-- [src/services/wf-api.ts:382-383](file://src/services/wf-api.ts#L382-L383)
 
 ### 增强的事件列表过滤功能
 **更新** 事件列表端点现在支持按 nodeRunId 进行精确过滤。
@@ -507,10 +537,10 @@ Allow --> Next["继续处理请求"]
 ### 总结
 本次更新主要围绕五个核心方面进行了重大改进：
 
-1. **工作流评估系统**：实现了完整的工作流评测能力，支持同步执行和多评判模式
-2. **人评机制**：提供了灵活的人工评分功能，支持0-5分制评分和备注
-3. **评测数据管理**：增强了EvalSample模型，支持存储多种评判结果
-4. **运行追踪与观测**：新增了完整的运行追踪系统，提供详细的执行过程可视化
-5. **数据架构演进**：新增了多个数据库表和字段，支持更丰富的评测场景
+1. **增强的运行追踪系统**：实现了标准化的 span 类型映射（LLM/TOOL/KNOWLEDGE）、规范化的 token 使用结构和改进的错误处理机制
+2. **Agent 指标统计增强**：新增了 totalTokens 计算功能，提供更全面的性能监控能力
+3. **工作流评估系统**：实现了完整的工作流评测能力，支持同步执行和多评判模式
+4. **人评机制**：提供了灵活的人工评分功能，支持0-5分制评分和备注
+5. **评测数据管理**：增强了EvalSample模型，支持存储多种评判结果
 
-这些改进显著提升了系统的评测能力和可观测性，为工作流和Agent的质量保证提供了强有力的技术支持。**特别是新增的运行追踪功能，使得开发者能够深入了解运行的内部执行过程，便于问题诊断和性能优化**。
+这些改进显著提升了系统的评测能力和可观测性，为工作流和Agent的质量保证提供了强有力的技术支持。**特别是增强的运行追踪功能，通过标准化的 span 类型映射和规范化的 token 使用结构，使得开发者能够更深入地了解运行的内部执行过程，便于问题诊断和性能优化**。
