@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "graph-snapshot.schema.json",
+  "title": "Graph Snapshot（SDD D-5 交付物；依据调研 09/11）",
+  "type": "object",
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string" },
+          "name": { "type": "string" },
+          "config": { "type": "object" },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "type": { "type": "string" },
+                "source": {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "enum": ["fixed", "upstream", "input", "system"] },
+                    "nodeId": { "type": "string" },
+                    "path": { "type": "string" },
+                    "value": {}
+                  },
+                  "required": ["kind"]
+                }
+              },
+              "required": ["name", "source"]
+            }
+          }
+        },
+        "required": ["id", "type", "name"]
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "source": { "type": "string" },
+          "sourceHandle": { "type": ["string", "null"] },
+          "target": { "type": "string" }
+        },
+        "required": ["id", "source", "target"]
+      }
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "positions": { "type": "object" },
+        "viewport": { "type": "object" }
+      }
+    }
+  },
+  "required": ["nodes", "edges"]
+}

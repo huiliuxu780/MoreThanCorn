@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "node-type-registry.schema.json",
+  "title": "Node Type Registry（SDD D-5 交付物；依据调研 11 §7）",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "type_key": { "type": "string" },
+      "family": { "type": "string" },
+      "label": { "type": "string" },
+      "icon": { "type": "string" },
+      "accent": { "type": "string" },
+      "editor_kinds": {
+        "type": "array",
+        "items": { "type": "string", "enum": ["FLOW", "GROUP", "WORKFLOW"] },
+        "description": "节点可出现的编排器目录（GROUP 目录收敛为 7 类可添加 + Start/End）"
+      },
+      "executor_key": { "type": "string" },
+      "schema": { "type": "object", "description": "config JSON Schema；x-control 指定前端控件" },
+      "io": {
+        "type": "object",
+        "properties": {
+          "outputs": {
+            "oneOf": [
+              { "type": "array", "items": { "type": "string", "pattern": "^[A-Za-z0-9_]+:[a-z]+$" } },
+              { "type": "string", "enum": ["declared", "from-tool-version"] }
+            ]
+          }
+        }
+      }
+    },
+    "required": ["type_key", "family", "label", "editor_kinds", "executor_key", "schema"]
+  }
+}

@@ -1,0 +1,102 @@
+openapi: 3.1.0
+info:
+  title: Agent Builder Domain API（自研口径，SDD D-5 交付物）
+  version: 1.0.0
+  description: |
+    依据调研 00 §10 自研推荐口径整理的域 API 摘要。实现以 server/ 为准；
+    本文件是契约基线，新增接口须同步更新。错误响应统一 {code, message, path?, traceId?}。
+servers:
+  - url: http://127.0.0.1:8100
+paths:
+  /api/agents:
+    post:
+      summary: 创建 Agent（autonomous|dialogue|expert-group）
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentCreate" }
+      responses:
+        "201": { description: 创建成功，返回 id }
+    get:
+      summary: Agent 列表（分页/搜索）
+      parameters:
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: pageSize, in: query, schema: { type: integer } }
+        - { name: search, in: query, schema: { type: string } }
+      responses:
+        "200": { description: "items 含 latestVersion/sandboxVersion/prodVersion" }
+  /api/agents/{aid}:
+    get: { summary: Agent 详情（含 config/configRevision） }
+    put:
+      summary: 更新 Agent（config/名称/头像；乐观锁）
+      description: expectedRevision 不匹配返回 409 REVISION_CONFLICT
+    delete: { summary: 删除 Agent（级联清理版本与部署；审计留痕） }
+  /api/agents/{aid}/versions:
+    post:
+      summary: 发布不可变版本（校验→快照→依赖冻结→artifactHash）
+      responses:
+        "201": { description: versionId/versionNo/artifactHash }
+        "409": { description: VALIDATION_FAILED 或 DEPENDENCY_INVALID（issues 明细） }
+    get: { summary: 版本列表（含冻结成员摘要） }
+  /api/agents/{aid}/releases:
+    post:
+      summary: 部署版本到环境（回滚=旧版本重新部署）
+      description: 同环境旧 active → rolled_back；审计留痕
+    get: { summary: 部署记录列表 }
+  /api/agents/{aid}/run:
+    post:
+      summary: 触发运行（202 异步入队）
+      description: |
+        versionId 显式指定；trigger=schedule|api 且无发布版本 → 422 NO_RELEASED_VERSION。
+        input.__modelOverride 仅供预览对比（D-2）。
+  /api/agents/{aid}/eval-run:
+    post:
+      summary: Agent 级评测（同步逐样本运行）
+      description: judge=none|rule|model；结果落 eval_sample.judge_result
+  /api/agents/{aid}/eval-samples/{sid}/human-score:
+    post: { summary: 人评打分（0-5，覆盖机器 Judge） }
+  /api/agents/{aid}/evolution/candidates:
+    post: { summary: 失败归因→LLM 生成候选 Prompt 补丁；无失败 422 NO_FAILURES }
+  /api/agents/{aid}/evolution:
+    get: { summary: 补丁历史（pending|applied|rejected） }
+  /api/agents/{aid}/evolution/{pid}/apply:
+    post: { summary: 应用补丁到草稿（可继续编辑撤销） }
+  /api/agents/{aid}/evolution/{pid}/reject:
+    post: { summary: 拒绝补丁 }
+  /api/agents/{aid}/metrics:
+    get: { summary: 观测指标（总数/成功率/平均时长） }
+  /api/audit:
+    get: { summary: 审计日志（发布/部署/删除/强解锁留痕） }
+  /api/workflows/{wid}/draft:
+    put:
+      summary: 画布草稿保存（baseRevision 乐观锁，冲突 409）
+  /api/workflows/{wid}/publish:
+    post: { summary: 工作流发布（校验→不可变版本→审计） }
+  /api/workflows/{wid}/node-test:
+    post: { summary: 节点单测（SDD C-6；入参覆盖固定绑定） }
+  /api/locks:
+    post:
+      summary: 获取编辑锁（10 分钟租约，过期自动可接管）
+  /api/locks/{rid}/force:
+    delete: { summary: 强制解锁（需 Admin；审计留痕） }
+  /api/connections:
+    post: { summary: 创建连接（Secret 加密存储） }
+  /api/connections/{cid}:
+    put: { summary: 编辑连接（secret 留空=保留原密钥=轮换语义） }
+  /api/quality-results/{rid}/evidence:
+    post: { summary: 人工添加证据（D-2 复核修复） }
+  /api/tasks/{tid}:
+    get: { summary: 任务详情（D-5 新增，替代 mock） }
+    put: { summary: 任务编辑保存 }
+  /api/tasks/{tid}/status:
+    post: { summary: 任务启用/停用（Active|Paused） }
+components:
+  schemas:
+    AgentCreate:
+      type: object
+      properties:
+        name: { type: string, maxLength: 20 }
+        type: { type: string, enum: [autonomous, dialogue, expert-group] }
+        description: { type: string }
+        config: { type: object }
+      required: [name, type]

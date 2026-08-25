@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "run-event.schema.json",
+  "title": "Run Event（SDD D-5 交付物；依据调研 00 §9.5 双通道事件协议）",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "sequence": { "type": "integer", "minimum": 1, "description": "单调递增；SSE 断线按 Last-Event-ID 续传" },
+    "type": {
+      "type": "string",
+      "enum": [
+        "agent_started", "agent_mounts_resolved", "llm_delta", "tool_call", "tool_result",
+        "agent_completed", "agent_failed", "memory_read", "memory_write",
+        "workflow_started", "node_started", "node_completed", "node_failed", "node_skipped",
+        "workflow_completed", "workflow_failed", "reply_sent"
+      ]
+    },
+    "channel": {
+      "type": "string",
+      "enum": ["CONTROL", "CONTENT"],
+      "description": "llm_delta/reply_sent 为 CONTENT（用户可见内容流）；其余为 CONTROL（编排控制面）"
+    },
+    "trace_id": { "type": "string", "description": "缺省=run_id；跨运行调用链同一 trace" },
+    "span_id": { "type": ["string", "null"], "description": "缺省=node_run_id" },
+    "parent_span_id": { "type": ["string", "null"], "description": "缺省=run_id" },
+    "node_id": { "type": ["string", "null"] },
+    "node_run_id": { "type": ["string", "null"] },
+    "duration_ms": { "type": ["integer", "null"] },
+    "tokens": { "type": ["object", "null"] },
+    "payload": { "type": "object" },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["id", "run_id", "sequence", "type", "channel", "payload"]
+}

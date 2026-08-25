@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-definition.schema.json",
+  "title": "Agent Definition（SDD D-5 交付物；依据调研 04）",
+  "oneOf": [
+    {
+      "type": "object",
+      "title": "AutonomousDefinition",
+      "properties": {
+        "rolePrompt": { "type": "string" },
+        "modelRef": {
+          "type": "object",
+          "properties": {
+            "modelId": { "type": "string" },
+            "diversity": { "type": "string", "enum": ["rigorous", "balanced", "creative"] },
+            "historyTurns": { "type": "integer", "enum": [1, 5, 15] },
+            "toolCallModelId": { "type": "string" }
+          },
+          "required": ["modelId"]
+        },
+        "skills": { "type": "array", "items": { "type": "string" } },
+        "tools": { "type": "array", "items": { "type": "string" } },
+        "workflows": { "type": "array", "items": { "type": "string" } },
+        "knowledges": { "type": "array", "items": { "type": "string" } },
+        "knowledgeAdvanced": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "topK": { "type": "integer", "minimum": 1, "maximum": 20 },
+              "scoreThreshold": { "type": "number", "minimum": 0, "maximum": 1 },
+              "mode": { "type": "string", "enum": ["HYBRID", "SEMANTIC", "TEXT"] }
+            }
+          }
+        },
+        "memoriesSchema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "description": { "type": "string" },
+              "dataType": { "type": "string", "enum": ["STRING", "NUMBER", "BOOLEAN", "JSON"] },
+              "defaultValue": { "type": "string" }
+            },
+            "required": ["name"]
+          }
+        },
+        "conversation": {
+          "type": "object",
+          "properties": {
+            "autoFollowUp": { "type": "object" },
+            "chitchatFallback": { "type": "object" },
+            "greeting": { "type": "string" }
+          }
+        }
+      },
+      "required": ["rolePrompt", "modelRef"]
+    },
+    {
+      "type": "object",
+      "title": "FlowDefinition（dialogue）",
+      "properties": {
+        "workflowId": { "type": "string" },
+        "graph": { "$ref": "graph-snapshot.schema.json" }
+      },
+      "required": ["workflowId", "graph"]
+    },
+    {
+      "type": "object",
+      "title": "GroupDefinition（expert-group）",
+      "properties": {
+        "workflowId": { "type": "string" },
+        "members": { "type": "array", "items": { "type": "string" } },
+        "graph": { "$ref": "graph-snapshot.schema.json" }
+      },
+      "required": ["workflowId", "graph"]
+    }
+  ]
+}
