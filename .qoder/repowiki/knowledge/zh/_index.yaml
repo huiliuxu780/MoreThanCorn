@@ -3,7 +3,7 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-08-25T04:17:40Z"
+exported_at: "2026-08-25T04:47:55Z"
 modules:
     "":
         dir_name: AI 质量评价与工作流编排平台（单体仓库）
@@ -100,8 +100,8 @@ modules:
         depends_on: []
         related_to: []
     frontend_app:
-        dir_name: 工作流编排与质量复核前端应用
-        title: 工作流编排与质量复核前端应用
+        dir_name: 前端应用（工作流编排与质量复核工作台）
+        title: 前端应用（工作流编排与质量复核工作台）
         scope:
             - src/
         source_files: []
@@ -167,8 +167,8 @@ modules:
         depends_on: []
         related_to: []
     frontend_app/resources_feature:
-        dir_name: 资源管理（AI_Data Resources）页面与组件
-        title: 资源管理（AI/Data Resources）页面与组件
+        dir_name: 资源列表、详情与向导创建（AI_Data Resources）
+        title: 资源列表、详情与向导创建（AI/Data Resources）
         scope:
             - src/pages/res-list.tsx
             - src/pages/res-detail.tsx

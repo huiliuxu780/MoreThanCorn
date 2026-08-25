@@ -8,6 +8,9 @@
 - [agent-ops-panels.tsx](file://src/components/agent-ops-panels.tsx)
 - [wf-agents-list.tsx](file://src/pages/wf-agents-list.tsx)
 - [agent-publish-dialog.tsx](file://src/components/agent-publish-dialog.tsx)
+- [wf-workflows-list.tsx](file://src/pages/wf-workflows-list.tsx)
+- [resource-card.tsx](file://src/components/resources/resource-card.tsx)
+- [workflows.py](file://server/app/routers/workflows.py)
 - [wf-api.ts](file://src/services/wf-api.ts)
 - [agents.py](file://server/app/routers/agents.py)
 - [models.py](file://server/app/models.py)
@@ -36,11 +39,12 @@
 - **增强** 评估样本数据库模型：新增 judge_result 字段存储评判结果，支持 evolution_patch 表管理进化历史
 - **新增** 人评覆盖机制：允许人工评分覆盖或补充机器评判结果
 - **重大改进** 评估闭环：从样本管理到真实运行评测再到结果分析的完整流程
+- **新增** 工作流列表 Agent 绑定指示器：当工作流被至少一个 Agent 引用时（agentRefCount > 0），显示'Agent Canvas'徽章，帮助用户区分独立工作流和 Agent 配置中的工作流
 
 ## 产品概述
 本工作流聚焦于"Agent 编辑器（节点图/Inspector/变量选择器/测试运行）""工作流设计器""Agent 版本管理与发布流程"。平台以可视化节点图编排 AI 能力，支持对话编排、自主规划与专家组协作三类 Agent；通过工作流定义、校验、发布与版本快照，形成从编辑到上线的闭环。前端基于 React + @xyflow/react 实现画布与 Inspector，后端 FastAPI 提供工作流与 Agent 的 CRUD、校验、发布与运行接口，数据库使用 SQLAlchemy/Alembic。
 
-**更新** 已集成 Phase B 的 Agent 版本发布系统与 Phase C 的事件通道、跟踪基础设施及新节点类型，并新增 Phase D-1 的四标签 Agent 编辑器界面、Agent 级评估系统、专家组增强功能和综合操作仪表板，形成完整的 Agent 全生命周期管理能力。同时对工作流设计器进行了重大改进，包括LLM节点配置优化、transform节点schema统一、agent-select查询参数改进和内存描述正确注入等。**最新增强** 包括模型语义参数控制（温度调节、历史轮次管理、工具调用辅助模型）、预览模型对比功能、语音合成集成以及增强的聊天历史上下文管理。**新增 Phase D-3** 增强了评估系统，支持三种评判模式和进化补丁管理，形成了从问题发现到自动修复的完整闭环。
+**更新** 已集成 Phase B 的 Agent 版本发布系统与 Phase C 的事件通道、跟踪基础设施及新节点类型，并新增 Phase D-1 的四标签 Agent 编辑器界面、Agent 级评估系统、专家组增强功能和综合操作仪表板，形成完整的 Agent 全生命周期管理能力。同时对工作流设计器进行了重大改进，包括LLM节点配置优化、transform节点schema统一、agent-select查询参数改进和内存描述正确注入等。**最新增强** 包括模型语义参数控制（温度调节、历史轮次管理、工具调用辅助模型）、预览模型对比功能、语音合成集成以及增强的聊天历史上下文管理。**新增 Phase D-3** 增强了评估系统，支持三种评判模式和进化补丁管理，形成了从问题发现到自动修复的完整闭环。**新增工作流列表 Agent 绑定指示器**，在工作流列表中直观显示哪些工作流被 Agent 引用，提升资源管理效率。
 
 ## 核心业务流程
 - 创建工作流：创建默认包含"开始/结束"的工作流草稿，返回工作流 ID 与初始状态。
@@ -53,42 +57,33 @@
 - Agent 三型编辑：对话编排走工作流画布；自主规划提供角色提示词、模型、技能/工具/工作流/知识挂载与预览调试；专家组维护成员池与试运行。
 - **新增** 四标签 Agent 编辑器：自主规划 Agent 提供搭建/运行观测/效果评测/版本指标四个标签页，统一入口管理不同形态的 Agent。
 - **新增** 评估闭环流程：样本管理 → 真实运行评测 → 多模式评判 → 结果分析 → 进化补丁生成 → 审批应用。
+- **新增** 工作流引用可视化：工作流列表显示 Agent 绑定状态，帮助用户快速识别被引用的工作流。
 
 ```mermaid
 sequenceDiagram
 participant U as "用户"
-participant FE as "Agent编辑器(wf-agent-editor.tsx)"
-participant API as "后端(agents.py)"
+participant FE as "工作流列表(wf-workflows-list.tsx)"
+participant API as "后端(workflows.py)"
 participant DB as "数据库(models.py)"
-participant RUN as "运行层(runner.py)"
-U->>FE : 打开效果评测标签
-FE->>FE : 选择评判模式：规则/模型/人工
-U->>FE : 添加评估样本并配置输入期望
-FE->>API : POST /api/agents/{id}/eval-samples
-U->>FE : 启动批量评测运行
-FE->>API : POST /api/agents/{id}/eval-run
-API->>RUN : 逐个样本真实运行
-RUN->>DB : 记录运行结果和事件
-API->>DB : 计算评判结果并存储judge_result
-FE->>FE : 显示评测结果和成功率
-U->>FE : 查看失败原因并生成进化补丁
-FE->>API : POST /api/agents/{id}/evolution/candidates
-API->>API : LLM生成改进提示词
-FE->>FE : 展示候选补丁供审批
-U->>FE : 批准应用到草稿
-FE->>API : POST /api/agents/{id}/evolution/{pid}/apply
+U->>FE : 打开工作流列表页面
+FE->>API : GET /api/workflows
+API->>DB : 查询工作流及引用计数
+DB-->>API : 返回工作流数据含 agentRefCount
+API-->>FE : 返回工作流列表
+FE->>FE : 根据 agentRefCount 显示'Agent Canvas'徽章
+U->>FE : 查看被 Agent 引用的高亮工作流
 ```
 
 **图表来源**
-- [wf-agent-editor.tsx:363-422](file://src/pages/wf-agent-editor.tsx#L363-L422)
-- [agents.py:303-377](file://server/app/routers/agents.py#L303-L377)
-- [agents.py:379-446](file://server/app/routers/agents.py#L379-L446)
-- [agent-ops-panels.tsx:171-240](file://src/components/agent-ops-panels.tsx#L171-L240)
+- [wf-workflows-list.tsx:21-24](file://src/pages/wf-workflows-list.tsx#L21-L24)
+- [wf-workflows-list.tsx:94-114](file://src/pages/wf-workflows-list.tsx#L94-L114)
+- [workflows.py:53-71](file://server/app/routers/workflows.py#L53-L71)
+- [resource-card.tsx:59-63](file://src/components/resources/resource-card.tsx#L59-L63)
 
 **章节来源**
-- [wf-agent-editor.tsx:1-422](file://src/pages/wf-agent-editor.tsx#L1-L422)
-- [agents.py:200-483](file://server/app/routers/agents.py#L200-L483)
-- [agent-ops-panels.tsx:1-286](file://src/components/agent-ops-panels.tsx#L1-L286)
+- [wf-workflows-list.tsx:1-136](file://src/pages/wf-workflows-list.tsx#L1-L136)
+- [workflows.py:53-71](file://server/app/routers/workflows.py#L53-L71)
+- [resource-card.tsx:59-63](file://src/components/resources/resource-card.tsx#L59-L63)
 
 ## 功能模块清单
 - 工作流设计器（画布与 Inspector）
@@ -148,6 +143,13 @@ FE->>API : POST /api/agents/{id}/evolution/{pid}/apply
   - 职责：TopK 数量、匹配分阈值、检索模式（混合/语义/全文）配置。
   - 用户价值：精细化控制知识检索效果，平衡性能与准确性。
   - 验收要点：配置项生效、检索模式切换、阈值过滤效果。
+- **新增** 工作流列表 Agent 绑定指示器
+  - 职责：在工作流列表中显示 Agent 引用状态，帮助用户识别被引用的工作流。
+  - 用户价值：提升资源管理效率，快速区分独立工作流和 Agent 配置中的工作流。
+  - 验收要点：agentRefCount 统计准确、'Agent Canvas'徽章显示正确、视觉标识清晰。
+  - **后端统计**：查询 Agent 表中 workflow_id 字段统计引用数量。
+  - **前端展示**：ResourceCard 组件根据 boundAgent 标志显示'Agent Canvas'徽章。
+  - **用户体验**：徽章样式与其他元数据徽章保持一致，易于识别。
 
 **章节来源**
 - [wf-designer.tsx:161-657](file://src/pages/wf-designer.tsx#L161-L657)
@@ -157,12 +159,16 @@ FE->>API : POST /api/agents/{id}/evolution/{pid}/apply
 - [validator.py:54-163](file://server/app/validator.py#L54-L163)
 - [workflows.py:101-162](file://server/app/routers/workflows.py#L101-L162)
 - [wf-api.ts:315-350](file://src/services/wf-api.ts#L315-L350)
+- [wf-workflows-list.tsx:21-24](file://src/pages/wf-workflows-list.tsx#L21-L24)
+- [wf-workflows-list.tsx:94-114](file://src/pages/wf-workflows-list.tsx#L94-L114)
+- [workflows.py:53-71](file://server/app/routers/workflows.py#L53-L71)
+- [resource-card.tsx:59-63](file://src/components/resources/resource-card.tsx#L59-L63)
 
 ## 数据与状态
 - 核心数据模型
   - 工作流与工作流版本：Workflow 存储草稿与当前版本指针；WorkflowVersion 存储不可变定义与引用快照。
   - 节点定义：NodeDefinition 描述节点族、IO、执行器等元信息。
-  - **新增** Agent 版本系统：AgentVersion 存储不可变版本快照（definition、common_config、dependency_snapshot、artifact_hash）；Release 管理环境部署（sandbox/prod）。
+  - **新增** Agent 版本系统：AgentVersion 存储不可变版本快照（definition、common_config、dependency_snapshot、artifact_hash）；Release 表管理环境部署（sandbox/prod）。
   - **新增** 运行增强：Run 表增加 agent_version_id、definition_source、parent_run_id（嵌套调用树）；RunEvent 增加 channel、trace_id、span_id、duration_ms、tokens。
   - **新增** 记忆持久化：MemoryRecord 表支持 agent:{agentId} 或 wf:{workflowId} 作用域内的键值存储。
   - Agent：三型 Agent（autonomous/dialogue/expert-group），含配置与乐观锁 revision，以及环境版本指针。
@@ -184,6 +190,7 @@ FE->>API : POST /api/agents/{id}/evolution/{pid}/apply
   - **新增** 版本解析：运行阶段优先使用指定版本或环境解析的版本快照，而非活动草稿。
   - **新增** 样本作用域：评估样本按 Agent 维度隔离，支持跨运行持久化。
   - **新增** 评判结果继承：人工评判可覆盖机器评判结果，形成评判历史。
+  - **新增** 引用统计：工作流列表通过查询 Agent 表的 workflow_id 字段统计引用数量。
 
 ```mermaid
 classDiagram
@@ -305,7 +312,7 @@ Run "1" -- "0..*" RunEvent : "events"
 - [models.py:31-62](file://server/app/models.py#L31-62)
 - [models.py:271-323](file://server/app/models.py#L271-323)
 - [models.py:221-251](file://server/app/models.py#L221-L251)
-- [models.py:371-398](file://server/app/models.py#L371-L398)
+- [models.py:371-398](file://server/app/models.py#L371-398)
 - [d028phased1001_eval_sample_agent.py:21-24](file://server/alembic/versions/d028phased1001_eval_sample_agent.py#L21-L24)
 - [d029phased3001_judge_evolution.py:24-35](file://server/alembic/versions/d029phased3001_judge_evolution.py#L24-L35)
 
@@ -313,7 +320,7 @@ Run "1" -- "0..*" RunEvent : "events"
 - [models.py:31-62](file://server/app/models.py#L31-62)
 - [models.py:271-323](file://server/app/models.py#L271-323)
 - [models.py:221-251](file://server/app/models.py#L221-L251)
-- [models.py:371-398](file://server/app/models.py#L371-L398)
+- [models.py:371-398](file://server/app/models.py#L371-398)
 - [b026phaseb0001_agent_version_release.py:1-21](file://server/alembic/versions/b026phaseb0001_agent_version_release.py#L1-L21)
 - [c027phasec0001_event_channels_memory.py:22-38](file://server/alembic/versions/c027phasec0001_event_channels_memory.py#L22-L38)
 - [d028phased1001_eval_sample_agent.py:1-31](file://server/alembic/versions/d028phased1001_eval_sample_agent.py#L1-L31)
@@ -331,6 +338,7 @@ Run "1" -- "0..*" RunEvent : "events"
   - **新增** 语音合成兼容性：语音播报功能仅在支持 SpeechSynthesis API 的浏览器中可用，不支持时自动降级。
   - **新增** 评判可靠性：模型评判失败时自动回退到规则评判，确保评估结果可用性。
   - **新增** 补丁安全性：进化补丁仅应用到草稿版本，需要人工审批才能生效，防止自动修改风险。
+  - **新增** 引用统计性能：工作流列表查询通过单次 SQL 聚合统计引用数量，避免 N+1 查询问题。
 - 依赖与集成边界
   - 节点 IO 与执行器由 NodeDefinition 与 registry 决定；LLM/Tool/MCP/Knowledge 引用需处于 enabled/ready 状态。
   - 发布流程会收集节点对资源的引用，用于删除防护与审计。
@@ -340,6 +348,7 @@ Run "1" -- "0..*" RunEvent : "events"
   - **新增** 模型参数约束：多样性参数限定 rigorous/balanced/creative，历史轮次范围 1-15，温度值映射为 0.2/0.7/1.1。
   - **新增** 评判模式约束：judge 参数限定 rule/model/human，评分范围 0-5 分。
   - **新增** 进化归因约束：attribution 限定 timeout/tool_failed/hallucination/other，status 限定 pending/applied/rejected。
+  - **新增** 引用关系约束：Agent.workflow_id 字段建立工作流与 Agent 的关联关系，支持外键约束。
 - 业务约束
   - 工作流必须恰有一个开始节点与至少一个终端节点；条件分支与出边 handle 需一致；结构化输出键需被唯一节点产出。
   - Agent 名称长度上限为 20，前后端共用同一常量。
@@ -347,6 +356,7 @@ Run "1" -- "0..*" RunEvent : "events"
   - **新增** 工作流选择约束：workflow-select 节点必须配置有效候选工作流；未命中时走 miss 分支。
   - **新增** 评估样本约束：样本输入必须符合 Agent 配置的结构化输入；样本名称唯一性不强制但建议有意义。
   - **新增** 进化补丁约束：只有 pending 状态的补丁可被应用或拒绝；应用成功后原提示词被替换，新版本号递增。
+  - **新增** 引用统计约束：agentRefCount 通过查询 Agent 表统计，确保数据准确性。
 
 ```mermaid
 flowchart TD
@@ -361,7 +371,8 @@ R7 --> R8["R8: Agent 版本依赖冻结"]
 R8 --> R9["R9: 评估样本输入校验"]
 R9 --> R10["R10: 评判模式有效性检查"]
 R10 --> R11["R11: 进化补丁状态约束"]
-R11 --> End(["返回 ValidationReport"])
+R11 --> R12["R12: 工作流引用统计"]
+R12 --> End(["返回 ValidationReport"])
 ```
 
 **图表来源**
@@ -369,6 +380,7 @@ R11 --> End(["返回 ValidationReport"])
 - [agents.py:297-321](file://server/app/routers/agents.py#L297-L321)
 - [agents.py:303-377](file://server/app/routers/agents.py#L303-L377)
 - [agents.py:379-446](file://server/app/routers/agents.py#L379-L446)
+- [workflows.py:53-71](file://server/app/routers/workflows.py#L53-L71)
 
 **章节来源**
 - [validator.py:54-163](file://server/app/validator.py#L54-L163)
@@ -379,6 +391,7 @@ R11 --> End(["返回 ValidationReport"])
 - [agents.py:297-321](file://server/app/routers/agents.py#L297-L321)
 - [agents.py:303-377](file://server/app/routers/agents.py#L303-L377)
 - [agents.py:379-446](file://server/app/routers/agents.py#L379-L446)
+- [workflows.py:53-71](file://server/app/routers/workflows.py#L53-L71)
 
 ## 新增特性详解
 
@@ -572,3 +585,16 @@ R11 --> End(["返回 ValidationReport"])
 **章节来源**
 - [wf-agent-editor.tsx:180-186](file://src/pages/wf-agent-editor.tsx#L180-L186)
 - [agent_runtime.py:220-233](file://server/app/agent_runtime.py#L220-L233)
+
+### 工作流列表 Agent 绑定指示器（新增）
+- **引用统计**：后端查询 Agent 表中 workflow_id 字段统计每个工作流的引用数量
+- **前端展示**：ResourceCard 组件根据 boundAgent 标志显示'Agent Canvas'徽章
+- **视觉标识**：徽章样式与其他元数据徽章保持一致，易于识别
+- **用户体验**：帮助用户快速区分独立工作流和被 Agent 引用的高价值工作流
+- **性能优化**：通过单次 SQL 聚合查询统计引用数量，避免 N+1 查询问题
+
+**章节来源**
+- [wf-workflows-list.tsx:21-24](file://src/pages/wf-workflows-list.tsx#L21-L24)
+- [wf-workflows-list.tsx:94-114](file://src/pages/wf-workflows-list.tsx#L94-L114)
+- [workflows.py:53-71](file://server/app/routers/workflows.py#L53-L71)
+- [resource-card.tsx:59-63](file://src/components/resources/resource-card.tsx#L59-L63)

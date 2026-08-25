@@ -1,6 +1,8 @@
 /** Agent Designer — quickservice 1:1 复刻版（16-ui-replication-spec.md）。
  *  后端契约不变（server/ :8100）。运行态为客户端 demo-run（P1 换真 SSE）。 */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import CodeMirror from "@uiw/react-codemirror"
+import { python } from "@codemirror/lang-python"
 import { AgentPublishDialog, useAgentVersionState } from "@/components/agent-publish-dialog"
 import { ConversationPanel, MemorySchemaForm } from "@/components/agent-common-config"
 import { useNavigate, useParams } from "react-router-dom"
@@ -701,12 +703,18 @@ function ConfigDrawer(props: {
       {/* 用户报告修复：代码编写/Query改写/决策分类 专项表单（原通用表单与执行器键不匹配=假功能） */}
       {node.type === "code-write" && (
         <Section title="代码（Python 沙箱，10s 超时）">
-          <Textarea
-            className="min-h-48 font-mono text-[11px] leading-4"
-            placeholder={'def main(args):\n    # args.params 为输入绑定值字典\n    return {"output": args.params.get("input", "")}'}
-            value={typeof cfg.code === "string" ? cfg.code : ""}
-            onChange={(e) => set("code", e.target.value)}
-          />
+          <div className="overflow-hidden rounded-md border" style={{ borderColor: C.cardBorder }}>
+            <CodeMirror
+              value={typeof cfg.code === "string" ? cfg.code : ""}
+              onChange={(v) => set("code", v)}
+              theme="light"
+              height="180px"
+              extensions={[python()]}
+              placeholder={'def main(args):\n    # args.params 为输入绑定值字典\n    return {"output": args.params.get("input", "")}'}
+              basicSetup={{ lineNumbers: true, foldGutter: true, autocompletion: true, bracketMatching: true, highlightActiveLine: true }}
+              style={{ fontSize: 12 }}
+            />
+          </div>
           <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>必须定义 main(args)，返回 dict；输入来自下方输入绑定（args.params）。</p>
           <Section title="输入绑定">
             {(node.inputs ?? []).map((b) => (
