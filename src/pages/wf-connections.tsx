@@ -85,7 +85,7 @@ export default function WfConnectionsPage() {
   }
   useEffect(() => { load() }, [params.page, params.pageSize, params.search])
 
-  const openCreate = () => { setForm(EMPTY_FORM); setOpen(true) }
+  const openCreate = () => { setForm(EMPTY_FORM); setShowSecret(false); setOpen(true) }
   const openEdit = (c: ConnRow) => {
     setForm({
       id: c.id, name: c.name, kind: KIND_LABEL[c.kind] ? c.kind : "api_key",
@@ -94,6 +94,7 @@ export default function WfConnectionsPage() {
       bucket: c.endpoint?.bucket ?? "", region: c.endpoint?.region ?? "",
       providerHint: c.providerHint ?? "", secret: "",
     })
+    setShowSecret(false)
     setOpen(true)
   }
 
