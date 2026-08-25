@@ -85,8 +85,6 @@ export default function WfConnectionsPage() {
   }
   useEffect(() => { load() }, [params.page, params.pageSize, params.search])
 
-  const filtered = rows.filter((c) => !search || c.name.toLowerCase().includes(search.toLowerCase()))
-
   const openCreate = () => { setForm(EMPTY_FORM); setOpen(true) }
   const openEdit = (c: ConnRow) => {
     setForm({
@@ -122,10 +120,31 @@ export default function WfConnectionsPage() {
     try { await connApi.remove(id); load() }
     catch (e) { toast.error((e as Error).message) }
   }
+  const [searching, setSearching] = useState<string | null>(null)
   const test = async (id: string) => {
-    try { const r = await connApi.test(id); r.ok ? toast.success("连接测试通过") : toast.error(`测试失败：${r.error ?? "未知错误"}`); load() }
-    catch (e) { toast.error((e as Error).message) }
+    setSearching(id)
+    try {
+      const r = await connApi.test(id)
+      r.ok ? toast.success("连接测试通过") : toast.error(`测试失败：${r.error ?? "未知错误"}`)
+      // 静默刷新该行状态，不触发整列表 loading 闪烁（修复"点测试列表会变"）
+      pagedApi.connections({ page: params.page, pageSize: params.pageSize, search: params.search ?? "" })
+        .then((r2) => { setRows(r2.items as unknown as ConnRow[]); setTotal(r2.total) })
+        .catch(() => undefined)
+    } catch (e) { toast.error((e as Error).message) }
+    finally { setSearching(null) }
   }
+
+  // 按协议分 tab（用户建议）
+  const [protoFilter, setProtoFilter] = useState("all")
+  const protoCounts = rows.reduce<Record<string, number>>((acc, c) => {
+    const p = c.protocol || "http-api"
+    acc[p] = (acc[p] ?? 0) + 1
+    return acc
+  }, {})
+  const protoTabs = [{ value: "all", label: "全部" }, ...PROTOCOLS.filter((p) => protoCounts[p.value])]
+  const filtered = rows
+    .filter((c) => !search || c.name.toLowerCase().includes(search.toLowerCase()))
+    .filter((c) => protoFilter === "all" || (c.protocol || "http-api") === protoFilter)
 
   return (
     <PageContainer wide className="space-y-3">
@@ -137,6 +156,17 @@ export default function WfConnectionsPage() {
       <FilterBar>
         <SearchField value={search} onChange={setSearch} placeholder="搜索 Connection..." />
       </FilterBar>
+
+      {/* 按协议分 tab（用户建议：分区域/分 tab 展示） */}
+      <div className="flex flex-wrap items-center gap-1 border-b pb-2" style={{ borderColor: "#EDF0F4" }}>
+        {protoTabs.map((t) => (
+          <button key={t.value}
+            className={`rounded-md px-3 py-1 text-xs ${protoFilter === t.value ? "bg-[#1F2329] text-white" : "text-muted-foreground hover:bg-muted"}`}
+            onClick={() => setProtoFilter(t.value)}>
+            {t.label}{t.value !== "all" && protoCounts[t.value] ? ` (${protoCounts[t.value]})` : ""}
+          </button>
+        ))}
+      </div>
 
       {loading ? (
         <CardGridSkeleton count={4} />
@@ -162,7 +192,7 @@ export default function WfConnectionsPage() {
               </div>
               <div className="mt-auto flex items-center justify-end gap-2 pt-2 text-[11px]">
                 <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => openEdit(c)}>编辑</button>
-                <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => test(c.id)}>测试</button>
+                <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100 disabled:opacity-50" disabled={searching === c.id} onClick={() => test(c.id)}>{searching === c.id ? "测试中…" : "测试"}</button>
                 <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => del(c.id)}>
                   <Trash2 className="size-3" />
                 </button>
