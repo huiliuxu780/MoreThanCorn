@@ -88,3 +88,11 @@
 ## 4. 状态日志
 - 2026-08-25 大纲建立。
 - 2026-08-25 夜间细化为切片规格（用户授权连续施工的边界：D 不实现）；开工前逐切片冻结。
+- 2026-08-26 D-1～D-5 全部实现完毕，待用户逐项验收：
+  - D-1（a9ecf8c 前序）：自主规划四 Tab + Agent 级观测/评测面板 + 专家组画布化 + 模板库 + 知识高级配置。
+  - D-2（a9ecf8c）：模型语义参数真消费（多样性→temperature/历史轮次/工具辅助模型）+ 模型对比双栏 + 语音播报。
+  - D-3（a52ce1b）：评测 Judge 三类（规则/模型/人评）+ 进化 CandidatePatch（归因→候选→审批应用）。
+  - D-4（f158c91）：RBAC 四角色真鉴权 + 发布门禁 + 审计日志（/settings/audit）+ 锁租约（10 分钟过期可接管）+ 密钥轮换。
+  - D-5（1ea0ba8/e3551c5）：mock 双轨清退（删 mock-service/mocks-data，十页接真数据）+ 6 份工程交付物（docs/sdd/deliverables/）+ vitest（7 条）。
+  - 验证：85/85 pytest + 7/7 vitest + npm build 通过 + 后端健康。
+  - 验收清单见 deliverables/e2e-acceptance.md。
