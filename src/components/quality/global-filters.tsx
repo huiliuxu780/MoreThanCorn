@@ -128,7 +128,7 @@ export function GlobalFilters({
           <div className="mt-4 space-y-4">
             <FormField label="坐席">
               <Select value={draft.agent ?? "__all__"} onValueChange={(v) => setDraft((d) => ({ ...d, agent: v === "__all__" ? undefined : v }))}>
-                <SelectTrigger><SelectValue placeholder="全部坐席" /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue placeholder="全部坐席" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部坐席</SelectItem>
                   {["张三", "李四", "王五", "赵敏", "孙倩", "周凯", "吴婷", "郑浩", "陈静", "刘洋"].map((n) => (
@@ -139,7 +139,7 @@ export function GlobalFilters({
             </FormField>
             <FormField label="Brand">
               <Select value={draft.brand ?? "__all__"} onValueChange={(v) => setDraft((d) => ({ ...d, brand: v === "__all__" ? undefined : v }))}>
-                <SelectTrigger><SelectValue placeholder="全部品牌" /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue placeholder="全部品牌" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部品牌</SelectItem>
                   {BRANDS.map((b) => (
@@ -150,7 +150,7 @@ export function GlobalFilters({
             </FormField>
             <FormField label="Product Category">
               <Select value={draft.productCategory ?? "__all__"} onValueChange={(v) => setDraft((d) => ({ ...d, productCategory: v === "__all__" ? undefined : v }))}>
-                <SelectTrigger><SelectValue placeholder="全部品类" /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue placeholder="全部品类" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部品类</SelectItem>
                   {PRODUCT_CATEGORIES.map((b) => (
@@ -161,7 +161,7 @@ export function GlobalFilters({
             </FormField>
             <FormField label="Issue / Topic">
               <Select value={draft.issue ?? "__all__"} onValueChange={(v) => setDraft((d) => ({ ...d, issue: v === "__all__" ? undefined : v }))}>
-                <SelectTrigger><SelectValue placeholder="全部问题" /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue placeholder="全部问题" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部问题</SelectItem>
                   {ISSUES.map((b) => (
@@ -172,7 +172,7 @@ export function GlobalFilters({
             </FormField>
             <FormField label="Request Type">
               <Select value={draft.requestType ?? "__all__"} onValueChange={(v) => setDraft((d) => ({ ...d, requestType: v === "__all__" ? undefined : v }))}>
-                <SelectTrigger><SelectValue placeholder="全部诉求类型" /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue placeholder="全部诉求类型" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部诉求类型</SelectItem>
                   {REQUEST_TYPES.map((b) => (

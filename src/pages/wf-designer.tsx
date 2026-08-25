@@ -196,7 +196,7 @@ function SummaryRows({ n }: { n: WfNode }) {
     const model = (cfg.modelRef as { modelId?: string })?.modelId
     rows.push({ label: "模型", body: model ? <span className="text-xs">{model}</span> : un })
     rows.push({ label: "提示词", body: cfg.prompt ? <span className="max-w-40 truncate text-xs">{String(cfg.prompt)}</span> : un })
-    rows.push({ label: "输出", body: <span className="flex gap-1 text-xs">output <TypeChip t="Str" /> thought <TypeChip t="Str" /></span> })
+    rows.push({ label: "输出", body: <span className="flex flex-wrap gap-1 text-xs">output <TypeChip t="Str" /> thought <TypeChip t="Str" /></span> })
   }
   if (n.type === "tool") {
     rows.push({ label: "工具", body: cfg.toolVersionId ? <span className="text-xs">已绑定</span> : un })
@@ -218,11 +218,11 @@ function SummaryRows({ n }: { n: WfNode }) {
     rows.push({ label: "输出", body: <span className="text-xs">output <TypeChip t="Str" /></span> })
   }
   return (
-    <div className="mt-2 space-y-1.5">
+    <div className="mt-2 space-y-1.5 overflow-hidden">
       {rows.map((r) => (
         <div key={r.label} className="flex items-start gap-2 text-xs">
           <span className="w-11 shrink-0" style={{ color: C.ink3 }}>{r.label}</span>
-          <div className="min-w-0 flex-1" style={{ color: C.ink }}>{r.body}</div>
+          <div className="min-w-0 flex-1 overflow-hidden" style={{ color: C.ink }}>{r.body}</div>
         </div>
       ))}
     </div>
@@ -240,7 +240,7 @@ function WfNodeCard({ data, selected }: NodeProps) {
     d.run === "skipped" ? `ring-[1.5px] ring-neutral-300` :
     selected ? `ring-[1.5px] ring-[#3D6BFF]` : ""
   return (
-    <div className={`relative w-[300px] rounded-lg border bg-white p-3 shadow-sm ${ring}`} style={{ borderColor: selected ? C.primary : C.cardBorder }}>
+    <div className={`relative w-[300px] overflow-hidden rounded-lg border bg-white p-3 shadow-sm ${ring}`} style={{ borderColor: selected ? C.primary : C.cardBorder }}>
       {n.type !== "input" && <Handle type="target" position={Position.Left} style={{ width: 12, height: 12, background: "#fff", border: `2px solid ${C.primary}`, borderRadius: 6 }} />}
       {n.type !== "end" && <Handle type="source" position={Position.Right} style={{ width: 12, height: 12, background: C.primary, border: "2px solid #fff", borderRadius: 6 }} />}
       <div className="flex items-center gap-2">

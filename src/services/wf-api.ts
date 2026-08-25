@@ -426,8 +426,25 @@ export async function realQualityResults(params: { page?: number; pageSize?: num
   }
 }
 
-export async function realQualityResultDetail(id: string) {
-  return req<Record<string, any>>(`/api/quality-results/${id}`)
+export async function realQualityResultDetail(id: string): Promise<Record<string, any>> {
+  const q = await req<Record<string, any>>(`/api/quality-results/${id}`)
+  // 真实数据映射为页面结构（复核审计修复：此前 transcript/sections 未定义导致空白页）
+  const so = (q.structuredOutput ?? {}) as Record<string, unknown>
+  const soEntries = Object.entries(so).filter(([k]) => !["transcript", "evidence"].includes(k))
+  const sections = soEntries.length > 0 ? [{
+    section: "结构化质检输出",
+    criteria: soEntries.map(([k, v]) => ({
+      id: k, criterion: k, result: typeof v === "object" ? JSON.stringify(v) : String(v ?? "—"),
+    })),
+  }] : []
+  const evidence = (q.evidence ?? []) as { id: string; kind: string; text: string }[]
+  return {
+    ...q,
+    transcript: [],           // 真实运行不保存对话原文（诚实空态）
+    sections,
+    businessFacts: evidence.map((e) => ({ id: e.id, label: e.kind, fields: [{ label: e.kind, value: e.text }] })),
+    reviewHistory: [],
+  }
 }
 
 /* ---------- R3：质检页真数据适配（取代 mock 双轨） ---------- */

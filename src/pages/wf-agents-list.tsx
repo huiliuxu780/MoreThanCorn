@@ -6,7 +6,7 @@ import { pagedApi } from "@/services/wf-api"
 import { rbac } from "@/services/rbac"
 import { toast } from "sonner"
 import { useNavigate } from "react-router-dom"
-import { ChevronDown, MoreHorizontal, Plus, Search } from "lucide-react"
+import { MoreHorizontal, Plus, Search } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ConfirmDeleteDialog } from "@/components/resources/resource-dialogs"
 import { WF_BASE } from "@/services/wf-api"
 
@@ -41,7 +42,7 @@ const TYPES = [
 ]
 
 interface AgentRow {
-  id: string; name: string; typeLabel: string; status: string; updatedAt: string; description?: string; avatar?: string | null;
+  id: string; name: string; type: string; typeLabel: string; status: string; updatedAt: string; description?: string; avatar?: string | null;
   latestVersion?: number | null; sandboxVersion?: number | null; prodVersion?: number | null
 }
 
@@ -57,6 +58,9 @@ export default function WfAgentsListPage() {
   const [atype, setAtype] = useState("dialogue")
   const [creating, setCreating] = useState(false)
   const [delTarget, setDelTarget] = useState<AgentRow | null>(null)
+  // 筛选接真（此前是假按钮）：排序 + 类型过滤
+  const [sort, setSort] = useState<"updated" | "name">("updated")
+  const [typeFilter, setTypeFilter] = useState("all")
 
   const confirmDelete = async () => {
     if (!delTarget) return
@@ -84,7 +88,12 @@ export default function WfAgentsListPage() {
       setCreating(false)
     }
   }
-  const filtered = rows.filter((r) => !search || r.name.toLowerCase().includes(search.toLowerCase()))
+  const filtered = rows
+    .filter((r) => !search || r.name.toLowerCase().includes(search.toLowerCase()))
+    .filter((r) => typeFilter === "all" || r.type === typeFilter)
+    .sort((a, b) => (sort === "name"
+      ? a.name.localeCompare(b.name, "zh-CN")
+      : (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "")))
 
   return (
     <div className="space-y-5 p-6" style={{ background: "#F5F6FA", minHeight: "100%" }}>
@@ -98,8 +107,22 @@ export default function WfAgentsListPage() {
             <Search className="absolute left-2 top-2 size-4" style={{ color: INK3 }} />
             <Input className="h-8 w-40 rounded-md bg-white pl-7" placeholder="搜索" value={search} onChange={(e) => update({ search: e.target.value || undefined }, true)} />
           </div>
-          <Button variant="outline" size="sm" className="h-8 gap-1 rounded-md bg-white">按更新时间 <ChevronDown className="size-3" /></Button>
-          <Button variant="outline" size="sm" className="h-8 gap-1 rounded-md bg-white">全部 <ChevronDown className="size-3" /></Button>
+          <Select value={sort} onValueChange={(v) => setSort(v as "updated" | "name")}>
+            <SelectTrigger className="h-8 w-32 bg-white text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="updated">按更新时间</SelectItem>
+              <SelectItem value="name">按名称</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="h-8 w-32 bg-white text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部类型</SelectItem>
+              <SelectItem value="autonomous">自主规划</SelectItem>
+              <SelectItem value="dialogue">对话编排</SelectItem>
+              <SelectItem value="expert-group">专家组</SelectItem>
+            </SelectContent>
+          </Select>
           <Button size="sm" className="h-8 rounded-md bg-black text-white hover:bg-neutral-800" onClick={() => setOpen(true)}>
             <Plus className="size-4" /> 创建Agent
           </Button>

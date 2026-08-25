@@ -1,7 +1,7 @@
 /** Connections — 真 API + 卡片网格。路由 /settings/connections。
  * 用户报告修复：补编辑入口（PUT），创建/编辑表单支持多种鉴权（API Key/Bearer/Basic Auth）、
  * 协议与端点；统一走 connApi 服务层（SDD D-3）。 */
-import { KeyRound, Plus, Trash2 } from "lucide-react"
+import { Eye, EyeOff, KeyRound, Plus, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useListQuery } from "@/hooks/use-list-query"
 import { Pagination } from "@/components/app/pagination"
@@ -71,6 +71,7 @@ export default function WfConnectionsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [open, setOpen] = useState(false)
+  const [showSecret, setShowSecret] = useState(false)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const set = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }))
 
@@ -215,7 +216,14 @@ export default function WfConnectionsPage() {
             <div><Label className="text-xs">提供方（可选）</Label><Input value={form.providerHint} onChange={(e) => set({ providerHint: e.target.value })} placeholder="如 阿里云百炼 / MySQL / MinIO" /></div>
             <div>
               <Label className="text-xs">Secret（加密存储{form.id ? "，留空=保留原密钥" : ""}）</Label>
-              <Input type="password" value={form.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={form.id ? "••••••（已配置则留空）" : ""} />
+              <div className="relative">
+                <Input type={showSecret ? "text" : "password"} className="pr-9" value={form.secret}
+                  onChange={(e) => set({ secret: e.target.value })} placeholder={form.id ? "••••••（已配置则留空）" : ""} />
+                <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+                  onClick={() => setShowSecret((v) => !v)} title={showSecret ? "隐藏" : "显示"}>
+                  {showSecret ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
             </div>
           </div>
           <DialogFooter>

@@ -29,7 +29,9 @@ def _status_of(obj) -> str:
         return "enabled" if obj.enabled else "disabled"
     if isinstance(obj, DataAsset):
         return "disabled" if obj.lifecycle == "Deprecated" else "enabled"
-    return obj.status or "enabled"
+    raw = obj.status or "enabled"
+    # 工具/知识等资源用 ready 表示可用，统一归一为 enabled（修复 picker enabledOnly 过滤为空）
+    return "enabled" if raw == "ready" else raw
 
 
 def _health_of(obj) -> str:

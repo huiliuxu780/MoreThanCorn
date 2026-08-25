@@ -551,15 +551,28 @@ def list_quality_results(page: int = 1, pageSize: int = 20, review: str = "", db
 
 @router.get("/api/quality-results/{rid}")
 def get_quality_result(rid: str, db: Session = Depends(get_db)):
-    from ..models import Evidence, QualityResult
+    from ..models import Agent, Evidence, QualityResult, Run
     # 复核审计修复：允许按主键或 interaction_ref 定位（前端按 interaction_ref 跳转）
     r = db.get(QualityResult, rid) or db.query(QualityResult).filter(QualityResult.interaction_ref == rid).first()
     if not r:
         raise HTTPException(404, "质检结果不存在")
     evs = db.query(Evidence).filter_by(result_id=r.id).all()
+    agent_name = "-"
+    if r.run_id:
+        run = db.get(Run, r.run_id)
+        if run and run.agent_id:
+            a = db.get(Agent, run.agent_id)
+            if a:
+                agent_name = a.name
+        elif run and run.workflow_id:
+            from ..models import Workflow
+            bound = db.query(Agent).filter(Agent.workflow_id == run.workflow_id).first()
+            agent_name = bound.name if bound else (db.get(Workflow, run.workflow_id).name if db.get(Workflow, run.workflow_id) else "-")
     return {"id": r.id, "runId": r.run_id, "interactionId": r.interaction_ref,
+            "interactionTime": r.interaction_time.isoformat(), "agentName": agent_name,
             "structuredOutput": r.structured_output, "score": r.score, "risk": r.risk,
-            "critical": r.critical, "issueCount": r.issue_count, "review": r.review_status,
+            "critical": r.critical, "issueCount": r.issue_count, "issueSummary": r.issue_summary,
+            "review": r.review_status,
             "evidence": [{"id": e.id, "kind": e.kind, "locator": e.locator, "text": e.text, "sourceRef": e.source_ref} for e in evs]}
 
 
