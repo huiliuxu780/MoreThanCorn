@@ -1,4 +1,4 @@
-import { ArrowLeft, Copy, MoreHorizontal, RotateCw } from "lucide-react"
+import { ArrowLeft, Copy, Download, MoreHorizontal, RotateCw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -135,6 +135,22 @@ export default function RunDetailPage() {
                       toast.success("Run JSON 已复制")
                     }}><Copy className="size-3.5" /> 复制</Button>
                   )}
+                  {/* E-3.1：导出 Trace（/trace 全量 + events） */}
+                  <Button variant="outline" size="sm" className="gap-1" onClick={async () => {
+                    try {
+                      const [trace, events] = await Promise.all([
+                        runTrace(runId).catch(() => null), runEventsList(runId).catch(() => ({ items: [] }))])
+                      const blob = new Blob([JSON.stringify({
+                        exportedAt: new Date().toISOString(), runId, trace, events: events.items ?? [],
+                      }, null, 2)], { type: "application/json" })
+                      const a = document.createElement("a")
+                      a.href = URL.createObjectURL(blob)
+                      a.download = `run-${runId}-trace.json`
+                      a.click()
+                      URL.revokeObjectURL(a.href)
+                      toast.success("Trace 已导出")
+                    } catch { toast.error("导出失败") }
+                  }}><Download className="size-3.5" /> 导出 Trace</Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button>
@@ -148,6 +164,25 @@ export default function RunDetailPage() {
             </>
           }
         />
+        {/* E-3.2 重试谱系：向上=来源，向下=派生 */}
+        {(run.originRunId || (run.retryChildren?.length ?? 0) > 0) && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            <span>重试谱系：</span>
+            {run.originRunId && (
+              <button className="rounded border px-1.5 py-0.5 hover:bg-muted"
+                onClick={() => navigate(`/config/tasks/${taskId}/runs/${run.originRunId}`)}>
+                ← 源自 #{run.originRunId.slice(0, 8)}
+              </button>
+            )}
+            <span className="rounded border px-1.5 py-0.5">#{run.id.slice(0, 8)}</span>
+            {(run.retryChildren ?? []).map((c) => (
+              <button key={c.runId} className="rounded border px-1.5 py-0.5 hover:bg-muted"
+                onClick={() => navigate(`/config/tasks/${taskId}/runs/${c.runId}`)}>
+                重试 → #{c.runId.slice(0, 8)}（{c.status}）
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Execution Summary */}

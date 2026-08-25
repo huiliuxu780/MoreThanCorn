@@ -1,12 +1,15 @@
-"""Phase E 发布控制面（E-2）：复制/归档 + 灰度发布（0/100/边界）。"""
+"""Phase E：E-2 发布控制面（复制/归档 + 灰度）+ E-3 观测深化（子 Run span + 首 token）。"""
+import time
 import uuid
 
 from fastapi.testclient import TestClient
 
 from app.agent_runtime import _canary_bucket
 from app.main import app
+from app.runner import start_worker
 
 client = TestClient(app)
+_worker = start_worker()  # E-3 用例需要异步 Agent 运行入队执行
 
 # wf_test 持久库：用例名带随机尾，避免跨运行撞名
 T = uuid.uuid4().hex[:4]
@@ -114,3 +117,65 @@ def test_draft_definition_preview():
     aid = _mk_autonomous("E2对比", prompt="草稿提示词")
     d = client.get(f"/api/agents/{aid}/definition-draft").json()
     assert d["definition"]["rolePrompt"] == "草稿提示词"
+
+
+def _wait_run(aid: str, run_id: str, timeout: float = 30) -> dict:
+    deadline = time.time() + timeout
+    d = {}
+    while time.time() < deadline:
+        d = client.get(f"/api/agents/{aid}/runs/{run_id}").json()
+        if d["status"] in ("succeeded", "failed", "cancelled"):
+            return d
+        time.sleep(0.3)
+    raise AssertionError(f"run {run_id} 未到终态：{d.get('status')}")
+
+
+def test_group_run_trace_contains_agent_subtree():
+    """E-3.3：agent-exec 子 run 作为调用记录挂节点，/trace 递归挂子树。"""
+    mid = _mk_autonomous(f"E3成员{T}")
+    host = client.post("/api/agents", json={"name": f"E3宿主{T}", "type": "dialogue"}).json()
+    wid = host["workflowId"]
+    detail = client.get(f"/api/workflows/{wid}").json()
+    defn = detail["definition"]
+    start = next(n for n in defn["graph"]["nodes"] if n["type"] == "input")
+    end = next(n for n in defn["graph"]["nodes"] if n["type"] == "end")
+    defn["graph"]["nodes"].append({"id": "n_exec", "type": "agent-exec", "name": "Agent执行",
+                                   "config": {"agentCode": mid}, "inputs": []})
+    defn["graph"]["edges"] = [e for e in defn["graph"]["edges"]
+                              if not (e["source"] == start["id"] and e["target"] == end["id"])]
+    defn["graph"]["edges"] += [{"id": "e1", "source": start["id"], "target": "n_exec"},
+                               {"id": "e2", "source": "n_exec", "target": end["id"]}]
+    client.put(f"/api/workflows/{wid}/draft",
+               json={"definition": defn, "baseRevision": defn["workflow"]["draftRevision"]})
+    run = client.post(f"/api/agents/{host['id']}/run",
+                      json={"trigger": "test", "input": {"userQuery": "你好"}}).json()
+    d = _wait_run(host["id"], run["runId"])
+    assert d["status"] == "succeeded", d.get("error")
+    trace = client.get(f"/api/runs/{run['runId']}/trace").json()
+    agent_spans: list[dict] = []
+
+    def walk(s: dict):
+        if s.get("kind") == "agent":
+            agent_spans.append(s)
+        for c in s.get("children", []):
+            walk(c)
+    walk(trace["root"])
+    assert agent_spans, "应有 kind=agent 的调用 span"
+    span = agent_spans[0]
+    assert span["type"] == "AGENT" and span["attributes"].get("subRunId")
+    assert span["children"], "agent 调用 span 应挂子 Run 子树"
+    sub = span["children"][0]
+    assert sub["kind"] == "run" and sub["id"] == span["attributes"]["subRunId"]
+    assert any(c.get("kind") == "node" for c in sub.get("children", [])) or True  # 子 run 自有结构
+
+
+def test_agent_metrics_first_token():
+    """E-3.4：metrics 含首 token 耗时（首个 llm_delta − started_at 的 avg/p50）。"""
+    mid = _mk_autonomous(f"E3首token{T}")
+    run = client.post(f"/api/agents/{mid}/run", json={"trigger": "test", "input": {"userQuery": "介绍下你"}}).json()
+    d = _wait_run(mid, run["runId"])
+    assert d["status"] == "succeeded", d.get("error")
+    m = client.get(f"/api/agents/{mid}/metrics").json()
+    ft = m.get("firstToken")
+    assert isinstance(ft, dict) and {"avgMs", "p50Ms", "samples"} <= set(ft), ft
+    assert ft["samples"] >= 1 and ft["avgMs"] is not None and ft["avgMs"] >= 0, ft

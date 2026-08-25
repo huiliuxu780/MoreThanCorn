@@ -452,10 +452,20 @@ def _run_member(ctx: _Ctx, code: str) -> dict:
     member_version = (getattr(ctx, "frozen_agent_versions", None) or {}).get(member.id)
     if getattr(ctx, "frozen_agent_versions", None) and not member_version:
         emit(ctx.db, ctx.run.id, "member_unfrozen", payload={"memberId": member.id})
+    t0 = time.time()
     sub_run = run_agent(ctx.db, member, ctx.run_input, trigger="agent",
                         agent_chain=agent_chain, call_chain_wf=wf_chain, enqueue=False,
                         version_id=member_version)
     fresh = ctx.db.get(Run, sub_run)
+    latency = int((time.time() - t0) * 1000)
+    # E-3.3：子 Run 作为调用记录挂到当前节点（target=子 run id），/trace 据此递归展开子树
+    call = getattr(ctx, "call", None)
+    if callable(call):
+        try:
+            call("agent", sub_run, f"member:{member.name}",
+                 str((fresh.output or {}).get("content", ""))[:200], latency, fresh.token_usage or {})
+        except Exception:  # noqa: BLE001 —— 观测失败不影响主流程
+            pass
     if fresh.status != "succeeded":
         raise RunError(f"成员 Agent「{member.name}」执行失败：{(fresh.error or {}).get('message', fresh.status)}")
     return {"content": (fresh.output or {}).get("content", json.dumps(fresh.output or {}, ensure_ascii=False))}
@@ -527,6 +537,9 @@ def run_agent(db: Session, agent: Agent, run_input: dict, trigger: str = "agent"
 
 def _execute_agent_inline(db: Session, agent: Agent, run: Run, run_input: dict,
                           chain: list[str], call_chain_wf: list[str] | None) -> None:
+    if run.started_at is None:  # E-3.4：Agent 运行此前从不记开始时间（时间轴/首 token 失真）
+        run.started_at = datetime.now(timezone.utc)
+        db.commit()
     if agent.type == "autonomous":
         if run.agent_version_id:
             from types import SimpleNamespace

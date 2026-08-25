@@ -377,6 +377,8 @@ def list_releases(aid: str, db: Session = Depends(get_db)):
 @router.get("/{aid}/metrics")
 def agent_metrics(aid: str, db: Session = Depends(get_db)):
     """Agent 级观测指标：总数/成功率/平均时长/近 7 日趋势（SDD D-1）。"""
+    from sqlalchemy import func as _func
+    from ..models import RunEvent
     runs = db.query(Run).filter_by(agent_id=aid).all()
     total = len(runs)
     succeeded = sum(1 for r in runs if r.status == "succeeded")
@@ -385,11 +387,28 @@ def agent_metrics(aid: str, db: Session = Depends(get_db)):
     # 调研 07 §6 观测指标：Token 消耗
     total_tokens = sum(int((t := (r.token_usage or {})).get("total")
                          or (t.get("prompt", 0) or 0) + (t.get("completion", 0) or 0)) for r in runs)
+    # E-3.4：首 token 耗时 = 首个 llm_delta 事件 − run.started_at（avg/p50）
+    first_tokens: list[int] = []
+    run_ids = [r.id for r in runs if r.started_at]
+    if run_ids:
+        deltas = dict(db.query(RunEvent.run_id, _func.min(RunEvent.created_at))
+                      .filter(RunEvent.run_id.in_(run_ids), RunEvent.type == "llm_delta")
+                      .group_by(RunEvent.run_id).all())
+        for r in runs:
+            first = deltas.get(r.id)
+            if first and r.started_at:
+                ms = int((first - r.started_at).total_seconds() * 1000)
+                if ms >= 0:
+                    first_tokens.append(ms)
+    first_tokens.sort()
+    ft = {"avgMs": int(sum(first_tokens) / len(first_tokens)) if first_tokens else None,
+          "p50Ms": first_tokens[len(first_tokens) // 2] if first_tokens else None,
+          "samples": len(first_tokens)}
     return {"total": total, "succeeded": succeeded, "failed": failed,
             "successRate": round(succeeded / total, 3) if total else 0,
             "avgDurationMs": int(sum(durs) / len(durs)) if durs else 0,
             "maxDurationMs": max(durs) if durs else 0,
-            "totalTokens": total_tokens}
+            "totalTokens": total_tokens, "firstToken": ft}
 
 
 @router.post("/{aid}/eval-run", status_code=201)

@@ -13,7 +13,7 @@ const INK = "#1F2329"; const INK2 = "#5A6472"; const INK3 = "#B9C2CF"; const CAR
 
 /* ---------- 运行观测 ---------- */
 export function AgentRunsPanel({ agentId }: { agentId: string }) {
-  const [metrics, setMetrics] = useState<{ total: number; succeeded: number; failed: number; successRate: number; avgDurationMs: number; maxDurationMs: number; totalTokens?: number } | null>(null)
+  const [metrics, setMetrics] = useState<{ total: number; succeeded: number; failed: number; successRate: number; avgDurationMs: number; maxDurationMs: number; totalTokens?: number; firstToken?: { avgMs: number | null; p50Ms: number | null; samples: number } } | null>(null)
   const [runs, setRuns] = useState<{ runId: string; status: string; trigger: string; startedAt: string | null; durationMs: number | null; error?: { message?: string } | null }[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [events, setEvents] = useState<{ type: string; payload: Record<string, any>; at: string }[]>([])
@@ -35,7 +35,10 @@ export function AgentRunsPanel({ agentId }: { agentId: string }) {
             ["错误率", `${Math.round((1 - metrics.successRate) * 100)}%`],
             ["Token 消耗", metrics.totalTokens != null ? metrics.totalTokens.toLocaleString("zh-CN") : "—"],
             ["平均时长", metrics.avgDurationMs ? `${metrics.avgDurationMs}ms` : "—"],
-            ["最长时长", metrics.maxDurationMs ? `${metrics.maxDurationMs}ms` : "—"]].map(([l, v]) => (
+            ["最长时长", metrics.maxDurationMs ? `${metrics.maxDurationMs}ms` : "—"],
+            /* E-3.4：首 token 耗时（首个流式增量 − 运行开始；无流式数据为 —） */
+            ["首Token·平均", metrics.firstToken?.avgMs != null ? `${metrics.firstToken.avgMs}ms` : "—"],
+            ["首Token·P50", metrics.firstToken?.p50Ms != null ? `${metrics.firstToken.p50Ms}ms` : "—"]].map(([l, v]) => (
             <div key={String(l)} className="rounded-lg border bg-white p-3" style={{ borderColor: CARD }}>
               <div className="text-[11px]" style={{ color: INK3 }}>{l}</div>
               <div className="pt-1 text-lg font-semibold" style={{ color: INK }}>{String(v)}</div>

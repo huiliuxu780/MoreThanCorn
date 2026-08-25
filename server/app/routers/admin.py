@@ -335,6 +335,23 @@ def retry_run(run_id: str, db: Session = Depends(get_db)):
     old = db.get(Run, run_id)
     if not old:
         raise HTTPException(404, "运行记录不存在")
+    if old.agent_id:
+        # E-3.2：Agent 运行重试走 run_agent（自主规划无工作流，此前直接 500）
+        from ..agent_runtime import RunError, run_agent
+        from ..models import Agent
+        a = db.get(Agent, old.agent_id)
+        if not a:
+            raise HTTPException(404, "该运行的 Agent 已不存在")
+        trigger = old.trigger if old.trigger in ("manual", "api", "schedule", "test") else "manual"
+        try:
+            new_id = run_agent(db, a, old.input or {}, trigger=trigger,
+                               version_id=old.agent_version_id)
+        except RunError as e:
+            raise HTTPException(409, str(e))
+        fresh = db.get(Run, new_id)
+        fresh.origin_run_id = run_id
+        db.commit()
+        return {"runId": new_id, "originRunId": run_id}
     run = create_run(db, old.workflow_id, old.trigger, old.input or {})
     run.origin_run_id = run_id
     db.commit()

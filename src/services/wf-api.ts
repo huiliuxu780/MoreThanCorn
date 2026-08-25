@@ -224,6 +224,8 @@ export async function realRunDetail(runId: string): Promise<{ run: Run; executio
     startedAt: d.startedAt ?? new Date().toISOString(),
     finishedAt: d.endedAt ?? undefined,
     duration: d.durationMs != null ? `${d.durationMs}ms` : undefined,
+    originRunId: d.originRunId ?? undefined,          // E-3.2 重试谱系
+    retryChildren: d.retryChildren ?? [],
     dataWindow: { start: "-", end: "-", label: "-" },
     snapshot: {
       agentName: "workflow",
@@ -346,7 +348,8 @@ export const agentApi = {
   eventsUrl: (runId: string) => `${WF_BASE}/api/runs/${runId}/events`,
   /* ---------- SDD D-1：观测 / 评测 / 生成 ---------- */
   metrics: (id: string) =>
-    req<{ total: number; succeeded: number; failed: number; successRate: number; avgDurationMs: number; maxDurationMs: number }>(
+    req<{ total: number; succeeded: number; failed: number; successRate: number; avgDurationMs: number; maxDurationMs: number;
+          totalTokens?: number; firstToken?: { avgMs: number | null; p50Ms: number | null; samples: number } }>(
       `/api/agents/${id}/metrics`),
   versionsWithMembers: (id: string) =>
     req<(AgentVersionInfo & { frozenMembers: { ref: string; version: string | null }[] })[]>(`/api/agents/${id}/versions`),

@@ -33,7 +33,12 @@
 | E-2.3 | 灰度发布 | Release 增 `canary_percent`；run 解析版本时按 run_id 哈希落桶选 canary/稳定；头部显示"灰度 N%"徽标；"停止灰度"=该 release rolled_back | pytest 覆盖 0/100/边界；UI 徽标 |
 | E-2.4 | Agent 编辑锁 | 复用 `/api/locks`（resourceId=`agent:{id}`）：编辑器进入 acquire、离开 release、头部显示占用者；admin 可强制解锁（DELETE 他人锁） | 双浏览器/双 ws 模拟互斥；409 提示 |
 
-## E-3 观测深化（design-run-observability P3 + 07 §6）
+## E-3 观测深化（design-run-observability P3 + 07 §6）✅ 2026-08-25 完成
+
+> 落地记录：Trace 导出（前端 /trace+events 合成 JSON 下载）；重试谱系（详情头部上游/下游链可点跳转，
+> 修复 retry 端点对 Agent 运行 500 的缺陷）；嵌套子 Run span（_run_member 记 kind=agent 调用，/trace 递归挂子树，防环）；
+> 首 token 耗时（agent_metrics firstToken avg/p50 + 观测面板两张卡；顺带修复 Agent 运行 started_at 从不落库）。
+> 证据：96/96 pytest（test_phase_e 6 用例）；浏览器核验导出按钮/双向谱系/首Token卡/子树（pytest）。
 
 | # | 条目 | 契约 | 验收 |
 | --- | --- | --- | --- |

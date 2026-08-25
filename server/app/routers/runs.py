@@ -52,6 +52,10 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
         version_no = av.version_no
     elif wv:
         version_no = wv.version_no
+    # E-3.2 重试谱系：由本 run 重试派生的子链（向上用 originRunId）
+    retry_children = [{"runId": c.id, "status": c.status,
+                       "createdAt": c.created_at.isoformat()}
+                      for c in db.query(Run).filter_by(origin_run_id=run.id).order_by(Run.created_at).all()]
     return {
         "runId": run.id, "status": run.status, "trigger": run.trigger,
         "input": run.input, "output": run.output, "error": run.error,
@@ -61,6 +65,7 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
         "definitionSource": run.definition_source,  # draft|version
         "versionNo": version_no,
         "originRunId": run.origin_run_id,
+        "retryChildren": retry_children,
         "nodeRuns": [{
             "nodeRunId": n.id, "nodeId": n.node_id, "nodeType": n.node_type,
             "status": n.status, "input": n.input, "output": n.output, "error": n.error,
@@ -127,7 +132,8 @@ def _tok_total(d: dict | None) -> int:
 
 
 # 调研 07 §3 Trace 模型对齐：span type 词表 / usage / attributes / error{code,message,retryable}
-_SPAN_TYPE = {"model": "LLM", "tool": "TOOL", "mcp": "TOOL", "knowledge": "KNOWLEDGE"}
+_SPAN_TYPE = {"model": "LLM", "tool": "TOOL", "mcp": "TOOL", "knowledge": "KNOWLEDGE",
+               "agent": "AGENT"}  # E-3.3：嵌套子 Run 调用
 
 
 def _usage(d: dict | None) -> dict:
@@ -142,13 +148,11 @@ def _err(e: dict | None) -> dict | None:
             "retryable": bool(e.get("retryable", False))}
 
 
-@router.get("/{run_id}/trace")
-def run_trace(run_id: str, db: Session = Depends(get_db)):
-    """观测视图（SDD design-run-observability）：Run→NodeRun→CallRecord 组装 span 树。"""
-    run = db.get(Run, run_id)
-    if not run:
-        raise HTTPException(404, "run not found")
-    nrs = db.query(NodeRun).filter_by(run_id=run_id).order_by(NodeRun.started_at).all()
+def _build_run_span(db, run, seen: set[str]) -> tuple[dict, list]:
+    """Run→NodeRun→CallRecord 组装单个 run 的 span 树。
+    E-3.3：kind=agent 的调用记录把子 Run 的完整子树递归挂到该 span 下（seen 防环）。"""
+    seen.add(run.id)
+    nrs = db.query(NodeRun).filter_by(run_id=run.id).order_by(NodeRun.started_at).all()
     nr_ids = [n.id for n in nrs]
     calls = db.query(CallRecord).filter(CallRecord.node_run_id.in_(nr_ids or ["-"])) \
         .order_by(CallRecord.created_at).all() if nr_ids else []
@@ -162,13 +166,20 @@ def run_trace(run_id: str, db: Session = Depends(get_db)):
     def call_span(c: CallRecord) -> dict:
         ended = c.created_at
         started = ended - timedelta(milliseconds=c.latency_ms or 0)
+        sub_children: list[dict] = []
+        if c.kind == "agent" and c.target_id and c.target_id not in seen:
+            sub = db.get(Run, c.target_id)
+            if sub:
+                sub_span, _ = _build_run_span(db, sub, seen)
+                sub_children = [sub_span]
         return {"id": c.id, "kind": c.kind, "type": _SPAN_TYPE.get(c.kind, "TOOL"),
                 "name": c.target_id or c.kind, "status": c.status,
                 "startedAt": iso(started), "endedAt": iso(ended), "durationMs": c.latency_ms,
                 "usage": _usage(c.token_usage), "tokenUsage": c.token_usage or {},
-                "attributes": {"protocol": c.kind, "targetType": c.target_type},
+                "attributes": {"protocol": c.kind, "targetType": c.target_type,
+                               **({"subRunId": c.target_id} if c.kind == "agent" else {})},
                 "input": c.request, "output": c.response,
-                "error": _err(c.error), "children": []}
+                "error": _err(c.error), "children": sub_children}
 
     children = []
     for n in nrs:
@@ -181,16 +192,27 @@ def run_trace(run_id: str, db: Session = Depends(get_db)):
             "input": n.input, "output": n.output,
             "error": _err(n.error), "children": [call_span(c) for c in by_nr.get(n.id, [])],
         })
+    span = {"id": run.id, "kind": "run", "type": "AGENT" if run.agent_id else "WORKFLOW",
+            "name": f"Run {run.id[:8]}", "status": run.status,
+            "startedAt": iso(run.started_at), "endedAt": iso(run.ended_at),
+            "durationMs": run.duration_ms, "usage": _usage(run.token_usage),
+            "tokenUsage": run.token_usage or {},
+            "attributes": {"trigger": run.trigger, "agentId": run.agent_id,
+                           "originRunId": run.origin_run_id},
+            "input": run.input, "output": run.output, "error": _err(run.error), "children": children}
+    return span, calls
+
+
+@router.get("/{run_id}/trace")
+def run_trace(run_id: str, db: Session = Depends(get_db)):
+    """观测视图（SDD design-run-observability）：Run→NodeRun→CallRecord 组装 span 树。"""
+    run = db.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, "run not found")
+    root, calls = _build_run_span(db, run, set())
     total_tokens = _tok_total(run.token_usage) or sum(_tok_total(c.token_usage) for c in calls)
     return {
-        "root": {"id": run.id, "kind": "run", "type": "AGENT" if run.agent_id else "WORKFLOW",
-                 "name": f"Run {run.id[:8]}", "status": run.status,
-                 "startedAt": iso(run.started_at), "endedAt": iso(run.ended_at),
-                 "durationMs": run.duration_ms, "usage": _usage(run.token_usage),
-                 "tokenUsage": run.token_usage or {},
-                 "attributes": {"trigger": run.trigger, "agentId": run.agent_id,
-                                "originRunId": run.origin_run_id},
-                 "input": run.input, "output": run.output, "error": _err(run.error), "children": children},
+        "root": root,
         "totalTokens": total_tokens,
         "modelCalls": sum(1 for c in calls if c.kind == "model"),
     }

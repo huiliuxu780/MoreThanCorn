@@ -306,6 +306,9 @@ export interface Run {
   startedAt: string
   finishedAt?: string
   duration?: string
+  /** E-3.2 重试谱系：上游来源与下游派生 */
+  originRunId?: string
+  retryChildren?: { runId: string; status: string; createdAt: string }[]
   dataWindow: { start: string; end: string; label: string }
   snapshot: {
     agentName: string
