@@ -179,6 +179,40 @@ def test_a05_notification_midflow_does_not_terminate():
     assert len(ntf) == 1 and "hello world" in ntf[0]["payload"]["message"]
 
 
+def test_trace_span_tree_endpoint():
+    """SDD design-run-observability：/trace 组装 Run→NodeRun→CallRecord span 树。"""
+    tool = client.post("/api/ai-resources/tools",
+                       json={"name": u("tool"), "kind": "builtin",
+                             "spec": {"kind": "echo"}, "tested": True}).json()
+    tv_id = client.get(f"/api/ai-resources/tools/{tool['id']}/versions").json()[0]["id"]
+    wid = client.post("/api/workflows", json={"name": u("tracewf")}).json()["id"]
+    g = client.get(f"/api/workflows/{wid}").json()
+    defn = g["definition"]
+    defn["graph"]["nodes"] = [
+        {"id": "s", "type": "input", "name": "开始", "config": {}, "inputs": []},
+        {"id": "t1", "type": "tool", "name": "调用工具", "config": {"toolVersionId": tv_id}, "inputs": []},
+        {"id": "e", "type": "end", "name": "结束", "config": {"outputKey": "quality_result"}, "inputs": []},
+    ]
+    defn["graph"]["edges"] = [{"id": "e1", "source": "s", "target": "t1"},
+                              {"id": "e2", "source": "t1", "target": "e"}]
+    client.put(f"/api/workflows/{wid}/draft",
+               json={"definition": defn, "baseRevision": g["draftRevision"]})
+    detail = run_sync(wid, input_={"userQuery": "x"})
+    assert detail["status"] == "succeeded"
+    tr = client.get(f"/api/runs/{detail['runId']}/trace")
+    assert tr.status_code == 200
+    body = tr.json()
+    assert body["root"]["kind"] == "run" and body["root"]["status"] == "succeeded"
+    kinds = [c["kind"] for c in body["root"]["children"]]
+    assert kinds.count("node") == 3
+    tool_span = next(c for c in body["root"]["children"] if c["name"] == "t1")
+    assert tool_span["children"] and tool_span["children"][0]["kind"] == "tool"
+    # events-list 支持 nodeRunId 过滤
+    evs = client.get(f"/api/runs/{detail['runId']}/events-list",
+                     params={"nodeRunId": tool_span["id"]}).json()
+    assert evs["items"] and all(e["nodeRunId"] == tool_span["id"] for e in evs["items"])
+
+
 # ---------- A-06 条件运算符 ----------
 
 def test_a06_operators_semantics():

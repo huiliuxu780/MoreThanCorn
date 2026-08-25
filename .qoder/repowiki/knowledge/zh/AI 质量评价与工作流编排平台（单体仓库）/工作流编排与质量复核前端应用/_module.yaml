@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: frontend_app
+title: 工作流编排与质量复核前端应用
+scope:
+    - src/
+source_files: []
+depends_on: []
+related_to: []

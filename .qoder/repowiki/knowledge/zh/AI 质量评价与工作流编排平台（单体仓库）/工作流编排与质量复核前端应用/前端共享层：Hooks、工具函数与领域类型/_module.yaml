@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: frontend_app/shared_layers
+title: 前端共享层：Hooks、工具函数与领域类型
+scope:
+    - src/hooks/
+    - src/lib/
+    - src/domain/
+source_files: []
+depends_on: []
+related_to: []

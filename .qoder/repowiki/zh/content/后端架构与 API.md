@@ -1,7 +1,3 @@
-</think>
-
-基于我对代码变更的深入分析，现在我将更新文档以反映所有新增的功能和变更：
-
 # 后端架构与 API
 
 <cite>
@@ -35,14 +31,11 @@
 
 ## 更新摘要
 **变更内容**
-- 新增完整的 RBAC 权限控制系统，支持四种角色（viewer、editor、publisher、admin）
-- 实现审计日志系统，包含 audit_log 表和 /api/audit 端点
-- 增强资源锁管理，支持租约语义和过期机制
-- 工作流发布流程集成审计日志记录
-- Agent 版本管理系统，支持不可变版本快照和环境部署
-- 增强的运行追踪系统，支持双通道事件和分布式追踪
-- 质检结果与证据管理系统，支持人工审核流程
-- 数据库架构演进，新增多个核心表结构
+- 新增完整的工作流评估系统，支持 /api/workflows/{wid}/eval-run 端点进行工作流级评测
+- 实现人评机制，支持 /api/eval-samples/{sid}/human-score 进行人工评分（0-5分）
+- 增强Agent评估功能，支持同步执行和多评判模式（rule/model/human）
+- 扩展EvalSample模型，新增judge_result字段存储评判结果
+- 支持批量样本评测，可指定sampleIds进行选择性评测
 
 ## 产品概述
 本项目为 AI 驱动的企业智能质量评价平台，V1 聚焦智能质检（坐席质检）。后端基于 FastAPI + SQLAlchemy + Alembic，提供工作流编排、资源管理、运行执行、业务规则与评测、Agent 编排等能力；前端 Vite + React + TypeScript。导航结构已冻结，路由与状态语义以实现文档为准。
@@ -52,6 +45,7 @@
 - **Agent 版本管理**：创建 Agent → 构建定义快照 → 依赖冻结 → 生成 artifact hash → 发布到沙箱/生产环境 → 回滚机制。
 - 运行与可观测性：提交运行请求 → 入队或立即执行 → 记录 Run/NodeRun/RunEvent → 通过 SSE 推送事件 → 查询终态。
 - 业务规则与评测：维护结果规则集 → 对结构化输出求值派生分数/风险/问题 → 支持批量重算；维护评测样本并执行评估。
+- **工作流评估**：创建工作流样本 → 同步执行真实运行 → 多模式评判（rule/model/human）→ 统计成功率与性能指标。
 - 资源管理：统一管理 AI Resources（模型、工具、MCP、知识库）与 Data Resources（数据源、数据资产、数据定义），提供测试、启用/停用、删除防护与变更审计。
 - 定时任务：为分析任务配置 Cron 调度，计算下次触发时间并关联运行来源。
 
@@ -72,33 +66,27 @@ FE->>API : POST /api/workflows/{id}/publish (发布)
 API->>DB : 校验 + 写入 WorkflowVersion + 更新当前版本
 API->>DB : 记录审计日志
 API-->>FE : {versionId, versionNo}
-FE->>API : POST /api/agents (创建 Agent)
-API->>DB : 写入 Agent + 默认配置
-API-->>FE : {id, name, type}
-FE->>API : POST /api/agents/{aid}/versions (发布版本)
-API->>DB : 构建定义快照 + 依赖冻结 + 生成 artifactHash
-API-->>FE : {versionId, versionNo, artifactHash}
-FE->>API : POST /api/agents/{aid}/releases (部署到环境)
-API->>DB : 创建 Release 记录 + 更新环境指针
-API-->>FE : {releaseId, environment, versionNo}
-FE->>API : POST /api/runs (启动运行)
-API->>W : create_run(...)
-W-->>API : runId
-API-->>FE : {runId, status}
-FE->>API : GET /api/runs/{runId}/events (SSE)
-API->>DB : 读取 RunEvent 增量
-API-->>FE : event stream
+FE->>API : POST /api/workflows/{wid}/eval-run (工作流评测)
+API->>DB : 查询样本并逐个执行
+API->>W : create_run(...) + execute_run(...)
+W-->>API : runId + 执行结果
+API->>DB : 存储 judge_result (rule/model/human)
+API-->>FE : {total, succeeded, results}
+FE->>API : POST /api/eval-samples/{sid}/human-score (人评)
+API->>DB : 更新样本评分 0-5分
+API-->>FE : {id, judge}
 ```
 
 **图表来源**
 - [server/app/routers/workflows.py:41-134](file://server/app/routers/workflows.py#L41-L134)
-- [server/app/routers/runs.py:15-97](file://server/app/routers/runs.py#L15-L97)
-- [server/app/routers/agents.py:176-259](file://server/app/routers/agents.py#L176-L259)
+- [server/app/routers/admin.py:618-670](file://server/app/routers/admin.py#L618-L670)
+- [server/app/routers/agents.py:303-374](file://server/app/routers/agents.py#L303-L374)
 
 **章节来源**
 - [server/app/routers/workflows.py:20-162](file://server/app/routers/workflows.py#L20-L162)
 - [server/app/routers/runs.py:15-105](file://server/app/routers/runs.py#L15-L105)
 - [server/app/routers/agents.py:24-259](file://server/app/routers/agents.py#L24-L259)
+- [server/app/routers/admin.py:618-670](file://server/app/routers/admin.py#L618-L670)
 
 ## 功能模块清单
 - workflows：工作流 CRUD、草稿保存与乐观锁、校验、发布生成版本、版本列表。
@@ -106,8 +94,8 @@ API-->>FE : event stream
 - runs：运行实例的创建、列表、详情、取消、事件流（SSE）、事件列表。
 - business：结果规则引擎、复核流程、数据资产与批量运行、分析与调度。
 - resources：AI/Data 资源统一 CRUD、测试、启用/停用、删除防护、变更日志、Data Definitions 管理、Picker 供给。
-- admin：Connections、Models/Providers、Tools、Schedules、运行重试/导出、指标、编辑锁、评测样本与版本指标。
-- agents：Agent 三型管理、默认配置、运行入口、运行列表与详情、挂载健康检查、**版本管理与发布部署**。
+- admin：Connections、Models/Providers、Tools、Schedules、运行重试/导出、指标、编辑锁、**评测样本管理、工作流评估、人评打分**。
+- agents：Agent 三型管理、默认配置、运行入口、运行列表与详情、挂载健康检查、**版本管理与发布部署、Agent级评测与人评**。
 
 **章节来源**
 - [server/app/routers/workflows.py:17-162](file://server/app/routers/workflows.py#L17-L162)
@@ -115,11 +103,11 @@ API-->>FE : event stream
 - [server/app/routers/runs.py:12-105](file://server/app/routers/runs.py#L12-L105)
 - [server/app/routers/business.py:1-344](file://server/app/routers/business.py#L1-L344)
 - [server/app/routers/resources.py:1-403](file://server/app/routers/resources.py#L1-L403)
-- [server/app/routers/admin.py:1-574](file://server/app/routers/admin.py#L1-L574)
-- [server/app/routers/agents.py:24-259](file://server/app/routers/agents.py#L24-L259)
+- [server/app/routers/admin.py:1-703](file://server/app/routers/admin.py#L1-L703)
+- [server/app/routers/agents.py:24-483](file://server/app/routers/agents.py#L24-L483)
 
 ## 数据与状态
-- 核心实体：Workflow、WorkflowVersion、NodeDefinition、Connection、Tool/ToolVersion、ModelProvider/Model、Schedule、JobQueue、Run、NodeRun、RunEvent、CallRecord、Agent、ResourceLock、QualityResult、Evidence、EvalSample、ResultRuleSet、DataAsset、AnalysisTask、Datasource、McpServer、KnowledgeSource、DataDefinition、ResourceChangeLog、**AuditLog、AgentVersion、Release、MemoryRecord**。
+- 核心实体：Workflow、WorkflowVersion、NodeDefinition、Connection、Tool/ToolVersion、Schedule、JobQueue、Run、NodeRun、RunEvent、CallRecord、Agent、ResourceLock、QualityResult、Evidence、**EvalSample**、ResultRuleSet、DataAsset、AnalysisTask、Datasource、McpServer、KnowledgeSource、DataDefinition、ResourceChangeLog、**AuditLog、AgentVersion、Release、MemoryRecord**。
 - 关键状态流转：
   - 工作流：draft → testing/published/deprecated；发布时生成不可变版本快照并收集引用。
   - **Agent 版本**：draft → published；发布时构建 definition 快照、common_config、dependency_snapshot 并计算 artifact_hash；部署到 sandbox/prod 环境。
@@ -127,6 +115,7 @@ API-->>FE : event stream
   - 资源：enabled/disabled；删除前进行引用检测，避免破坏依赖。
   - 规则：draft/published；发布后自动重算历史结果。
   - Agent：配置变更使用 config_revision 乐观锁；类型限定 autonomous/dialogue/expert-group。
+  - **评测样本**：支持 rule/model/human 三种评判模式，judge_result 存储最近一次评判结果。
   - **分析任务**：Active/Paused 状态控制任务执行开关。
   - **质检结果**：AI → REVIEWED → EFFECTIVE 审核流程，支持人工修正。
 - 数据所有权边界：
@@ -134,21 +123,25 @@ API-->>FE : event stream
   - 资源与连接属于基础设施层，被工作流/工具/数据源等多处引用，需通过 resource_registry 进行一致性保护。
   - 业务对象（QualityResult/Evidence/ResultRuleSet）与数据资产/定义解耦，便于独立演进。
   - **Agent 版本快照包含完整定义、公共配置和依赖冻结快照，确保运行时一致性**。
+  - **评测样本与工作流/Agent关联，支持跨维度评测与结果对比**。
 
 ```mermaid
 erDiagram
 WORKFLOW ||--o{ WORKFLOW_VERSION : "发布生成"
 WORKFLOW ||--o{ AGENT : "绑定"
 WORKFLOW ||--o{ RUN : "触发"
+WORKFLOW ||--o{ EVAL_SAMPLE : "评测样本"
 WORKFLOW_VERSION ||--o{ RUN : "不可变版本"
 AGENT ||--o{ AGENT_VERSION : "发布版本"
 AGENT ||--o{ RELEASE : "环境部署"
+AGENT ||--o{ EVAL_SAMPLE : "评测样本"
 AGENT_VERSION ||--o{ RELEASE : "版本引用"
 RUN ||--o{ NODE_RUN : "节点执行"
 RUN ||--o{ RUN_EVENT : "事件"
 RUN ||--o{ QUALITY_RESULT : "产出"
 QUALITY_RESULT ||--o{ EVIDENCE : "证据"
 RESULT_RULE_SET ||..|| QUALITY_RESULT : "求值"
+EVAL_SAMPLE ||..|| RUN : "评测关联"
 DATA_ASSET ||--o{ DATA_DEFINITION : "字段语义"
 DATASOURCE ||--o{ DATA_ASSET : "来源"
 CONNECTION ||--o{ TOOL : "调用凭据"
@@ -205,28 +198,170 @@ Allow --> Next["继续处理请求"]
 
 ## 新增功能详解
 
-### RBAC 权限控制系统
-**新增** 完整的基于角色的访问控制（RBAC）系统，支持四种角色和细粒度权限控制。
+### 工作流评估系统
+**新增** 完整的工作流评估系统，支持对工作流进行真实的端到端评测。
 
-#### 角色定义
-- **Viewer（只读）**：只能查看资源，无编辑权限
-- **Editor（可编辑）**：可编辑资源但不能发布
-- **Publisher（可发布）**：可编辑和发布资源
-- **Admin（全部）**：拥有所有权限，包括审计和强制解锁
+#### 工作流评估端点
+- **POST /api/workflows/{wid}/eval-run**：工作流级评测，支持同步执行和多评判模式
+- 支持参数：
+  - `judge`：评判模式（none/rule/model）
+  - `sampleIds`：指定要评测的样本ID列表
+- 执行流程：
+  1. 查询工作流的所有评测样本
+  2. 对每个样本创建真实运行（enqueue=False 同步执行）
+  3. 等待运行完成并获取最终状态
+  4. 根据评判模式计算结果
+  5. 存储评判结果到样本的 judge_result 字段
 
-#### 权限矩阵
-- **View 权限**：quality.view、task.view、agent.view、tool.view、asset.view、rules.view、connection.view
-- **Manage 权限**：task.manage、agent.edit、tool.manage、asset.manage、rules.manage、connection.manage、quality.review
-- **Publish 权限**：agent.publish、tool.publish、rules.publish
-- **Admin 权限**：admin.audit、admin.force-unlock
+#### 评判模式
+- **rule**：基于期望文本匹配的规则评判，返回布尔值和分数
+- **model**：使用LLM进行智能评判，返回1-5分的评分
+- **none**：仅执行运行，不进行评判
 
-#### 前端实现
-- 角色存储在 localStorage 中，支持动态切换
-- 基于权限控制 UI 元素的显示和禁用状态
-- 提供 `rbac.can()` 和 `rbac.actionVisibility()` 方法
+#### 评估结果结构
+```json
+{
+  "total": 2,
+  "succeeded": 2, 
+  "results": [
+    {
+      "sampleId": "xxx",
+      "name": "样本名称",
+      "runId": "run_xxx",
+      "status": "succeeded",
+      "durationMs": 1234,
+      "output": "输出内容摘要",
+      "judge": {"kind": "rule", "score": 1.0, "passed": true},
+      "error": null
+    }
+  ]
+}
+```
 
 **章节来源**
-- [src/services/rbac.ts:1-84](file://src/services/rbac.ts#L1-84)
+- [server/app/routers/admin.py:618-655](file://server/app/routers/admin.py#L618-L655)
+
+### 人评打分系统
+**新增** 人工评分功能，支持对评测样本进行人工打分（0-5分）。
+
+#### 人评端点
+- **POST /api/eval-samples/{sid}/human-score**：通用人评接口，支持工作流和Agent样本
+- **POST /api/agents/{aid}/eval-samples/{sid}/human-score**：Agent专用人评接口
+
+#### 评分规则
+- 分数范围：0-5分（浮点数）
+- 支持备注信息：note 字段用于记录评分原因
+- 覆盖机制：新的人评会覆盖之前的机器评判结果
+
+#### 评分结果结构
+```json
+{
+  "id": "sample_id",
+  "judge": {
+    "kind": "human",
+    "score": 4.5,
+    "note": "回答质量很好，但不够详细"
+  }
+}
+```
+
+**章节来源**
+- [server/app/routers/admin.py:658-670](file://server/app/routers/admin.py#L658-L670)
+- [server/app/routers/agents.py:362-374](file://server/app/routers/agents.py#L362-L374)
+
+### Agent评估增强
+**更新** Agent评估功能现已支持更丰富的评判模式和同步执行。
+
+#### Agent评估端点
+- **POST /api/agents/{aid}/eval-run**：Agent级评测，支持同步执行
+- 支持相同的评判模式（rule/model/none）
+- 内置模型评判函数 `_model_judge`，失败时自动回退到规则评判
+
+#### 模型评判机制
+- 使用 qwen-plus 模型进行智能评分
+- 输入：用户问题、参考答案、实际回答
+- 输出：1-5分的整数评分
+- 容错机制：LLM调用失败时回退到基于文本匹配的简单规则
+
+**章节来源**
+- [server/app/routers/agents.py:303-343](file://server/app/routers/agents.py#L303-L343)
+- [server/app/routers/agents.py:346-359](file://server/app/routers/agents.py#L346-L359)
+
+### EvalSample模型增强
+**更新** EvalSample模型新增judge_result字段，支持存储多种评判结果。
+
+#### 模型结构
+- **judge_result**: JSONB字段，存储最近一次的评判结果
+- 支持三种评判类型：
+  - `rule`: 规则评判，包含score和passed字段
+  - `model`: 模型评判，包含score字段（1-5分）
+  - `human`: 人工评判，包含score字段（0-5分）和note备注
+
+#### 数据完整性
+- 支持工作流和Agent两个维度的样本管理
+- 样本可以只关联工作流或Agent，支持灵活的组织方式
+- 与Run记录的关联，便于追溯评测的执行情况
+
+**章节来源**
+- [server/app/models.py:371-383](file://server/app/models.py#L371-L383)
+
+### 增强的质量结果查询功能
+**更新** 质量结果列表端点支持高级过滤和统计功能：
+
+- **分页支持**：page、pageSize 参数控制分页显示
+- **审核状态过滤**：review 参数可按 AI/REVIEWED/EFFECTIVE 状态筛选
+- **实时计数**：counts 字段提供各状态数量统计（all、ai、reviewed）
+- **执行信息**：execution 字段包含运行 ID、任务 ID、状态、Agent 版本等信息
+
+**章节来源**
+- [server/app/routers/admin.py:495-517](file://server/app/routers/admin.py#L495-L517)
+
+### 工作流发布集成审计
+**更新** 工作流发布流程现已集成审计日志记录，确保发布操作的完整追溯。
+
+#### 发布流程增强
+- 发布成功后自动记录审计日志
+- 记录版本号、操作者和时间戳
+- 支持发布原因和备注信息的审计
+
+#### 审计信息
+- **action**: "workflow.publish"
+- **target_type**: "workflow"
+- **detail**: 包含版本号等信息
+
+**章节来源**
+- [server/app/routers/workflows.py:110-137](file://server/app/routers/workflows.py#L110-L137)
+
+### 数据库架构演进
+**新增** 多个数据库表以支持新功能：
+
+- **audit_log**：审计日志表，记录所有高危操作
+- **resource_lock 扩展**：新增 expires_at 字段支持租约语义
+- **agent_version**：Agent 不可变版本快照表
+- **release**：Agent 版本到环境的部署记录表  
+- **memory_record**：持久化记忆值表（scope=agent:{agentId}|wf:{workflowId}）
+- **quality_result**：质检结果主表，存储 AI 结构化输出、评分、风险等级、审核状态
+- **evidence**：证据表，支撑质检结论的片段/调用事实，支持多种证据类型
+- **run_event 扩展**：新增 channel、trace_id、span_id、parent_span_id、duration_ms、tokens 字段
+- **eval_sample 扩展**：新增 agent_id、judge_result 字段支持多维度评测
+
+**迁移版本**：
+- `b026phaseb0001_agent_version_release.py`：Agent 版本管理表 + Agent 环境版本指针
+- `c027phasec0001_event_channels_memory.py`：事件通道/追踪列 + 记忆持久化
+- `2fb72708e1d8_quality_result_evidence.py`：质检结果表 + 证据表
+- `d030phased4001_audit_lease.py`：**审计日志表 + 资源锁租约字段**
+- `d028phased1001_eval_sample_agent.py`：**评测样本支持Agent维度**
+- `d029phased1002_eval_sample_workflow_nullable.py`：**评测样本workflow_id支持空值**
+- `d029phased3001_judge_evolution.py`：**评测样本judge_result字段 + 进化候选补丁**
+
+**章节来源**
+- [server/alembic/versions/b026phaseb0001_agent_version_release.py:1-65](file://server/alembic/versions/b026phaseb0001_agent_version_release.py#L1-L65)
+- [server/alembic/versions/c027phasec0001_event_channels_memory.py:1-50](file://server/alembic/versions/c027phasec0001_event_channels_memory.py#L1-L50)
+- [server/alembic/versions/2fb72708e1d8_quality_result_evidence.py:21-65](file://server/alembic/versions/2fb72708e1d8_quality_result_evidence.py#L21-L65)
+- [server/alembic/versions/d030phased4001_audit_lease.py:1-40](file://server/alembic/versions/d030phased4001_audit_lease.py#L1-L40)
+- [server/alembic/versions/d028phased1001_eval_sample_agent.py:1-30](file://server/alembic/versions/d028phased1001_eval_sample_agent.py#L1-L30)
+- [server/alembic/versions/d029phased1002_eval_sample_workflow_nullable.py:1-30](file://server/alembic/versions/d029phased1002_eval_sample_workflow_nullable.py#L1-L30)
+- [server/alembic/versions/d029phased3001_judge_evolution.py:1-41](file://server/alembic/versions/d029phased3001_judge_evolution.py#L1-L41)
 
 ### 审计日志系统
 **新增** 完整的审计日志系统，记录所有高危操作的完整审计轨迹。
@@ -281,125 +416,6 @@ Allow --> Next["继续处理请求"]
 - [server/app/routers/admin.py:363-426](file://server/app/routers/admin.py#L363-L426)
 - [server/alembic/versions/d030phased4001_audit_lease.py:22-40](file://server/alembic/versions/d030phased4001_audit_lease.py#L22-L40)
 
-### 工作流发布集成审计
-**更新** 工作流发布流程现已集成审计日志记录，确保发布操作的完整追溯。
-
-#### 发布流程增强
-- 发布成功后自动记录审计日志
-- 记录版本号、操作者和时间戳
-- 支持发布原因和备注信息的审计
-
-#### 审计信息
-- **action**: "workflow.publish"
-- **target_type**: "workflow"
-- **detail**: 包含版本号等信息
-
-**章节来源**
-- [server/app/routers/workflows.py:110-137](file://server/app/routers/workflows.py#L110-L137)
-
-### 数据库架构演进
-**新增** 多个数据库表以支持新功能：
-
-- **audit_log**：审计日志表，记录所有高危操作
-- **resource_lock 扩展**：新增 expires_at 字段支持租约语义
-- **agent_version**：Agent 不可变版本快照表
-- **release**：Agent 版本到环境的部署记录表  
-- **memory_record**：持久化记忆值表（scope=agent:{agentId}|wf:{workflowId}）
-- **quality_result**：质检结果主表，存储 AI 结构化输出、评分、风险等级、审核状态
-- **evidence**：证据表，支撑质检结论的片段/调用事实，支持多种证据类型
-- **run_event 扩展**：新增 channel、trace_id、span_id、parent_span_id、duration_ms、tokens 字段
-
-**迁移版本**：
-- `b026phaseb0001_agent_version_release.py`：Agent 版本管理表 + Agent 环境版本指针
-- `c027phasec0001_event_channels_memory.py`：事件通道/追踪列 + 记忆持久化
-- `2fb72708e1d8_quality_result_evidence.py`：质检结果表 + 证据表
-- `d030phased4001_audit_lease.py`：**审计日志表 + 资源锁租约字段**
-
-**章节来源**
-- [server/alembic/versions/b026phaseb0001_agent_version_release.py:1-65](file://server/alembic/versions/b026phaseb0001_agent_version_release.py#L1-L65)
-- [server/alembic/versions/c027phasec0001_event_channels_memory.py:1-50](file://server/alembic/versions/c027phasec0001_event_channels_memory.py#L1-L50)
-- [server/alembic/versions/2fb72708e1d8_quality_result_evidence.py:21-65](file://server/alembic/versions/2fb72708e1d8_quality_result_evidence.py#L21-L65)
-- [server/alembic/versions/d030phased4001_audit_lease.py:1-40](file://server/alembic/versions/d030phased4001_audit_lease.py#L1-L40)
-
-### 增强的质量结果查询功能
-**更新** 质量结果列表端点支持高级过滤和统计功能：
-
-- **分页支持**：page、pageSize 参数控制分页显示
-- **审核状态过滤**：review 参数可按 AI/REVIEWED/EFFECTIVE 状态筛选
-- **实时计数**：counts 字段提供各状态数量统计（all、ai、reviewed）
-- **执行信息**：execution 字段包含运行 ID、任务 ID、状态、Agent 版本等信息
-
-**章节来源**
-- [server/app/routers/admin.py:495-517](file://server/app/routers/admin.py#L495-L517)
-
-### 新增功能详解
-
-#### Agent 版本管理系统
-**新增** 完整的 Agent 版本生命周期管理，支持不可变版本快照和环境部署。
-
-- **版本创建**：`POST /api/agents/{aid}/versions` - 构建定义快照、验证依赖、生成 artifact hash
-- **版本列表**：`GET /api/agents/{aid}/versions` - 查看 Agent 的所有发布版本
-- **版本详情**：`GET /api/agents/{aid}/versions/{vid}` - 获取特定版本的完整定义和配置
-- **环境部署**：`POST /api/agents/{aid}/releases` - 将版本部署到 sandbox 或 prod 环境
-- **部署历史**：`GET /api/agents/{aid}/releases` - 查看 Agent 的部署历史记录
-
-**版本快照结构**：
-- `definition`：Agent 定义的不可变快照（autonomous/diologue/expert-group 三种类型）
-- `common_config`：CommonAgentConfig（对话体验、记忆声明、知识兜底）
-- `dependency_snapshot`：依赖冻结快照（工具、工作流、知识库、模型的确定版本）
-- `artifact_hash`：SHA256 哈希，用于版本去重和完整性验证
-
-**章节来源**
-- [server/app/routers/agents.py:176-259](file://server/app/routers/agents.py#L176-L259)
-- [server/app/agent_release.py:1-187](file://server/app/agent_release.py#L1-L187)
-- [server/app/models.py:294-323](file://server/app/models.py#L294-L323)
-
-#### 增强的运行追踪系统
-**新增** 双通道事件系统和分布式追踪支持，提升运行可观测性。
-
-- **通道分离**：CONTROL（控制面）vs CONTENT（用户可见内容流）
-- **追踪标识**：trace_id、span_id、parent_span_id 支持分布式追踪
-- **性能指标**：duration_ms、tokens 统计 LLM 调用成本
-- **内存持久化**：memory_record 表支持跨会话的记忆变量存储
-
-**新增节点执行器**：
-- `reply`：对话回复节点，发送 CONTENT 通道事件
-- `memory-variable`：记忆变量读写节点，支持键空间隔离
-- `workflow-select`：工作流选择节点，基于语义路由选择候选工作流
-- `workflow-fixed`：固定工作流节点，直接执行绑定的工作流
-- `decision-class`：决策分类节点，LLM 驱动的分支选择
-- `query-rewrite`：Query 改写节点，优化检索查询
-- `code-write`：代码编写节点，子进程沙箱执行 Python 代码
-
-**章节来源**
-- [server/app/runner.py:632-654](file://server/app/runner.py#L632-L654)
-- [server/app/models.py:221-239](file://server/app/models.py#L221-L239)
-- [server/app/models.py:242-252](file://server/app/models.py#L242-L252)
-
-#### 质检结果与证据管理系统
-**新增** 完整的质检结果管理和证据支撑体系，支持人工审核流程。
-
-##### 质检结果管理
-- **列表查询**：`GET /api/quality-results` - 支持分页、审核状态过滤、Tab 计数
-- **详情查询**：`GET /api/quality-results/{rid}` - 获取质检结果详情及相关证据
-- **审核流程**：`POST /api/quality-results/{rid}/review` - 支持 approve/effective/reopen/revise 操作
-
-##### 证据提交与管理
-- **证据提交**：`POST /api/quality-results/{rid}/evidence` - 人工添加证据支撑
-- **证据类型**：transcript_span（对话片段）、tool_call（工具调用）、field（字段值）
-- **证据定位**：支持 locator 精确定位原始数据位置
-
-##### 任务管理系统
-- **任务更新**：`PUT /api/tasks/{tid}` - 编辑任务配置（名称、描述、范围、采样策略、数据窗口）
-- **状态管理**：`POST /api/tasks/{tid}/status` - 切换任务 Active/Paused 状态
-- **批量运行**：`POST /api/tasks/{tid}/batch-run` - 对数据资产进行批量质检
-- **定时调度**：`POST /api/tasks/{tid}/schedule` - 配置 Cron 定时任务
-
-**章节来源**
-- [server/app/routers/business.py:175-191](file://server/app/routers/business.py#L175-L191)
-- [server/app/routers/business.py:303-328](file://server/app/routers/business.py#L303-L328)
-- [server/app/routers/admin.py:454-488](file://server/app/routers/admin.py#L454-L488)
-
 ### 审计日志前端页面
 **新增** 审计日志前端页面，提供可视化的审计记录查看界面。
 
@@ -416,12 +432,12 @@ Allow --> Next["继续处理请求"]
 **章节来源**
 - [src/pages/audit-log.tsx:13-43](file://src/pages/audit-log.tsx#L13-L43)
 
-## 总结
+### 总结
 本次更新主要围绕四个核心方面进行了重大改进：
 
-1. **权限控制体系**：实现了完整的 RBAC 系统，支持四种不同权限级别的访问控制
-2. **审计追踪系统**：建立了完善的审计日志机制，确保所有高危操作的可追溯性
-3. **资源管理增强**：引入了租约语义的资源锁机制，提升了并发编辑的安全性
-4. **数据架构演进**：新增了多个核心数据表，支持更丰富的业务场景和功能需求
+1. **工作流评估系统**：实现了完整的工作流评测能力，支持同步执行和多评判模式
+2. **人评机制**：提供了灵活的人工评分功能，支持0-5分制评分和备注
+3. **评测数据管理**：增强了EvalSample模型，支持存储多种评判结果
+4. **数据架构演进**：新增了多个数据库表和字段，支持更丰富的评测场景
 
-这些改进显著提升了系统的可维护性、安全性和功能性，为后续的功能扩展奠定了坚实的基础。
+这些改进显著提升了系统的评测能力和可观测性，为工作流和Agent的质量保证提供了强有力的技术支持。

@@ -13,6 +13,7 @@
 - [workflows.py](file://server/app/routers/workflows.py)
 - [wf-api.ts](file://src/services/wf-api.ts)
 - [agents.py](file://server/app/routers/agents.py)
+- [admin.py](file://server/app/routers/admin.py)
 - [models.py](file://server/app/models.py)
 - [schemas.py](file://server/app/schemas.py)
 - [validator.py](file://server/app/validator.py)
@@ -36,15 +37,16 @@
 
 ## 更新摘要
 **变更内容**
-- **新增** 高级条件分支规则构建器：支持多条件AND/OR逻辑分组、类型感知操作符、变量引用比较、拖拽分支管理
-- **新增** CodeMirror 6专业代码编辑器集成：为code-write节点提供Python语法高亮、自动补全、括号匹配等特性
-- **增强** 条件判断节点：从单条件升级为规则构建器，每分支可含多个条件且支持组内逻辑连接
-- **改进** 工作流设计器：条件分支支持拖拽排序、动态运算符选择、字面量与变量引用切换
+- **新增** 工作流级评估系统：支持同步执行、多评判模式（rule/model/human）、人类评审集成
+- **增强** 评估样本管理：支持工作流和Agent双维度样本管理，judge_result字段存储评判结果
+- **新增** 模型评判功能：使用LLM进行智能打分（1-5分），支持失败回退到规则评判
+- **新增** 人类评审集成：允许人工评分覆盖或补充机器评判结果，支持备注说明
+- **对齐** Agent级评估系统：工作流评估与Agent评估统一至D-1/D-3标准
 
 ## 产品概述
 本工作流聚焦于"Agent 编辑器（节点图/Inspector/变量选择器/测试运行）""工作流设计器""Agent 版本管理与发布流程"。平台以可视化节点图编排 AI 能力，支持对话编排、自主规划与专家组协作三类 Agent；通过工作流定义、校验、发布与版本快照，形成从编辑到上线的闭环。前端基于 React + @xyflow/react 实现画布与 Inspector，后端 FastAPI 提供工作流与 Agent 的 CRUD、校验、发布与运行接口，数据库使用 SQLAlchemy/Alembic。
 
-**更新** 已集成 Phase B 的 Agent 版本发布系统与 Phase C 的事件通道、跟踪基础设施及新节点类型，并新增 Phase D-1 的四标签 Agent 编辑器界面、Agent 级评估系统、专家组增强功能和综合操作仪表板，形成完整的 Agent 全生命周期管理能力。同时对工作流设计器进行了重大改进，包括LLM节点配置优化、transform节点schema统一、agent-select查询参数改进和内存描述正确注入等。**最新增强** 包括模型语义参数控制（温度调节、历史轮次管理、工具调用辅助模型）、预览模型对比功能、语音合成集成以及增强的聊天历史上下文管理。**新增 Phase D-3** 增强了评估系统，支持三种评判模式和进化补丁管理，形成了从问题发现到自动修复的完整闭环。**新增高级条件分支规则构建器**，支持多条件逻辑分组、类型感知操作符、变量引用比较和拖拽分支管理，大幅提升条件判断的灵活性和易用性。**新增CodeMirror 6代码编辑器**，为代码编写节点提供专业的编程体验。
+**更新** 已集成 Phase B 的 Agent 版本发布系统与 Phase C 的事件通道、跟踪基础设施及新节点类型，并新增 Phase D-1 的四标签 Agent 编辑器界面、Agent 级评估系统、专家组增强功能和综合操作仪表板，形成完整的 Agent 全生命周期管理能力。同时对工作流设计器进行了重大改进，包括LLM节点配置优化、transform节点schema统一、agent-select查询参数改进和内存描述正确注入等。**最新增强** 包括模型语义参数控制（温度调节、历史轮次管理、工具调用辅助模型）、预览模型对比功能、语音合成集成以及增强的聊天历史上下文管理。**新增 Phase D-3** 增强了评估系统，支持三种评判模式和进化补丁管理，形成了从问题发现到自动修复的完整闭环。**新增工作流级评估系统**，支持与Agent级评估系统对齐至D-1/D-3标准，提供同步执行、多评判模式和人类评审集成功能。**新增高级条件分支规则构建器**，支持多条件逻辑分组、类型感知操作符、变量引用比较和拖拽分支管理，大幅提升条件判断的灵活性和易用性。**新增CodeMirror 6代码编辑器**，为代码编写节点提供专业的编程体验。
 
 ## 核心业务流程
 - 创建工作流：创建默认包含"开始/结束"的工作流草稿，返回工作流 ID 与初始状态。
@@ -59,6 +61,7 @@
 - **新增** 评估闭环流程：样本管理 → 真实运行评测 → 多模式评判 → 结果分析 → 进化补丁生成 → 审批应用。
 - **新增** 工作流引用可视化：工作流列表显示 Agent 绑定状态，帮助用户快速识别被引用的工作流。
 - **新增** 高级条件分支：支持多条件AND/OR逻辑分组、类型感知操作符、变量引用比较、拖拽分支管理。
+- **新增** 工作流级评估：支持同步执行、多评判模式（rule/model/human）、人类评审集成，与Agent级评估系统对齐。
 
 ```mermaid
 sequenceDiagram
@@ -122,13 +125,15 @@ U->>FE : 查看被 Agent 引用的高亮工作流
   - **新增** 事件通道：CONTROL 控制面事件（node_completed、memory_read/write）与 CONTENT 内容面事件（llm_delta、reply_sent）分离。
   - **新增** Trace 基础设施：每个事件携带 trace_id/span_id/parent_span_id，支持分布式追踪。
   - **新增** 新节点执行器：reply（回复）、memory-variable（记忆读写）、workflow-select（工作流选择）、workflow-fixed（固定工作流执行）。
-- **新增** 增强评估系统（Phase D-3）
-  - 职责：样本管理、真实运行评测、三种评判模式（规则/模型/人工）、结果统计、进化补丁生成。
-  - 用户价值：量化评估 Agent 表现，支持持续优化和问题自动修复。
-  - 验收要点：样本增删改查、批量评测运行、多模式评判、成功率计算、结果详情展示、进化补丁审批。
+- **新增** 工作流级评估系统（Phase D-1/D-3）
+  - 职责：样本管理、真实运行评测、三种评判模式（规则/模型/人工）、结果统计、人类评审集成。
+  - 用户价值：量化评估工作流表现，支持持续优化和问题自动修复。
+  - 验收要点：样本增删改查、批量评测运行、多模式评判、成功率计算、结果详情展示、人类评审覆盖。
+  - **同步执行**：使用 `enqueue=False` 参数确保评测过程中同步等待每个样本运行完成。
   - **规则评判**：基于期望文本匹配，简单高效但不够灵活。
   - **模型评判**：使用LLM进行智能打分（1-5分），支持失败回退到规则评判。
   - **人工评判**：允许人工评分覆盖或补充机器评判结果，支持备注说明。
+  - **judge_result存储**：评判结果持久化存储在 EvalSample.judge_result 字段中。
 - **新增** 进化补丁管理系统（Phase D-3）
   - 职责：失败运行归因、候选补丁生成、审批工作流、提示词改进应用。
   - 用户价值：自动化问题诊断和改进建议，减少人工干预成本。
@@ -158,6 +163,7 @@ U->>FE : 查看被 Agent 引用的高亮工作流
 - [wf-agent-editor.tsx:127-344](file://src/pages/wf-agent-editor.tsx#L127-L344)
 - [agent-ops-panels.tsx:84-286](file://src/components/agent-ops-panels.tsx#L84-L286)
 - [agents.py:303-483](file://server/app/routers/agents.py#L303-L483)
+- [admin.py:579-703](file://server/app/routers/admin.py#L579-L703)
 - [validator.py:54-163](file://server/app/validator.py#L54-L163)
 - [workflows.py:101-162](file://server/app/routers/workflows.py#L101-L162)
 - [wf-api.ts:315-350](file://src/services/wf-api.ts#L315-L350)
@@ -250,6 +256,7 @@ class Release {
 }
 class EvalSample {
 +string id
++string workflow_id
 +string agent_id
 +string name
 +jsonb input
@@ -343,6 +350,10 @@ Run "1" -- "0..*" RunEvent : "events"
   - **新增** 引用统计性能：工作流列表查询通过单次 SQL 聚合统计引用数量，避免 N+1 查询问题。
   - **新增** 条件分支性能：规则构建器支持大量条件的快速求值，AND/OR逻辑短路优化。
   - **新增** 代码编辑器性能：CodeMirror 6提供高效的代码编辑体验，支持大文件处理和智能提示。
+  - **新增** 同步执行约束：工作流评估使用 `enqueue=False` 确保评测过程中同步等待每个样本运行完成。
+  - **新增** 评判模式约束：judge 参数限定 none/rule/model/human，评分范围 0-5 分。
+  - **新增** 样本作用域约束：评估样本可同时关联工作流和Agent，支持灵活的评测场景。
+  - **新增** judge_result存储约束：评判结果以JSONB格式存储，支持kind、score、passed、note等字段。
 - 依赖与集成边界
   - 节点 IO 与执行器由 NodeDefinition 与 registry 决定；LLM/Tool/MCP/Knowledge 引用需处于 enabled/ready 状态。
   - 发布流程会收集节点对资源的引用，用于删除防护与审计。
@@ -355,6 +366,8 @@ Run "1" -- "0..*" RunEvent : "events"
   - **新增** 引用关系约束：Agent.workflow_id 字段建立工作流与 Agent 的关联关系，支持外键约束。
   - **新增** 条件分支约束：branches[].conditions数组结构，logic字段限定AND/OR，operator字段按类型限定。
   - **新增** 代码编辑器约束：CodeMirror 6配置限制在Python语言模式，支持基本设置如行号、折叠、自动补全。
+  - **新增** 样本关联约束：eval_sample.workflow_id和agent_id均为可选字段，支持灵活关联。
+  - **新增** 评判结果约束：judge_result字段存储评判模式、分数、通过状态和备注信息。
 - 业务约束
   - 工作流必须恰有一个开始节点与至少一个终端节点；条件分支与出边 handle 需一致；结构化输出键需被唯一节点产出。
   - Agent 名称长度上限为 20，前后端共用同一常量。
@@ -364,6 +377,8 @@ Run "1" -- "0..*" RunEvent : "events"
   - **新增** 进化补丁约束：只有 pending 状态的补丁可被应用或拒绝；应用成功后原提示词被替换，新版本号递增。
   - **新增** 引用统计约束：agentRefCount 通过查询 Agent 表统计，确保数据准确性。
   - **新增** 条件分支约束：else分支固定兜底不可删除，分支handle对应画布出边，条件变量引用格式为{{node.outputs.field}}。
+  - **新增** 评估执行约束：工作流评估使用同步执行模式，确保每个样本评测完成后立即返回结果。
+  - **新增** 评判覆盖约束：人工评判可完全覆盖机器评判结果，支持后续分析和修正。
 
 ```mermaid
 flowchart TD
@@ -379,7 +394,9 @@ R8 --> R9["R9: 评估样本输入校验"]
 R9 --> R10["R10: 评判模式有效性检查"]
 R10 --> R11["R11: 进化补丁状态约束"]
 R11 --> R12["R12: 工作流引用统计"]
-R12 --> End(["返回 ValidationReport"])
+R12 --> R13["R13: 样本关联约束检查"]
+R13 --> R14["R14: judge_result存储验证"]
+R14 --> End(["返回 ValidationReport"])
 ```
 
 **图表来源**
@@ -388,6 +405,7 @@ R12 --> End(["返回 ValidationReport"])
 - [agents.py:303-377](file://server/app/routers/agents.py#L303-L377)
 - [agents.py:379-446](file://server/app/routers/agents.py#L379-L446)
 - [workflows.py:53-71](file://server/app/routers/workflows.py#L53-L71)
+- [admin.py:618-670](file://server/app/routers/admin.py#L618-L670)
 
 **章节来源**
 - [validator.py:54-163](file://server/app/validator.py#L54-L163)
@@ -399,24 +417,25 @@ R12 --> End(["返回 ValidationReport"])
 - [agents.py:303-377](file://server/app/routers/agents.py#L303-L377)
 - [agents.py:379-446](file://server/app/routers/agents.py#L379-L446)
 - [workflows.py:53-71](file://server/app/routers/workflows.py#L53-L71)
+- [admin.py:618-670](file://server/app/routers/admin.py#L618-L670)
 
 ## 新增特性详解
 
-### 高级条件分支规则构建器
-- **多条件逻辑分组**：每个分支可包含多个条件，支持AND（且）和OR（或）逻辑连接
-- **类型感知操作符**：根据变量数据类型动态提供合适的操作符选项（字符串、数值、布尔、数组、对象）
-- **变量引用比较**：支持直接引用其他节点的输出作为比较值，无需硬编码字面量
-- **拖拽分支管理**：支持拖拽排序分支，直观调整条件判断优先级
-- **兼容旧格式**：自动迁移旧的单条件分支格式到新结构，保证向后兼容
-- **Else兜底分支**：固定的else分支作为默认出口，不可删除
-- **实时变量路径显示**：选择变量后显示真实路径（如"大模型.answer"），提升配置可读性
+### 工作流级评估系统（Phase D-1/D-3）
+- **同步执行**：使用 `enqueue=False` 参数确保评测过程中同步等待每个样本运行完成，提供即时反馈。
+- **多评判模式**：支持 none（仅运行成败）、rule（期望文本匹配）、model（LLM智能打分）三种评判模式。
+- **人类评审集成**：支持人工评分覆盖或补充机器评判结果，评分范围 0-5 分，支持备注说明。
+- **judge_result存储**：评判结果持久化存储在 EvalSample.judge_result 字段中，包含 kind、score、passed、note 等信息。
+- **批量评测**：支持一次性对多个样本进行评测，返回详细结果统计和成功率计算。
+- **样本管理**：支持工作流和Agent双维度的样本管理，灵活关联评测场景。
+- **用户体验**：评测过程中显示进度，完成后展示成功率和详细结果列表。
 
 **章节来源**
-- [wf-designer.tsx:395-447](file://src/pages/wf-designer.tsx#L395-L447)
-- [wf-designer.tsx:743-837](file://src/pages/wf-designer.tsx#L743-L837)
-- [runner.py:258-281](file://server/app/runner.py#L258-L281)
-- [design-condition-rule-builder.md:1-104](file://docs/sdd/design-condition-rule-builder.md#L1-L104)
-- [test_phase_a.py:230-268](file://server/tests/test_phase_a.py#L230-L268)
+- [admin.py:618-670](file://server/app/routers/admin.py#L618-L670)
+- [agents.py:303-377](file://server/app/routers/agents.py#L303-L377)
+- [wf-designer.tsx:2124-2203](file://src/pages/wf-designer.tsx#L2124-L2203)
+- [agent-ops-panels.tsx:86-172](file://src/components/agent-ops-panels.tsx#L86-L172)
+- [wf-api.ts:381-393](file://src/services/wf-api.ts#L381-L393)
 
 ### CodeMirror 6专业代码编辑器集成
 - **Python语法高亮**：为code-write节点提供完整的Python语言支持和语法高亮
@@ -430,20 +449,6 @@ R12 --> End(["返回 ValidationReport"])
 **章节来源**
 - [wf-designer.tsx:882-910](file://src/pages/wf-designer.tsx#L882-L910)
 - [package.json:35](file://package.json#L35)
-
-### Phase D-3 增强评估系统
-- **三种评判模式**：支持规则评判（rule）、模型评判（model）、人工评判（human）三种模式
-- **规则评判**：基于期望文本匹配，简单高效，适用于确定性场景
-- **模型评判**：使用LLM进行智能打分（1-5分），支持失败回退到规则评判
-- **人工评判**：允许人工评分覆盖或补充机器评判结果，支持备注说明
-- **评判结果存储**：judge_result 字段存储评判模式、分数和相关信息
-- **批量评测**：支持一次性对多个样本进行评测，返回详细结果统计
-- **用户体验**：评测过程中显示进度，完成后展示成功率和详细结果列表
-
-**章节来源**
-- [agents.py:303-377](file://server/app/routers/agents.py#L303-L377)
-- [test_phase_d1.py:48-67](file://server/tests/test_phase_d1.py#L48-L67)
-- [models.py:371-384](file://server/app/models.py#L371-L384)
 
 ### 进化补丁管理系统（Phase D-3）
 - **失败归因分析**：自动分析近期失败运行，识别超时、工具失败、幻觉等问题类型
@@ -634,3 +639,19 @@ R12 --> End(["返回 ValidationReport"])
 - [wf-workflows-list.tsx:94-114](file://src/pages/wf-workflows-list.tsx#L94-L114)
 - [workflows.py:53-71](file://server/app/routers/workflows.py#L53-L71)
 - [resource-card.tsx:59-63](file://src/components/resources/resource-card.tsx#L59-L63)
+
+### 高级条件分支规则构建器
+- **多条件逻辑分组**：每个分支可包含多个条件，支持AND（且）和OR（或）逻辑连接
+- **类型感知操作符**：根据变量数据类型动态提供合适的操作符选项（字符串、数值、布尔、数组、对象）
+- **变量引用比较**：支持直接引用其他节点的输出作为比较值，无需硬编码字面量
+- **拖拽分支管理**：支持拖拽排序分支，直观调整条件判断优先级
+- **兼容旧格式**：自动迁移旧的单条件分支格式到新结构，保证向后兼容
+- **Else兜底分支**：固定的else分支作为默认出口，不可删除
+- **实时变量路径显示**：选择变量后显示真实路径（如"大模型.answer"），提升配置可读性
+
+**章节来源**
+- [wf-designer.tsx:395-447](file://src/pages/wf-designer.tsx#L395-L447)
+- [wf-designer.tsx:743-837](file://src/pages/wf-designer.tsx#L743-L837)
+- [runner.py:258-281](file://server/app/runner.py#L258-L281)
+- [design-condition-rule-builder.md:1-104](file://docs/sdd/design-condition-rule-builder.md#L1-L104)
+- [test_phase_a.py:230-268](file://server/tests/test_phase_a.py#L230-L268)

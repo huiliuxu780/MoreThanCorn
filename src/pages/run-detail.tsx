@@ -32,6 +32,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TraceView, type TraceEvent } from "@/components/run/trace-view"
 import { DefinitionRow } from "@/components/app/form-field"
 import { FilterBar, SearchField } from "@/components/app/filters"
 import { ErrorState, TableSkeleton } from "@/components/app/list-state"
@@ -44,7 +46,7 @@ import { useAsyncData } from "@/hooks/use-async-data"
 import { useListQuery } from "@/hooks/use-list-query"
 import { formatDateTime } from "@/lib/time"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
-import { realRunDetail, runCancel, runRetry, WF_BASE } from "@/services/wf-api"
+import { realRunDetail, runCancel, runRetry, runTrace, WF_BASE } from "@/services/wf-api"
 import type { InteractionExecution } from "@/domain/types"
 
 export default function RunDetailPage() {
@@ -53,12 +55,21 @@ export default function RunDetailPage() {
   const { data: run, loading, error, retry } = useAsyncData(() => realRunDetail(runId).then((r) => r.run), [runId])
   const { params, update } = useListQuery(50)
   const filters = useMemo(() => parseListFilters(params.filters), [params.filters])
-  const [events, setEvents] = useState<{ sequence: number; type: string; nodeId: string | null; at: string }[]>([])
+  const [events, setEvents] = useState<TraceEvent[]>([])
   useEffect(() => {
     if (runId) {
       fetch(`${WF_BASE}/api/runs/${runId}/events-list`).then((r) => r.json()).then((r) => setEvents(r.items ?? [])).catch(() => undefined)
     }
   }, [runId])
+  /* 观测升级：span 树 + 四 Tab（SDD design-run-observability） */
+  const { data: trace } = useAsyncData(() => runTrace(runId).catch(() => null), [runId])
+  const [tab, setTab] = useState<"trace" | "events" | "executions" | "snapshot">("trace")
+  const [focusSpanId, setFocusSpanId] = useState<string | null>(null)
+  const [evType, setEvType] = useState("__all__")
+  const [evChannel, setEvChannel] = useState("__all__")
+  const evTypes = useMemo(() => [...new Set(events.map((e) => e.type))], [events])
+  const filteredEvents = useMemo(() => events.filter((e) =>
+    (evType === "__all__" || e.type === evType) && (evChannel === "__all__" || e.channel === evChannel)), [events, evType, evChannel])
 
   const { data: executions, loading: execLoading } = useAsyncData(
     () => realRunDetail(runId).then((r) => r.executions),
@@ -78,7 +89,6 @@ export default function RunDetailPage() {
   const [mappingOpen, setMappingOpen] = useState(false)
   const [rerunOpen, setRerunOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
-  const [traceOpen, setTraceOpen] = useState(false)
   const [selectedExecution, setSelectedExecution] = useState<InteractionExecution | null>(null)
 
   if (error) return <PageContainer><ErrorState title="Run 加载失败" onRetry={retry} /></PageContainer>
@@ -123,7 +133,7 @@ export default function RunDetailPage() {
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(run.id); toast.success("已复制 Run ID") }}>复制 Run ID</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate(`/config/tasks/${taskId}`)}>查看 Task</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setTraceOpen(true)}>查看运行 Trace</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTab("trace")}>查看运行 Trace</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </>
@@ -132,7 +142,7 @@ export default function RunDetailPage() {
       </div>
 
       {/* Execution Summary */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-7">
         {[
           { label: "输入", value: run.summary.input },
           { label: "成功", value: run.summary.success },
@@ -147,6 +157,14 @@ export default function RunDetailPage() {
         <div className="rounded-lg border bg-card px-4 py-3">
           <div className="text-xs text-muted-foreground">耗时</div>
           <div className="mt-1 text-xl font-semibold tabular-nums">{run.duration ?? "—"}</div>
+        </div>
+        <div className="rounded-lg border bg-card px-4 py-3">
+          <div className="text-xs text-muted-foreground">Tokens</div>
+          <div className="mt-1 text-xl font-semibold tabular-nums">{trace ? trace.totalTokens.toLocaleString("zh-CN") : "—"}</div>
+        </div>
+        <div className="rounded-lg border bg-card px-4 py-3">
+          <div className="text-xs text-muted-foreground">LLM 调用</div>
+          <div className="mt-1 text-xl font-semibold tabular-nums">{trace ? trace.modelCalls : "—"}</div>
         </div>
       </div>
 
@@ -176,71 +194,58 @@ export default function RunDetailPage() {
         </StatusNotice>
       ) : null}
 
-      {/* Frozen Snapshot */}
-      <div className="space-y-2">
-        <SectionHeader title="Frozen Snapshot" description="Run 为不可变执行事实：冻结当次实际依赖" />
-        <div className="grid grid-cols-1 gap-x-6 rounded-lg border bg-card px-4 py-2 md:grid-cols-2 xl:grid-cols-3">
-          <DefinitionRow label="Analysis Task">{run.taskName}</DefinitionRow>
-          <DefinitionRow label="Agent + Version">{run.snapshot.agentName} · {run.snapshot.agentVersion}</DefinitionRow>
-          <DefinitionRow label="Data Asset + Revision">{run.snapshot.dataAssetName} · R{run.snapshot.dataAssetRevision}</DefinitionRow>
-          <DefinitionRow label="Data Window">{run.dataWindow.label}（{run.dataWindow.start} → {run.dataWindow.end}，[start, end)）</DefinitionRow>
-          <DefinitionRow label="Data Scope">{run.snapshot.scope}</DefinitionRow>
-          <DefinitionRow label="Sampling">{run.snapshot.sampling}</DefinitionRow>
-          <DefinitionRow label="Result Rules">{run.snapshot.resultRulesVersion ?? "—"}</DefinitionRow>
-          <DefinitionRow label="Runtime">{run.snapshot.runtime}</DefinitionRow>
-          <DefinitionRow label="Tools">
-            <span className="mr-2">{run.snapshot.toolVersions.length} 个固定版本</span>
-            <Button variant="outline" size="sm" className="h-7" onClick={() => setToolsOpen(true)}>查看</Button>
-          </DefinitionRow>
-          <DefinitionRow label="Input Mapping">
-            <span className="mr-2">{run.snapshot.inputMapping.length} 个字段</span>
-            <Button variant="outline" size="sm" className="h-7" onClick={() => setMappingOpen(true)}>查看</Button>
-          </DefinitionRow>
-        </div>
-      </div>
+      {/* 观测升级：平铺五段 → 四 Tab（SDD design-run-observability） */}
+      <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+        <TabsList className="h-9 w-full justify-start rounded-lg p-0.5" style={{ background: "#F1F3F7" }}>
+          <TabsTrigger value="trace">Trace</TabsTrigger>
+          <TabsTrigger value="events">Events（{events.length}）</TabsTrigger>
+          <TabsTrigger value="executions">业务结果</TabsTrigger>
+          <TabsTrigger value="snapshot">Snapshot</TabsTrigger>
+        </TabsList>
 
-      {/* 节点时间线 */}
-      {executions && executions.items.length > 0 && (
-        <div className="space-y-2">
-          <SectionHeader title="节点时间线" description="按执行顺序与耗时展示" />
-          <div className="space-y-1.5 rounded-lg border bg-card px-4 py-3">
-            {(() => {
-              const max = Math.max(...executions.items.map((e) => parseInt(e.duration ?? "0") || 1), 1)
-              return executions.items.map((e) => (
-                <div key={e.id} className="flex items-center gap-3 text-xs">
-                  <span className="w-28 truncate" style={{ color: "#1F2329" }}>{e.interactionId}</span>
-                  <span className="w-14" style={{ color: "#B9C2CF" }}>{e.agentName}</span>
-                  <div className="h-2 flex-1 rounded bg-neutral-100">
-                    <div className={`h-2 rounded ${e.status === "ERROR" ? "bg-red-400" : e.status === "SKIPPED" ? "bg-neutral-300" : "bg-emerald-400"}`}
-                      style={{ width: `${Math.max(4, Math.round((parseInt(e.duration ?? "0") || 1) / max * 100))}%` }} />
-                  </div>
-                  <span className="w-16 text-right" style={{ color: "#5A6472" }}>{e.duration ?? "—"}</span>
-                </div>
-              ))
-            })()}
-          </div>
-        </div>
-      )}
+        <TabsContent value="trace" className="mt-3">
+          {trace ? (
+            <div className="flex h-[560px]"><TraceView trace={trace} events={events} focusSpanId={focusSpanId} /></div>
+          ) : (
+            <div className="rounded-lg border bg-card px-4 py-10 text-center text-sm text-muted-foreground">无 Trace 数据（该 Run 无节点执行记录）</div>
+          )}
+        </TabsContent>
 
-      {/* 事件流 */}
-      {events.length > 0 && (
-        <div className="space-y-2">
-          <SectionHeader title="事件流" description="run_event 序列（SSE 同源）" />
-          <div className="max-h-64 overflow-y-auto rounded-lg border bg-card px-4 py-2">
-            {events.map((e) => (
-              <div key={e.sequence} className="flex items-center gap-3 border-b py-1 text-xs last:border-0" style={{ borderColor: "#EDF0F4" }}>
+        <TabsContent value="events" className="mt-3 space-y-2">
+          <FilterBar>
+            <Select value={evType} onValueChange={setEvType}>
+              <SelectTrigger className="h-9 w-48"><SelectValue placeholder="事件类型" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">全部类型</SelectItem>
+                {evTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={evChannel} onValueChange={setEvChannel}>
+              <SelectTrigger className="h-9 w-36"><SelectValue placeholder="通道" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">全部通道</SelectItem>
+                <SelectItem value="CONTROL">CONTROL</SelectItem>
+                <SelectItem value="CONTENT">CONTENT</SelectItem>
+              </SelectContent>
+            </Select>
+          </FilterBar>
+          <div className="max-h-[520px] overflow-y-auto rounded-lg border bg-card px-4 py-2">
+            {filteredEvents.length === 0 && <p className="py-6 text-center text-xs text-muted-foreground">无事件</p>}
+            {filteredEvents.map((e) => (
+              <div key={e.sequence} className="flex cursor-pointer items-center gap-3 border-b py-1 text-xs last:border-0 hover:bg-muted/40" style={{ borderColor: "#EDF0F4" }}
+                title={e.nodeRunId ? "点击定位到 Trace span" : undefined}
+                onClick={() => { if (e.nodeRunId) { setFocusSpanId(e.nodeRunId); setTab("trace") } }}>
                 <span className="w-8 text-right" style={{ color: "#B9C2CF" }}>#{e.sequence}</span>
                 <span className="w-40 font-mono" style={{ color: "#1F2329" }}>{e.type}</span>
+                <span className="rounded px-1 text-[10px]" style={{ background: e.channel === "CONTENT" ? "#EFF6FF" : "#F1F3F7", color: "#5A6472" }}>{e.channel}</span>
                 <span className="flex-1 truncate" style={{ color: "#5A6472" }}>{e.nodeId ?? ""}</span>
                 <span style={{ color: "#B9C2CF" }}>{new Date(e.at).toLocaleTimeString()}</span>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        </TabsContent>
 
-      {/* Interaction Executions */}
-      <div className="space-y-2">
+        <TabsContent value="executions" className="mt-3 space-y-2">
         <SectionHeader title="Interaction Executions" description="SUCCESS + High Risk 合法；ERROR 表示没有成功产生有效业务结果" />
         <FilterBar>
           <SearchField value={searchInput} onChange={setSearchInput} placeholder="搜索 Interaction..." />
@@ -323,7 +328,30 @@ export default function RunDetailPage() {
             ) : null}
           </>
         )}
-      </div>
+        </TabsContent>
+
+        <TabsContent value="snapshot" className="mt-3 space-y-2">
+          <SectionHeader title="Frozen Snapshot" description="Run 为不可变执行事实：冻结当次实际依赖" />
+          <div className="grid grid-cols-1 gap-x-6 rounded-lg border bg-card px-4 py-2 md:grid-cols-2 xl:grid-cols-3">
+            <DefinitionRow label="Analysis Task">{run.taskName}</DefinitionRow>
+            <DefinitionRow label="Agent + Version">{run.snapshot.agentName} · {run.snapshot.agentVersion}</DefinitionRow>
+            <DefinitionRow label="Data Asset + Revision">{run.snapshot.dataAssetName} · R{run.snapshot.dataAssetRevision}</DefinitionRow>
+            <DefinitionRow label="Data Window">{run.dataWindow.label}（{run.dataWindow.start} → {run.dataWindow.end}，[start, end)）</DefinitionRow>
+            <DefinitionRow label="Data Scope">{run.snapshot.scope}</DefinitionRow>
+            <DefinitionRow label="Sampling">{run.snapshot.sampling}</DefinitionRow>
+            <DefinitionRow label="Result Rules">{run.snapshot.resultRulesVersion ?? "—"}</DefinitionRow>
+            <DefinitionRow label="Runtime">{run.snapshot.runtime}</DefinitionRow>
+            <DefinitionRow label="Tools">
+              <span className="mr-2">{run.snapshot.toolVersions.length} 个固定版本</span>
+              <Button variant="outline" size="sm" className="h-7" onClick={() => setToolsOpen(true)}>查看</Button>
+            </DefinitionRow>
+            <DefinitionRow label="Input Mapping">
+              <span className="mr-2">{run.snapshot.inputMapping.length} 个字段</span>
+              <Button variant="outline" size="sm" className="h-7" onClick={() => setMappingOpen(true)}>查看</Button>
+            </DefinitionRow>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Tool Versions Sheet */}
       <Sheet open={toolsOpen} onOpenChange={setToolsOpen}>
@@ -402,7 +430,7 @@ export default function RunDetailPage() {
                     <StatusBadge status="ERROR" />
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => setTraceOpen(true)}>查看完整 Trace</Button>
+                <Button variant="outline" size="sm" onClick={() => { setSelectedExecution(null); setTab("trace") }}>查看完整 Trace</Button>
               </div>
             </>
           ) : null}
@@ -459,24 +487,6 @@ export default function RunDetailPage() {
         </DialogContent>
       </Dialog>
 
-      {/* R2 修复：运行 Trace 真数据（此前 toast 占位） */}
-      <Dialog open={traceOpen} onOpenChange={setTraceOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>运行 Trace（事件流）</DialogTitle></DialogHeader>
-          <div className="max-h-96 space-y-1 overflow-y-auto">
-            {events.length === 0 && <p className="text-xs text-muted-foreground">无事件数据（仅真实运行轨道产生）</p>}
-            {events.map((e) => (
-              <div key={e.sequence} className="flex items-center gap-2 rounded border px-2 py-1 text-[11px]">
-                <span className="font-mono text-muted-foreground">{e.sequence}</span>
-                <span className="rounded bg-neutral-100 px-1 font-mono">{e.type}</span>
-                {e.nodeId && <span className="text-muted-foreground">{e.nodeId}</span>}
-                <span className="flex-1" />
-                <span className="text-muted-foreground">{e.at?.slice(11, 19)}</span>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
     </PageContainer>
   )
 }

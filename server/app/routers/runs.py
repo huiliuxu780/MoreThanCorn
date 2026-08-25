@@ -1,12 +1,13 @@
 import json
 import time
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import NodeRun, Run, RunEvent
+from ..models import CallRecord, NodeRun, Run, RunEvent
 from ..runner import RunError, create_run
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
@@ -98,7 +99,61 @@ async def run_events(run_id: str, request: Request,
 
 
 @router.get("/{run_id}/events-list")
-def events_list(run_id: str, db: Session = Depends(get_db)):
-    evs = db.query(RunEvent).filter_by(run_id=run_id).order_by(RunEvent.sequence).all()
+def events_list(run_id: str, nodeRunId: str = "", db: Session = Depends(get_db)):
+    q = db.query(RunEvent).filter_by(run_id=run_id)
+    if nodeRunId:
+        q = q.filter_by(node_run_id=nodeRunId)
+    evs = q.order_by(RunEvent.sequence).all()
     return {"items": [{"sequence": e.sequence, "type": e.type, "nodeId": e.node_id,
+                       "nodeRunId": e.node_run_id, "channel": e.channel,
                        "at": e.created_at.isoformat(), "payload": e.payload} for e in evs]}
+
+
+def _tok_total(d: dict | None) -> int:
+    d = d or {}
+    return int(d.get("total") or (d.get("prompt", 0) or 0) + (d.get("completion", 0) or 0) or 0)
+
+
+@router.get("/{run_id}/trace")
+def run_trace(run_id: str, db: Session = Depends(get_db)):
+    """观测视图（SDD design-run-observability）：Run→NodeRun→CallRecord 组装 span 树。"""
+    run = db.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, "run not found")
+    nrs = db.query(NodeRun).filter_by(run_id=run_id).order_by(NodeRun.started_at).all()
+    nr_ids = [n.id for n in nrs]
+    calls = db.query(CallRecord).filter(CallRecord.node_run_id.in_(nr_ids or ["-"])) \
+        .order_by(CallRecord.created_at).all() if nr_ids else []
+    by_nr: dict[str, list[CallRecord]] = {}
+    for c in calls:
+        by_nr.setdefault(c.node_run_id or "", []).append(c)
+
+    def iso(dt):
+        return dt.isoformat() if dt else None
+
+    def call_span(c: CallRecord) -> dict:
+        ended = c.created_at
+        started = ended - timedelta(milliseconds=c.latency_ms or 0)
+        return {"id": c.id, "kind": c.kind, "name": c.target_id or c.kind, "status": c.status,
+                "startedAt": iso(started), "endedAt": iso(ended), "durationMs": c.latency_ms,
+                "tokenUsage": c.token_usage or {}, "input": c.request, "output": c.response,
+                "error": c.error, "children": []}
+
+    children = []
+    for n in nrs:
+        children.append({
+            "id": n.id, "kind": "node", "name": n.node_id, "nodeType": n.node_type,
+            "status": n.status, "startedAt": iso(n.started_at), "endedAt": iso(n.ended_at),
+            "durationMs": n.duration_ms, "attempt": n.attempt,
+            "tokenUsage": n.token_usage or {}, "input": n.input, "output": n.output,
+            "error": n.error, "children": [call_span(c) for c in by_nr.get(n.id, [])],
+        })
+    total_tokens = _tok_total(run.token_usage) or sum(_tok_total(c.token_usage) for c in calls)
+    return {
+        "root": {"id": run.id, "kind": "run", "name": f"Run {run.id[:8]}", "status": run.status,
+                 "startedAt": iso(run.started_at), "endedAt": iso(run.ended_at),
+                 "durationMs": run.duration_ms, "tokenUsage": run.token_usage or {},
+                 "input": run.input, "output": run.output, "error": run.error, "children": children},
+        "totalTokens": total_tokens,
+        "modelCalls": sum(1 for c in calls if c.kind == "model"),
+    }

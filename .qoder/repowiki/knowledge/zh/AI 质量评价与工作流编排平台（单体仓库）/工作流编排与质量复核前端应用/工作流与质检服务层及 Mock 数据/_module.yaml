@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: frontend_app/services_and_mocks
+title: 工作流与质检服务层及 Mock 数据
+scope:
+    - src/services/
+    - src/mocks/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend_service/workflows_routers

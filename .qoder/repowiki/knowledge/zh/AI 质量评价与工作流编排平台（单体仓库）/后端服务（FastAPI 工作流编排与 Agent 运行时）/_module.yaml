@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend_service
+title: 后端服务（FastAPI 工作流编排与 Agent 运行时）
+scope:
+    - server/
+source_files: []
+depends_on: []
+related_to: []

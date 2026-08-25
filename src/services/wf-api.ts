@@ -378,6 +378,10 @@ export async function streamRunEvents(runId: string, onEvent: (ev: { type: strin
   }
 }
 
+/* ---------- 观测（SDD design-run-observability）：span 树组装端点 ---------- */
+export const runTrace = (runId: string) =>
+  req<import("@/components/run/trace-view").TraceData>(`/api/runs/${runId}/trace`)
+
 /* ---------- Phase A（SDD A-16）：评测与编辑锁也走服务层 ---------- */
 export const evalApi = {
   samples: (workflowId: string) =>

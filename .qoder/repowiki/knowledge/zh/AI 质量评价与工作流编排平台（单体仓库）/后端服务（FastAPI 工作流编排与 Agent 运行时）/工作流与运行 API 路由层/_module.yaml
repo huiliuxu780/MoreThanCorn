@@ -1,0 +1,16 @@
+schema_version: 1
+module_path: backend_service/workflows_routers
+title: 工作流与运行 API 路由层
+scope:
+    - server/app/routers/workflows.py
+    - server/app/routers/registry.py
+    - server/app/routers/runs.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend_service/shared_core/agent_release_domain
+    - path: backend_service/tests
+    - path: frontend_app/agents_feature
+    - path: frontend_app/services_and_mocks
+    - path: frontend_app/tasks_feature
+    - path: scripts_and_e2e
