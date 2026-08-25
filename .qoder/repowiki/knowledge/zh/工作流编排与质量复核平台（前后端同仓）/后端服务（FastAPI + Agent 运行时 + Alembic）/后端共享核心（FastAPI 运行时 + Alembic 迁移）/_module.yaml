@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: backend_service/shared_core
+title: 后端共享核心（FastAPI 运行时 + Alembic 迁移）
+scope:
+    - server/app/
+    - server/alembic/
+source_files: []
+depends_on: []
+related_to: []

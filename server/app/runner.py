@@ -137,13 +137,30 @@ def exec_input(node, ctx) -> dict:
 
 
 def exec_llm(node, ctx) -> dict:
-    cfg = node.get("config", {})
+    cfg = node.get("config") or {}
+    model = (cfg.get("modelRef") or {}).get("modelId", "mock")
+    inputs = resolve_bindings(node.get("inputs", []), ctx.outputs, ctx.run_input)
+    # 07-SDD §4.3：批处理模式——遍历批量列表变量，聚合 outputList
+    if cfg.get("batchMode") == "batch":
+        rows = _resolve_ref(cfg.get("batchListRef") or "", ctx) or []
+        if not isinstance(rows, list):
+            rows = [rows]
+        max_b = int(cfg.get("maxBatches") or 100)
+        out_list: list[dict] = []
+        for item in rows[:max_b]:
+            p = render_refs(cfg.get("prompt", ""), ctx.outputs, ctx.run_input)
+            p += f"\n当前批处理项（JSON）：{json.dumps(item, ensure_ascii=False)}"
+            answer, _tokens = _call_model(ctx.db, model, p)
+            out_list.append({"output": answer, "answer": answer})
+        agg = json.dumps(out_list, ensure_ascii=False)
+        return {"outputList": out_list, "output": agg, "thought": "", "answer": agg}
     prompt = render_refs(cfg.get("prompt", ""), ctx.outputs, ctx.run_input)
+    # 07-SDD §4.3：systemPrompt 独立且优先级高于提示词
+    if cfg.get("systemPrompt"):
+        prompt = render_refs(cfg["systemPrompt"], ctx.outputs, ctx.run_input) + "\n\n" + prompt
     # R1 修复：outputFormat 真消费（此前表单配置被丢弃）
     if cfg.get("outputFormat") == "JSON":
         prompt += "\n请严格以单个 JSON 对象形式输出最终答案，不要包含其他说明文字。"
-    model = (cfg.get("modelRef") or {}).get("modelId", "mock")
-    inputs = resolve_bindings(node.get("inputs", []), ctx.outputs, ctx.run_input)
     t0 = time.time()
     answer, tokens = _call_model(ctx.db, model, prompt)
     latency = int((time.time() - t0) * 1000)
@@ -315,6 +332,17 @@ def _branch_ok(op: str | None, val: Any, expect_raw: Any) -> bool:
         return val is None or val in ("", [], {})
     if op == "not_empty":
         return not (val is None or val in ("", [], {}))
+    # 07-SDD §4.4：操作符族扩展
+    if op == "in":
+        return str(val if val is not None else "") in [x.strip() for x in expect.split(",") if x.strip()]
+    if op == "not_in":
+        return str(val if val is not None else "") not in [x.strip() for x in expect.split(",") if x.strip()]
+    if op in ("exists", "not_exists"):
+        exists = val is not None
+        return exists if op == "exists" else not exists
+    if op in ("is_null", "is_not_null"):
+        is_null = val is None or val == ""
+        return is_null if op == "is_null" else not is_null
     if op in ("gt", "lt", "gte", "lte"):
         try:
             lv, rv = float(val), float(expect_raw)
@@ -405,7 +433,12 @@ def exec_create_record(node, ctx) -> dict:
 
 
 def exec_workflow_exec(node, ctx) -> dict:
-    code = (node.get("config") or {}).get("workflowCode")
+    cfg = node.get("config") or {}
+    code = cfg.get("workflowCode")
+    # 07-SDD §4.12：动态模式——workflowCode 来自输入绑定（接路由输出）
+    if (cfg.get("mode") or "fixed") == "dynamic":
+        inputs = resolve_bindings(node.get("inputs", []), ctx.outputs, ctx.run_input)
+        code = inputs.get("workflowCode") or code
     if not code:
         raise RunError("workflowCode missing")
     sub = create_run(ctx.db, code, "manual", ctx.run_input, enqueue=False)
@@ -515,17 +548,17 @@ def exec_memory_variable(node, ctx) -> dict:
     return out
 
 
-def _route_workflow(db: Session, flows: list, query: str):
+def _route_workflow(db: Session, flows: list, query: str, model: str = "qwen-plus"):
     try:
         from .agent_runtime import _resolve_base_secret
-        base, _s = _resolve_base_secret(db, "qwen-plus")
+        base, _s = _resolve_base_secret(db, model)
     except Exception:  # noqa: BLE001
         base = ""
     if not base or not base.startswith(("http://", "https://")):
         return flows[0]  # mock：取首个候选
     listing = "\n".join(f"{i + 1}. {w.name}：{(w.description or '').strip()[:100]}" for i, w in enumerate(flows))
     try:
-        answer, _t = _call_model(db, "qwen-plus",
+        answer, _t = _call_model(db, model,
                                  f"从候选工作流中为问题选择最合适的一个，只输出序号，没有合适的输出 NONE。\n{listing}\n\n问题：{query[:500]}")
     except Exception:  # noqa: BLE001
         return flows[0]
@@ -544,7 +577,7 @@ def exec_workflow_select(node, ctx) -> dict:
     flows = [w for w in (ctx.db.get(Workflow, wid) for wid in candidates) if w]
     if not flows:
         raise RunError("工作流选择节点未配置有效候选工作流")
-    chosen = _route_workflow(ctx.db, flows, query)
+    chosen = _route_workflow(ctx.db, flows, query, cfg.get("routingModel") or "qwen-plus")
     if chosen is None:
         return {"selected": "miss", "workflowCode": "", "workflowName": "", "workflowDesc": ""}
     return {"selected": chosen.id, "workflowCode": chosen.id,
@@ -552,11 +585,21 @@ def exec_workflow_select(node, ctx) -> dict:
 
 
 def exec_workflow_fixed(node, ctx) -> dict:
-    """固定工作流节点：绑定已选工作流，子运行执行（调研 11 §3.15）。"""
-    wfid = (node.get("config") or {}).get("workflowId")
+    """固定工作流节点：绑定已选工作流，子运行执行（调研 11 §3.15）。
+
+    07-SDD §4.13：inputMapping 覆盖 run_input；versionPolicy=pinned 时钉版本。"""
+    cfg = node.get("config") or {}
+    wfid = cfg.get("workflowId")
     if not wfid:
         raise RunError("workflowId missing")
-    sub = create_run(ctx.db, wfid, "manual", ctx.run_input, enqueue=False)
+    run_input = dict(ctx.run_input)
+    for k, ref in (cfg.get("inputMapping") or {}).items():
+        if not ref:
+            continue
+        m = re.match(r"\{\{\s*([A-Za-z0-9_-]+)\.outputs\.([A-Za-z0-9_.-]+)\s*\}\}$", str(ref).strip())
+        run_input[k] = _dig(ctx.outputs.get(m.group(1), {}), m.group(2)) if m else ref
+    version_id = cfg.get("pinnedVersionId") if (cfg.get("versionPolicy") or "latest") == "pinned" else None
+    sub = create_run(ctx.db, wfid, "manual", run_input, enqueue=False, version_id=version_id)
     execute_run(sub.id, call_chain=list(ctx.call_chain))
     # 独立会话读取，避免当前会话的过期缓存（execute_run 在自己的会话中提交）
     from .db import SessionLocal as _SL

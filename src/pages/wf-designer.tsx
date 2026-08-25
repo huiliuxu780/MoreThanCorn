@@ -93,7 +93,6 @@ import {
   agentApi,
   evalApi,
   lockApi,
-  registrySystemVariables,
   runApi,
   runExportUrl,
   runRetry,
@@ -110,25 +109,11 @@ import {
 import { resApi } from "@/services/resource-api"
 import { rbac } from "@/services/rbac"
 import { AgentEvalPanel } from "@/components/agent-ops-panels"
+import { C, NEUTRAL, TypeChip, VarCascader, describeVar, PromptArea, VarButton, ResourceSelect, Section, WorkflowPicker, OP_LABEL, OPS_BY_TYPE, NO_VALUE_OPS, normCondBranches, condHandlesOf, type CondBranch, type CondCondition } from "@/components/wf/controls"
+import { DataReadSection, InputMappingTable, LoopSection, OutputSchemaEditor, OutputVarsSection, RobustnessSection, ToolParamsSection, WaitReviewSection } from "@/components/wf/sections"
+import { Repeat, Hourglass, Database } from "lucide-react"
 
 /* ============ 视觉令牌（16 §1） ============ */
-const C = {
-  canvas: "#EEF1F6",
-  dot: "#D9DEE7",
-  primary: "#3D6BFF",
-  orange: "#F97E2B",
-  tagBg: "#FFF4EA",
-  ink: "#1F2329",
-  ink2: "#5A6472",
-  ink3: "#B9C2CF",
-  chipBg: "#F1F3F7",
-  chipInk: "#7A8699",
-  cardBorder: "#EDF0F4",
-  danger: "#F56C6C",
-}
-
-/* Design Spec §8.5：黑白灰中性基底，禁止彩虹画布；icon 区分类型，颜色仅用于状态 */
-const NEUTRAL = "#1F2329"
 const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   input: Play, llm: Bot, tool: Wrench, condition: GitBranch, transform: Braces,
   end: Flag, "create-record": FilePlus2, notification: Bell, "workflow-exec": Network,
@@ -136,6 +121,7 @@ const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   "workflow-select": Route, "workflow-fixed": Route, reply: MessageSquare,
   "memory-variable": Brain, "code-write": Code, "query-rewrite": PenLine,
   "decision-class": GitBranch, agent: Bot, "agent-select": Route, "agent-exec": Play,
+  loop: Repeat, "wait-review": Hourglass, "data-read": Database,
 }
 const TypeIcon = ({ type, className }: { type: string; className?: string }) => {
   const I = TYPE_ICON[type] ?? Braces
@@ -165,6 +151,30 @@ const NODE_DESC: Record<string, string> = {
   agent: "Agent 节点调用一个固定的成员 Agent，输入按映射表解析",
   "agent-select": "Agent 选择节点根据问题与 Agent 描述路由出一个成员，未命中走兜底",
   "agent-exec": "Agent 执行节点按 agentCode 执行对应成员，支持输入绑定动态执行",
+  loop: "循环迭代节点对 Array 变量逐条执行循环体子图，输出聚合",
+  "wait-review": "暂停 Run 等待人工或定时，落盘可恢复",
+  "data-read": "从 DataAsset 按窗口/抽样取数，与创建质检记录对称",
+}
+
+/* 07-SDD §4.3：提示词 AI 润色（替换/撤销） */
+function PolishRow({ text, onApply }: { text: string; onApply: (v: string) => void }) {
+  const [busy, setBusy] = useState(false)
+  const [prev, setPrev] = useState<string | null>(null)
+  return (
+    <div className="flex items-center gap-2 pt-1">
+      <button className="rounded border px-2 py-0.5 text-[11px] disabled:opacity-40" style={{ borderColor: C.cardBorder, color: C.primary }}
+        disabled={busy || !text}
+        onClick={async () => {
+          setBusy(true); setPrev(text)
+          try { onApply((await wfApi.polish(text)).text) } catch { toast.error("润色失败") } finally { setBusy(false) }
+        }}>
+        {busy ? "润色中…" : "AI 润色"}
+      </button>
+      {prev !== null && (
+        <button className="text-[11px]" style={{ color: C.ink2 }} onClick={() => { onApply(prev); setPrev(null) }}>撤销</button>
+      )}
+    </div>
+  )
 }
 
 /* ============ Toast（16 §9：顶居中，红/绿边白底，2.5s 自隐） ============ */
@@ -198,13 +208,6 @@ function ToastHost() {
 
 /* A-15：已删除硬编码 MODELS 回退——模型目录只来自注册表接口，失败显示空态 */
 
-function TypeChip({ t }: { t: string }) {
-  return (
-    <span className="rounded px-1 text-[10px] leading-4" style={{ background: C.chipBg, color: C.chipInk }}>
-      {t}.
-    </span>
-  )
-}
 
 /* ============ 节点卡（16 §3） ============ */
 interface WfNodeData extends Record<string, unknown> {
@@ -350,238 +353,20 @@ function WfNodeCard({ data, selected }: NodeProps) {
           {collapsed ? <ChevronRight className="size-4" /> : <ChevronDown className="size-4" />}
         </button>
       </div>
+      {/* 07-SDD §2.6-5：画布卡 subtitle 回显关键配置 */}
+      {(n.type === "loop" || n.type === "wait-review" || n.type === "workflow-fixed") && (
+        <div className="mt-1 truncate text-[10px]" style={{ color: C.ink3 }}>
+          {n.type === "loop" && String(((n.config as Record<string, unknown>)?.iteratorRef) || "未配置循环源")}
+          {n.type === "wait-review" && `恢复方式：${((n.config as Record<string, unknown>)?.resumeMode) ?? "human"}`}
+          {n.type === "workflow-fixed" && `版本策略：${((n.config as Record<string, unknown>)?.versionPolicy) ?? "latest"}`}
+        </div>
+      )}
       {!collapsed && (n.type === "condition" ? <ConditionRows n={n} /> : <SummaryRows n={n} />)}
     </div>
   )
 }
 const nodeTypes = { wf: WfNodeCard }
 
-/* ============ 变量级联（16 §6；SDD A-04：可达祖先 + 注册表 io + 按 id；C-5：系统变量组） ============ */
-let SYS_VARS_CACHE: { name: string; label: string }[] | null = null
-function loadSystemVars(): Promise<{ name: string; label: string }[]> {
-  if (SYS_VARS_CACHE) return Promise.resolve(SYS_VARS_CACHE)
-  return registrySystemVariables()
-    .then((j) => { SYS_VARS_CACHE = j.items ?? []; return SYS_VARS_CACHE! })
-    .catch(() => [] as { name: string; label: string }[])
-}
-
-function parseIoOutputs(def: NodeDefinition | undefined): { name: string; type: string }[] | null {
-  const io = (def?.io ?? {}) as { outputs?: unknown }
-  if (!Array.isArray(io.outputs)) return null  // 动态输出（如 tool from-tool-version）
-  return io.outputs.map((s) => {
-    const [name, type] = String(s).split(":")
-    return { name, type: type || "string" }
-  })
-}
-
-function VarCascader({ nodes, edges, selfId, defs, onPick }: {
-  nodes: WfNode[]; edges: WfEdge[]; selfId: string; defs: NodeDefinition[]; onPick: (v: string, type?: string) => void
-}) {
-  const [sysVars, setSysVars] = useState<{ name: string; label: string }[]>(SYS_VARS_CACHE ?? [])
-  useEffect(() => { if (!SYS_VARS_CACHE) loadSystemVars().then(setSysVars) }, [])
-  // 与后端校验器 _ancestors 同构：只有控制流可达的祖先输出可见（调研 11 §5.2）
-  const ancestors = useMemo(() => {
-    const parents: Record<string, string[]> = {}
-    for (const e of edges) (parents[e.target] ??= []).push(e.source)
-    const memo: Record<string, Set<string>> = {}
-    const reach = (nid: string, seen: Set<string>): Set<string> => {
-      if (memo[nid]) return memo[nid]
-      const acc = new Set<string>()
-      for (const p of parents[nid] ?? []) {
-        if (seen.has(p)) continue
-        acc.add(p)
-        for (const x of reach(p, new Set([...seen, nid]))) acc.add(x)
-      }
-      memo[nid] = acc
-      return acc
-    }
-    return reach(selfId, new Set([selfId]))
-  }, [edges, selfId])
-  const startNode = nodes.find((n) => n.type === "input")
-  const ancNodes = nodes.filter((n) => ancestors.has(n.id) && n.type !== "input" && n.type !== "end")
-  const firstId = "system"
-  const [group, setGroup] = useState<string>(firstId)
-  const gid = group || firstId
-  const itemsFor = (id: string): { name: string; type: string; label?: string }[] => {
-    if (id === "system") return sysVars.map((v) => ({ name: v.name, type: "string", label: v.label }))
-    const node = nodes.find((n) => n.id === id)
-    if (!node) return []
-    return parseIoOutputs(defs.find((d) => d.type_key === node.type)) ?? []
-  }
-  const dynHint = (id: string) => {
-    const node = nodes.find((n) => n.id === id)
-    const io = (defs.find((d) => d.type_key === node?.type)?.io ?? {}) as { outputs?: unknown }
-    return typeof io.outputs === "string" && io.outputs
-  }
-  const nameOf = (id: string) => (id === "system" ? "系统变量" : id === startNode?.id ? "开始" : nodes.find((n) => n.id === id)?.name ?? id)
-  return (
-    <div className="flex text-xs">
-      <div className="w-28 border-r py-1" style={{ borderColor: C.cardBorder }}>
-        {["system", ...(startNode ? [startNode.id] : []), ...ancNodes.map((n) => n.id)].map((id) => (
-          <button key={id} className={`flex w-full items-center justify-between px-2 py-1 hover:bg-neutral-50 ${gid === id ? "bg-neutral-100" : ""}`} onClick={() => setGroup(id)}>
-            {nameOf(id)} <ChevronRight className="size-3 text-neutral-400" />
-          </button>
-        ))}
-        {!startNode && ancNodes.length === 0 && <div className="px-2 py-1 text-neutral-400">无可引用上游</div>}
-      </div>
-      <div className="w-40 py-1">
-        {itemsFor(gid).map((it) => (
-          <button key={it.name} className="flex w-full items-center gap-1 px-2 py-1 hover:bg-neutral-50"
-            onClick={() => onPick(`{{${gid === "system" ? "system" : gid}.outputs.${it.name}}}`, it.type)}
-            title={it.label}>
-            {it.label ?? it.name} <TypeChip t={it.type === "array" ? "Arr" : it.type === "object" ? "Obj" : "Str"} />
-          </button>
-        ))}
-        {dynHint(gid) && <div className="px-2 py-1 text-neutral-400">输出由资源配置决定</div>}
-        {itemsFor(gid).length === 0 && !dynHint(gid) && <div className="px-2 py-1 text-neutral-400">无输出</div>}
-      </div>
-    </div>
-  )
-}
-
-/* ============ 条件规则构建器（SDD design-condition-rule-builder；调研 11 §3.14） ============ */
-interface CondCondition {
-  variable: string; variableType: string; operator: string
-  valueMode: "LITERAL" | "VARIABLE"; value: string; valueRef: string
-}
-interface CondBranch { handle: string; logic: "AND" | "OR"; conditions: CondCondition[] }
-
-const OP_LABEL: Record<string, string> = {
-  eq: "等于", neq: "不等于", contains: "包含", not_contains: "不包含",
-  starts_with: "开头是", ends_with: "结尾是", empty: "为空", not_empty: "不为空",
-  gt: "大于", gte: "大于等于", lt: "小于", lte: "小于等于",
-}
-const OPS_BY_TYPE: Record<string, string[]> = {
-  string: ["eq", "neq", "contains", "not_contains", "starts_with", "ends_with", "empty", "not_empty"],
-  number: ["eq", "neq", "gt", "gte", "lt", "lte", "empty", "not_empty"],
-  boolean: ["eq", "not_empty"],
-  array: ["contains", "not_contains", "empty", "not_empty"],
-  object: ["empty", "not_empty"],
-}
-const NO_VALUE_OPS = new Set(["empty", "not_empty"])
-
-/** 旧格式（分支顶层 variable/operator/value）归一为 conditions[]；空分支保留为空。 */
-function normCondBranches(raw: unknown): CondBranch[] {
-  const bs = Array.isArray(raw) ? raw : []
-  return bs.map((b, i) => {
-    const x = b as Record<string, any>
-    const conds: CondCondition[] = Array.isArray(x?.conditions)
-      ? x.conditions.map((c: any) => ({
-          variable: c?.variable ?? "", variableType: c?.variableType || "string",
-          operator: c?.operator || "eq",
-          valueMode: c?.valueMode === "VARIABLE" ? "VARIABLE" as const : "LITERAL" as const,
-          value: String(c?.value ?? ""), valueRef: c?.valueRef ?? "",
-        }))
-      : (x?.variable || x?.operator)
-          ? [{ variable: x.variable ?? "", variableType: "string", operator: x.operator || "eq",
-               valueMode: "LITERAL" as const, value: String(x.value ?? ""), valueRef: "" }]
-          : []
-    return { handle: x?.handle || `b${i + 1}`, logic: x?.logic === "OR" ? "OR" as const : "AND" as const, conditions: conds }
-  })
-}
-
-/** 条件节点出边 handle 集 = 各分支 handle + else 兜底 */
-function condHandlesOf(n: WfNode): string[] {
-  return [...normCondBranches((n.config as Record<string, any>)?.branches).map((b) => b.handle), "else"]
-}
-
-/** {{nodeId.outputs.x}} → “节点名.x”，抽屉与卡片展示真实变量路径 */
-function describeVar(ref: string, nodes?: WfNode[]): string {
-  const m = /^\{\{(.+?)\.outputs\.(.+?)\}\}$/.exec(ref)
-  if (!m) return ref || "选择变量"
-  const nm = m[1] === "system" ? "系统" : nodes?.find((n) => n.id === m[1])?.name ?? m[1]
-  return `${nm}.${m[2]}`
-}
-
-/* 06-master-spec §2.2：可 # 唤起变量的文本编辑区（prompt-editor / expression-editor 共用） */
-function PromptArea({ value, onChange, nodes, edges, selfId, defs, placeholder, minH = "min-h-20", mono = false }: {
-  value: string; onChange: (v: string) => void; nodes: WfNode[]; edges: WfEdge[]; selfId: string
-  defs: NodeDefinition[]; placeholder?: string; minH?: string; mono?: boolean
-}) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="relative">
-      <Textarea
-        className={`${minH} text-xs ${mono ? "font-mono" : ""}`}
-        placeholder={placeholder ?? "请输入"}
-        value={value}
-        onChange={(e) => { onChange(e.target.value); if (e.target.value.endsWith("#")) setOpen(true) }}
-      />
-      {open && (
-        <div className="absolute left-0 top-full z-30 rounded-md border bg-white shadow-lg" style={{ borderColor: C.cardBorder }}>
-          <VarCascader nodes={nodes} edges={edges} selfId={selfId} defs={defs}
-            onPick={(v) => { onChange(value.replace(/#$/, "") + v); setOpen(false) }} />
-        </div>
-      )}
-      <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>输入 “#” 唤起变量选择器，支持插入变量</p>
-    </div>
-  )
-}
-
-/* 06-master-spec §2.1：variable-picker 控件（⚙ 按钮 + 级联） */
-function VarButton({ value, nodes, edges, selfId, defs, onPick }: {
-  value: string; nodes: WfNode[]; edges: WfEdge[]; selfId: string; defs: NodeDefinition[]; onPick: (v: string) => void
-}) {
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button className="flex w-full items-center justify-between rounded-md border bg-white px-2 py-1.5 text-left text-xs"
-          style={{ borderColor: value ? C.cardBorder : C.danger, color: value ? C.primary : C.ink3 }}>
-          <span className="truncate">{value ? describeVar(value, nodes) : "选择变量"}</span>
-          <Settings className="size-3 text-neutral-400" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="start"><VarCascader nodes={nodes} edges={edges} selfId={selfId} defs={defs} onPick={onPick} /></PopoverContent>
-    </Popover>
-  )
-}
-
-/* ============ 配置抽屉（16 §6） ============ */
-function ResourceSelect({ types, value, onPick, placeholder }: {
-  types: string
-  value?: string
-  onPick: (item: { id: string; name: string; metadata: Record<string, unknown> }) => void
-  placeholder: string
-}) {
-  const [items, setItems] = useState<{ id: string; name: string; metadata: Record<string, unknown> }[]>([])
-  useEffect(() => {
-    resApi.registry(types).then((r) =>
-      // 同名资源行（测试残留）在选择器里显示重复项 → 按名去重（保留首条）
-      setItems(r.items.filter((m, i, arr) => arr.findIndex((x) => x.name === m.name) === i)))
-      .catch(() => undefined)
-  }, [types])
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button className="flex w-full items-center gap-2 rounded-md border bg-white px-2 py-1.5 text-left text-xs" style={{ borderColor: C.cardBorder, color: C.ink }}>
-          <span className="flex-1 truncate">{items.find((i) => i.id === value)?.name ?? placeholder}</span>
-          <ChevronDown className="size-3.5 text-neutral-400" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-72 p-1" align="start">
-        {items.length === 0 && <div className="px-2 py-1.5 text-xs" style={{ color: C.ink3 }}>暂无 Enabled 资源</div>}
-        {items.map((m) => (
-          <button key={m.id} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-neutral-50" style={{ color: C.ink }} onClick={() => onPick(m)}>
-            <span className="flex-1 truncate text-left">{m.name}</span>
-            {value === m.id && <CheckCircle2 className="size-3.5" style={{ color: C.primary }} />}
-          </button>
-        ))}
-      </PopoverContent>
-    </Popover>
-  )
-}
-
-function Section({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <div className="border-b py-3" style={{ borderColor: C.cardBorder }}>
-      <button className="flex items-center gap-1 text-[13px] font-medium" style={{ color: C.ink }} onClick={() => setOpen((v) => !v)}>
-        {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />} {title}
-      </button>
-      {open && <div className="pt-2">{children}</div>}
-    </div>
-  )
-}
 
 function ConfigDrawer(props: {
   node: WfNode | null
@@ -761,9 +546,15 @@ function ConfigDrawer(props: {
               <Plus className="size-3" /> 添加
             </button>
           </Section>
+          <Section title="系统设定（可选）" defaultOpen={false}>
+            <PromptArea value={cfg.systemPrompt ?? ""} onChange={(v) => set("systemPrompt", v)}
+              nodes={nodes} edges={edges} selfId={node.id} defs={defs}
+              placeholder="人设/回复逻辑/语言风格；优先级高于提示词" minH="min-h-14" />
+          </Section>
           <Section title="提示词">
             <PromptArea value={cfg.prompt ?? ""} onChange={(v) => set("prompt", v)}
               nodes={nodes} edges={edges} selfId={node.id} defs={defs} placeholder="请输入提示词" minH="min-h-24" />
+            <PolishRow text={cfg.prompt ?? ""} onApply={(v) => set("prompt", v)} />
           </Section>
           <Section title="输出">
             <div className="flex items-center gap-2 text-xs"><span style={{ color: C.ink2 }}>输出格式 :</span>
@@ -772,6 +563,9 @@ function ConfigDrawer(props: {
                 <SelectContent><SelectItem value="Markdown">Markdown</SelectItem><SelectItem value="JSON">JSON</SelectItem></SelectContent>
               </Select>
             </div>
+            {String(cfg.outputFormat ?? "Markdown") === "JSON" && (
+              <OutputSchemaEditor value={cfg.outputSchema} onChange={(v) => set("outputSchema", v)} />
+            )}
             <p className="py-1 text-[11px]" style={{ color: C.ink3 }}>大模型将以{cfg.outputFormat ?? "Markdown"}形式输出最终答案</p>
             <div className="space-y-1 py-1 text-xs">
               {[["output", "大模型的全部输出"], ["thought", "大模型的思考过程"], ["answer", "大模型的回复答案"]].map(([k, dsc]) => (
@@ -779,6 +573,28 @@ function ConfigDrawer(props: {
               ))}
             </div>
             {/* R1 修复：移除“输出示例”假按钮（仅 toast，无生成无保存） */}
+          </Section>
+          <Section title="批处理" defaultOpen={false}>
+            <ToggleGroup type="single" size="sm" value={cfg.batchMode === "batch" ? "batch" : "single"}
+              onValueChange={(v) => v && set("batchMode", v)}>
+              <ToggleGroupItem value="single" className="h-6 px-2 text-[10px]">单次</ToggleGroupItem>
+              <ToggleGroupItem value="batch" className="h-6 px-2 text-[10px]">批处理</ToggleGroupItem>
+            </ToggleGroup>
+            {cfg.batchMode === "batch" && (
+              <div className="pt-2">
+                <VarButton value={(cfg.batchListRef as string) ?? ""} nodes={nodes} edges={edges} selfId={node.id} defs={defs}
+                  onPick={(v) => set("batchListRef", v)} />
+                <div className="grid grid-cols-2 gap-2 pt-2 text-xs">
+                  <div><div className="pb-1" style={{ color: C.ink2 }}>最大批次数</div>
+                    <Input type="number" className="h-7 text-xs" value={String(cfg.maxBatches ?? 100)}
+                      onChange={(e) => set("maxBatches", Number(e.target.value) || 100)} /></div>
+                  <div><div className="pb-1" style={{ color: C.ink2 }}>并发数</div>
+                    <Input type="number" className="h-7 text-xs" value={String(cfg.batchParallel ?? 10)}
+                      onChange={(e) => set("batchParallel", Number(e.target.value) || 10)} /></div>
+                </div>
+                <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>输出 outputList:Array（批量列表变量限 Array）。</p>
+              </div>
+            )}
           </Section>
         </>
       )}
@@ -796,6 +612,9 @@ function ConfigDrawer(props: {
           <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>默认绑定最新版本；节点引用计入删除防护。</p>
         </Section>
       )}
+      {node.type === "tool" && (
+        <ToolParamsSection cfg={cfg} set={set} nodes={nodes} edges={edges} selfId={node.id} defs={defs} />
+      )}
       {node.type === "knowledge-retrieval" && (
         <>
           <Section title="Knowledge Source">
@@ -810,6 +629,25 @@ function ConfigDrawer(props: {
               <Input type="number" className="h-7 w-20 text-xs"
                 value={cfg.topK ?? 5} onChange={(e) => set("topK", Number(e.target.value))} />
             </div>
+            <div className="flex items-center gap-2 pt-2 text-xs" style={{ color: C.ink2 }}>
+              检索模式
+              <ToggleGroup type="single" size="sm" value={(cfg.retrievalMode as string) ?? "multiWay"}
+                onValueChange={(v) => v && set("retrievalMode", v)}>
+                <ToggleGroupItem value="oneWay" className="h-6 px-2 text-[10px]">单路</ToggleGroupItem>
+                <ToggleGroupItem value="multiWay" className="h-6 px-2 text-[10px]">多路</ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+            {((cfg.retrievalMode as string) ?? "multiWay") === "multiWay" && (
+              <div className="grid grid-cols-2 gap-2 pt-2 text-xs">
+                <div><div className="pb-1" style={{ color: C.ink2 }}>分数阈值</div>
+                  <Input type="number" className="h-7 text-xs" value={String(cfg.scoreThreshold ?? "")}
+                    placeholder="0.5" onChange={(e) => set("scoreThreshold", Number(e.target.value))} /></div>
+                <div className="flex items-end justify-between pb-1">
+                  <span style={{ color: C.ink2 }}>rerank</span>
+                  <Switch checked={!!cfg.rerankEnable} onCheckedChange={(v) => set("rerankEnable", v)} />
+                </div>
+              </div>
+            )}
           </Section>
         </>
       )}
@@ -831,6 +669,7 @@ function ConfigDrawer(props: {
         </>
       )}
       {node.type === "condition" && (
+        <>
         <Section title="条件分支">
           {condBranches.map((b, bi) => (
             <div key={b.handle} className={`mb-2 rounded-md p-2 ${dragBr === bi ? "opacity-60" : ""}`} style={{ background: "#F7F9FC" }}
@@ -839,7 +678,10 @@ function ConfigDrawer(props: {
                 <span className="cursor-grab text-neutral-400" draggable onDragStart={() => setDragBr(bi)} title="拖拽排序">
                   <GripVertical className="size-3.5" />
                 </span>
-                <span className="flex-1 text-xs font-medium" style={{ color: C.ink }}>{bi === 0 ? "如果" : `否则如果 ${bi}`}</span>
+                <span className="text-xs font-medium" style={{ color: C.ink }}>{bi === 0 ? "如果" : `否则如果 ${bi}`}</span>
+                <Input className="h-5 min-w-0 flex-1 text-[11px]" value={(b as CondBranch & { title?: string }).title ?? ""}
+                  placeholder="分支名（画布标签跟随）"
+                  onChange={(e) => patchBranch(bi, { title: e.target.value } as Partial<CondBranch>)} />
                 <ToggleGroup type="single" size="sm" value={b.logic} title="组内多条件的连接方式"
                   onValueChange={(v) => v && patchBranch(bi, { logic: v as "AND" | "OR" })}>
                   <ToggleGroupItem value="AND" className="h-5 px-1.5 text-[10px]">且</ToggleGroupItem>
@@ -925,6 +767,16 @@ function ConfigDrawer(props: {
             <span className="text-[10px]" style={{ color: C.ink3 }}>兜底分支 · 不可删除</span>
           </div>
         </Section>
+        <Section title="高级" defaultOpen={false}>
+          <label className="flex items-center justify-between text-xs" style={{ color: C.ink2 }}>
+            <span>大小写不敏感</span><Switch checked={cfg.ignoreCase !== false} onCheckedChange={(v) => set("ignoreCase", v)} />
+          </label>
+          <label className="flex items-center justify-between pt-2 text-xs" style={{ color: C.ink2 }}>
+            <span>宽松类型校验</span><Switch checked={!!cfg.looseTypeValidation} onCheckedChange={(v) => set("looseTypeValidation", v)} />
+          </label>
+          <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>操作符族含 in/not_in/exists/is_null 系；object/file 子属性条件经变量级联子路径选择。</p>
+        </Section>
+        </>
       )}
       {node.type === "end" && (
         <Section title="输出">
@@ -967,7 +819,48 @@ function ConfigDrawer(props: {
           </button>
         </Section>
       )}
-      {node.type === "workflow-exec" && <WorkflowPicker value={(cfg.workflowCode as string) ?? ""} onPick={(v) => set("workflowCode", v)} />}
+      {node.type === "workflow-exec" && (
+        <Section title="绑定模式">
+          <ToggleGroup type="single" size="sm" value={(cfg.mode as string) ?? "fixed"} onValueChange={(v) => v && set("mode", v)}>
+            <ToggleGroupItem value="fixed" className="h-6 px-2 text-[10px]">固定</ToggleGroupItem>
+            <ToggleGroupItem value="dynamic" className="h-6 px-2 text-[10px]">动态</ToggleGroupItem>
+          </ToggleGroup>
+          {((cfg.mode as string) ?? "fixed") === "fixed" ? (
+            <div className="pt-2"><WorkflowPicker value={(cfg.workflowCode as string) ?? ""} onPick={(v) => set("workflowCode", v)} /></div>
+          ) : (
+            <div className="pt-2">
+              <VarButton value={((node.inputs ?? []).find((b) => b.name === "workflowCode")?.source as { value?: string } | undefined)?.value ?? ""}
+                nodes={nodes} edges={edges} selfId={node.id} defs={defs}
+                onPick={(v) => onChange({ ...node, inputs: [...(node.inputs ?? []).filter((b) => b.name !== "workflowCode"), { name: "workflowCode", type: "string", source: { kind: "fixed", value: v } }] })} />
+              <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>workflowCode 来自输入绑定（接路由输出）。</p>
+            </div>
+          )}
+        </Section>
+      )}
+      {node.type === "workflow-fixed" && (
+        <>
+          <WorkflowPicker value={(cfg.workflowId as string) ?? ""} onPick={(v) => set("workflowId", v)} />
+          <Section title="版本策略">
+            <ToggleGroup type="single" size="sm" value={(cfg.versionPolicy as string) ?? "latest"} onValueChange={(v) => v && set("versionPolicy", v)}>
+              <ToggleGroupItem value="latest" className="h-6 px-2 text-[10px]">最新已发布</ToggleGroupItem>
+              <ToggleGroupItem value="pinned" className="h-6 px-2 text-[10px]">钉版本</ToggleGroupItem>
+            </ToggleGroup>
+            {(cfg.versionPolicy as string) === "pinned" && (
+              <div className="pt-2"><Input className="h-7 text-xs" placeholder="pinnedVersionId" value={cfg.pinnedVersionId ?? ""} onChange={(e) => set("pinnedVersionId", e.target.value)} /></div>
+            )}
+          </Section>
+          <InputMappingTable cfg={cfg} set={set} nodes={nodes} edges={edges} selfId={node.id} defs={defs} />
+        </>
+      )}
+      {node.type === "workflow-select" && (
+        <Section title="路由模型">
+          <Select value={(cfg.routingModel as string) ?? "qwen-plus"} onValueChange={(v) => set("routingModel", v)}>
+            <SelectTrigger className="h-7 w-full text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>{models.map((m) => <SelectItem key={m.id} value={m.id}>{m.id}</SelectItem>)}</SelectContent>
+          </Select>
+          <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>候选多选见 workflow-picker-multi；未命中走 else；路由超时 10s 失败降级 else。</p>
+        </Section>
+      )}
       {/* 用户报告修复：代码编写/Query改写/决策分类 专项表单（原通用表单与执行器键不匹配=假功能） */}
       {node.type === "code-write" && (
         <Section title="代码（Python 沙箱，10s 超时）">
@@ -984,6 +877,22 @@ function ConfigDrawer(props: {
             />
           </div>
           <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>必须定义 main(args)，返回 dict；输入来自下方输入绑定（args.params）。</p>
+          <div className="flex items-center gap-2 pt-1">
+            <button className="rounded border px-2 py-0.5 text-[11px]" style={{ borderColor: C.cardBorder, color: C.primary }}
+              onClick={() => {
+                const code = String(cfg.code ?? "")
+                const ins = [...code.matchAll(/args\.params\.get\(\s*["']([A-Za-z0-9_]+)["']/g)].map((m) => m[1])
+                const ret = code.match(/return\s*\{([^}]*)\}/)
+                const outs = ret ? [...ret[1].matchAll(/["']?([A-Za-z0-9_]+)["']?\s*:/g)].map((m) => m[1]) : []
+                onChange({
+                  ...node,
+                  inputs: ins.map((nme) => ({ name: nme, type: "string", source: { kind: "fixed", value: "" } })),
+                  config: { ...cfg, outputs: Object.fromEntries(outs.map((o) => [o, { type: "string" }])) },
+                })
+                toast.success("已同步函数签名")
+              }}>⇄ 同步函数签名</button>
+            <span className="text-[11px]" style={{ color: C.ink3 }}>解析 args.params.get 与 return 键</span>
+          </div>
           <Section title="输入绑定">
             {(node.inputs ?? []).map((b) => (
               <div key={b.name} className="flex items-center gap-2 pb-1 text-xs">
@@ -1090,7 +999,15 @@ function ConfigDrawer(props: {
         </Section>
       )}
       {/* SDD C-3：无专项表单的节点按注册表 schema 通用渲染（替代“暂无专项配置区”） */}
-      {!["llm", "tool", "knowledge-retrieval", "mcp-call", "condition", "end", "workflow-exec", "agent-select", "agent", "agent-exec", "code-write", "query-rewrite", "decision-class"].includes(node.type) && (
+      {/* 07-SDD §4：P2 三节点专项抽屉 */}
+      {node.type === "loop" && <LoopSection cfg={cfg} set={set} nodes={nodes} edges={edges} selfId={node.id} defs={defs} />}
+      {node.type === "wait-review" && <WaitReviewSection cfg={cfg} set={set} nodes={nodes} edges={edges} selfId={node.id} defs={defs} />}
+      {node.type === "data-read" && <DataReadSection cfg={cfg} set={set} />}
+      {/* 07-SDD §2.6：健壮性 + 输出变量统一区（全节点） */}
+      {node.type !== "input" && <RobustnessSection node={node} onChange={onChange} />}
+      {node.type !== "input" && <OutputVarsSection def={def} />}
+      {/* SDD C-3：无专项表单的节点按注册表 schema 通用渲染 */}
+      {!["llm", "tool", "knowledge-retrieval", "mcp-call", "condition", "end", "workflow-exec", "workflow-fixed", "workflow-select", "loop", "wait-review", "data-read", "agent-select", "agent", "agent-exec", "code-write", "query-rewrite", "decision-class"].includes(node.type) && (
         <GenericSchemaForm def={def} cfg={cfg} set={set} node={node} onChange={onChange} nodes={nodes} edges={edges} defs={defs} />
       )}
     </div>
@@ -1369,20 +1286,6 @@ function DebugDrawer(props: { def: WfDefinition; onClose: () => void; onRun: (va
 
 
 /* ============ 工作流资源选择器（引用资源对象） ============ */
-function WorkflowPicker({ value, onPick }: { value: string; onPick: (v: string) => void }) {
-  const [list, setList] = useState<{ id: string; name: string }[]>([])
-  useEffect(() => { wfApi.list({ pageSize: 100 }).then((r) => setList(r.items as { id: string; name: string }[])).catch(() => undefined) }, [])
-  return (
-    <Section title="工作流">
-      <Select value={value || undefined} onValueChange={(v) => onPick(v)}>
-        <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="请选择工作流资源" /></SelectTrigger>
-        <SelectContent>
-          {list.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
-        </SelectContent>
-      </Select>
-    </Section>
-  )
-}
 
 /* ============ Agent 配置信息抽屉（对话编排型，quickservice 同款） ============ */
 /* A-16：已移除私有 WF_BASE2 包装，统一走 wf-api 服务层；原 AddInline 自由文本添加器随 A-10/A-11 删除 */
@@ -1910,7 +1813,8 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
     const kind: "FLOW" | "GROUP" | "WORKFLOW" = agentMeta
       ? ((agentMeta as { agentType?: string }).agentType === "expert-group" ? "GROUP" : "FLOW")
       : "WORKFLOW"
-    const visible = defs.filter((d) => (d.editor_kinds ?? ["WORKFLOW"]).includes(kind))
+    // 07-SDD D8：deprecated（退役 agent 三键）不进 palette
+    const visible = defs.filter((d) => (d.editor_kinds ?? ["WORKFLOW"]).includes(kind) && !(d as unknown as Record<string, unknown>).deprecated)
     const m = new Map<string, NodeDefinition[]>()
     for (const d of visible) m.set(d.family, [...(m.get(d.family) ?? []), d])
     return [...m.entries()]

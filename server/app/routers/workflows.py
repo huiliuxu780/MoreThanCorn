@@ -101,6 +101,22 @@ def migrate_workflow(wf_id: str, db: Session = Depends(get_db)):
     return {"migrated": changed, "draftRevision": wf.draft_revision}
 
 
+@router.post("/{wf_id}/polish")
+def polish_prompt(wf_id: str, payload: dict, db: Session = Depends(get_db)):
+    """07-SDD §4.3：提示词 AI 润色（替换/重试由前端交互层承担）。"""
+    from ..runner import _call_model
+    text = payload.get("text") or ""
+    if not text.strip():
+        raise HTTPException(422, "text 为空")
+    try:
+        answer, _t = _call_model(
+            db, payload.get("model") or "qwen-plus",
+            "优化以下指令提示词，使其更清晰、结构化；直接输出优化结果，不要解释：\n" + text)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"polish failed: {e}")
+    return {"text": answer}
+
+
 @router.put("/{wf_id}/draft")
 def save_draft(wf_id: str, req: SaveDraftRequest, db: Session = Depends(get_db)):
     wf = db.get(Workflow, wf_id)

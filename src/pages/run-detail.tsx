@@ -46,7 +46,7 @@ import { useAsyncData } from "@/hooks/use-async-data"
 import { useListQuery } from "@/hooks/use-list-query"
 import { formatDateTime } from "@/lib/time"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
-import { realRunDetail, runCancel, runEventsList, runRetry, runTrace } from "@/services/wf-api"
+import { realRunDetail, runCancel, runEventsList, runRetry, runTrace, wfApi } from "@/services/wf-api"
 import type { InteractionExecution } from "@/domain/types"
 
 export default function RunDetailPage() {
@@ -120,6 +120,18 @@ export default function RunDetailPage() {
             <>
               {run.status === "RUNNING" ? (
                 <Button variant="destructive" size="sm" onClick={() => setCancelOpen(true)}>取消运行</Button>
+              ) : run.status === "PAUSED" ? (
+                /* 07-SDD §4.17：wait-review 审核动作在运行详情页完成 */
+                <span className="flex gap-2">
+                  <Button size="sm" onClick={async () => {
+                    try { await wfApi.resume(runId, { action: "pass" }); toast.success("已续跑（通过）"); retry() }
+                    catch { toast.error("resume 失败") }
+                  }}>审核通过</Button>
+                  <Button variant="outline" size="sm" onClick={async () => {
+                    try { await wfApi.resume(runId, { action: "reject" }); toast.success("已续跑（驳回）"); retry() }
+                    catch { toast.error("resume 失败") }
+                  }}>驳回</Button>
+                </span>
               ) : run.status === "FAILED" || run.status === "PARTIAL_SUCCESS" ? (
                 <Button variant="outline" size="sm" onClick={() => setRerunOpen(true)}>重新运行</Button>
               ) : null}
@@ -184,6 +196,26 @@ export default function RunDetailPage() {
           </div>
         )}
       </div>
+
+      {/* 07-SDD §4.16/B7：loop 容器专属日志（逐轮状态/失败项） */}
+      {events.some((e) => e.type === "loop_iter" || e.type === "loop_iter_failed") && (
+        <div className="mt-3 rounded-lg border bg-card p-3 text-xs">
+          <div className="pb-1 font-medium">循环容器日志</div>
+          <div className="max-h-48 space-y-0.5 overflow-y-auto">
+            {events.filter((e) => e.type === "loop_iter" || e.type === "loop_iter_failed").map((e, i) => (
+              <div key={i} className="flex gap-2 py-0.5">
+                <span className="tabular-nums">#{String(((e as unknown as { payload?: { iter?: number } }).payload)?.iter ?? "")}</span>
+                <span>{e.nodeId}</span>
+                <span className={e.type === "loop_iter_failed" ? "text-red-500" : "text-muted-foreground"}>
+                  {e.type === "loop_iter_failed"
+                    ? String(((e as unknown as { payload?: { error?: string } }).payload)?.error ?? "")
+                    : JSON.stringify(((e as unknown as { payload?: { output?: unknown } }).payload)?.output ?? {}).slice(0, 100)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Execution Summary */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-7">

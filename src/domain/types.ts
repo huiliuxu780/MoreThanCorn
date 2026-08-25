@@ -296,6 +296,7 @@ export type RunStatus =
   | "FAILED"
   | "CANCELLED"
   | "BLOCKED"
+  | "PAUSED"
 
 /** Run：Task 的一次真实执行，冻结当次实际依赖（Master §14）。 */
 export interface Run {

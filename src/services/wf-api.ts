@@ -139,6 +139,12 @@ export const wfApi = {
     req<{ versionId: string; versionNo: number; note: string; publishedAt: string }[]>(
       `/api/workflows/${id}/versions`),
   nodeDefinitions: () => req<NodeDefinition[]>("/api/registry/node-definitions"),
+  polish: (text: string) => req<{ text: string }>("/api/workflows/0/polish", {
+    method: "POST", body: JSON.stringify({ text }),
+  }),
+  migrate: (wid: string) => req<{ migrated: boolean; draftRevision: number }>(`/api/workflows/${wid}/migrate`, { method: "POST" }),
+  resume: (rid: string, payload: Record<string, unknown>) =>
+    req<{ status: string; nodeId: string }>(`/api/runs/${rid}/resume`, { method: "POST", body: JSON.stringify(payload) }),
   models: () => req<{ modelKey: string; capabilities: string[] }[]>("/api/registry/models"),
 }
 
@@ -217,6 +223,7 @@ import type { ExecutionStatus, InteractionExecution, Run, RunStatus } from "@/do
 const RUN_STATUS: Record<string, RunStatus> = {
   succeeded: "SUCCESS", running: "RUNNING", queued: "PENDING",
   failed: "FAILED", cancelled: "CANCELLED", timed_out: "FAILED",
+  paused: "PAUSED",  // 07-SDD §4.17
 }
 const EX_STATUS: Record<string, ExecutionStatus> = { success: "SUCCESS", failed: "ERROR", skipped: "SKIPPED", running: "SKIPPED", pending: "SKIPPED" }
 

@@ -1,0 +1,18 @@
+schema_version: 1
+module_path: ""
+title: 工作流编排与质量复核平台（前后端同仓）
+scope:
+    - README.md
+    - .gitignore
+    - package.json
+    - package-lock.json
+    - vite.config.ts
+    - tsconfig.json
+    - tsconfig.app.json
+    - tsconfig.node.json
+    - eslint.config.js
+    - components.json
+    - index.html
+source_files: []
+depends_on: []
+related_to: []

@@ -3,11 +3,11 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-08-25T17:52:00Z"
+exported_at: "2026-08-25T18:20:08Z"
 modules:
     "":
-        dir_name: AI 质量评价与工作流编排平台（全仓根）
-        title: AI 质量评价与工作流编排平台（全仓根）
+        dir_name: 工作流编排与质量复核平台（前后端同仓）
+        title: 工作流编排与质量复核平台（前后端同仓）
         scope:
             - README.md
             - .gitignore
@@ -41,8 +41,8 @@ modules:
         depends_on: []
         related_to: []
     backend_service/shared_core:
-        dir_name: 后端共享核心（FastAPI 应用 + Alembic 迁移）
-        title: 后端共享核心（FastAPI 应用 + Alembic 迁移）
+        dir_name: 后端共享核心（FastAPI 运行时 + Alembic 迁移）
+        title: 后端共享核心（FastAPI 运行时 + Alembic 迁移）
         scope:
             - server/app/
             - server/alembic/
@@ -62,8 +62,8 @@ modules:
         related_to:
             - path: backend_service/workflows_routers
     backend_service/tests:
-        dir_name: 后端集成测试套件（pytest + FastAPI TestClient）
-        title: 后端集成测试套件（pytest + FastAPI TestClient）
+        dir_name: 后端集成测试套件（Workflow_Agent_资源_契约）
+        title: 后端集成测试套件（Workflow/Agent/资源/契约）
         scope:
             - server/tests/
         source_files: []

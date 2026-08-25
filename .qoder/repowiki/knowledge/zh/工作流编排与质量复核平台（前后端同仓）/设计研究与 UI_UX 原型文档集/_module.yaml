@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: docs_and_design
+title: 设计研究与 UI/UX 原型文档集
+scope:
+    - docs/
+    - uiux/
+    - 初始化doc/
+source_files: []
+depends_on: []
+related_to: []

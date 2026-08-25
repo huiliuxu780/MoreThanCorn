@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: backend_service/tests
-title: 后端集成测试套件（pytest + FastAPI TestClient）
+title: 后端集成测试套件（Workflow/Agent/资源/契约）
 scope:
     - server/tests/
 source_files: []
