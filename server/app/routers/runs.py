@@ -1,13 +1,14 @@
 import json
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import CallRecord, NodeRun, Run, RunEvent
+from ..models import CallRecord, JobQueue, NodeRun, Run, RunEvent
 from ..runner import RunError, create_run
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
@@ -22,6 +23,31 @@ def start_run(payload: dict, db: Session = Depends(get_db)):
     except RunError as e:
         raise HTTPException(409, str(e))
     return {"runId": run.id, "status": run.status}
+
+
+@router.post("/{run_id}/resume", status_code=202)
+def resume_run(run_id: str, payload: dict, db: Session = Depends(get_db)):
+    """07-SDD §4.17：wait-review 续跑。幂等：waiting 行置 resumed 后二次调用 409。"""
+    run = db.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, "run not found")
+    if run.status != "paused":
+        raise HTTPException(409, "run 非 paused 状态，不可 resume")
+    waiting = db.execute(select(NodeRun).where(
+        NodeRun.run_id == run_id, NodeRun.status == "waiting")).scalars().first()
+    if not waiting:
+        raise HTTPException(409, "无等待中的节点")
+    waited = int((datetime.now(timezone.utc) - waiting.started_at).total_seconds() * 1000) \
+        if waiting.started_at else 0
+    waiting.status = "resumed"
+    db.add(JobQueue(type="workflow-execution", payload={"run_id": run_id, "resume": {
+        "node_id": waiting.node_id,
+        "action": payload.get("action") or payload.get("decision") or "pass",
+        "comment": payload.get("comment") or "",
+        "values": payload.get("values") or {},
+        "waitedMs": waited}}))
+    db.commit()
+    return {"status": "resuming", "nodeId": waiting.node_id}
 
 
 @router.get("")

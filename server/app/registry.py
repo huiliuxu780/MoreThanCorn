@@ -87,7 +87,7 @@ V1_NODE_DEFINITIONS: list[dict] = [
     },
     {
         "type_key": "create-record", "family": "副作用", "label": "创建质检记录", "icon": "file-plus", "accent": "#188F00",
-        "editor_kinds": ["WORKFLOW"],
+        "editor_kinds": ["FLOW", "GROUP", "WORKFLOW"],
         "executor_key": "sink_quality_record",
         "schema": {"type": "object", "properties": {"outputKey": {"type": "string"}}},
         "io": {},
@@ -102,13 +102,14 @@ V1_NODE_DEFINITIONS: list[dict] = [
     },
     {
         "type_key": "notification", "family": "副作用", "label": "通知", "icon": "bell", "accent": "#AA00FF",
-        "editor_kinds": ["WORKFLOW"],
+        "editor_kinds": ["FLOW", "GROUP", "WORKFLOW"],
         "executor_key": "notify_log",
         "schema": {"type": "object", "properties": {"message": {"type": "string"}}},
         "io": {},
     },
     {
         "type_key": "agent", "family": "Agent", "label": "Agent", "icon": "bot", "accent": "#F97E2B",
+        "deprecated": True,  # 07-SDD D8：退役（合并入 workflow 三连），palette 不显示，兼容层可执行
         "editor_kinds": ["FLOW", "GROUP"],
         "executor_key": "agent",
         "schema": {
@@ -120,6 +121,7 @@ V1_NODE_DEFINITIONS: list[dict] = [
     },
     {
         "type_key": "agent-select", "family": "Agent", "label": "Agent选择", "icon": "route", "accent": "#F97E2B",
+        "deprecated": True,  # 07-SDD D8：退役（→ workflow-select）
         "editor_kinds": ["GROUP"],
         "executor_key": "agent-select",
         "schema": {
@@ -134,6 +136,7 @@ V1_NODE_DEFINITIONS: list[dict] = [
     },
     {
         "type_key": "agent-exec", "family": "Agent", "label": "Agent执行", "icon": "play", "accent": "#F97E2B",
+        "deprecated": True,  # 07-SDD D8：退役（→ workflow-exec 动态模式）
         "editor_kinds": ["GROUP"],
         "executor_key": "agent-exec",
         "schema": {
@@ -145,7 +148,7 @@ V1_NODE_DEFINITIONS: list[dict] = [
     },
     {
         "type_key": "decision-class", "family": "逻辑", "label": "决策分类", "icon": "branch", "accent": "#FF4C00",
-        "editor_kinds": ["FLOW", "GROUP"],
+        "editor_kinds": ["FLOW", "GROUP", "WORKFLOW"],
         "executor_key": "decision-class",
         "schema": {"type": "object", "properties": {"branches": {"type": "array", "items": {
             "type": "object", "properties": {
@@ -154,7 +157,7 @@ V1_NODE_DEFINITIONS: list[dict] = [
     },
     {
         "type_key": "query-rewrite", "family": "数据", "label": "Query改写", "icon": "pen", "accent": "#7B61FF",
-        "editor_kinds": ["FLOW", "GROUP"],
+        "editor_kinds": ["FLOW", "GROUP", "WORKFLOW"],
         "executor_key": "query-rewrite",
         "schema": {"type": "object", "properties": {
             "strategy": {"type": "string", "enum": ["default", "custom"]},
@@ -163,7 +166,7 @@ V1_NODE_DEFINITIONS: list[dict] = [
     },
     {
         "type_key": "code-write", "family": "代码", "label": "代码编写", "icon": "code", "accent": "#7B61FF",
-        "editor_kinds": ["FLOW", "GROUP"],
+        "editor_kinds": ["FLOW", "GROUP", "WORKFLOW"],
         "executor_key": "code-write",
         "schema": {"type": "object", "properties": {"code": {"type": "string", "x-control": "code-editor"}}},
         "io": {"outputs": "declared"},
@@ -201,7 +204,7 @@ V1_NODE_DEFINITIONS: list[dict] = [
     # ---------- Phase C（SDD 03 §C-4） ----------
     {
         "type_key": "reply", "family": "信息回复", "label": "对话回复", "icon": "message-square", "accent": "#188F00",
-        "editor_kinds": ["FLOW"],
+        "editor_kinds": ["FLOW", "WORKFLOW"],
         "executor_key": "reply",
         "schema": {
             "type": "object",
@@ -212,7 +215,7 @@ V1_NODE_DEFINITIONS: list[dict] = [
     },
     {
         "type_key": "memory-variable", "family": "记忆变量", "label": "记忆变量", "icon": "brain", "accent": "#7B61FF",
-        "editor_kinds": ["FLOW"],
+        "editor_kinds": ["FLOW", "WORKFLOW"],
         "executor_key": "memory_variable",
         "schema": {
             "type": "object",
@@ -225,7 +228,7 @@ V1_NODE_DEFINITIONS: list[dict] = [
     },
     {
         "type_key": "workflow-select", "family": "外部", "label": "工作流选择", "icon": "route", "accent": "#F97E2B",
-        "editor_kinds": ["FLOW"],
+        "editor_kinds": ["FLOW", "WORKFLOW"],
         "executor_key": "workflow_select",
         "schema": {
             "type": "object",
@@ -236,7 +239,7 @@ V1_NODE_DEFINITIONS: list[dict] = [
     },
     {
         "type_key": "workflow-fixed", "family": "外部", "label": "工作流", "icon": "route", "accent": "#F97E2B",
-        "editor_kinds": ["FLOW"],
+        "editor_kinds": ["FLOW", "WORKFLOW"],
         "executor_key": "workflow_fixed",
         "schema": {
             "type": "object",
@@ -244,6 +247,48 @@ V1_NODE_DEFINITIONS: list[dict] = [
             "required": ["workflowId"],
         },
         "io": {"outputs": "declared"},
+    },
+    # ---------- 07-SDD（08-26）控制流新节点 ----------
+    {
+        "type_key": "loop", "family": "逻辑", "label": "循环迭代", "icon": "repeat", "accent": "#FF4C00",
+        "editor_kinds": ["FLOW", "WORKFLOW"],
+        "executor_key": "loop",
+        "schema": {"type": "object", "properties": {
+            "iteratorRef": {"type": "string", "x-control": "variable-picker"},
+            "itemVar": {"type": "string"}, "indexVar": {"type": "string"},
+            "maxIterations": {"type": "number", "default": 1000},
+            "parallel": {"type": "boolean", "default": False},
+            "parallelNums": {"type": "number", "default": 10},
+            "errorHandleMode": {"type": "string",
+                                "enum": ["terminated", "continue_on_error", "remove_abnormal"]},
+            "flattenOutput": {"type": "boolean", "default": True}},
+            "required": ["iteratorRef"]},
+        "io": {"outputs": ["outputList:array", "successCount:number", "failCount:number"]},
+    },
+    {
+        "type_key": "wait-review", "family": "边界", "label": "等待/人审", "icon": "hourglass", "accent": "#E6A23C",
+        "editor_kinds": ["FLOW", "WORKFLOW"],
+        "executor_key": "wait_review",
+        "schema": {"type": "object", "properties": {
+            "resumeMode": {"type": "string", "enum": ["human", "interval", "specific"]},
+            "formContent": {"type": "string", "x-control": "prompt-editor"},
+            "amount": {"type": "number", "default": 24},
+            "unit": {"type": "string", "enum": ["hour", "day"]},
+            "timeoutPolicy": {"type": "string", "enum": ["auto_pass", "auto_reject", "escalate"]}},
+            "required": ["resumeMode"]},
+        "io": {"outputs": ["decision:string", "comment:string", "waitedMs:number"]},
+    },
+    {
+        "type_key": "data-read", "family": "数据", "label": "数据读取/抽样", "icon": "database", "accent": "#7B61FF",
+        "editor_kinds": ["WORKFLOW"],
+        "executor_key": "data_read",
+        "schema": {"type": "object", "properties": {
+            "dataAssetId": {"type": "string", "x-control": "asset-picker"},
+            "window": {"type": "string", "enum": ["all", "last_24h", "last_7d", "last_30d"]},
+            "sampling": {"type": "string", "enum": ["all", "random_n", "stratify"]},
+            "sampleN": {"type": "number", "default": 10}},
+            "required": ["dataAssetId"]},
+        "io": {"outputs": ["rows:array", "count:number"]},
     },
 ]
 

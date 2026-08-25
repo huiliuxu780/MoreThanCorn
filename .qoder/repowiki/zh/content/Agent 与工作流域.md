@@ -40,19 +40,20 @@
 - [design-condition-rule-builder.md](file://docs/sdd/design-condition-rule-builder.md)
 - [design-run-observability.md](file://docs/sdd/design-run-observability.md)
 - [05-phase-e-gap-closing.md](file://docs/sdd/05-phase-e-gap-closing.md)
+- [07-node-system-reform-sdd.md](file://docs/sdd/07-node-system-reform-sdd.md)
 </cite>
 
 ## 更新摘要
 **变更内容**
-- **新增 Phase E 发布控制面**：Agent 复制/归档、版本对比（草稿 vs 版本行级 diff）、灰度发布（0-100% 流量分流 + 停止灰度）、编辑锁（resourceId=agent:{id}，占用提示+管理员强解锁）
-- **增强观测能力**：Trace JSON 导出、重试谱系可视化（origin_run_id 双向跳转）、嵌套子 Run span（kind=agent 调用挂子树）、首 token 耗时指标（avg/p50）
-- **改进对话体验**：预览消息复制/赞踩操作、Prompt `#` mention 资源提及展开（技能/插件/知识/记忆 → 引用资源描述摘要）、节点单测入口（输入 JSON 执行单个节点）
-- **完善数据模型**：Release.canary_percent、Agent.archived、ResourceLock 编辑锁表、RunEvent 首 token 统计、EvolutionPatch 进化补丁
+- **节点体系从 21 节点升级为 22 节点**：退役 agent、agent-select、agent-exec 三个 Agent 族节点，新增 loop（循环迭代）、wait-review（等待/人审）、data-read（数据读取/抽样）三个控制流与数据节点
+- **工作流设计器基础设施增强**：支持新节点类型的 Inspector 配置、校验规则扩展、执行器映射和迁移改写器
+- **Agent 族功能迁移到工作流三件套**：workflow-fixed（吸收 agent）、workflow-select（吸收 agent-select）、workflow-exec（吸收 agent-exec 动态模式）
+- **控制流能力增强**：loop 容器支持并行执行、错误处理策略；wait-review 支持暂停-恢复原语；data-read 支持数据资产窗口和抽样
 
 ## 产品概述
 本工作流聚焦于"Agent 编辑器（节点图/Inspector/变量选择器/测试运行）""工作流设计器""Agent 版本管理与发布流程"。平台以可视化节点图编排 AI 能力，支持对话编排、自主规划与专家组协作三类 Agent；通过工作流定义、校验、发布与版本快照，形成从编辑到上线的闭环。前端基于 React + @xyflow/react 实现画布与 Inspector，后端 FastAPI 提供工作流与 Agent 的 CRUD、校验、发布与运行接口，数据库使用 SQLAlchemy/Alembic。
 
-**更新** 已集成 Phase B 的 Agent 版本发布系统与 Phase C 的事件通道、跟踪基础设施及新节点类型，并新增 Phase D-1 的四标签 Agent 编辑器界面、Agent 级评估系统、专家组增强功能和综合操作仪表板，形成完整的 Agent 全生命周期管理能力。同时对工作流设计器进行了重大改进，包括LLM节点配置优化、transform节点schema统一、agent-select查询参数改进和内存描述正确注入等。**最新增强** 包括模型语义参数控制（温度调节、历史轮次管理、工具调用辅助模型）、预览模型对比功能、语音合成集成以及增强的聊天历史上下文管理。**新增 Phase D-3** 增强了评估系统，支持三种评判模式和进化补丁管理，形成了从问题发现到自动修复的完整闭环。**新增工作流级评估系统**，支持与Agent级评估系统对齐至D-1/D-3标准，提供同步执行、多评判模式和人类评审集成功能。**新增 Phase E** 实现了全面的 Agent 发布控制平面，包括版本管理、灰度发布、编辑锁机制和版本对比功能，同时增强了可观测性（Trace导出、重试谱系、嵌套子Run、首token延迟）和对话体验（预览消息操作、Prompt提及功能、节点测试）。
+**更新** 已集成 Phase B 的 Agent 版本发布系统与 Phase C 的事件通道、跟踪基础设施及新节点类型，并新增 Phase D-1 的四标签 Agent 编辑器界面、Agent 级评估系统、专家组增强功能和综合操作仪表板，形成完整的 Agent 全生命周期管理能力。同时对工作流设计器进行了重大改进，包括LLM节点配置优化、transform节点schema统一、agent-select查询参数改进和内存描述正确注入等。**最新增强** 包括模型语义参数控制（温度调节、历史轮次管理、工具调用辅助模型）、预览模型对比功能、语音合成集成以及增强的聊天历史上下文管理。**新增 Phase D-3** 增强了评估系统，支持三种评判模式和进化补丁管理，形成了从问题发现到自动修复的完整闭环。**新增工作流级评估系统**，支持与Agent级评估系统对齐至D-1/D-3标准，提供同步执行、多评判模式和人类评审集成功能。**新增 Phase E** 实现了全面的 Agent 发布控制平面，包括版本管理、灰度发布、编辑锁机制和版本对比功能，同时增强了可观测性（Trace导出、重试谱系、嵌套子Run、首token延迟）和对话体验（预览消息操作、Prompt提及功能、节点测试）。**重大架构升级** 完成了从 21 节点到 22 节点的体系改造，引入强大的控制流和数据访问能力。
 
 ## 核心业务流程
 - 创建工作流：创建默认包含"开始/结束"的工作流草稿，返回工作流 ID 与初始状态。
@@ -60,7 +61,7 @@
 - 校验与发布：调用服务端校验规则（图结构、依赖、资源存在性），通过后发布为版本快照并同步关联 Agent 状态。
 - **新增** Agent 版本管理：发布生成不可变 AgentVersion 快照，记录 dependency_snapshot 冻结依赖；Release 表管理沙箱/生产环境部署；运行认版本而非活动草稿。
 - **新增** 事件通道与跟踪：RunEvent 支持 CONTROL/CONTENT 双通道，自动分配 trace_id/span_id/parent_span_id，支持 token 用量与耗时统计。
-- **新增** 新节点类型：exec_reply（回复节点）、exec_memory_variable（记忆读写）、exec_workflow_select（工作流语义选择）、exec_workflow_fixed（固定工作流子执行）。
+- **重大架构升级** 节点体系重构：从 21 节点升级到 22 节点，退役 Agent 族节点，新增控制流和数据访问节点。
 - 运行与调试：支持单节点试运行、整工作流测试运行；Agent 层提供异步入队与轮询终态；运行事件与结果可观测。
 - Agent 三型编辑：对话编排走工作流画布；自主规划提供角色提示词、模型、技能/工具/工作流/知识挂载与预览调试；专家组维护成员池与试运行。
 - **新增** 四标签 Agent 编辑器：自主规划 Agent 提供搭建/运行观测/效果评测/版本指标四个标签页，统一入口管理不同形态的 Agent。
@@ -71,6 +72,7 @@
 - **新增 Phase E** 发布控制面：Agent 复制/归档、版本对比、灰度发布（0-100%流量分流）、编辑锁机制。
 - **新增 Phase E** 观测深化：Trace JSON导出、重试谱系可视化、嵌套子Run span、首token耗时指标。
 - **新增 Phase E** 对话体验：预览消息操作、Prompt #mention 资源提及、节点单测入口。
+- **新增控制流能力**：loop 循环迭代、wait-review 人工审核、data-read 数据读取，增强工作流编排能力。
 
 ```mermaid
 sequenceDiagram
@@ -107,6 +109,7 @@ U->>FE : 查看被 Agent 引用的高亮工作流
   - **重大改进** transform节点schema统一：现在统一使用template字段而非expression，简化了配置结构。
   - **重大改进** agent-select查询参数改进：移除了query参数，改用决策类查询绑定，提升了查询准确性。
   - **重大改进** 高级条件分支规则构建器：支持多条件AND/OR逻辑分组、类型感知操作符、变量引用比较、拖拽分支管理。
+  - **重大架构升级** 22节点体系支持：新增 loop、wait-review、data-read 节点类型，退役 agent 族节点。
   - **新增 Phase E** 编辑锁机制：基于 resource_lock 表的租约语义，防止多人同时编辑冲突，支持管理员强制解锁。
 - Agent 编辑器（三型分发）
   - 职责：对话编排（复用工作流画布）、自主规划（角色/模型/技能/工具/工作流/知识挂载+预览）、专家组（成员池+试运行）。
@@ -119,6 +122,7 @@ U->>FE : 查看被 Agent 引用的高亮工作流
   - **新增** 预览模型对比：支持主模型与对比模型的实时对比调试。
   - **新增** 语音合成集成：基于浏览器SpeechSynthesis API的语音播报功能。
   - **新增 Phase E** 灰度发布徽标：头部显示当前进行中的灰度发布信息，支持停止灰度操作。
+  - **架构调整** Agent 族功能迁移：agent→workflow-fixed，agent-select→workflow-select，agent-exec→workflow-exec。
 - 变量选择器与资源选择器
   - 职责：根据拓扑可达性计算祖先集合，仅暴露上游输出；资源选择器拉取注册表 Enabled 项。
   - 用户价值：避免无效绑定，提升配置效率。
@@ -132,6 +136,7 @@ U->>FE : 查看被 Agent 引用的高亮工作流
   - **新增** Agent 版本发布：生成 AgentVersion 快照，冻结依赖（dependency_snapshot），创建 Release 记录。
   - **新增 Phase E** 版本对比：支持草稿与版本、版本与版本之间的行级差异对比，直观展示修改内容。
   - **新增 Phase E** 灰度发布：Release 表增加 canary_percent 字段，支持 0-100% 流量分流，与稳定版并存。
+  - **架构升级** 节点校验增强：支持 loop 回边白名单、wait-review 表单必填、data-read 资产必填。
 - 运行与观测
   - 职责：工作流运行、Agent 运行（异步入队+轮询）、事件流、重试/导出。
   - 用户价值：快速验证与排障。
@@ -143,6 +148,7 @@ U->>FE : 查看被 Agent 引用的高亮工作流
   - **新增 Phase E** 重试谱系：显示 run 的上游来源和下游派生关系，支持点击跳转到相关运行。
   - **新增 Phase E** 嵌套子Run span：Agent 调用子运行时，将子运行树递归挂载到父运行的 span 树中。
   - **新增 Phase E** 首token耗时：统计首个 llm_delta 事件与 run.started_at 的时间差，提供 avg/p50 指标。
+  - **控制流执行**：loop 容器执行、wait-review 暂停恢复、data-read 数据访问执行器。
 - **新增** 工作流级评估系统（Phase D-1/D-3）
   - 职责：样本管理、真实运行评测、三种评判模式（规则/模型/人工）、结果统计、人类评审集成。
   - 用户价值：量化评估工作流表现，支持持续优化和问题自动修复。
@@ -179,6 +185,10 @@ U->>FE : 查看被 Agent 引用的高亮工作流
   - 职责：支持复制现有 Agent 创建副本，支持归档不常用的 Agent。
   - 用户价值：快速创建相似 Agent，管理 Agent 生命周期。
   - 验收要点：复制后名称自动添加"副本"后缀，归档后默认隐藏但可通过筛选显示。
+- **新增控制流节点**
+  - **loop（循环迭代）**：支持数组迭代、并行执行、错误处理策略、中断条件。
+  - **wait-review（等待/人审）**：支持暂停-恢复原语、人审表单、定时恢复、超时策略。
+  - **data-read（数据读取/抽样）**：支持数据资产访问、时间窗口过滤、随机抽样、范围过滤。
 
 **章节来源**
 - [wf-designer.tsx:161-657](file://src/pages/wf-designer.tsx#L161-L657)
@@ -193,6 +203,8 @@ U->>FE : 查看被 Agent 引用的高亮工作流
 - [wf-workflows-list.tsx:94-114](file://src/pages/wf-workflows-list.tsx#L94-L114)
 - [workflows.py:53-71](file://server/app/routers/workflows.py#L53-L71)
 - [resource-card.tsx:59-63](file://src/components/resources/resource-card.tsx#L59-L63)
+- [registry.py:253-292](file://server/app/registry.py#L253-L292)
+- [runner.py:758-805](file://server/app/runner.py#L758-L805)
 
 ## 数据与状态
 - 核心数据模型
@@ -207,6 +219,7 @@ U->>FE : 查看被 Agent 引用的高亮工作流
   - **新增** 评估样本：EvalSample 表支持 agent_id 关联，存储样本名称、输入和期望输出，新增 judge_result 字段存储评判结果。
   - **新增** 进化补丁：EvolutionPatch 表管理失败归因、候选补丁、审批状态和应用历史。
   - **新增 Phase E** 编辑锁：ResourceLock 表管理资源编辑权限，支持租约语义和过期接管。
+  - **控制流状态**：LoopContainer、WaitReviewState、DataReadResult 等新状态模型。
 - 关键状态流转
   - 工作流状态：draft → testing → published → deprecated（由业务操作驱动，发布时置 published）。
   - Agent 状态：随其绑定的工作流发布而同步为 published；支持 sandbox_version_id/prod_version_id 环境隔离。
@@ -217,6 +230,7 @@ U->>FE : 查看被 Agent 引用的高亮工作流
   - **新增** 进化状态：补丁状态 pending|applied|rejected，支持完整的审批工作流。
   - **新增 Phase E** 灰度状态：Release 支持 canary_percent 字段，同一环境可同时存在稳定版和灰度版。
   - **新增 Phase E** 编辑锁状态：ResourceLock 支持 expires_at 过期时间，支持续租和强制解锁。
+  - **控制流状态**：loop 容器状态机（running/completed/error）、wait-review 暂停状态（paused/resumed）、data-read 数据访问状态。
 - 数据所有权边界
   - 前端负责画布交互与本地状态，后端负责持久化、校验与执行。
   - 资源引用以 ID 形式存储，运行时解析；发布快照固化引用关系。
@@ -226,6 +240,7 @@ U->>FE : 查看被 Agent 引用的高亮工作流
   - **新增** 引用统计：工作流列表通过查询 Agent 表的 workflow_id 字段统计引用数量。
   - **新增 Phase E** 灰度分流：运行解析版本时按 run_id 哈希落桶选择 canary/稳定版本。
   - **新增 Phase E** 编辑锁保护：resourceId=agent:{id} 的编辑操作受 ResourceLock 保护，防止并发修改。
+  - **架构迁移**：Agent 族节点向后兼容，旧图自动迁移到工作流三件套。
 
 ```mermaid
 classDiagram
@@ -399,6 +414,7 @@ Run "1" -- "0..*" RunEvent : "events"
   - **新增 Phase E** 灰度约束：canary_percent 必须在 0-100 范围内，同一环境只能有一个 active 的灰度发布。
   - **新增 Phase E** Trace导出约束：导出包含完整 trace 数据和 events，文件大小可能较大需考虑性能。
   - **新增 Phase E** 重试谱系约束：origin_run_id 建立运行间的父子关系，支持双向跳转导航。
+  - **控制流约束**：loop 最大迭代次数限制（默认1000）、并发数限制（默认8）、wait-review 超时策略、data-read 数据访问权限控制。
 - 依赖与集成边界
   - 节点 IO 与执行器由 NodeDefinition 与 registry 决定；LLM/Tool/MCP/Knowledge 引用需处于 enabled/ready 状态。
   - 发布流程会收集节点对资源的引用，用于删除防护与审计。
@@ -416,6 +432,8 @@ Run "1" -- "0..*" RunEvent : "events"
   - **新增 Phase E** 灰度分流约束：run_id 哈希算法确保相同 run_id 始终落入同一桶，保证灰度稳定性。
   - **新增 Phase E** 编辑锁约束：resourceId 格式为 agent:{id} 或 workflowId，wsId 标识客户端会话。
   - **新增 Phase E** Prompt mention 约束：#type:name 语法，type 限定 tool/skill/knowledge/memory，name 必须存在于对应资源表。
+  - **架构迁移约束**：agent→workflow-fixed、agent-select→workflow-select、agent-exec→workflow-exec 的迁移规则，向后兼容已发布版本。
+  - **控制流约束**：loop 容器内节点隔离、wait-review 幂等恢复、data-read 数据资产权限验证。
 - 业务约束
   - 工作流必须恰有一个开始节点与至少一个终端节点；条件分支与出边 handle 需一致；结构化输出键需被唯一节点产出。
   - Agent 名称长度上限为 20，前后端共用同一常量。
@@ -430,6 +448,7 @@ Run "1" -- "0..*" RunEvent : "events"
   - **新增 Phase E** 复制约束：Agent 复制后名称自动添加"副本"后缀，长名称截断到20字以内。
   - **新增 Phase E** 归档约束：archived=true 的 Agent 默认不在列表中显示，需通过筛选参数查看。
   - **新增 Phase E** 版本对比约束：支持草稿vs版本、版本vs版本的JSON差异对比，行级高亮显示增删内容。
+  - **控制流业务约束**：loop 迭代器必须为数组类型、wait-review 必须配置恢复方式、data-read 必须指定数据资产。
 
 ```mermaid
 flowchart TD
@@ -449,7 +468,8 @@ R12 --> R13["R13: 样本关联约束检查"]
 R13 --> R14["R14: judge_result存储验证"]
 R14 --> R15["R15: 灰度百分比范围校验"]
 R15 --> R16["R16: 编辑锁状态检查"]
-R16 --> End(["返回 ValidationReport"])
+R16 --> R17["R17: 控制流节点校验"]
+R17 --> End(["返回 ValidationReport"])
 ```
 
 **图表来源**
@@ -473,6 +493,21 @@ R16 --> End(["返回 ValidationReport"])
 - [admin.py:618-670](file://server/app/routers/admin.py#L618-670)
 
 ## 新增特性详解
+
+### 节点体系架构改革（21节点→22节点）
+- **退役 Agent 族节点**：agent、agent-select、agent-exec 标记为 deprecated，不再出现在画布调色板中，但保持向后兼容执行。
+- **新增控制流节点**：
+  - **loop（循环迭代）**：支持数组迭代、并行执行、错误处理策略（终止/继续/移除异常）、中断条件、扁平化输出。
+  - **wait-review（等待/人审）**：支持暂停-恢复原语、人审表单、定时恢复、超时策略（自动通过/驳回/升级）。
+  - **data-read（数据读取/抽样）**：支持数据资产访问、时间窗口过滤（24h/7d/30d）、随机抽样、范围过滤。
+- **工作流三件套增强**：workflow-fixed（吸收 agent）、workflow-select（吸收 agent-select）、workflow-exec（吸收 agent-exec 动态模式）。
+- **迁移改写器**：自动将旧 agent 节点迁移到工作流三件套，已发布版本保持兼容执行。
+
+**章节来源**
+- [registry.py:111-148](file://server/app/registry.py#L111-L148)
+- [registry.py:253-292](file://server/app/registry.py#L253-L292)
+- [07-node-system-reform-sdd.md:42-59](file://docs/sdd/07-node-system-reform-sdd.md#L42-L59)
+- [07-node-system-reform-sdd.md:164-172](file://docs/sdd/07-node-system-reform-sdd.md#L164-L172)
 
 ### Phase E 发布控制面
 - **Agent 复制/归档**：支持复制现有 Agent 创建副本，名称自动添加"副本"后缀；支持归档不常用 Agent，默认隐藏但可通过筛选查看。
@@ -550,7 +585,7 @@ R16 --> End(["返回 ValidationReport"])
 - **版本指标标签**：版本历史、部署状态、成员冻结版本摘要可视化
 
 **章节来源**
-- [wf-agent-editor.tsx:363-422](file://src/pages/wf-agent-editor.tsx#L363-L422)
+- [wf-agent-editor.tsx:363-422](file://src/pages/wf-agent-editor.tsx#L363-422)
 - [agent-ops-panels.tsx:13-190](file://src/components/agent-ops-panels.tsx#L13-L190)
 
 ### 专家组成员池增强
@@ -748,3 +783,41 @@ R16 --> End(["返回 ValidationReport"])
 - [wf-designer.tsx:2124-2203](file://src/pages/wf-designer.tsx#L2124-L2203)
 - [agent-ops-panels.tsx:86-172](file://src/components/agent-ops-panels.tsx#L86-L172)
 - [wf-api.ts:381-393](file://src/services/wf-api.ts#L381-L393)
+
+### 控制流节点详解
+
+#### loop（循环迭代）节点
+- **迭代器配置**：支持数组类型变量作为迭代源，可配置 item 和 index 变量名
+- **循环变量**：支持自定义循环变量（名/类型/初始值），在循环体内可用
+- **中断条件**：支持基于循环体内变量的中断条件，支持 AND/OR 逻辑组合
+- **执行策略**：支持顺序执行、并行执行（可配置并发数）、错误处理策略
+- **输出处理**：支持扁平化输出和非扁平化输出，统计成功/失败计数
+- **画布支持**：body 和 done 双 source handle，支持回边白名单校验
+
+**章节来源**
+- [registry.py:253-267](file://server/app/registry.py#L253-L267)
+- [07-node-system-reform-sdd.md:132-144](file://docs/sdd/07-node-system-reform-sdd.md#L132-L144)
+
+#### wait-review（等待/人审）节点
+- **恢复模式**：支持人审表单、定时间隔、指定时刻、外部回调（预留）四种恢复方式
+- **表单配置**：支持 markdown 格式的表单说明，可配置多种字段类型（段落、选择、文件等）
+- **用户操作**：可配置操作按钮（通过/驳回等），支持不同样式（primary/default/accent/ghost）
+- **超时策略**：支持自动通过、自动驳回、升级三种超时处理策略
+- **暂停恢复**：运行时暂停，状态落盘，支持幂等恢复，生成恢复 URL
+
+**章节来源**
+- [registry.py:269-280](file://server/app/registry.py#L269-L280)
+- [runner.py:758-771](file://server/app/runner.py#L758-L771)
+- [07-node-system-reform-sdd.md:145-156](file://docs/sdd/07-node-system-reform-sdd.md#L145-L156)
+
+#### data-read（数据读取/抽样）节点
+- **数据资产**：支持从 DataAsset 读取数据，支持创建者身份访问
+- **时间窗口**：支持 all、last_24h、last_7d、last_30d 等时间窗口过滤
+- **抽样策略**：支持 all（全部）、random_n（随机n条）、stratify（分层抽样）
+- **范围过滤**：支持单字段 eq/contains 操作的简化过滤
+- **输出格式**：输出 rows（数组）和 count（数量）两个字段
+
+**章节来源**
+- [registry.py:282-292](file://server/app/registry.py#L282-L292)
+- [runner.py:774-805](file://server/app/runner.py#L774-L805)
+- [07-node-system-reform-sdd.md:157-159](file://docs/sdd/07-node-system-reform-sdd.md#L157-L159)

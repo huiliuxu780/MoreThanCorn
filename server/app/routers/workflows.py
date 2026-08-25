@@ -81,6 +81,26 @@ def get_workflow(wf_id: str, db: Session = Depends(get_db)):
             "updatedAt": wf.updated_at.isoformat()}
 
 
+@router.post("/{wf_id}/migrate", status_code=200)
+def migrate_workflow(wf_id: str, db: Session = Depends(get_db)):
+    """07-SDD §5.3（08-26 修订）：agent 三键→workflow 三连为显式迁移工具。
+
+    GET/保存保持透传（冻结 Agent 轨道的画布仍用旧键编辑与运行，兼容层可执行）；
+    独立工作流由用户/运维显式触发迁移并落盘。"""
+    from ..runner import migrate_definition
+    wf = db.get(Workflow, wf_id)
+    if not wf:
+        raise HTTPException(404, "workflow not found")
+    import copy
+    defn, changed = migrate_definition(db, copy.deepcopy(wf.draft_definition or {}))
+    if changed:
+        wf.draft_definition = defn  # 新对象引用，触发 JSONB dirty
+        wf.draft_revision += 1
+        wf.updated_at = datetime.now(timezone.utc)
+        db.commit()
+    return {"migrated": changed, "draftRevision": wf.draft_revision}
+
+
 @router.put("/{wf_id}/draft")
 def save_draft(wf_id: str, req: SaveDraftRequest, db: Session = Depends(get_db)):
     wf = db.get(Workflow, wf_id)

@@ -24,9 +24,13 @@ from .models import (Connection, JobQueue, Model, ModelProvider, NodeRun, Run, R
 from .schemas import WorkflowDefinition
 from .validator import validate
 
-REF = re.compile(r"\{\{\s*([A-Za-z0-9_-]+)\.outputs\.([A-Za-z0-9_.-]+)\s*\}\}")
+REF = re.compile(r"\{\{\s*([A-Za-z0-9_-]+)\.(outputs|error)\.([A-Za-z0-9_.-]+)\s*\}\}")
 
 TERMINAL = {"end", "create-record"}
+
+
+class _Paused(Exception):
+    """07-SDD：wait-review 节点挂起 Run（非失败）。"""
 
 
 class RunError(Exception):
@@ -108,17 +112,19 @@ def resolve_bindings(node_inputs: list[dict], outputs: dict[str, dict], run_inpu
 
 def render_refs(template: str, outputs: dict[str, dict], run_input: dict) -> str:
     def sub(m: re.Match) -> str:
-        nid, path = m.group(1), m.group(2)
+        nid, ns, path = m.group(1), m.group(2), m.group(3)
         if nid == "system":  # SDD C-5：{{system.xxx}}
             if path == "now":
                 return datetime.now(timezone.utc).isoformat()
             return str((run_input.get("__system") or {}).get(path, ""))
         if nid in ("n_start", "start"):
             v = _dig(run_input, path)
-            if v is None and path.startswith("outputs."):
-                v = run_input.get(path.split(".", 1)[1])
+            if v is None:
+                v = run_input.get(path)
         else:
-            v = _dig(outputs.get(nid, {}), path)
+            base = outputs.get(nid, {})
+            # 07-SDD：{{nodeId.error.x}} 引用失败路由输出
+            v = _dig(base.get("error", {}) if ns == "error" else base, path)
         return "" if v is None else str(v)
     return REF.sub(sub, template or "")
 
@@ -286,13 +292,13 @@ def _cond_ok(cond: dict, inputs: dict, ctx) -> bool:
     m = REF.match(var) if var else None
     val = None
     if m:
-        val = _dig(ctx.outputs.get(m.group(1), {}), m.group(2))
+        val = _dig(ctx.outputs.get(m.group(1), {}), m.group(3))
     elif var:
         val = inputs.get(var) or ctx.run_input.get(var)
     if (cond.get("valueMode") or "LITERAL").upper() == "VARIABLE":
         ref = (cond.get("valueRef") or "").strip()
         rm = REF.match(ref) if ref else None
-        expect_raw = _dig(ctx.outputs.get(rm.group(1), {}), rm.group(2)) if rm else None
+        expect_raw = _dig(ctx.outputs.get(rm.group(1), {}), rm.group(3)) if rm else None
     else:
         expect_raw = cond.get("value")
     return _branch_ok(cond.get("operator"), val, expect_raw)
@@ -670,7 +676,142 @@ def exec_query_rewrite(node, ctx) -> dict:
     return {"queryList": [query] if query else []}
 
 
+# ---------- 07-SDD 控制流执行器 ----------
+
+
+def _resolve_ref(ref: str, ctx) -> Any:
+    m = re.match(r"\{\{\s*([A-Za-z0-9_-]+)\.outputs\.([A-Za-z0-9_.-]+)\s*\}\}$", (ref or "").strip())
+    if not m:
+        return None
+    return _dig(ctx.outputs.get(m.group(1), {}), m.group(2))
+
+
+def _break_hit(conds: list[dict], iter_outputs: dict[str, dict]) -> bool:
+    for c in conds or []:
+        v = _resolve_ref(c.get("ref") or "", _DictCtx(iter_outputs))
+        expect = c.get("value")
+        op = c.get("op") or "eq"
+        hit = (v == expect) if op == "eq" else (v != expect) if op == "neq" else False
+        if hit:
+            return True
+    return False
+
+
+class _DictCtx:
+    def __init__(self, outputs):
+        self.outputs = outputs
+
+
+def exec_loop(node, ctx) -> dict:
+    """07-SDD §4.16：容器化循环——body 子图逐轮执行，输出聚合。"""
+    cfg = node.get("config") or {}
+    rows = _resolve_ref(cfg.get("iteratorRef") or "", ctx)
+    if rows is None:
+        rows = []
+    if not isinstance(rows, list):
+        rows = [rows]
+    item_var = cfg.get("itemVar") or "item"
+    idx_var = cfg.get("indexVar") or "index"
+    max_iter = int(cfg.get("maxIterations") or 1000)
+    err_mode = cfg.get("errorHandleMode") or "terminated"
+    order = (ctx.loop_orders or {}).get(node["id"], [])
+    loop_vars = {lv.get("name"): lv.get("initial") for lv in (cfg.get("loopVariables") or []) if lv.get("name")}
+    output_list: list[Any] = []
+    success = fail = 0
+    for i, item in enumerate(rows[:max_iter]):
+        iter_outputs = dict(ctx.outputs)
+        iter_outputs[node["id"]] = {item_var: item, idx_var: i, **loop_vars}
+        iter_ctx = Ctx(ctx.db, ctx.run, iter_outputs)
+        iter_ctx.call_chain = getattr(ctx, "call_chain", [])
+        iter_ctx.frozen_agent_versions = getattr(ctx, "frozen_agent_versions", {})
+        iter_ctx.by_id = ctx.by_id
+        iter_ctx.loop_bodies = {}
+        iter_ctx.loop_orders = {}
+        last_out: dict = {}
+        try:
+            for bn in order:
+                bnode = ctx.by_id[bn]
+                fn = EXECUTORS.get(bnode["type"]) or _agent_family_executor(bnode["type"])
+                if not fn:
+                    raise RunError(f"no executor for {bnode['type']}")
+                last_out = fn(bnode, iter_ctx) or {}
+                iter_outputs[bn] = last_out
+                nr = NodeRun(run_id=ctx.run.id, node_id=bn, node_type=bnode["type"], status="success",
+                             attempt=i + 1,
+                             output=last_out, started_at=datetime.now(timezone.utc), ended_at=datetime.now(timezone.utc))
+                ctx.db.add(nr)
+                ctx.db.commit()
+                emit(ctx.db, ctx.run.id, "loop_iter", bn, nr.id, {"iter": i, "output": last_out})
+            success += 1
+        except Exception as exc:  # noqa: BLE001
+            fail += 1
+            emit(ctx.db, ctx.run.id, "loop_iter_failed", node["id"], None, {"iter": i, "error": str(exc)})
+            if err_mode == "terminated":
+                raise
+            if err_mode == "remove_abnormal":
+                continue
+        output_list.append(last_out)
+        if _break_hit(cfg.get("breakConditions") or [], iter_outputs):
+            break
+    return {"outputList": output_list, "successCount": success, "failCount": fail, **loop_vars}
+
+
+def exec_wait_review(node, ctx) -> dict:
+    """07-SDD §4.17：暂停-恢复原语。无 resume 载荷时挂起 Run。"""
+    cfg = node.get("config") or {}
+    resume = getattr(ctx, "resume", None)
+    if resume and resume.get("node_id") == node.get("id"):
+        return {"decision": resume.get("action") or "pass", "comment": resume.get("comment") or "",
+                "waitedMs": resume.get("waitedMs") or 0, **(resume.get("values") or {})}
+    # 复用主遍历已建的 NodeRun 行（uq_node_run 约束），置 waiting
+    cur = ctx.db.get(NodeRun, ctx.current_node_run_id) if ctx.current_node_run_id else None
+    if cur:
+        cur.status = "waiting"
+        ctx.db.commit()
+        emit(ctx.db, ctx.run.id, "node_waiting", node["id"], cur.id,
+             {"mode": cfg.get("resumeMode") or "human"})
+    raise _Paused()
+
+
+def exec_data_read(node, ctx) -> dict:
+    """07-SDD §4.18：从 DataAsset 按窗口/抽样取数。"""
+    from .models import DataAsset
+    cfg = node.get("config") or {}
+    asset = ctx.db.get(DataAsset, cfg.get("dataAssetId") or "")
+    if not asset:
+        raise RunError("data-read：数据资产不存在")
+    rows = [r for r in (asset.rows or []) if isinstance(r, dict)]
+    window = cfg.get("window") or "all"
+    if window != "all" and asset.time_field:
+        days = {"last_24h": 1, "last_7d": 7, "last_30d": 30}.get(window)
+        if days:
+            cutoff = datetime.now(timezone.utc).timestamp() - days * 86400
+            def _ts(r):
+                v = str(r.get(asset.time_field) or "")
+                try:
+                    return datetime.fromisoformat(v.replace("Z", "+00:00")).timestamp()
+                except ValueError:
+                    return None
+            rows = [r for r in rows if (_t := _ts(r)) is not None and _t >= cutoff]
+    sampling = cfg.get("sampling") or "all"
+    if sampling == "random_n":
+        import random
+        n = int(cfg.get("sampleN") or 10)
+        rows = random.sample(rows, min(n, len(rows))) if rows else []
+    filt = cfg.get("filter") or {}
+    if filt.get("field"):
+        op, val = filt.get("op") or "eq", str(filt.get("value") or "")
+
+        def _fhit(r):
+            rv = str(r.get(filt["field"]) or "")
+            return rv == val if op == "eq" else val in rv
+
+        rows = [r for r in rows if _fhit(r)]
+    return {"rows": rows, "count": len(rows)}
+
+
 EXECUTORS = {
+    "loop": exec_loop, "wait-review": exec_wait_review, "data-read": exec_data_read,
     "input": exec_input, "llm": exec_llm, "condition": exec_condition,
     "transform": exec_transform, "tool": exec_tool, "end": exec_end,
     "create-record": exec_create_record, "notification": exec_notification,
@@ -716,7 +857,7 @@ class Ctx:
 # ---------- runner ----------
 
 
-def execute_run(run_id: str, call_chain: list[str] | None = None) -> None:
+def execute_run(run_id: str, call_chain: list[str] | None = None, resume: dict | None = None) -> None:
     db = SessionLocal()
     try:
         run = db.get(Run, run_id)
@@ -755,9 +896,14 @@ def execute_run(run_id: str, call_chain: list[str] | None = None) -> None:
         else:
             wf = db.get(Workflow, run.workflow_id)
             defn = WorkflowDefinition.model_validate(wf.draft_definition)
-        nodes = [n.model_dump() for n in defn.graph.nodes]
-        edges = [e.model_dump() for e in defn.graph.edges]
-        by_id = {n["id"]: n for n in nodes}
+        all_nodes = [n.model_dump() for n in defn.graph.nodes]
+        all_edges = [e.model_dump() for e in defn.graph.edges]
+        by_id = {n["id"]: n for n in all_nodes}
+        # 07-SDD：loop 容器——body 节点在容器内执行，不参与主遍历
+        loop_bodies, loop_orders = _loop_body_sets(all_nodes, all_edges)
+        body_ids = set().union(*loop_bodies.values()) if loop_bodies else set()
+        nodes = [n for n in all_nodes if n["id"] not in body_ids]
+        edges = [e for e in all_edges if e["source"] not in body_ids and e["target"] not in body_ids]
         run.status = "running"
         run.started_at = datetime.now(timezone.utc)
         db.commit()
@@ -767,15 +913,40 @@ def execute_run(run_id: str, call_chain: list[str] | None = None) -> None:
         ctx = Ctx(db, run, outputs)
         ctx.call_chain = chain
         ctx.frozen_agent_versions = frozen_agent_versions  # SDD B：成员 Agent 冻结版本（可空）
+        ctx.by_id = by_id
+        ctx.loop_bodies = loop_bodies
+        ctx.loop_orders = loop_orders
+        ctx.resume = resume
         succ: dict[str, list[tuple[str, str | None]]] = {}
         indeg: dict[str, int] = {n["id"]: 0 for n in nodes}
         for e in edges:
             succ.setdefault(e["source"], []).append((e["target"], e.get("sourceHandle")))
             indeg[e["target"]] = indeg.get(e["target"], 0) + 1
 
-        ready = [n["id"] for n in nodes if indeg.get(n["id"], 0) == 0]
         done: set[str] = set()
         skipped: set[str] = set()
+        ready: list[str] = []
+        if resume:
+            # 07-SDD：resume——清掉挂起节点的 waiting/resumed 行（避免 uq_node_run 冲突）后重建
+            for pr in db.execute(select(NodeRun).where(
+                    NodeRun.run_id == run_id,
+                    NodeRun.status.in_(["waiting", "resumed"]))).scalars():
+                db.delete(pr)
+            db.commit()
+            for pr in db.execute(select(NodeRun).where(NodeRun.run_id == run_id)).scalars():
+                if pr.status == "success" and pr.output is not None and pr.node_id in by_id:
+                    outputs[pr.node_id] = pr.output
+                    done.add(pr.node_id)
+                elif pr.status == "skipped" and pr.node_id in by_id:
+                    skipped.add(pr.node_id)
+            for d in list(done):
+                _activate_successors(by_id[d], outputs.get(d, {}), succ, indeg, ready, done, skipped, db, run_id, by_id)
+            ready = [r for r in ready if r not in done and r not in skipped]
+            rn = resume.get("node_id")
+            if rn in by_id and rn not in ready:
+                ready.append(rn)
+        else:
+            ready = [n["id"] for n in nodes if indeg.get(n["id"], 0) == 0]
         failed_ids: set[str] = set()
         first_error = ""
         active_handle: dict[str, str | None] = {}  # source -> selected handle (condition)
@@ -790,46 +961,80 @@ def execute_run(run_id: str, call_chain: list[str] | None = None) -> None:
             db.commit()
             emit(db, run_id, "node_started", nid, nr.id, {"nodeType": node["type"], "name": node["name"]})
             ctx.current_node_run_id = nr.id  # SDD A-07：节点内调用记录关联到本节点运行
-            try:
-                fn = EXECUTORS.get(node["type"]) or _agent_family_executor(node["type"])
-                if not fn:
-                    raise RunError(f"no executor for {node['type']}")
-                out = fn(node, ctx)
-                outputs[nid] = out
+            # 07-SDD §3.2：execution 块统一拦截（retry / onError 三值）
+            policy = node.get("execution") or {}
+            max_retries = int(policy.get("retries") or 0)
+            retry_interval = float(policy.get("retryIntervalMs") or 1000) / 1000.0
+            on_error = policy.get("onError") or "fail"
+            out, exc_final, attempt = None, None, 0
+            while True:
+                try:
+                    fn = EXECUTORS.get(node["type"]) or _agent_family_executor(node["type"])
+                    if not fn:
+                        raise RunError(f"no executor for {node['type']}")
+                    out = fn(node, ctx)
+                    break
+                except _Paused:
+                    raise
+                except Exception as exc:  # noqa: BLE001
+                    exc_final = exc
+                    attempt += 1
+                    if attempt <= max_retries and _retryable(exc):
+                        emit(db, run_id, "node_retry", nid, nr.id,
+                             {"attempt": attempt, "error": str(exc), "name": node["name"]})
+                        time.sleep(min(retry_interval * attempt, 10))
+                        continue
+                    break
+            if exc_final is None:
+                outputs[nid] = out if isinstance(out, dict) else {"output": out}
                 nr.status = "success"
-                nr.output = out
+                nr.output = outputs[nid]
                 nr.ended_at = datetime.now(timezone.utc)
                 nr.duration_ms = int((nr.ended_at - nr.started_at).total_seconds() * 1000) if nr.started_at else None
                 db.commit()
                 emit(db, run_id, "node_completed", nid, nr.id,
-                     {"output": out, "nodeType": node["type"], "name": node["name"]},
+                     {"output": outputs[nid], "nodeType": node["type"], "name": node["name"]},
                      duration_ms=nr.duration_ms)
                 done.add(nid)
-                # successors（condition/decision-class/workflow-select 走分支语义）
-                for tgt, handle in succ.get(nid, []):
-                    if node["type"] in ("condition", "decision-class", "workflow-select"):
-                        sel = out.get("selected")
-                        want = handle or "yes"
-                        if sel == "else":
-                            want_ok = want not in [b.get("handle") for b in (node["config"] or {}).get("branches", [])]
-                            if not want_ok and want != "else":
-                                _skip_downstream(tgt, succ, skipped, db, run_id, by_id)
-                                continue
-                        elif want != sel:
-                            _skip_downstream(tgt, succ, skipped, db, run_id, by_id)
-                            continue
-                    indeg[tgt] -= 1
-                    if indeg[tgt] <= 0 and tgt not in done and tgt not in skipped:
-                        ready.append(tgt)
-            except Exception as exc:  # noqa: BLE001
-                nr.status = "failed"
-                nr.error = {"message": str(exc)}
+                _activate_successors(node, outputs[nid], succ, indeg, ready, done, skipped, db, run_id, by_id)
+            elif on_error == "skip":
+                # 07-SDD：skip=记 skipped、空输出、下游继续
+                nr.status = "skipped"
+                nr.error = {"message": str(exc_final)}
                 nr.ended_at = datetime.now(timezone.utc)
                 db.commit()
-                emit(db, run_id, "node_failed", nid, nr.id, {"error": str(exc), "name": node["name"]})
+                emit(db, run_id, "node_skipped", nid, nr.id, {"error": str(exc_final), "name": node["name"]})
+                skipped.add(nid)
+                outputs[nid] = {}
+                _activate_successors(node, {}, succ, indeg, ready, done, skipped, db, run_id, by_id)
+            elif on_error == "branch":
+                # 07-SDD：error 输出供 {{nid.error.x}} 引用，仅激活 error handle 边
+                err = {"code": type(exc_final).__name__, "message": str(exc_final),
+                       "retryable": _retryable(exc_final)}
+                nr.status = "failed"
+                nr.error = err
+                nr.ended_at = datetime.now(timezone.utc)
+                db.commit()
+                emit(db, run_id, "node_failed", nid, nr.id,
+                     {"error": err["message"], "name": node["name"], "routed": True})
+                outputs[nid] = {"error": err}
+                done.add(nid)
+                for tgt, handle in succ.get(nid, []):
+                    if handle == "error":
+                        indeg[tgt] -= 1
+                        if indeg[tgt] <= 0 and tgt not in done and tgt not in skipped:
+                            ready.append(tgt)
+                    else:
+                        _skip_downstream(tgt, succ, skipped, db, run_id, by_id)
+            else:
+                nr.status = "failed"
+                nr.error = {"message": str(exc_final)}
+                nr.ended_at = datetime.now(timezone.utc)
+                db.commit()
+                emit(db, run_id, "node_failed", nid, nr.id, {"error": str(exc_final), "name": node["name"]})
                 failed_ids.add(nid)
                 if not first_error:
-                    first_error = str(exc)
+                    first_error = str(exc_final)
                 failed = True
 
         for nid in [n["id"] for n in nodes if nid_not_done(n["id"], done, skipped, ready) and nid not in failed_ids]:
@@ -855,6 +1060,15 @@ def execute_run(run_id: str, call_chain: list[str] | None = None) -> None:
         if run.started_at:
             run.duration_ms = int((run.ended_at - run.started_at).total_seconds() * 1000)
         db.commit()
+    except _Paused:
+        # 07-SDD：wait-review 挂起——Run 置 paused，等待 resume 端点续跑
+        run = db.get(Run, run_id)
+        if run:
+            run.status = "paused"
+            db.commit()
+            waiting = db.execute(select(NodeRun).where(
+                NodeRun.run_id == run_id, NodeRun.status == "waiting")).scalars().first()
+            emit(db, run_id, "run_paused", waiting.node_id if waiting else None, {"run_id": run_id})
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         run = db.get(Run, run_id)
@@ -883,6 +1097,109 @@ def _skip_downstream(nid, succ, skipped, db, run_id, by_id):
         _skip_downstream(tgt, succ, skipped, db, run_id, by_id)
 
 
+def _retryable(exc: Exception) -> bool:
+    """07-SDD：仅 retryable 错误重试（5xx/timeout/连接错误）。"""
+    if isinstance(exc, (httpx.TimeoutException, httpx.ConnectError)):
+        return True
+    s = str(exc).lower()
+    return any(k in s for k in ("timeout", "timed out", "connection", "500", "502", "503", "504"))
+
+
+def _activate_successors(node, out, succ, indeg, ready, done, skipped, db, run_id, by_id):
+    """successors 激活：condition/decision-class/workflow-select 走分支语义（07-SDD 提取自原内联逻辑）。"""
+    for tgt, handle in succ.get(node["id"], []):
+        if node["type"] in ("condition", "decision-class", "workflow-select"):
+            sel = out.get("selected")
+            want = handle or "yes"
+            if sel == "else":
+                want_ok = want not in [b.get("handle") for b in (node["config"] or {}).get("branches", [])]
+                if not want_ok and want != "else":
+                    _skip_downstream(tgt, succ, skipped, db, run_id, by_id)
+                    continue
+            elif want != sel:
+                _skip_downstream(tgt, succ, skipped, db, run_id, by_id)
+                continue
+        indeg[tgt] -= 1
+        if indeg[tgt] <= 0 and tgt not in done and tgt not in skipped:
+            ready.append(tgt)
+
+
+def _loop_body_sets(nodes, edges) -> tuple[dict[str, set[str]], dict[str, list[str]]]:
+    """07-SDD：loop 容器体 = 经 body handle 可达的节点集；返回 {loopId: body集合} 与拓扑序。"""
+    by_id = {n["id"]: n for n in nodes}
+    body_succ: dict[str, list[str]] = {}
+    for e in edges:
+        if e.get("sourceHandle") == "body":
+            body_succ.setdefault(e["source"], []).append(e["target"])
+    # 体内节点间的边（用于拓扑序）
+    inner: dict[str, list[str]] = {n["id"]: [] for n in nodes}
+    for e in edges:
+        inner.setdefault(e["source"], []).append(e["target"])
+    bodies: dict[str, set[str]] = {}
+    orders: dict[str, list[str]] = {}
+    for n in nodes:
+        if n["type"] != "loop":
+            continue
+        seen: set[str] = set()
+        stack = list(body_succ.get(n["id"], []))
+        while stack:
+            cur = stack.pop()
+            if cur in seen or cur == n["id"]:
+                continue
+            seen.add(cur)
+            stack.extend(inner.get(cur, []))
+        bodies[n["id"]] = seen
+        # 拓扑序（Kahn，体内）
+        indeg = {x: 0 for x in seen}
+        for s in seen:
+            for t in inner.get(s, []):
+                if t in seen:
+                    indeg[t] += 1
+        q = [x for x in seen if indeg[x] == 0]
+        order: list[str] = []
+        while q:
+            x = q.pop(0)
+            order.append(x)
+            for t in inner.get(x, []):
+                if t in seen:
+                    indeg[t] -= 1
+                    if indeg[t] <= 0:
+                        q.append(t)
+        orders[n["id"]] = order
+    return bodies, orders
+
+
+def migrate_definition(db: Session, defn: dict) -> tuple[dict, bool]:
+    """07-SDD §5/§6：旧图 agent 三键 → workflow 三连一次性改写（GET/保存时）。
+
+    agent→workflow-fixed（成员底层 workflow）；agent-select→workflow-select（候选映射）；
+    agent-exec→workflow-exec 固定模式。映射缺失字段留空 → 校验器标 unconfigured 引导重选。"""
+    from .models import Agent
+    changed = False
+
+    def _wf(aid):
+        a = db.get(Agent, aid or "")
+        return a.workflow_id if a else None
+
+    for n in (defn or {}).get("graph", {}).get("nodes", []) or []:
+        t = n.get("type")
+        if t not in ("agent", "agent-select", "agent-exec"):
+            continue
+        cfg = n.get("config") or {}
+        if t == "agent":
+            n["type"] = "workflow-fixed"
+            n["config"] = {"workflowId": _wf(cfg.get("agentCode")) or "", "versionPolicy": "latest"}
+        elif t == "agent-select":
+            cands = [w for w in (_wf(a) for a in (cfg.get("primaryAgents") or [])) if w]
+            n["type"] = "workflow-select"
+            n["config"] = {"candidates": cands, "routingModel": "qwen-plus"}
+        else:
+            n["type"] = "workflow-exec"
+            n["config"] = {"mode": "fixed", "workflowCode": _wf(cfg.get("agentCode")) or ""}
+        changed = True
+    return defn, changed
+
+
 # ---------- worker ----------
 
 
@@ -900,7 +1217,7 @@ def claim_and_run(db: Session) -> bool:
             from .agent_runtime import execute_agent_job
             execute_agent_job(payload["run_id"])
         else:
-            execute_run(payload["run_id"])
+            execute_run(payload["run_id"], resume=payload.get("resume"))
         st = "done"
     except Exception as exc:  # noqa: BLE001
         st = "failed"

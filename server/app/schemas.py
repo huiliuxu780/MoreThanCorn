@@ -11,6 +11,8 @@ NodeType = Literal[
     "agent", "agent-select", "agent-exec", "decision-class", "query-rewrite", "code-write",
     # Phase C（SDD 03 §C-4）
     "reply", "memory-variable", "workflow-select", "workflow-fixed",
+    # 07-SDD（08-26）：控制流四件套
+    "loop", "wait-review", "data-read",
 ]
 ValueType = Literal["string", "number", "boolean", "object", "array", "datetime"]
 
@@ -43,7 +45,8 @@ class InputBinding(BaseModel):
 class ExecutionPolicy(BaseModel):
     timeoutMs: int = Field(default=60000, ge=100, le=600000)
     retries: int = Field(default=0, ge=0, le=3)
-    onError: Literal["fail", "skip"] = "fail"
+    retryIntervalMs: int = Field(default=1000, ge=0, le=60000)
+    onError: Literal["fail", "skip", "branch"] = "fail"
 
 
 class WorkflowNode(BaseModel):

@@ -69,8 +69,9 @@ def validate(defn: WorkflowDefinition) -> ValidationReport:
         issues.append(ValidationIssue(nodeId=starts[0].id if starts else nodes[0].id, kind="graph",
                                       message="缺少结束/副作用终端节点"))
 
-    # R2: 无环；无孤儿
-    if _has_cycle(nodes, edges):
+    # R2: 无环（07-SDD：loop 回边白名单——指向 loop 的边不参与环检测）；无孤儿
+    cycle_edges = [e for e in edges if by_id.get(e.target) is None or by_id[e.target].type != "loop"]
+    if _has_cycle(nodes, cycle_edges):
         issues.append(ValidationIssue(nodeId=nodes[0].id, kind="graph", message="存在循环连接"))
     connected: set[str] = set()
     for e in edges:
@@ -158,5 +159,23 @@ def validate(defn: WorkflowDefinition) -> ValidationReport:
                                           message="条件分支与出边 handle 不一致"))
         if not n.config.get("branches"):
             issues.append(ValidationIssue(nodeId=n.id, kind="unconfigured", message="条件未配置"))
+
+    # R8（07-SDD §4/§5）：控制流节点配置完整性
+    for n in nodes:
+        if n.type == "loop":
+            if not n.config.get("iteratorRef"):
+                issues.append(ValidationIssue(nodeId=n.id, kind="unconfigured", message="loop：未配置循环源"))
+            if not any(e.target == n.id for e in edges):
+                issues.append(ValidationIssue(nodeId=n.id, kind="unconnected", message="loop：缺回边（循环体）"))
+            if not any(e.source == n.id and e.sourceHandle == "done" for e in edges):
+                issues.append(ValidationIssue(nodeId=n.id, kind="unconnected", message="loop：缺 done 出口边"))
+        if n.type == "wait-review" and not n.config.get("resumeMode"):
+            issues.append(ValidationIssue(nodeId=n.id, kind="unconfigured", message="wait-review：未配置恢复方式"))
+        if n.type == "data-read" and not n.config.get("dataAssetId"):
+            issues.append(ValidationIssue(nodeId=n.id, kind="unconfigured", message="data-read：未配置数据资产"))
+        if getattr(n.execution, "onError", "fail") == "branch" and \
+                not any(e.source == n.id and e.sourceHandle == "error" for e in edges):
+            issues.append(ValidationIssue(nodeId=n.id, kind="unconnected",
+                                          message="失败策略=走错误分支 但未连 error 出口边"))
 
     return ValidationReport(ok=not issues, issues=issues)
