@@ -54,8 +54,14 @@ def default_config(t: str) -> dict:
 
 
 @router.get("")
-def list_agents(page: int = 1, pageSize: int = 20, search: str = "", db: Session = Depends(get_db)):
+def list_agents(page: int = 1, pageSize: int = 20, search: str = "", archived: str = "",
+                db: Session = Depends(get_db)):
     q = db.query(Agent)
+    # E-2.1：默认隐藏已归档；archived=true 只看归档；all 全部
+    if archived == "true":
+        q = q.filter(Agent.archived.is_(True))
+    elif archived != "all":
+        q = q.filter(Agent.archived.is_(False))
     if search:
         q = q.filter(Agent.name.ilike(f"%{search}%"))
     total = q.count()
@@ -70,6 +76,7 @@ def list_agents(page: int = 1, pageSize: int = 20, search: str = "", db: Session
             return v.version_no if v else None
         items.append({"id": a.id, "name": a.name, "type": a.type, "typeLabel": TYPE_LABEL[a.type],
                       "status": a.status, "workflowId": a.workflow_id, "avatar": a.avatar,
+                      "archived": bool(a.archived),
                       "latestVersion": latest.version_no if latest else None,
                       "sandboxVersion": _env_ver(a.sandbox_version_id),
                       "prodVersion": _env_ver(a.prod_version_id),
@@ -110,10 +117,58 @@ def update_agent(aid: str, payload: dict, db: Session = Depends(get_db)):
         a.avatar = payload["avatar"]
     if "description" in payload:
         a.description = payload["description"]
+    if "archived" in payload:
+        a.archived = bool(payload["archived"])
     if expected is not None:
         a.config_revision += 1
     db.commit()
-    return {"id": a.id, "config": a.config, "configRevision": a.config_revision}
+    return {"id": a.id, "config": a.config, "configRevision": a.config_revision, "archived": bool(a.archived)}
+
+
+@router.post("/{aid}/duplicate", status_code=201)
+def duplicate_agent(aid: str, db: Session = Depends(get_db)):
+    """E-2.1：复制 Agent（新 id、名称+「 副本」受 20 字上限约束、草稿复制；版本/部署不带）。"""
+    src = db.get(Agent, aid)
+    if not src:
+        raise HTTPException(404, "agent not found")
+    suffix = " 副本"
+    base = src.name if len(src.name) + len(suffix) <= NAME_MAX_LEN else src.name[:NAME_MAX_LEN - len(suffix)]
+    name = base + suffix
+    # 同名重复复制时追加序号，避免撞名混淆
+    n = 2
+    while db.query(Agent).filter_by(name=name).first():
+        tail = f"{suffix}{n}"
+        name = (src.name[:NAME_MAX_LEN - len(tail)] if len(src.name) + len(tail) > NAME_MAX_LEN else src.name) + tail
+        n += 1
+    wf_id = None
+    if src.workflow_id:
+        src_wf = db.get(Workflow, src.workflow_id)
+        wf = Workflow(name=f"{name}的工作流")
+        wf.draft_definition = dict(src_wf.draft_definition) if src_wf and src_wf.draft_definition else _default_definition(wf.name).model_dump(mode="json")
+        db.add(wf)
+        db.flush()
+        wf_id = wf.id
+    copy = Agent(name=name, type=src.type, description=src.description, workflow_id=wf_id,
+                 avatar=src.avatar, config=dict(src.config or {}))
+    db.add(copy)
+    from .admin import audit
+    audit(db, "质量管理员", "agent.duplicate", "agent", copy.id, {"sourceId": aid})
+    db.commit()
+    return {"id": copy.id, "name": copy.name, "type": copy.type, "workflowId": wf_id,
+            "configRevision": copy.config_revision}
+
+
+@router.get("/{aid}/definition-draft")
+def get_draft_definition(aid: str, db: Session = Depends(get_db)):
+    """E-2.2：当前草稿 definition 预览（供版本对比）。"""
+    from ..agent_release import build_definition
+    a = db.get(Agent, aid)
+    if not a:
+        raise HTTPException(404, "agent not found")
+    try:
+        return {"definition": build_definition(db, a)}
+    except ValueError as e:
+        raise HTTPException(409, detail={"code": "NO_WORKFLOW", "message": str(e)})
 
 
 # ---------- 运行层（05 设计） ----------
@@ -247,30 +302,62 @@ def get_agent_version(aid: str, vid: str, db: Session = Depends(get_db)):
 
 @router.post("/{aid}/releases", status_code=201)
 def create_release(aid: str, payload: dict, db: Session = Depends(get_db)):
-    """部署版本到环境（02 §3）：同环境旧 active → rolled_back；回滚=对旧版本再发一次。"""
+    """部署版本到环境（02 §3）：同环境旧 active → rolled_back；回滚=对旧版本再发一次。
+    E-2.3 灰度：canaryPercent>0 时与稳定版并存（同环境至多一条灰度），不动稳定指针。"""
     a = db.get(Agent, aid)
     if not a:
         raise HTTPException(404, "agent not found")
     env = (payload or {}).get("environment", "sandbox")
     if env not in ("sandbox", "prod"):
         raise HTTPException(422, detail={"code": "BAD_ENVIRONMENT", "message": "environment 必须是 sandbox|prod"})
+    try:
+        canary_percent = int((payload or {}).get("canaryPercent", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(422, detail={"code": "BAD_CANARY", "message": "canaryPercent 必须是 0-100 整数"})
+    if not 0 <= canary_percent <= 100:
+        raise HTTPException(422, detail={"code": "BAD_CANARY", "message": "canaryPercent 必须是 0-100 整数"})
     v = db.get(AgentVersion, (payload or {}).get("versionId", ""))
     if not v or v.agent_id != aid:
         raise HTTPException(404, detail={"code": "VERSION_NOT_FOUND", "message": "版本不存在"})
-    for r in db.query(Release).filter_by(agent_id=aid, environment=env, status="active").all():
-        r.status = "rolled_back"
-    rel = Release(agent_id=aid, agent_version_id=v.id, environment=env)
-    db.add(rel)
-    if env == "sandbox":
-        a.sandbox_version_id = v.id
+    actives = db.query(Release).filter_by(agent_id=aid, environment=env, status="active").all()
+    if canary_percent > 0:
+        # 灰度部署：只替换已有灰度，稳定版保持
+        for r in actives:
+            if r.canary_percent:
+                r.status = "rolled_back"
     else:
-        a.prod_version_id = v.id
+        # 全量部署：同环境全部 active（含灰度）→ rolled_back
+        for r in actives:
+            r.status = "rolled_back"
+    rel = Release(agent_id=aid, agent_version_id=v.id, environment=env, canary_percent=canary_percent)
+    db.add(rel)
+    if canary_percent == 0:
+        if env == "sandbox":
+            a.sandbox_version_id = v.id
+        else:
+            a.prod_version_id = v.id
     a.status = "published"
     from .admin import audit
     audit(db, "质量管理员", "agent.release", "agent", aid,
-          {"versionNo": v.version_no, "environment": env})
+          {"versionNo": v.version_no, "environment": env, "canaryPercent": canary_percent})
     db.commit()
-    return {"releaseId": rel.id, "environment": env, "versionNo": v.version_no, "status": rel.status}
+    return {"releaseId": rel.id, "environment": env, "versionNo": v.version_no,
+            "status": rel.status, "canaryPercent": canary_percent}
+
+
+@router.post("/{aid}/releases/{rid}/stop-canary")
+def stop_canary(aid: str, rid: str, db: Session = Depends(get_db)):
+    """E-2.3：停止灰度=该 release rolled_back（流量全部回到稳定版）。"""
+    rel = db.get(Release, rid)
+    if not rel or rel.agent_id != aid:
+        raise HTTPException(404, "release not found")
+    if rel.status != "active" or not rel.canary_percent:
+        raise HTTPException(409, detail={"code": "NOT_CANARY_ACTIVE", "message": "该记录不是进行中的灰度发布"})
+    rel.status = "rolled_back"
+    from .admin import audit
+    audit(db, "质量管理员", "agent.canary.stop", "agent", aid, {"releaseId": rid})
+    db.commit()
+    return {"releaseId": rid, "status": rel.status}
 
 
 @router.get("/{aid}/releases")
@@ -280,6 +367,7 @@ def list_releases(aid: str, db: Session = Depends(get_db)):
     for r in rows:
         v = db.get(AgentVersion, r.agent_version_id)
         out.append({"releaseId": r.id, "environment": r.environment, "status": r.status,
+                    "canaryPercent": r.canary_percent or 0,
                     "versionNo": v.version_no if v else None, "createdAt": r.created_at.isoformat()})
     return out
 

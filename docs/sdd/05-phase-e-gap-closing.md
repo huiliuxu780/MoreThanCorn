@@ -19,7 +19,12 @@
 | E-1.2 | 页面零裸 fetch（D-3/A-16） | run-detail(×2)/tasks/result-rules/wf-designer(系统变量)/wf-workflows-list/task-detail 全部迁入 `wf-api` 服务层 | `grep -rn "fetch(" src/pages src/components` 仅余 wf-api 内部与 SSE EventSource |
 | E-1.3 | 验收勾核 | e2e-acceptance.md 与 01/02/04 验收清单逐条人工/浏览器核验后勾 `[x]`；不实的改注 | 文档复选框状态=代码事实 |
 
-## E-2 发布控制面（调研 01/02/03）
+## E-2 发布控制面（调研 01/02/03）✅ 2026-08-25 完成
+
+> 落地记录：duplicate/archive（迁移 e031phasee2001：agent.archived + release.canary_percent，双库已 upgrade）；
+> 版本对比（/definition-draft + LCS 行 diff，发布对话框与历史抽屉双入口）；灰度（0-100 校验、run_id md5 落桶、
+> 灰度与稳定并存、stop-canary、头部「灰度 N%」徽标）；编辑锁（resourceId=agent:{id}，自主规划壳层+画布，占用提示+admin 强解锁）。
+> 证据：94/94 pytest（含 test_phase_e 4 用例：复制/归档/灰度 0-100 边界/草稿预览）；scripts/check-e2.mjs 浏览器 8/8。
 
 | # | 条目 | 契约 | 验收 |
 | --- | --- | --- | --- |

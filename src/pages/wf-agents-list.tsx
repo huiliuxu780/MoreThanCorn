@@ -42,6 +42,7 @@ const TYPES = [
 
 interface AgentRow {
   id: string; name: string; type: string; typeLabel: string; status: string; updatedAt: string; description?: string; avatar?: string | null;
+  archived?: boolean;
   latestVersion?: number | null; sandboxVersion?: number | null; prodVersion?: number | null
 }
 
@@ -57,9 +58,30 @@ export default function WfAgentsListPage() {
   const [atype, setAtype] = useState("dialogue")
   const [creating, setCreating] = useState(false)
   const [delTarget, setDelTarget] = useState<AgentRow | null>(null)
-  // 筛选接真（此前是假按钮）：排序 + 类型过滤
+  // 筛选接真（此前是假按钮）：排序 + 类型过滤 + 归档过滤（E-2.1）
   const [sort, setSort] = useState<"updated" | "name">("updated")
   const [typeFilter, setTypeFilter] = useState("all")
+  const [archivedFilter, setArchivedFilter] = useState<"" | "true">("")
+
+  const onDuplicate = async (w: AgentRow) => {
+    try {
+      const d = await agentApi.duplicate(w.id)
+      toast.success(`已创建副本「${d.name}」`)
+      load()
+    } catch (e) {
+      toast.error((e as Error).message.replace(/^\d+:\s*/, "").replace(/^"|"$/g, "") || "复制失败")
+    }
+  }
+
+  const onArchive = async (w: AgentRow) => {
+    try {
+      await agentApi.setArchived(w.id, !w.archived)
+      toast.success(w.archived ? `已恢复「${w.name}」` : `已归档「${w.name}」`)
+      load()
+    } catch (e) {
+      toast.error((e as Error).message.replace(/^\d+:\s*/, "").replace(/^"|"$/g, "") || "操作失败")
+    }
+  }
 
   const confirmDelete = async () => {
     if (!delTarget) return
@@ -76,11 +98,11 @@ export default function WfAgentsListPage() {
 
   const load = () => {
     setLoading(true)
-    pagedApi.agents({ page: params.page, pageSize: params.pageSize, search }).then((r) => {
+    pagedApi.agents({ page: params.page, pageSize: params.pageSize, search, archived: archivedFilter || undefined }).then((r) => {
       setRows(r.items as AgentRow[]); setTotal(r.total); setLoading(false)
     }).catch(() => setLoading(false))
   }
-  useEffect(() => { load() }, [params.page, params.pageSize, search])
+  useEffect(() => { load() }, [params.page, params.pageSize, search, archivedFilter])
 
   const onCreate = async () => {
     if (!name.trim()) return
@@ -128,6 +150,13 @@ export default function WfAgentsListPage() {
               <SelectItem value="expert-group">专家组</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={archivedFilter || "active"} onValueChange={(v) => setArchivedFilter(v === "archived" ? "true" : "")}>
+            <SelectTrigger className="h-8 w-32 bg-white text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">使用中</SelectItem>
+              <SelectItem value="archived">已归档</SelectItem>
+            </SelectContent>
+          </Select>
           <Button size="sm" className="h-8 rounded-md bg-black text-white hover:bg-neutral-800" onClick={() => setOpen(true)}>
             <Plus className="size-4" /> 创建Agent
           </Button>
@@ -148,7 +177,10 @@ export default function WfAgentsListPage() {
             <div className="flex items-start gap-3">
               <img src={avatarFor(w.id, w.avatar)} alt={w.name} className="size-14 shrink-0 rounded-lg object-cover" />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[15px] font-semibold" style={{ color: "#1F2329" }}>{w.name}</div>
+                <div className="flex items-center gap-1.5">
+                  <div className="truncate text-[15px] font-semibold" style={{ color: "#1F2329" }}>{w.name}</div>
+                  {w.archived && <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">已归档</span>}
+                </div>
                 <span className="mt-1 inline-block rounded bg-neutral-100 px-1.5 py-0.5 text-[11px]" style={{ color: INK2 }}>{w.typeLabel}</span>
               </div>
               <DropdownMenu>
@@ -163,6 +195,9 @@ export default function WfAgentsListPage() {
                   <DropdownMenuItem onClick={() => navigate(`/config/agents/${w.id}`)}>编辑</DropdownMenuItem>
                   {rbac.can("agent.edit") && (
                     <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => onDuplicate(w)}>复制</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onArchive(w)}>{w.archived ? "恢复" : "归档"}</DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem className="text-destructive" onClick={() => setDelTarget(w)}>删除</DropdownMenuItem>
                     </>

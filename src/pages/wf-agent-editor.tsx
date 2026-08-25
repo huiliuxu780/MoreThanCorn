@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { resApi } from "@/services/resource-api"
-import { agentApi, streamRunEvents, wfApi, type AgentInfo } from "@/services/wf-api"
+import { agentApi, lockApi, streamRunEvents, wfApi, type AgentInfo } from "@/services/wf-api"
 import { rbac } from "@/services/rbac"
 import WfDesignerPage from "./wf-designer"
 import { avatarFor, AVATARS } from "./wf-agents-list"
@@ -477,6 +477,32 @@ export default function WfAgentEditorPage() {
   const [publishOpen, setPublishOpen] = useState(false)
   const canPublish = rbac.can("agent.publish")  // D-4：发布门禁（需 Publisher 及以上）
   const [tab, setTab] = useState<"build" | "runs" | "eval" | "versions">("build")
+  /* E-2.4：Agent 编辑锁（resourceId=agent:{id}；进入 acquire、离开 release；占用者头部可见；admin 强解锁） */
+  const lockWsId = useRef(Math.random().toString(36).slice(2, 8)).current
+  const [lockInfo, setLockInfo] = useState<{ user: string; byOther: boolean } | null>(null)
+  useEffect(() => {
+    if (!agentId) return
+    const rid = `agent:${agentId}`
+    lockApi.acquire(rid, lockWsId, "质量管理员")
+      .then((r) => setLockInfo({ user: r.user ?? "", byOther: !!r.lockedByOther }))
+      .catch(() => undefined)
+    return () => { lockApi.release(rid, lockWsId).catch(() => undefined) }
+  }, [agentId, lockWsId])
+  const forceUnlock = async () => {
+    await lockApi.forceRelease(`agent:${agentId}`).catch(() => undefined)
+    const r = await lockApi.acquire(`agent:${agentId}`, lockWsId, "质量管理员").catch(() => null)
+    setLockInfo(r ? { user: r.user ?? "", byOther: !!r.lockedByOther } : null)
+    toast.success("已强制解锁")
+  }
+  /* E-2.3：头部「灰度 N%」徽标（存在进行中的灰度发布时） */
+  const [canary, setCanary] = useState<{ env: string; percent: number; releaseId: string } | null>(null)
+  useEffect(() => {
+    if (!agentId) return
+    agentApi.releases(agentId).then((rels) => {
+      const c = rels.find((r) => r.status === "active" && r.canaryPercent > 0)
+      setCanary(c ? { env: c.environment, percent: c.canaryPercent, releaseId: c.releaseId } : null)
+    }).catch(() => undefined)
+  }, [agentId])
   const vs = useAgentVersionState(agent && agent.type === "autonomous" ? agent.id : undefined)
   useEffect(() => {
     agentApi.get(agentId).then(setAgent).catch((e) => { if (String((e as Error).message).startsWith("404")) setLegacy(true) })
@@ -508,6 +534,24 @@ export default function WfAgentEditorPage() {
         </span>
         {vs.envs.sandbox != null && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-600">沙箱 V{vs.envs.sandbox}</span>}
         {vs.envs.prod != null && <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[11px] text-blue-600">线上 V{vs.envs.prod}</span>}
+        {canary && (
+          <span className="flex items-center gap-1 rounded bg-purple-50 px-1.5 py-0.5 text-[11px] text-purple-600">
+            {canary.env === "prod" ? "线上" : "沙箱"} · 灰度 {canary.percent}%
+            <button className="underline" onClick={async () => {
+              await agentApi.stopCanary(agent.id, canary.releaseId)
+              setCanary(null)
+              toast.success("已停止灰度，流量回到稳定版本")
+            }}>停止</button>
+          </span>
+        )}
+        {lockInfo?.user && (
+          <span className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${lockInfo.byOther ? "bg-amber-50 text-amber-600" : "text-emerald-600"}`}>
+            {lockInfo.byOther ? `${lockInfo.user} 编辑中` : "编辑锁持有"}
+            {lockInfo.byOther && rbac.can("admin.force-unlock") && (
+              <button className="underline" onClick={forceUnlock}>强制解锁</button>
+            )}
+          </span>
+        )}
         <div className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg p-0.5" style={{ background: "#F1F3F7" }}>
           {([["build", "Agent搭建"], ["runs", "运行观测"], ["eval", "效果评测"], ["versions", "版本指标"]] as const).map(([k, label]) => (
             <button key={k} className="rounded-md px-3 py-1 text-[13px]"

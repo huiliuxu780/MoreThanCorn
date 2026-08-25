@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import CodeMirror from "@uiw/react-codemirror"
 import { python } from "@codemirror/lang-python"
 import { AgentPublishDialog, useAgentVersionState } from "@/components/agent-publish-dialog"
+import { AgentVersionDiffDialog } from "@/components/agent-version-diff"
 import { ConversationPanel, MemorySchemaForm } from "@/components/agent-common-config"
 import { useNavigate, useParams } from "react-router-dom"
 import {
@@ -1505,7 +1506,8 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const [pop, setPop] = useState<null | "add" | "zoom" | "search">(null)
   const [versions, setVersions] = useState<{ versionNo: number; publishedAt: string }[]>([])
   const [agentVersions, setAgentVersions] = useState<{ versionId: string; versionNo: number; note: string; artifactHash: string; createdAt: string }[]>([])
-  const [agentReleases, setAgentReleases] = useState<{ environment: string; status: string; versionNo: number | null }[]>([])
+  const [agentReleases, setAgentReleases] = useState<{ releaseId: string; environment: string; status: string; canaryPercent: number; versionNo: number | null }[]>([])
+  const [diffVersion, setDiffVersion] = useState<string | null>(null)  // E-2.2：对比弹窗（默认右侧版本）
   const [latestVersion, setLatestVersion] = useState<number | null>(null)
   const [zoom, setZoom] = useState(1)
   const [lockUser, setLockUser] = useState("")
@@ -1520,13 +1522,16 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const defRef = useRef<WfDefinition | null>(null)
   defRef.current = def
 
-  /* 真实编辑锁与操作人（后端 resource_lock；SDD A-16 走 lockApi） */
+  /* 真实编辑锁与操作人（后端 resource_lock；SDD A-16 走 lockApi；E-2.4：Agent 编辑锁 resourceId=agent:{id}） */
+  const lockResourceId = agentMeta && agentId ? `agent:${agentId}` : workflowId
+  const [lockByOther, setLockByOther] = useState(false)
   useEffect(() => {
     const wsId = wsIdRef.current
-    lockApi.acquire(workflowId, wsId, "质量管理员")
-      .then((r) => setLockUser(r.user ?? "")).catch(() => undefined)
-    return () => { lockApi.release(workflowId, wsId).catch(() => undefined) }
-  }, [workflowId])
+    lockApi.acquire(lockResourceId, wsId, "质量管理员")
+      .then((r) => { setLockUser(r.user ?? ""); setLockByOther(!!r.lockedByOther) })
+      .catch(() => undefined)
+    return () => { lockApi.release(lockResourceId, wsId).catch(() => undefined) }
+  }, [lockResourceId])
 
   useEffect(() => {
     let alive = true
@@ -1878,8 +1883,15 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
             <CalendarDays className="size-4" style={{ color: C.ink2 }} />
           </button>
           {lockUser && (
-            <span className="flex items-center gap-1 text-xs" style={{ color: C.ink2 }}>
-              {lockUser} <LockKeyhole className="size-3.5" style={{ color: "#34C759" }} />
+            <span className="flex items-center gap-1 text-xs" style={{ color: lockByOther ? "#D97706" : C.ink2 }}>
+              {lockByOther ? `${lockUser} 编辑中` : lockUser} <LockKeyhole className="size-3.5" style={{ color: lockByOther ? "#D97706" : "#34C759" }} />
+              {lockByOther && rbac.can("admin.force-unlock") && (
+                <button className="underline" onClick={async () => {
+                  await lockApi.forceRelease(lockResourceId).catch(() => undefined)
+                  const r = await lockApi.acquire(lockResourceId, wsIdRef.current, "质量管理员").catch(() => null)
+                  if (r) { setLockUser(r.user ?? ""); setLockByOther(!!r.lockedByOther) }
+                }}>强制解锁</button>
+              )}
             </span>
           )}
           <Button variant="outline" size="sm" className="rounded-md" onClick={() => doSave(defRef.current!)}>保存</Button>
@@ -2044,11 +2056,23 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
                         <span className="flex items-center gap-1">
                           {rels.map((r) => (
                             <span key={r.environment} className={`rounded px-1 py-0.5 text-[10px] ${r.environment === "prod" ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"}`}>
-                              {r.environment === "prod" ? "线上" : "沙箱"}
+                              {r.environment === "prod" ? "线上" : "沙箱"}{r.canaryPercent > 0 ? ` · 灰度 ${r.canaryPercent}%` : ""}
                             </span>
                           ))}
+                          <button className="rounded px-1 py-0.5 text-[10px] underline" style={{ color: C.ink3 }}
+                            onClick={() => setDiffVersion(v.versionId)}>对比</button>
                         </span>
                       </div>
+                      {rels.filter((r) => r.canaryPercent > 0).map((r) => (
+                        <div key={r.releaseId} className="flex items-center justify-between pt-1">
+                          <span className="rounded bg-purple-50 px-1 py-0.5 text-[10px] text-purple-600">灰度 {r.canaryPercent}%（{r.environment === "prod" ? "线上" : "沙箱"}）</span>
+                          <button className="text-[10px] underline" style={{ color: "#DC2626" }} onClick={async () => {
+                            await agentApi.stopCanary(agentId, r.releaseId)
+                            toast.success("已停止灰度，流量回到稳定版本")
+                            setAgentReleases(await agentApi.releases(agentId).catch(() => []))
+                          }}>停止灰度</button>
+                        </div>
+                      ))}
                       <div className="pt-0.5 text-[10px]" style={{ color: C.ink3 }}>
                         {new Date(v.createdAt).toLocaleString()}{v.note ? ` · ${v.note}` : ""}
                       </div>
@@ -2098,6 +2122,12 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
       {agentMeta && agentId && (
         <AgentPublishDialog agentId={agentId} open={agentPublishOpen} onClose={() => setAgentPublishOpen(false)}
           onPublished={agentVersionState.refresh} />
+      )}
+      {/* E-2.2：历史抽屉「对比」入口（该版本 vs 当前草稿） */}
+      {agentMeta && agentId && (
+        <AgentVersionDiffDialog agentId={agentId} open={!!diffVersion} onClose={() => setDiffVersion(null)}
+          versions={agentVersions.map((v) => ({ versionId: v.versionId, versionNo: v.versionNo }))}
+          defaultLeft={diffVersion ?? undefined} defaultRight="draft" />
       )}
     </div>
   )

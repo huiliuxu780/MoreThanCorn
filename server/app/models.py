@@ -287,6 +287,7 @@ class Agent(Base):
     config_revision: Mapped[int] = mapped_column(Integer, default=1)  # SDD A-08 乐观锁
     sandbox_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # SDD B
     prod_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # SDD B
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)  # SDD E-2.1 归档
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -318,6 +319,7 @@ class Release(Base):
     agent_version_id: Mapped[str] = mapped_column(ForeignKey("agent_version.id"))
     environment: Mapped[str] = mapped_column(String(8))  # sandbox|prod
     status: Mapped[str] = mapped_column(String(16), default="active")  # active|rolled_back|offline
+    canary_percent: Mapped[int] = mapped_column(Integer, default=0)  # SDD E-2.3 灰度百分比 0-100
     created_by: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

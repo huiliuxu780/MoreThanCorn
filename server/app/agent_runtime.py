@@ -15,8 +15,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import SessionLocal
-from .models import (Agent, Connection, KnowledgeSource, Model, ModelProvider, Run,
-                     Tool, ToolVersion, Workflow)
+from .models import (Agent, Connection, KnowledgeSource, Model, ModelProvider, Release, Run,
+                     Tool, ToolVersion, Workflow, new_id)
 from .runner import RunError, _decrypt, create_run, emit, execute_run, exec_tool
 
 MAX_STEPS = 8
@@ -463,6 +463,12 @@ def _run_member(ctx: _Ctx, code: str) -> dict:
 
 # ---------- 统一入口（SDD A-03：顶层异步入队，嵌套保持同步） ----------
 
+def _canary_bucket(run_id: str) -> int:
+    """E-2.3：run_id → 0-99 稳定桶（md5 取模，跨进程一致）。"""
+    import hashlib
+    return int(hashlib.md5(run_id.encode()).hexdigest(), 16) % 100
+
+
 def run_agent(db: Session, agent: Agent, run_input: dict, trigger: str = "agent",
               agent_chain: list[str] | None = None, call_chain_wf: list[str] | None = None,
               enqueue: bool = True, version_id: str | None = None) -> str:
@@ -473,7 +479,9 @@ def run_agent(db: Session, agent: Agent, run_input: dict, trigger: str = "agent"
     chain = list(agent_chain or [])
     if agent.id in chain:
         raise RunError(f"检测到 Agent 递归调用：{agent.id}")
+    run_id = new_id()
     ver: AgentVersion | None = None
+    canary_hit = False
     if version_id:
         ver = db.get(AgentVersion, version_id)
         if not ver or ver.agent_id != agent.id:
@@ -482,16 +490,27 @@ def run_agent(db: Session, agent: Agent, run_input: dict, trigger: str = "agent"
         vid = agent.sandbox_version_id or agent.prod_version_id
         if not vid:
             raise RunError("NO_RELEASED_VERSION：该 Agent 尚未发布，请先发布到沙箱或线上")
-        ver = db.get(AgentVersion, vid)
-        if not ver:
-            raise RunError("NO_RELEASED_VERSION：发布版本记录丢失，请重新发布")
-    run = Run(agent_id=agent.id, workflow_id=agent.workflow_id, trigger=trigger, input=run_input or {},
+        # E-2.3 灰度：同环境存在灰度 release 时，按 run_id 稳定哈希落桶选 canary/稳定
+        env = "sandbox" if agent.sandbox_version_id else "prod"
+        canary = next((r for r in db.query(Release)
+                       .filter_by(agent_id=agent.id, environment=env, status="active").all()
+                       if (r.canary_percent or 0) > 0), None)
+        if canary and _canary_bucket(run_id) < (canary.canary_percent or 0):
+            cv = db.get(AgentVersion, canary.agent_version_id)
+            if cv:
+                ver, canary_hit = cv, True
+        if ver is None:
+            ver = db.get(AgentVersion, vid)
+            if not ver:
+                raise RunError("NO_RELEASED_VERSION：发布版本记录丢失，请重新发布")
+    run = Run(id=run_id, agent_id=agent.id, workflow_id=agent.workflow_id, trigger=trigger, input=run_input or {},
               agent_version_id=ver.id if ver else None,
               definition_source="version" if ver else "draft")
     db.add(run)
     db.commit()
     emit(db, run.id, "agent_started", payload={"agentId": agent.id, "type": agent.type,
-                                               "agentVersion": ver.version_no if ver else None})
+                                               "agentVersion": ver.version_no if ver else None,
+                                               **({"canary": True} if canary_hit else {})})
     if agent.type != "autonomous" and not agent.workflow_id and not ver:
         run.status = "failed"
         run.error = {"message": "该 Agent 未绑定工作流"}

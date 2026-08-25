@@ -250,8 +250,8 @@ export async function realRunDetail(runId: string): Promise<{ run: Run; executio
 
 export interface Paged<T> { items: T[]; total: number; page: number; pageSize: number }
 export const pagedApi = {
-  agents: (p: { page?: number; pageSize?: number; search?: string }) =>
-    req<Paged<Record<string, any>>>(`/api/agents?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}&search=${encodeURIComponent(p.search ?? "")}`),
+  agents: (p: { page?: number; pageSize?: number; search?: string; archived?: "" | "true" | "all" }) =>
+    req<Paged<Record<string, any>>>(`/api/agents?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}&search=${encodeURIComponent(p.search ?? "")}${p.archived ? `&archived=${p.archived}` : ""}`),
   tools: (p: { page?: number; pageSize?: number; search?: string }) =>
     req<Paged<Record<string, any>>>(`/api/tools?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}&search=${encodeURIComponent(p.search ?? "")}`),
   connections: (p: { page?: number; pageSize?: number; search?: string }) =>
@@ -283,11 +283,12 @@ export interface AgentRunDetail {
   durationMs?: number | null; events: AgentRunEvent[]
 }
 export const agentApi = {
-  list: (p?: { page?: number; pageSize?: number; search?: string }) => {
+  list: (p?: { page?: number; pageSize?: number; search?: string; archived?: "" | "true" | "all" }) => {
     const q = new URLSearchParams()
     q.set("page", String(p?.page ?? 1)); q.set("pageSize", String(p?.pageSize ?? 100))
     if (p?.search) q.set("search", p.search)
-    return req<{ items: { id: string; name: string; type: string; status: string }[]; total: number }>(`/api/agents?${q}`)
+    if (p?.archived) q.set("archived", p.archived)  // E-2.1：默认隐藏已归档
+    return req<{ items: { id: string; name: string; type: string; status: string; archived?: boolean }[]; total: number }>(`/api/agents?${q}`)
   },
   get: (id: string) => req<AgentInfo>(`/api/agents/${id}`),
   del: (id: string) => req<{ ok: boolean }>(`/api/agents/${id}`, { method: "DELETE" }),
@@ -325,12 +326,23 @@ export const agentApi = {
       `/api/agents/${id}/versions`, { method: "POST", body: JSON.stringify({ note }) }),
   versionDetail: (id: string, versionId: string) =>
     req<Record<string, any>>(`/api/agents/${id}/versions/${versionId}`),
-  release: (id: string, versionId: string, environment: "sandbox" | "prod") =>
-    req<{ releaseId: string; environment: string; versionNo: number; status: string }>(
-      `/api/agents/${id}/releases`, { method: "POST", body: JSON.stringify({ versionId, environment }) }),
+  /* E-2.2：草稿 definition 预览（版本对比用） */
+  draftDefinition: (id: string) =>
+    req<{ definition: Record<string, any> }>(`/api/agents/${id}/definition-draft`),
+  release: (id: string, versionId: string, environment: "sandbox" | "prod", canaryPercent = 0) =>
+    req<{ releaseId: string; environment: string; versionNo: number; status: string; canaryPercent: number }>(
+      `/api/agents/${id}/releases`, { method: "POST", body: JSON.stringify({ versionId, environment, canaryPercent }) }),
   releases: (id: string) =>
-    req<{ releaseId: string; environment: string; status: string; versionNo: number | null; createdAt: string }[]>(
+    req<{ releaseId: string; environment: string; status: string; canaryPercent: number; versionNo: number | null; createdAt: string }[]>(
       `/api/agents/${id}/releases`),
+  /* E-2.3：停止灰度（该 release → rolled_back） */
+  stopCanary: (id: string, releaseId: string) =>
+    req<{ releaseId: string; status: string }>(`/api/agents/${id}/releases/${releaseId}/stop-canary`, { method: "POST" }),
+  /* E-2.1：复制/归档 */
+  duplicate: (id: string) =>
+    req<{ id: string; name: string; type: string; workflowId: string | null }>(`/api/agents/${id}/duplicate`, { method: "POST" }),
+  setArchived: (id: string, archived: boolean) =>
+    req<{ id: string; archived: boolean }>(`/api/agents/${id}`, { method: "PUT", body: JSON.stringify({ archived }) }),
   eventsUrl: (runId: string) => `${WF_BASE}/api/runs/${runId}/events`,
   /* ---------- SDD D-1：观测 / 评测 / 生成 ---------- */
   metrics: (id: string) =>
@@ -419,9 +431,12 @@ export const evalApi = {
 }
 export const lockApi = {
   acquire: (resourceId: string, wsId: string, user: string) =>
-    req<{ user?: string }>("/api/locks", { method: "POST", body: JSON.stringify({ resourceId, wsId, user }) }),
+    req<{ lockedByOther?: boolean; user?: string; expiresAt?: string }>("/api/locks", { method: "POST", body: JSON.stringify({ resourceId, wsId, user }) }),
   release: (resourceId: string, wsId: string) =>
     req<{ ok: boolean }>(`/api/locks/${resourceId}?wsId=${wsId}`, { method: "DELETE" }),
+  /** E-2.4：强制解锁（admin；后端审计留痕） */
+  forceRelease: (resourceId: string) =>
+    req<{ ok: boolean }>(`/api/locks/${resourceId}/force`, { method: "DELETE" }),
 }
 
 /* ---------- 质检业务层联调：quality_result/evidence ---------- */
