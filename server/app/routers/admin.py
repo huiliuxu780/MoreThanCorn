@@ -66,7 +66,8 @@ def update_connection(cid: str, payload: dict, db: Session = Depends(get_db)):
 @router.get("/api/connections")
 def list_connections(page: int = 1, pageSize: int = 20, search: str = "", type: str = "",
                      db: Session = Depends(get_db)):
-    q = db.query(Connection)
+    # 确定性排序：否则测试连接更新行后物理位置漂移，前端"静默刷新"会看到列表重排（用户实测回归）
+    q = db.query(Connection).order_by(Connection.created_at.desc())
     if search:
         q = q.filter(Connection.name.ilike(f"%{search}%"))
     if type:
