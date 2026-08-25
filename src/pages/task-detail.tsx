@@ -27,7 +27,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { DefinitionRow } from "@/components/app/form-field"
 import { ErrorState, TableSkeleton } from "@/components/app/list-state"
 import { PageContainer, PageHeader, SectionHeader } from "@/components/app/page"
 import { StatusBadge } from "@/components/app/status-badge"
@@ -107,18 +106,23 @@ export default function TaskDetailPage() {
         />
       </div>
 
-      {/* 任务配置 */}
-      <div className="rounded-lg border bg-card px-4 py-2">
-        <DefinitionRow label="Agent">{task.agentName}</DefinitionRow>
-        <DefinitionRow label="版本策略">
-          {task.agentVersionPolicy === "Latest Published" ? "Latest Published" : `Fixed ${task.fixedAgentVersion}`}
-        </DefinitionRow>
-        <DefinitionRow label="Data Asset">{task.dataAssetName}</DefinitionRow>
-        <DefinitionRow label="Data Scope">{task.scope}</DefinitionRow>
-        <DefinitionRow label="Sampling">{task.sampling}</DefinitionRow>
-        <DefinitionRow label="Schedule">{task.schedule}</DefinitionRow>
-        <DefinitionRow label="Data Window">{task.dataWindow}</DefinitionRow>
-        <DefinitionRow label="下次运行">{isActive ? task.nextRunAt ?? "—" : "—"}</DefinitionRow>
+      {/* 任务配置（紧凑信息卡：4×2 网格，压缩高度） */}
+      <div className="grid grid-cols-2 gap-x-6 gap-y-2.5 rounded-lg border bg-card px-4 py-3 md:grid-cols-4">
+        {([
+          ["Agent", task.agentName || "—"],
+          ["版本策略", task.agentVersionPolicy === "Latest Published" ? "Latest Published" : `Fixed ${task.fixedAgentVersion ?? ""}`],
+          ["Data Asset", task.dataAssetName || "—"],
+          ["Data Scope", task.scope || "—"],
+          ["Sampling", task.sampling || "—"],
+          ["Schedule", task.schedule || "—"],
+          ["Data Window", task.dataWindow || "—"],
+          ["下次运行", isActive ? (task.nextRunAt ?? "—") : "—"],
+        ] as [string, string][]).map(([label, value]) => (
+          <div key={label} className="min-w-0">
+            <div className="pb-0.5 text-[11px] text-muted-foreground">{label}</div>
+            <div className="truncate text-sm" title={value}>{value}</div>
+          </div>
+        ))}
       </div>
 
       {/* Run History */}
