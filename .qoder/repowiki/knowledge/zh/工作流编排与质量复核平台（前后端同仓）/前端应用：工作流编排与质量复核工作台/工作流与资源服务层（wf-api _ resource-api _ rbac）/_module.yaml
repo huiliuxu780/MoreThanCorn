@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: frontend_app/services_and_mocks
+title: 工作流与资源服务层（wf-api / resource-api / rbac）
+scope:
+    - src/services/
+    - src/mocks/
+source_files: []
+depends_on: []
+related_to: []

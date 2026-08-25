@@ -34,11 +34,10 @@
 
 ## 更新摘要
 **变更内容**
-- 增强 `/api/runs/{id}/trace` 端点，实现标准化的 span 类型映射（LLM/TOOL/KNOWLEDGE）
-- 规范化 token 使用结构，统一 inputTokens/outputTokens 格式
-- 改进错误处理机制，标准化错误响应格式
-- Agent metrics 端点新增 totalTokens 计算功能
-- 完善运行追踪系统的可观测性能力
+- 新增 `/api/workflows/{wf_id}/polish` AI提示词优化端点，支持通过LLM对提示词进行智能润色
+- 增强运行管理的PAUSED状态支持和resume功能，实现wait-review节点的暂停-恢复机制
+- 改进工作流执行的错误处理和动态代码解析能力，支持动态工作流执行模式
+- 完善运行追踪系统的可观测性能力，标准化span类型映射和token使用结构
 
 ## 产品概述
 本项目为 AI 驱动的企业智能质量评价平台，V1 聚焦智能质检（坐席质检）。后端基于 FastAPI + SQLAlchemy + Alembic，提供工作流编排、资源管理、运行执行、业务规则与评测、Agent 编排等能力；前端 Vite + React + TypeScript。导航结构已冻结，路由与状态语义以实现文档为准。
@@ -76,9 +75,13 @@ API->>W : create_run(...) + execute_run(...)
 W-->>API : runId + 执行结果
 API->>DB : 存储 judge_result (rule/model/human)
 API-->>FE : {total, succeeded, results}
-FE->>API : POST /api/eval-samples/{sid}/human-score (人评)
-API->>DB : 更新样本评分 0-5分
-API-->>FE : {id, judge}
+FE->>API : POST /api/workflows/{wid}/polish (提示词优化)
+API->>W : _call_model(...) 调用LLM优化提示词
+W-->>API : 返回优化后的提示词
+API-->>FE : {text : 优化后的提示词}
+FE->>API : POST /api/runs/{runId}/resume (续跑暂停的运行)
+API->>DB : 检查paused状态并插入resume队列
+API-->>FE : {status : resuming, nodeId}
 FE->>API : GET /api/runs/{runId}/trace (运行追踪)
 API->>DB : 查询 Run/NodeRun/CallRecord
 API-->>FE : {root : SpanNode, totalTokens, modelCalls}
@@ -91,8 +94,8 @@ API-->>FE : {totalTokens, ...其他指标}
 ```
 
 **图表来源**
-- [server/app/routers/workflows.py:41-134](file://server/app/routers/workflows.py#L41-L134)
-- [server/app/routers/admin.py:618-670](file://server/app/routers/admin.py#L618-L670)
+- [server/app/routers/workflows.py:104-117](file://server/app/routers/workflows.py#L104-L117)
+- [server/app/routers/runs.py:28-50](file://server/app/routers/runs.py#L28-L50)
 - [server/app/routers/agents.py:289-304](file://server/app/routers/agents.py#L289-L304)
 - [server/app/routers/runs.py:133-184](file://server/app/routers/runs.py#L133-L184)
 
@@ -103,9 +106,9 @@ API-->>FE : {totalTokens, ...其他指标}
 - [server/app/routers/admin.py:618-670](file://server/app/routers/admin.py#L618-L670)
 
 ## 功能模块清单
-- workflows：工作流 CRUD、草稿保存与乐观锁、校验、发布生成版本、版本列表。
+- workflows：工作流 CRUD、草稿保存与乐观锁、校验、发布生成版本、版本列表、**AI提示词优化**。
 - registry：节点定义注册表查询，供设计器发现可用节点家族与元信息。
-- runs：运行实例的创建、列表、详情、取消、事件流（SSE）、事件列表、**运行追踪（trace）**。
+- runs：运行实例的创建、列表、详情、取消、事件流（SSE）、事件列表、**运行追踪（trace）**、**暂停运行续跑**。
 - business：结果规则引擎、复核流程、数据资产与批量运行、分析与调度。
 - resources：AI/Data 资源统一 CRUD、测试、启用/停用、删除防护、变更日志、Data Definitions 管理、Picker 供给。
 - admin：Connections、Models/Providers、Tools、Schedules、运行重试/导出、指标、编辑锁、**评测样本管理、工作流评估、人评打分**。
@@ -125,7 +128,7 @@ API-->>FE : {totalTokens, ...其他指标}
 - 关键状态流转：
   - 工作流：draft → testing/published/deprecated；发布时生成不可变版本快照并收集引用。
   - **Agent 版本**：draft → published；发布时构建 definition 快照、common_config、dependency_snapshot 并计算 artifact_hash；部署到 sandbox/prod 环境。
-  - 运行：queued → running → succeeded/failed/cancelled；事件序列保证顺序与幂等。
+  - 运行：queued → running → paused → succeeded/failed/cancelled；事件序列保证顺序与幂等。**paused状态支持wait-review节点的暂停-恢复机制**。
   - 资源：enabled/disabled；删除前进行引用检测，避免破坏依赖。
   - 规则：draft/published；发布后自动重算历史结果。
   - Agent：配置变更使用 config_revision 乐观锁；类型限定 autonomous/dialogue/expert-group。
@@ -213,6 +216,56 @@ Allow --> Next["继续处理请求"]
 - [server/alembic/env.py:20-89](file://server/alembic/env.py#L20-L89)
 
 ## 新增功能详解
+
+### AI提示词优化端点
+**新增** 提供AI驱动的提示词优化功能，通过LLM对输入提示词进行智能润色和改进。
+
+#### 端点详情
+- **POST /api/workflows/{wf_id}/polish**：提示词AI优化接口
+- 支持自定义模型参数，默认使用 qwen-plus 模型
+- 内置系统提示词："优化以下指令提示词，使其更清晰、结构化；直接输出优化结果，不要解释"
+
+#### 使用流程
+1. 前端将用户编写的原始提示词发送到该端点
+2. 后端调用 `_call_model` 函数进行LLM处理
+3. 返回优化后的提示词文本
+4. 前端可直接替换原始提示词
+
+#### 错误处理
+- 空文本验证：如果输入的text为空，返回422状态码
+- LLM调用失败：捕获异常并返回502状态码，包含错误信息
+
+**章节来源**
+- [server/app/routers/workflows.py:104-117](file://server/app/routers/workflows.py#L104-L117)
+
+### 运行暂停与续跑机制
+**新增** 实现了wait-review节点的暂停-恢复机制，支持运行过程中的交互式审批流程。
+
+#### PAUSED状态支持
+- 运行状态新增 `paused` 状态，表示运行因等待人工审批而暂停
+- wait-review节点执行时会抛出 `_Paused` 异常，将运行置为暂停状态
+- NodeRun状态变为 `waiting`，等待外部续跑请求
+
+#### Resume功能实现
+- **POST /api/runs/{run_id}/resume**：续跑暂停的运行
+- 支持多种续跑参数：action（决策）、comment（备注）、values（附加值）、waitedMs（等待时长）
+- 幂等性保证：同一waiting节点只能被续跑一次，重复调用返回409冲突
+
+#### 续跑流程
+1. 检查运行状态是否为paused
+2. 查找waiting状态的NodeRun
+3. 计算等待时长并更新NodeRun状态为resumed
+4. 向JobQueue插入resume任务，包含续跑决策信息
+5. Runner检测到resume任务后，继续执行wait-review节点
+
+#### 使用场景
+- 人机协作审批：复杂业务逻辑需要人工判断
+- 质量控制：重要操作前的二次确认
+- 调试诊断：运行过程中插入检查点
+
+**章节来源**
+- [server/app/routers/runs.py:28-50](file://server/app/routers/runs.py#L28-L50)
+- [server/app/runner.py:802-816](file://server/app/runner.py#L802-L816)
 
 ### 增强的运行追踪系统
 **更新** 运行追踪系统现已实现标准化的 span 类型映射和规范化的 token 使用结构，提供更强大的可观测性能力。
@@ -346,7 +399,8 @@ Allow --> Next["继续处理请求"]
 ```
 
 **章节来源**
-- [server/app/routers/admin.py:658-670](file://server/app/routers/agents.py:362-374)(file://server/app/routers/agents.py#L362-L374)
+- [server/app/routers/admin.py:658-670](file://server/app/routers/admin.py#L658-L670)
+- [server/app/routers/agents.py:362-374](file://server/app/routers/agents.py#L362-L374)
 
 ### Agent评估增强
 **更新** Agent评估功能现已支持更丰富的评判模式和同步执行。
@@ -432,6 +486,27 @@ Allow --> Next["继续处理请求"]
 **章节来源**
 - [server/app/routers/runs.py:101-109](file://server/app/routers/runs.py#L101-L109)
 - [src/components/run/trace-view.tsx:74-135](file://src/components/run/trace-view.tsx#L74-L135)
+
+### 动态工作流执行增强
+**更新** 工作流执行节点支持动态模式，可从输入绑定中获取目标工作流代码。
+
+#### 动态执行模式
+- **exec_workflow_exec**：支持固定模式和动态模式
+- 动态模式下，workflowCode 可从输入绑定中获取
+- 支持从上游节点的输出中动态选择要执行的工作流
+
+#### 执行流程
+1. 检查节点配置的模式（fixed/dynamic）
+2. 动态模式下从输入绑定解析 workflowCode
+3. 创建子运行并同步执行
+4. 返回子运行的输出结果
+
+#### 错误处理
+- 动态模式下workflowCode缺失时抛出RunError
+- 子工作流执行失败时向上层传递错误信息
+
+**章节来源**
+- [server/app/runner.py:435-465](file://server/app/runner.py#L435-L465)
 
 ### 数据库架构演进
 **新增** 多个数据库表以支持新功能：
@@ -537,10 +612,10 @@ Allow --> Next["继续处理请求"]
 ### 总结
 本次更新主要围绕五个核心方面进行了重大改进：
 
-1. **增强的运行追踪系统**：实现了标准化的 span 类型映射（LLM/TOOL/KNOWLEDGE）、规范化的 token 使用结构和改进的错误处理机制
-2. **Agent 指标统计增强**：新增了 totalTokens 计算功能，提供更全面的性能监控能力
-3. **工作流评估系统**：实现了完整的工作流评测能力，支持同步执行和多评判模式
-4. **人评机制**：提供了灵活的人工评分功能，支持0-5分制评分和备注
-5. **评测数据管理**：增强了EvalSample模型，支持存储多种评判结果
+1. **AI提示词优化**：新增了 `/api/workflows/{wf_id}/polish` 端点，通过LLM智能优化提示词，提升用户体验
+2. **运行暂停与续跑**：实现了PAUSED状态支持和resume功能，支持wait-review节点的交互式审批流程
+3. **增强的运行追踪系统**：实现了标准化的 span 类型映射（LLM/TOOL/KNOWLEDGE）、规范化的 token 使用结构和改进的错误处理机制
+4. **动态工作流执行**：改进了工作流执行的错误处理和动态代码解析能力，支持从输入绑定中动态选择工作流
+5. **Agent 指标统计增强**：新增了 totalTokens 计算功能，提供更全面的性能监控能力
 
-这些改进显著提升了系统的评测能力和可观测性，为工作流和Agent的质量保证提供了强有力的技术支持。**特别是增强的运行追踪功能，通过标准化的 span 类型映射和规范化的 token 使用结构，使得开发者能够更深入地了解运行的内部执行过程，便于问题诊断和性能优化**。
+这些改进显著提升了系统的交互能力和可观测性，为用户提供了更加灵活和强大的工作流执行环境。**特别是新增的提示词优化功能和运行暂停续跑机制，使得工作流执行过程更加智能化和人机协作友好**。

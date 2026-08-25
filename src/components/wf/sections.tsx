@@ -2,12 +2,13 @@
 import { useEffect, useState } from "react"
 import { Plus, X } from "lucide-react"
 
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { resApi } from "@/services/resource-api"
-import type { NodeDefinition, WfEdge, WfNode } from "@/services/wf-api"
+import { wfApi, type NodeDefinition, type WfEdge, type WfNode } from "@/services/wf-api"
 
 import { C, PromptArea, ResourceSelect, Section, VarButton, parseIoOutputs } from "./controls"
 
@@ -331,5 +332,27 @@ export function DataReadSection({ cfg, set }: { cfg: Record<string, any>; set: (
         <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>访问身份=流程创建者（触发者预留置灰）。</p>
       </Section>
     </>
+  )
+}
+
+/* ---------- workflow-select 候选多选（07-SDD §4.14） ---------- */
+export function CandidatesMulti({ cfg, set }: { cfg: Record<string, any>; set: (k: string, v: unknown) => void }) {
+  const [list, setList] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => { wfApi.list({ pageSize: 100 }).then((r) => setList(r.items as { id: string; name: string }[])).catch(() => undefined) }, [])
+  const sel = Array.isArray(cfg.candidates) ? (cfg.candidates as string[]) : []
+  return (
+    <Section title="候选工作流（多选）">
+      <div className="max-h-36 space-y-0.5 overflow-y-auto rounded border p-1" style={{ borderColor: C.cardBorder }}>
+        {list.length === 0 && <div className="px-1 py-1 text-[11px]" style={{ color: C.ink3 }}>暂无工作流</div>}
+        {list.map((w) => (
+          <label key={w.id} className="flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-xs hover:bg-neutral-50" style={{ color: C.ink }}>
+            <Checkbox checked={sel.includes(w.id)}
+              onCheckedChange={(v) => set("candidates", v ? [...sel, w.id] : sel.filter((id) => id !== w.id))} />
+            <span className="truncate">{w.name}</span>
+          </label>
+        ))}
+      </div>
+      <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>未命中任何候选 → else 分支。</p>
+    </Section>
   )
 }

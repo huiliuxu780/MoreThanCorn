@@ -110,7 +110,7 @@ import { resApi } from "@/services/resource-api"
 import { rbac } from "@/services/rbac"
 import { AgentEvalPanel } from "@/components/agent-ops-panels"
 import { C, NEUTRAL, TypeChip, VarCascader, describeVar, PromptArea, VarButton, ResourceSelect, Section, WorkflowPicker, OP_LABEL, OPS_BY_TYPE, NO_VALUE_OPS, normCondBranches, condHandlesOf, type CondBranch, type CondCondition } from "@/components/wf/controls"
-import { DataReadSection, InputMappingTable, LoopSection, OutputSchemaEditor, OutputVarsSection, RobustnessSection, ToolParamsSection, WaitReviewSection } from "@/components/wf/sections"
+import { CandidatesMulti, DataReadSection, InputMappingTable, LoopSection, OutputSchemaEditor, OutputVarsSection, RobustnessSection, ToolParamsSection, WaitReviewSection } from "@/components/wf/sections"
 import { Repeat, Hourglass, Database } from "lucide-react"
 
 /* ============ 视觉令牌（16 §1） ============ */
@@ -851,6 +851,9 @@ function ConfigDrawer(props: {
           </Section>
           <InputMappingTable cfg={cfg} set={set} nodes={nodes} edges={edges} selfId={node.id} defs={defs} />
         </>
+      )}
+      {node.type === "workflow-select" && (
+        <CandidatesMulti cfg={cfg} set={set} />
       )}
       {node.type === "workflow-select" && (
         <Section title="路由模型">

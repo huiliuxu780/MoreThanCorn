@@ -87,6 +87,9 @@ def validate(defn: WorkflowDefinition) -> ValidationReport:
     for n in nodes:
         if n.type == "input":
             continue
+        # 07-SDD §4.12：dynamic 模式 workflowCode 来自输入绑定，豁免必填
+        if n.type == "workflow-exec" and (n.config.get("mode") or "fixed") == "dynamic":
+            continue
         for f in required_config_fields(n.type):
             val = n.config.get(f)
             if val in (None, "", []):

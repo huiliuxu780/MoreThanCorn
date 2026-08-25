@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: frontend_app/tasks_feature
+title: 分析任务（AnalysisTask）CRUD 与向导创建页面
+scope:
+    - src/pages/tasks.tsx
+    - src/pages/task-detail.tsx
+    - src/pages/task-edit.tsx
+    - src/pages/task-wizard.tsx
+    - src/components/tasks/
+source_files: []
+depends_on: []
+related_to: []

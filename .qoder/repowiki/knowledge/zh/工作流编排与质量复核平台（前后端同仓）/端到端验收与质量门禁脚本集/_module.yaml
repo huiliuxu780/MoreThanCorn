@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: scripts_and_e2e
+title: 端到端验收与质量门禁脚本集
+scope:
+    - scripts/
+source_files: []
+depends_on: []
+related_to: []

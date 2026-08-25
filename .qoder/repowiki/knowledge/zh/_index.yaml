@@ -3,7 +3,7 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-08-25T18:20:08Z"
+exported_at: "2026-08-25T18:51:22Z"
 modules:
     "":
         dir_name: 工作流编排与质量复核平台（前后端同仓）
@@ -29,8 +29,8 @@ modules:
         depends_on: []
         related_to: []
     backend_service:
-        dir_name: 后端服务（FastAPI + Agent 运行时 + Alembic）
-        title: 后端服务（FastAPI + Agent 运行时 + Alembic）
+        dir_name: 后端服务（FastAPI + SQLAlchemy + Alembic）
+        title: 后端服务（FastAPI + SQLAlchemy + Alembic）
         scope:
             - server/
         source_files: []
@@ -41,8 +41,8 @@ modules:
         depends_on: []
         related_to: []
     backend_service/shared_core:
-        dir_name: 后端共享核心（FastAPI 运行时 + Alembic 迁移）
-        title: 后端共享核心（FastAPI 运行时 + Alembic 迁移）
+        dir_name: 后端共享核心（FastAPI 应用与 Alembic 迁移）
+        title: 后端共享核心（FastAPI 应用与 Alembic 迁移）
         scope:
             - server/app/
             - server/alembic/
@@ -59,8 +59,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend_service/workflows_routers
+        related_to: []
     backend_service/tests:
         dir_name: 后端集成测试套件（Workflow_Agent_资源_契约）
         title: 后端集成测试套件（Workflow/Agent/资源/契约）
@@ -69,8 +68,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend_service/workflows_routers
+        related_to: []
     backend_service/workflows_routers:
         dir_name: 工作流与运行 HTTP 路由层
         title: 工作流与运行 HTTP 路由层
@@ -81,13 +79,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend_service/shared_core/agent_release_domain
-            - path: backend_service/tests
-            - path: frontend_app/agents_feature
-            - path: frontend_app/services_and_mocks
-            - path: frontend_app/tasks_feature
-            - path: scripts_and_e2e
+        related_to: []
     docs_and_design:
         dir_name: 设计研究与 UI_UX 原型文档集
         title: 设计研究与 UI/UX 原型文档集
@@ -100,8 +92,8 @@ modules:
         depends_on: []
         related_to: []
     frontend_app:
-        dir_name: 工作流编排与质量复核工作台前端应用
-        title: 工作流编排与质量复核工作台前端应用
+        dir_name: 前端应用：工作流编排与质量复核工作台
+        title: 前端应用：工作流编排与质量复核工作台
         scope:
             - src/
         source_files: []
@@ -117,8 +109,8 @@ modules:
         depends_on: []
         related_to: []
     frontend_app/agents_feature:
-        dir_name: Agent 工作流编排与可视化画布页面
-        title: Agent 工作流编排与可视化画布页面
+        dir_name: Agent 工作流与可视化设计器页面
+        title: Agent 工作流与可视化设计器页面
         scope:
             - src/pages/wf-agents-list.tsx
             - src/pages/wf-agent-editor.tsx
@@ -127,10 +119,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend_service/workflows_routers
-            - path: scripts_and_e2e
-            - path: scripts_and_e2e/check_scripts
+        related_to: []
     frontend_app/app_entry:
         dir_name: 应用启动与路由装配层
         title: 应用启动与路由装配层
@@ -179,19 +168,18 @@ modules:
         depends_on: []
         related_to: []
     frontend_app/services_and_mocks:
-        dir_name: 工作流与资源服务层（真实 API 客户端、RBAC 权限矩阵）
-        title: 工作流与资源服务层（真实 API 客户端、RBAC 权限矩阵）
+        dir_name: 工作流与资源服务层（wf-api _ resource-api _ rbac）
+        title: 工作流与资源服务层（wf-api / resource-api / rbac）
         scope:
             - src/services/
             - src/mocks/
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend_service/workflows_routers
+        related_to: []
     frontend_app/shared_layers:
-        dir_name: 前端共享层：Hooks、工具函数与领域类型
-        title: 前端共享层：Hooks、工具函数与领域类型
+        dir_name: 共享层：领域类型、React Hooks 与通用工具
+        title: 共享层：领域类型、React Hooks 与通用工具
         scope:
             - src/hooks/
             - src/lib/
@@ -212,20 +200,18 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend_service/workflows_routers
+        related_to: []
     scripts_and_e2e:
-        dir_name: E2E 与回归测试脚本集
-        title: E2E 与回归测试脚本集
+        dir_name: 端到端验收与质量门禁脚本集
+        title: 端到端验收与质量门禁脚本集
         scope:
             - scripts/
         source_files: []
         children:
             - scripts_and_e2e/check_scripts
+            - scripts_and_e2e/ui_quality_gates
         depends_on: []
-        related_to:
-            - path: backend_service/workflows_routers
-            - path: frontend_app/agents_feature
+        related_to: []
     scripts_and_e2e/check_scripts:
         dir_name: 前端可视化回归检查脚本
         title: 前端可视化回归检查脚本
@@ -235,5 +221,16 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: frontend_app/agents_feature
+        related_to: []
+    scripts_and_e2e/ui_quality_gates:
+        dir_name: UI 质量门禁脚本（标准检查与视觉回归）
+        title: UI 质量门禁脚本（标准检查与视觉回归）
+        scope:
+            - scripts/check-ui-standard.mjs
+            - scripts/check-visual-regression.mjs
+            - scripts/ui-allowlist.json
+            - scripts/visual-baseline/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
