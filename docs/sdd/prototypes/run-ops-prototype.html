@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Run 观测借鉴原型 · 讨论稿</title>
+<style>
+  :root{
+    --bg:#f7f7f8; --card:#ffffff; --border:#e4e4e7; --border2:#f0f0f1;
+    --ink:#18181b; --ink2:#52525b; --ink3:#8b8b93;
+    --blue:#2563eb; --green:#16a34a; --red:#dc2626; --amber:#d97706; --violet:#7c3aed;
+    --red-bg:#fef2f2; --red-bd:#fecaca; --amber-bg:#fffbeb; --amber-bd:#fde68a;
+    --green-bg:#f0fdf4; --green-bd:#bbf7d0; --blue-bg:#eff6ff; --violet-bg:#f5f3ff; --violet-bd:#ddd6fe;
+    --gray-bg:#f4f4f5;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--bg); color:var(--ink); font:13px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif; padding:20px 28px 60px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px}
+  /* top bar */
+  .topbar{display:flex; align-items:center; gap:16px; margin-bottom:18px}
+  .topbar h1{font-size:15px; font-weight:600}
+  .topbar .note{color:var(--ink3); font-size:12px}
+  .tabs{display:flex; gap:4px; background:var(--gray-bg); border:1px solid var(--border); border-radius:8px; padding:3px; margin-left:auto}
+  .tabs button{border:0; background:transparent; padding:5px 14px; border-radius:6px; font-size:12.5px; color:var(--ink2); cursor:pointer}
+  .tabs button.on{background:var(--card); color:var(--ink); font-weight:600; box-shadow:0 1px 2px rgb(0 0 0 / .08)}
+  .screen{display:none} .screen.on{display:block}
+  /* page head */
+  .phead{display:flex; align-items:flex-start; gap:12px; margin-bottom:14px}
+  .phead .crumb{color:var(--ink3); font-size:12px; margin-bottom:2px}
+  .phead h2{font-size:17px; font-weight:650; display:flex; align-items:center; gap:8px}
+  .phead .desc{color:var(--ink2); font-size:12.5px; margin-top:2px}
+  .phead .acts{margin-left:auto; display:flex; gap:8px; align-items:center}
+  .stats{display:flex; gap:14px; color:var(--ink2); font-size:12.5px; align-items:center}
+  .stats b{color:var(--ink); font-weight:600; margin-left:4px}
+  .stats .sep{width:1px; height:14px; background:var(--border)}
+  .stats .red b{color:var(--red)} .stats .amber b{color:var(--amber)} .stats .blue b{color:var(--blue)}
+  /* buttons */
+  .btn{display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border); background:var(--card); color:var(--ink); border-radius:8px; padding:6px 12px; font-size:12.5px; font-weight:500; cursor:pointer}
+  .btn.dark{background:var(--ink); border-color:var(--ink); color:#fff}
+  .btn.sm{padding:3px 9px; font-size:12px; border-radius:6px}
+  .iconbtn{width:28px;height:28px; display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--border); background:var(--card); border-radius:7px; color:var(--ink2); cursor:pointer; font-size:13px}
+  /* cards */
+  .card{background:var(--card); border:1px solid var(--border); border-radius:10px}
+  .card .chead{display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid var(--border2); font-weight:600; font-size:12.5px}
+  .card .chead .sub{color:var(--ink3); font-weight:400}
+  .card .chead .right{margin-left:auto; display:flex; gap:8px; align-items:center}
+  /* badges & chips */
+  .badge{display:inline-flex; align-items:center; gap:5px; border-radius:999px; padding:1px 9px; font-size:11.5px; font-weight:500}
+  .badge .dot{width:6px;height:6px;border-radius:50%}
+  .b-green{background:var(--green-bg); color:var(--green); border:1px solid var(--green-bd)}
+  .b-red{background:var(--red-bg); color:var(--red); border:1px solid var(--red-bd)}
+  .b-amber{background:var(--amber-bg); color:var(--amber); border:1px solid var(--amber-bd)}
+  .b-blue{background:var(--blue-bg); color:var(--blue); border:1px solid #bfdbfe}
+  .b-violet{background:var(--violet-bg); color:var(--violet); border:1px solid var(--violet-bd)}
+  .b-gray{background:var(--gray-bg); color:var(--ink2); border:1px solid var(--border)}
+  .env{display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--ink2)}
+  .env .dot{width:6px;height:6px;border-radius:50%;background:var(--ink3)}
+  /* batch list */
+  .batch{padding:12px 14px; display:flex; align-items:center; gap:14px; border-bottom:1px solid var(--border2); cursor:pointer}
+  .batch:last-child{border-bottom:0}
+  .batch:hover{background:#fafafa}
+  .batch .t{min-width:210px}
+  .batch .t .name{font-weight:600; font-size:13px}
+  .batch .t .meta{color:var(--ink3); font-size:12px; margin-top:1px}
+  .batch .nums{display:flex; gap:12px; color:var(--ink2); font-size:12.5px; min-width:250px}
+  .batch .nums b{color:var(--ink)}
+  .batch .nums .red{color:var(--red)}
+  .batch .conc{flex:1; color:var(--ink2); font-size:12px}
+  .batch .conc .mono{color:var(--red)}
+  .pbar{height:5px; border-radius:99px; background:var(--gray-bg); width:120px; overflow:hidden}
+  .pbar i{display:block; height:100%; border-radius:99px}
+  /* toolbar */
+  .toolbar{display:flex; gap:8px; align-items:center; margin:14px 0 10px}
+  .search{flex:0 0 280px; border:1px solid var(--border); border-radius:8px; background:var(--card); padding:6px 10px; color:var(--ink3); font-size:12.5px}
+  .toolbar .right{margin-left:auto; display:flex; gap:8px}
+  /* group table */
+  .ghead{display:flex; align-items:center; gap:8px; background:var(--gray-bg); padding:7px 14px; font-size:12.5px; font-weight:600; border-top:1px solid var(--border2)}
+  .ghead:first-child{border-top:0}
+  .ghead .chev{color:var(--ink3); font-size:10px}
+  .ghead .cnt{background:var(--card); border:1px solid var(--border); border-radius:6px; padding:0 6px; font-size:11.5px; font-weight:500}
+  .ghead .gdesc{margin-left:auto; color:var(--ink3); font-weight:400; font-size:12px}
+  .row{display:flex; align-items:center; gap:12px; padding:9px 14px 9px 34px; border-top:1px solid var(--border2)}
+  .row .main{flex:1; min-width:0}
+  .row .main .l1{font-weight:550; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .row .main .l2{color:var(--ink3); font-size:12px; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .row .cell{min-width:86px; color:var(--ink2); font-size:12.5px}
+  .row .prog{display:flex; align-items:center; gap:7px; min-width:110px}
+  .row .prog .pbar{width:64px}
+  .avatar{width:22px;height:22px;border-radius:50%;background:#e0e7ff;color:#3730a3;font-size:10px;display:inline-flex;align-items:center;justify-content:center;font-weight:600}
+  /* run detail */
+  .cols{display:grid; grid-template-columns:1fr 320px; gap:14px; align-items:start}
+  .ladder{display:flex; align-items:center; gap:0; padding:10px 14px; flex-wrap:wrap}
+  .ladder .step{display:flex; align-items:center; gap:7px; font-size:12.5px}
+  .ladder .step .when{color:var(--ink3); font-size:11.5px}
+  .ladder .arrow{color:var(--ink3); margin:0 10px; font-size:11px}
+  .ladder .pause{margin-left:auto; color:var(--amber); font-size:12px}
+  .trace{padding:14px}
+  .tstep{display:flex; gap:10px; position:relative; padding-bottom:16px}
+  .tstep .rail{display:flex; flex-direction:column; align-items:center; width:18px}
+  .tstep .rail .ic{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;flex:none}
+  .tstep .rail .line{width:1.5px; flex:1; background:var(--border); margin-top:3px}
+  .tstep:last-child .rail .line{display:none}
+  .ic.ok{background:var(--ink)} .ic.fail{background:var(--red)} .ic.wait{background:#fff;border:1.5px solid var(--border)}
+  .tstep .body{flex:1; min-width:0}
+  .tstep .h{display:flex; align-items:baseline; gap:8px}
+  .tstep .h .name{font-weight:600; font-size:13px}
+  .tstep .h .dur{color:var(--ink3); font-size:12px}
+  .calls{margin-top:7px; border:1px solid var(--border2); background:var(--gray-bg); border-radius:8px; padding:6px 10px; color:var(--ink2); font-size:12px; display:flex; align-items:center}
+  .calls .chev{margin-left:auto; color:var(--ink3)}
+  .callbox{margin-top:7px; border:1px solid var(--border2); border-radius:8px; overflow:hidden}
+  .callbox .sum{background:var(--gray-bg); padding:6px 10px; font-size:12px; color:var(--ink2); display:flex}
+  .callbox .sum .chev{margin-left:auto; color:var(--ink3)}
+  .call{display:flex; align-items:center; gap:10px; padding:8px 10px; border-top:1px solid var(--border2)}
+  .call .n{flex:1}
+  .call .n .fn{font-family:ui-monospace,Menlo,monospace; font-size:12px; font-weight:550}
+  .call .n .res{color:var(--ink3); font-size:11.5px; margin-top:1px}
+  .call .d{color:var(--ink3); font-size:12px}
+  .alertcard{margin:8px 10px 10px; border:1px solid var(--red-bd); background:var(--red-bg); border-radius:8px; padding:10px 12px}
+  .alertcard .h{display:flex; align-items:center; gap:7px; color:var(--red); font-weight:600; font-size:12.5px}
+  .alertcard .h .btn{margin-left:auto}
+  .alertcard p{color:#7f1d1d; font-size:12px; margin-top:5px}
+  /* settings panel */
+  .setrow{display:flex; align-items:center; padding:9px 14px; border-bottom:1px solid var(--border2); font-size:12.5px}
+  .setrow:last-child{border-bottom:0}
+  .setrow .k{color:var(--ink3); width:88px; flex:none}
+  .setrow .v{display:flex; align-items:center; gap:6px; font-weight:500}
+  .setrow .v .dim{color:var(--ink3); font-weight:400}
+  .foot{margin-top:16px; color:var(--ink3); font-size:12px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Run 观测借鉴原型</h1>
+  <span class="note">讨论稿 · 非最终视觉 · 借鉴 ReUI solutions/agents，落我们质检业务</span>
+  <div class="tabs">
+    <button class="on" data-tab="s1">① 任务 / 批次总览</button>
+    <button data-tab="s2">② Run 队列（批次钻取）</button>
+    <button data-tab="s3">③ Run 详情</button>
+  </div>
+</div>
+
+<!-- ============ 屏 1：批次总览 ============ -->
+<section class="screen on" id="s1">
+  <div class="phead">
+    <div>
+      <div class="crumb">质检任务 /</div>
+      <h2>8 月客服会话质检</h2>
+      <div class="desc">数据范围：上一日全量会话 · 绑定工作流：CS-质检 v3（发布版） · 周期：每日 02:00</div>
+    </div>
+    <div class="acts">
+      <div class="stats">
+        <span>批次<b>12</b></span><span class="sep"></span>
+        <span>Runs<b>3,412</b></span><span class="sep"></span>
+        <span class="red">失败<b>38</b></span><span class="sep"></span>
+        <span class="amber">待处理<b>5</b></span>
+      </div>
+      <button class="btn">补数</button>
+      <button class="btn dark">立即运行</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="chead">批次 <span class="sub">一次触发 = 一个批次 = N 条单行 run</span>
+      <span class="right"><button class="btn sm">Attention：只看有问题的批次</button></span>
+    </div>
+
+    <div class="batch">
+      <div class="t"><div class="name">08-25 14:00 · 手动批</div><div class="meta">Rivers 触发 · 进行中</div></div>
+      <span class="badge b-blue"><span class="dot" style="background:var(--blue)"></span>进行中</span>
+      <div class="nums"><span><b>120</b>/300 runs</span><span class="red">失败 <b>3</b></span></div>
+      <div class="prog"><div class="pbar"><i style="width:40%;background:var(--blue)"></i></div><span style="color:var(--ink2);font-size:12px">40%</span></div>
+      <div class="conc">失败集中：<span class="mono">llm.timeout</span> ×3</div>
+      <span style="color:var(--ink3)">›</span>
+    </div>
+
+    <div class="batch">
+      <div class="t"><div class="name">08-25 02:00 · 定时批</div><div class="meta">schedule 触发 · 历时 14m 32s</div></div>
+      <span class="badge b-red"><span class="dot" style="background:var(--red)"></span>有失败</span>
+      <div class="nums"><span><b>300</b> runs</span><span>完成 <b>288</b></span><span class="red">失败 <b>12</b></span></div>
+      <div class="prog"><div class="pbar"><i style="width:96%;background:var(--red)"></i></div><span style="color:var(--ink2);font-size:12px">96%</span></div>
+      <div class="conc">失败集中：<span class="mono">llm.timeout</span> ×9 · <span class="mono">429 rate_limited</span> ×3</div>
+      <span style="color:var(--ink3)">›</span>
+    </div>
+
+    <div class="batch">
+      <div class="t"><div class="name">08-24 02:00 · 定时批</div><div class="meta">schedule 触发 · 历时 13m 05s</div></div>
+      <span class="badge b-green"><span class="dot" style="background:var(--green)"></span>完成</span>
+      <div class="nums"><span><b>296</b> runs</span><span>完成 <b>296</b></span></div>
+      <div class="prog"><div class="pbar"><i style="width:100%;background:var(--green)"></i></div><span style="color:var(--ink2);font-size:12px">100%</span></div>
+      <div class="conc">平均分 0.87 · 规则命中 412</div>
+      <span style="color:var(--ink3)">›</span>
+    </div>
+
+    <div class="batch">
+      <div class="t"><div class="name">08-23 02:00 · 定时批</div><div class="meta">schedule 触发 · 历时 12m 48s</div></div>
+      <span class="badge b-green"><span class="dot" style="background:var(--green)"></span>完成</span>
+      <div class="nums"><span><b>289</b> runs</span><span>完成 <b>289</b></span></div>
+      <div class="prog"><div class="pbar"><i style="width:100%;background:var(--green)"></i></div><span style="color:var(--ink2);font-size:12px">100%</span></div>
+      <div class="conc">平均分 0.85 · 规则命中 397</div>
+      <span style="color:var(--ink3)">›</span>
+    </div>
+  </div>
+  <div class="foot">块 0（新增层）：批次是"任务级 run"的落点。Run 加 batch_id；批次卡给出成功率、失败集中度（error code 聚合），点击钻取到屏 ②。</div>
+</section>
+
+<!-- ============ 屏 2：Run 队列 ============ -->
+<section class="screen" id="s2">
+  <div class="phead">
+    <div>
+      <div class="crumb">8 月客服会话质检 / 08-25 14:00 手动批 /</div>
+      <h2>Run 队列 <span class="badge b-blue"><span class="dot" style="background:var(--blue)"></span>Live</span></h2>
+      <div class="desc">分诊该批次的单行 run：哪条需要我、卡在哪一步。</div>
+    </div>
+    <div class="acts">
+      <div class="stats">
+        <span>Runs<b>300</b></span><span class="sep"></span>
+        <span class="red">失败<b>3</b></span><span class="sep"></span>
+        <span class="violet" style="color:var(--violet)">重试中<b style="color:var(--violet)">2</b></span><span class="sep"></span>
+        <span class="amber">待处理<b>1</b></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="search">搜索会话 ID / run id…</div>
+    <button class="btn">🔔 Attention</button>
+    <button class="btn">密度</button>
+    <button class="btn">折叠全部组</button>
+    <div class="right"><button class="btn dark">导出</button></div>
+  </div>
+
+  <div class="card">
+    <!-- Running -->
+    <div class="ghead"><span class="chev">▾</span><span class="dot" style="width:7px;height:7px;border-radius:50%;background:var(--blue)"></span>Running <span class="cnt">5</span>
+      <span class="gdesc">正在流式执行节点的单行 run</span></div>
+    <div class="row">
+      <div class="main"><div class="l1">会话 CS-20250825-1401 · 退款诉求场景</div><div class="l2">节点 4/6 · llm-judge 评分中</div></div>
+      <span class="env"><span class="dot" style="background:var(--ink)"></span>batch</span>
+      <span class="cell">2m ago</span>
+      <div class="prog"><div class="pbar"><i style="width:62%;background:var(--blue)"></i></div><span>62%</span></div>
+      <span class="badge b-green">正常</span>
+      <button class="iconbtn">⋯</button>
+    </div>
+    <div class="row">
+      <div class="main"><div class="l1">会话 CS-20250825-1396 · 物流查询场景</div><div class="l2">节点 2/6 · 规则预检</div></div>
+      <span class="env"><span class="dot" style="background:var(--ink)"></span>batch</span>
+      <span class="cell">41s ago</span>
+      <div class="prog"><div class="pbar"><i style="width:30%;background:var(--blue)"></i></div><span>30%</span></div>
+      <span class="badge b-green">正常</span>
+      <button class="iconbtn">⋯</button>
+    </div>
+
+    <!-- Waiting -->
+    <div class="ghead"><span class="chev">▾</span><span class="dot" style="width:7px;height:7px;border-radius:50%;background:var(--ink3)"></span>Waiting <span class="cnt">4</span>
+      <span class="gdesc">排队：限流 / 等并发槽</span></div>
+    <div class="row">
+      <div class="main"><div class="l1">会话 CS-20250825-1388 · 投诉升级场景</div><div class="l2">排队 18 min · LLM 提供方 rate_limited，14:05 重试</div></div>
+      <span class="env"><span class="dot" style="background:var(--ink)"></span>batch</span>
+      <span class="cell">26m ago</span>
+      <div class="prog"><div class="pbar"><i style="width:10%;background:var(--violet)"></i></div><span>10%</span></div>
+      <span class="badge b-violet">重试中</span>
+      <button class="iconbtn">⋯</button>
+    </div>
+
+    <!-- Failed -->
+    <div class="ghead"><span class="chev">▾</span><span class="dot" style="width:7px;height:7px;border-radius:50%;background:var(--red)"></span>Failed <span class="cnt">3</span> <span class="badge b-red">同错误 ×3</span>
+      <span class="gdesc">停止、等待重试或人工处理</span></div>
+    <div class="row">
+      <div class="main"><div class="l1">会话 CS-20250825-1372 · 退款诉求场景</div><div class="l2">失败于节点 3/5 · llm-judge：LLM 30s 超时</div></div>
+      <span class="env"><span class="dot" style="background:var(--ink)"></span>batch</span>
+      <span class="cell">12m ago</span>
+      <div class="prog"><div class="pbar"><i style="width:60%;background:var(--red)"></i></div><span>60%</span></div>
+      <span class="badge b-amber">待重试</span>
+      <button class="iconbtn">⋯</button>
+    </div>
+    <div class="row">
+      <div class="main"><div class="l1">会话 CS-20250825-1355 · 账号申诉场景</div><div class="l2">失败于节点 3/5 · llm-judge：LLM 30s 超时（已升级）</div></div>
+      <span class="env"><span class="dot" style="background:var(--ink)"></span>batch</span>
+      <span class="cell">19m ago</span>
+      <div class="prog"><div class="pbar"><i style="width:60%;background:var(--red)"></i></div><span>60%</span></div>
+      <span class="badge b-red">已升级</span>
+      <button class="iconbtn">⋯</button>
+    </div>
+
+    <!-- Completed -->
+    <div class="ghead"><span class="chev">▾</span><span class="dot" style="width:7px;height:7px;border-radius:50%;background:var(--green)"></span>Completed <span class="cnt">108</span>
+      <span class="gdesc">最近 24h 内完成</span></div>
+    <div class="row">
+      <div class="main"><div class="l1">会话 CS-20250825-1349 · 售前咨询场景</div><div class="l2">完成于 42s · 评分 0.86 · 命中 2 规则</div></div>
+      <span class="env"><span class="dot" style="background:var(--ink)"></span>batch</span>
+      <span class="cell">31m ago</span>
+      <div class="prog"><div class="pbar"><i style="width:100%;background:var(--green)"></i></div><span>100%</span></div>
+      <span class="badge b-green">完成</span>
+      <button class="iconbtn">⋯</button>
+    </div>
+    <div class="row">
+      <div class="main"><div class="l1">会话 CS-20250825-1344 · 物流查询场景</div><div class="l2">完成于 38s · 评分 0.91 · 命中 0 规则</div></div>
+      <span class="env"><span class="dot" style="background:var(--ink)"></span>batch</span>
+      <span class="cell">33m ago</span>
+      <div class="prog"><div class="pbar"><i style="width:100%;background:var(--green)"></i></div><span>100%</span></div>
+      <span class="badge b-green">完成</span>
+      <button class="iconbtn">⋯</button>
+    </div>
+  </div>
+  <div class="foot">块 1：状态折叠分组 + 组头描述/组级徽章 + 双行行（子行=节点进度/失败原因）+ Attention + 头部内联统计。截断可展开、折叠态持久化。</div>
+</section>
+
+<!-- ============ 屏 3：Run 详情 ============ -->
+<section class="screen" id="s3">
+  <div class="phead">
+    <div>
+      <div class="crumb">Run 队列 / <span class="mono" style="font-weight:600;color:var(--ink)">RUN-8f3a2c</span></div>
+      <h2>会话 CS-20250825-1372 <span class="badge b-red">失败</span></h2>
+      <div class="desc">CS-质检 v3（发布版） · batch 触发 · 数据行：退款诉求会话</div>
+    </div>
+    <div class="acts">
+      <span class="avatar">R</span>
+      <button class="btn">导出 Trace</button>
+      <button class="btn">取消</button>
+      <button class="btn dark">⟳ 重试</button>
+      <button class="iconbtn">⋯</button>
+    </div>
+  </div>
+
+  <!-- 重试阶梯 -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ladder">
+      <span style="color:var(--ink3);font-size:12px;margin-right:6px">重试谱系</span>
+      <span class="step"><span class="badge b-red">失败</span>Initial Run <span class="when">14:02 · 30.2s</span></span>
+      <span class="arrow">→ 30s backoff →</span>
+      <span class="step"><span class="badge b-red">失败</span>自动重试 1 <span class="when">14:03 · 30.1s</span></span>
+      <span class="arrow">→ 4m backoff →</span>
+      <span class="step"><span class="badge b-red">失败</span>自动重试 2 <span class="when">14:07 · 30.4s</span></span>
+      <span class="pause">3 次均失败 · 自动重试已暂停</span>
+    </div>
+  </div>
+
+  <div class="cols">
+    <!-- 左：step trace -->
+    <div class="card">
+      <div class="chead">Step Trace <span class="sub">失败于节点 3/5</span></div>
+      <div class="trace">
+        <div class="tstep">
+          <div class="rail"><span class="ic ok">✓</span><span class="line"></span></div>
+          <div class="body">
+            <div class="h"><span class="name">数据拉取</span><span class="dur">0.4s</span></div>
+            <div class="calls">1 次工具调用<span class="chev">›</span></div>
+          </div>
+        </div>
+        <div class="tstep">
+          <div class="rail"><span class="ic ok">✓</span><span class="line"></span></div>
+          <div class="body">
+            <div class="h"><span class="name">规则预检</span><span class="dur">1.2s</span></div>
+            <div class="calls">2 次规则调用<span class="chev">›</span></div>
+          </div>
+        </div>
+        <div class="tstep">
+          <div class="rail"><span class="ic fail">✕</span><span class="line"></span></div>
+          <div class="body">
+            <div class="h"><span class="name">llm-judge 评分</span><span class="dur">30.2s</span></div>
+            <div class="callbox">
+              <div class="sum">2 次调用<span class="chev">▾</span></div>
+              <div class="call">
+                <div class="n"><div class="fn">llm.call qwen-max</div><div class="res">timeout 30s · attempt 1 of 3</div></div>
+                <span class="d">30.0s</span><span class="badge b-red">Failed</span>
+              </div>
+              <div class="call">
+                <div class="n"><div class="fn">llm.call qwen-max</div><div class="res">timeout 30s · attempt 2 of 3</div></div>
+                <span class="d">30.1s</span><span class="badge b-red">Failed</span>
+              </div>
+              <div class="alertcard">
+                <div class="h">⚠ LLM 超时 <button class="btn dark sm">重试此节点</button></div>
+                <p>qwen-max 连续 30s 无响应（retryable=true）。建议：重试此节点，或在 Run 设置改备用模型后整 run 重试。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tstep">
+          <div class="rail"><span class="ic wait"></span><span class="line"></span></div>
+          <div class="body"><div class="h"><span class="name" style="color:var(--ink3)">结果写回</span></div>
+          <div class="calls">0 次调用<span class="chev">›</span></div></div>
+        </div>
+        <div class="tstep">
+          <div class="rail"><span class="ic wait"></span></div>
+          <div class="body"><div class="h"><span class="name" style="color:var(--ink3)">通知</span></div>
+          <div class="calls">0 次调用<span class="chev">›</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右：Run 事实/设置（轻版只读） -->
+    <div class="card">
+      <div class="chead">Run 设置 <span class="sub">只读轻版 · 作用于重试</span></div>
+      <div class="setrow"><span class="k">状态</span><span class="v"><span class="badge b-red">失败</span></span></div>
+      <div class="setrow"><span class="k">触发</span><span class="v">batch <span class="dim">· 08-25 14:00 手动批</span></span></div>
+      <div class="setrow"><span class="k">数据行</span><span class="v mono">CS-20250825-1372</span></div>
+      <div class="setrow"><span class="k">版本</span><span class="v">v3 <span class="dim">发布版 · 非草稿</span></span></div>
+      <div class="setrow"><span class="k">重试策略</span><span class="v">⟳ 指数退避 · 每节点 3 次</span></div>
+      <div class="setrow"><span class="k">失败时</span><span class="v">🔔 通知任务负责人</span></div>
+      <div class="setrow"><span class="k">开始</span><span class="v">14:02:11</span></div>
+      <div class="setrow"><span class="k">最后活动</span><span class="v">8 min ago</span></div>
+    </div>
+  </div>
+  <div class="foot">块 2+3：重试谱系做成阶梯（E-3.2 视觉化）；失败 span 处嵌红色 alert 卡带"重试此节点"；右栏先做只读事实列，可编辑版后续再议。</div>
+</section>
+
+<script>
+  document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x === b));
+    document.querySelectorAll(".screen").forEach(s => s.classList.toggle("on", s.id === b.dataset.tab));
+  }));
+</script>
+</body>
+</html>

@@ -46,7 +46,7 @@ import { useAsyncData } from "@/hooks/use-async-data"
 import { useListQuery } from "@/hooks/use-list-query"
 import { formatDateTime } from "@/lib/time"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
-import { realRunDetail, runCancel, runRetry, runTrace, WF_BASE } from "@/services/wf-api"
+import { realRunDetail, runCancel, runEventsList, runRetry, runTrace } from "@/services/wf-api"
 import type { InteractionExecution } from "@/domain/types"
 
 export default function RunDetailPage() {
@@ -58,7 +58,7 @@ export default function RunDetailPage() {
   const [events, setEvents] = useState<TraceEvent[]>([])
   useEffect(() => {
     if (runId) {
-      fetch(`${WF_BASE}/api/runs/${runId}/events-list`).then((r) => r.json()).then((r) => setEvents(r.items ?? [])).catch(() => undefined)
+      runEventsList(runId).then((r) => setEvents((r.items ?? []) as unknown as TraceEvent[])).catch(() => undefined)
     }
   }, [runId])
   /* 观测升级：span 树 + 四 Tab（SDD design-run-observability） */
@@ -105,7 +105,16 @@ export default function RunDetailPage() {
         <PageHeader
           className="mt-2"
           title={`Run #${run.id}`}
-          status={<StatusBadge status={run.status} context="run" />}
+          status={
+            <span className="flex items-center gap-2">
+              <StatusBadge status={run.status} context="run" />
+              {run.snapshot.agentVersion !== "-" && (
+                <span className="rounded border px-1.5 py-0.5 text-xs text-muted-foreground">
+                  {run.snapshot.agentVersion === "草稿" ? "草稿运行" : run.snapshot.agentVersion}
+                </span>
+              )}
+            </span>
+          }
           description={`${formatDateTime(run.startedAt, true)} → ${run.finishedAt ? formatDateTime(run.finishedAt, true) : "进行中"}`}
           actions={
             <>
@@ -116,8 +125,8 @@ export default function RunDetailPage() {
               ) : null}
                   {run?.status === "FAILED" && (
                     <Button variant="outline" size="sm" className="gap-1" onClick={async () => {
-                      const r = await fetch(`${WF_BASE}/api/runs/${runId}/retry`, { method: "POST" })
-                      if (r.ok) { toast.success("已创建重试 Run"); retry() } else toast.error("重试失败")
+                      try { await runRetry(runId); toast.success("已创建重试 Run"); retry() }
+                      catch { toast.error("重试失败") }
                     }}><RotateCw className="size-3.5" /> 重试</Button>
                   )}
                   {(

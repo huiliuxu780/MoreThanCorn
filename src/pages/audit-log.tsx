@@ -3,7 +3,7 @@ import { useEffect, useState } from "react"
 
 import { PageContainer, PageHeader } from "@/components/app/page"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { WF_BASE } from "@/services/wf-api"
+import { auditList } from "@/services/wf-api"
 
 interface AuditEntry {
   id: string; actor: string; action: string; targetType: string; targetId: string;
@@ -14,8 +14,7 @@ export default function AuditLogPage() {
   const [items, setItems] = useState<AuditEntry[]>([])
   const [loading, setLoading] = useState(true)
   useEffect(() => {
-    fetch(`${WF_BASE}/api/audit?limit=200`).then((r) => r.json())
-      .then((r) => { setItems(r.items ?? []); setLoading(false) })
+    auditList(200).then((r) => { setItems((r.items ?? []) as unknown as AuditEntry[]); setLoading(false) })
       .catch(() => setLoading(false))
   }, [])
   return (

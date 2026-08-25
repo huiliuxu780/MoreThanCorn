@@ -77,6 +77,8 @@ export interface ReviewState {
 
 /** Quality Result：面向业务消费、证据、复核与运营的质量记录（Master §12）。 */
 export interface QualityResult {
+  /** 后端主键（多条结果可共享 interactionId，行 key/跳转须用它） */
+  id?: string
   interactionId: string
   interactionTime: string
   durationSeconds?: number

@@ -86,12 +86,12 @@ import {
   agentApi,
   evalApi,
   lockApi,
+  registrySystemVariables,
   runApi,
   runExportUrl,
   runRetry,
   scheduleApi,
   wfApi,
-  WF_BASE,
   type NodeDefinition,
   type RunDetail,
   type ScheduleInfo,
@@ -314,7 +314,7 @@ const nodeTypes = { wf: WfNodeCard }
 let SYS_VARS_CACHE: { name: string; label: string }[] | null = null
 function loadSystemVars(): Promise<{ name: string; label: string }[]> {
   if (SYS_VARS_CACHE) return Promise.resolve(SYS_VARS_CACHE)
-  return fetch(`${WF_BASE}/api/registry/system-variables`).then((r) => r.json())
+  return registrySystemVariables()
     .then((j) => { SYS_VARS_CACHE = j.items ?? []; return SYS_VARS_CACHE! })
     .catch(() => [] as { name: string; label: string }[])
 }

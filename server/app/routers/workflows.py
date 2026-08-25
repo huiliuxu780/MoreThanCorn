@@ -188,13 +188,18 @@ def node_test(wf_id: str, payload: dict, db: Session = Depends(get_db)):
     for b in node.get("inputs", []):
         if b.get("name") in run_input:
             b["source"] = {"kind": "fixed", "value": run_input[b["name"]]}
-    fake_run = Run(id="node-test", workflow_id=wf_id, agent_id=payload.get("agentId"),
-                   trigger="test", input=run_input)
+    # 会发事件的执行器（emit 内部即 commit）需要真实 run 外键：建临时 Run，
+    # 结束后删除并级联清理事件——对外仍满足"不落 Run/事件"
+    # （E-1.3 修复：此前固定 id "node-test" 触发 run_event FK 违约）
+    tmp_run = Run(id=new_id(), workflow_id=wf_id, agent_id=payload.get("agentId"),
+                  trigger="test", status="running", input=run_input)
+    db.add(tmp_run)
+    db.commit()
 
     class _TCtx:
         def __init__(self):
             self.db = db
-            self.run = fake_run
+            self.run = tmp_run
             self.run_input = run_input
             self.outputs = {"n_start": run_input, "start": run_input}
             self.call_chain = []
@@ -205,9 +210,20 @@ def node_test(wf_id: str, payload: dict, db: Session = Depends(get_db)):
             pass
     t0 = _time.time()
     try:
-        out = fn(node, _TCtx())
-        return {"ok": True, "output": out, "durationMs": int((_time.time() - t0) * 1000)}
-    except RunError as e:
-        return {"ok": False, "error": str(e), "durationMs": int((_time.time() - t0) * 1000)}
-    except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error": str(e), "durationMs": int((_time.time() - t0) * 1000)}
+        try:
+            out = fn(node, _TCtx())
+            return {"ok": True, "output": out, "durationMs": int((_time.time() - t0) * 1000)}
+        except RunError as e:
+            return {"ok": False, "error": str(e), "durationMs": int((_time.time() - t0) * 1000)}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": str(e), "durationMs": int((_time.time() - t0) * 1000)}
+    finally:
+        try:
+            db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            db.delete(tmp_run)  # run_event/node_run 走 FK ON DELETE CASCADE
+            db.commit()
+        except Exception:  # noqa: BLE001
+            db.rollback()

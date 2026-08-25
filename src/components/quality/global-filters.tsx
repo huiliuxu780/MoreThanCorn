@@ -1,5 +1,5 @@
 import { SlidersHorizontal } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -17,8 +17,25 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { FormField } from "@/components/app/form-field"
-import { BRANDS, DEPARTMENTS, ISSUES, PRODUCT_CATEGORIES, REQUEST_TYPES, SERVICE_TYPES, TEAMS } from "@/mocks/catalog"
+import { qualityVocab } from "@/services/wf-api"
 import type { FilterMap } from "@/lib/list-filters"
+
+/* E-1.1：词表真实来源（后端聚合质量结果+已发布规则），替代 mocks catalog */
+export interface QualityVocab {
+  department: string[]; team: string[]; agents: string[]; brand: string[]
+  productCategory: string[]; issue: string[]; requestType: string[]; serviceType: string[]
+  criteria: { criterion: string; severity: string }[]
+}
+const EMPTY_VOCAB: QualityVocab = { department: [], team: [], agents: [], brand: [], productCategory: [], issue: [], requestType: [], serviceType: [], criteria: [] }
+let VOCAB_CACHE: QualityVocab | null = null
+export function useQualityVocab(): QualityVocab {
+  const [v, setV] = useState<QualityVocab>(VOCAB_CACHE ?? EMPTY_VOCAB)
+  useEffect(() => {
+    if (VOCAB_CACHE) return
+    qualityVocab().then((x) => { VOCAB_CACHE = x; setV(x) }).catch(() => undefined)
+  }, [])
+  return v
+}
 
 export interface GlobalFilterValue {
   time?: string
@@ -45,6 +62,7 @@ export function GlobalFilters({
 }) {
   const [moreOpen, setMoreOpen] = useState(false)
   const [draft, setDraft] = useState<GlobalFilterValue>({})
+  const vocab = useQualityVocab()
 
   const openMore = () => {
     setDraft({
@@ -86,8 +104,8 @@ export function GlobalFilters({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="__all__">全部部门</SelectItem>
-          {DEPARTMENTS.map((d) => (
-            <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+          {vocab.department.map((d) => (
+            <SelectItem key={d} value={d}>{d}</SelectItem>
           ))}
         </SelectContent>
       </Select>
@@ -97,8 +115,8 @@ export function GlobalFilters({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="__all__">全部班组</SelectItem>
-          {TEAMS.map((t) => (
-            <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>
+          {vocab.team.map((t) => (
+            <SelectItem key={t} value={t}>{t}</SelectItem>
           ))}
         </SelectContent>
       </Select>
@@ -108,7 +126,7 @@ export function GlobalFilters({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="__all__">全部服务类型</SelectItem>
-          {SERVICE_TYPES.map((s) => (
+          {vocab.serviceType.map((s) => (
             <SelectItem key={s} value={s}>{s}</SelectItem>
           ))}
         </SelectContent>
@@ -131,7 +149,7 @@ export function GlobalFilters({
                 <SelectTrigger className="w-full"><SelectValue placeholder="全部坐席" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部坐席</SelectItem>
-                  {["张三", "李四", "王五", "赵敏", "孙倩", "周凯", "吴婷", "郑浩", "陈静", "刘洋"].map((n) => (
+                  {vocab.agents.map((n) => (
                     <SelectItem key={n} value={n}>{n}</SelectItem>
                   ))}
                 </SelectContent>
@@ -142,7 +160,7 @@ export function GlobalFilters({
                 <SelectTrigger className="w-full"><SelectValue placeholder="全部品牌" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部品牌</SelectItem>
-                  {BRANDS.map((b) => (
+                  {vocab.brand.map((b) => (
                     <SelectItem key={b} value={b}>{b}</SelectItem>
                   ))}
                 </SelectContent>
@@ -153,7 +171,7 @@ export function GlobalFilters({
                 <SelectTrigger className="w-full"><SelectValue placeholder="全部品类" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部品类</SelectItem>
-                  {PRODUCT_CATEGORIES.map((b) => (
+                  {vocab.productCategory.map((b) => (
                     <SelectItem key={b} value={b}>{b}</SelectItem>
                   ))}
                 </SelectContent>
@@ -164,7 +182,7 @@ export function GlobalFilters({
                 <SelectTrigger className="w-full"><SelectValue placeholder="全部问题" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部问题</SelectItem>
-                  {ISSUES.map((b) => (
+                  {vocab.issue.map((b) => (
                     <SelectItem key={b} value={b}>{b}</SelectItem>
                   ))}
                 </SelectContent>
@@ -175,7 +193,7 @@ export function GlobalFilters({
                 <SelectTrigger className="w-full"><SelectValue placeholder="全部诉求类型" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部诉求类型</SelectItem>
-                  {REQUEST_TYPES.map((b) => (
+                  {vocab.requestType.map((b) => (
                     <SelectItem key={b} value={b}>{b}</SelectItem>
                   ))}
                 </SelectContent>

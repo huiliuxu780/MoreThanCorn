@@ -200,9 +200,9 @@ let wfId = "", runId = "", qrId = "";
 {
   const e = await req("POST", "/api/eval-samples", { workflowId: wfId, name: u("eval"), input: { userQuery: "评测样本" }, dataAssetId: assetId });
   check("S12-1", "评测样本（可挂 Data Asset）", e.status === 201);
+  // 79a8a08 起工作流级评测为同步执行：返回 results[]（每条含 runId/终态），不再有 runIds
   const er = await req("POST", `/api/workflows/${wfId}/eval-run`);
-  check("S12-2", "评测运行触发", (er.json?.runIds ?? []).length > 0);
-  if (er.json?.runIds?.[0]) await pollRun(er.json.runIds[0]);
+  check("S12-2", "评测运行触发", (er.json?.results ?? []).length > 0 && er.json.results.every((r) => r.runId));
   const es = await req("GET", `/api/workflows/${wfId}/eval-summary`);
   check("S12-3", "评测汇总（成功率/时长）", es.json?.total > 0);
 }

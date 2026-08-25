@@ -33,7 +33,7 @@ import { StatusBadge } from "@/components/app/status-badge"
 import { TableFrame } from "@/components/app/table-frame"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { formatCompactDateTime } from "@/lib/time"
-import { bizApi, WF_BASE } from "@/services/wf-api"
+import { bizApi, runApi } from "@/services/wf-api"
 import { rbac } from "@/services/rbac"
 
 export default function TaskDetailPage() {
@@ -43,9 +43,7 @@ export default function TaskDetailPage() {
   // D-5：任务运行列表改真数据（该任务绑定工作流的 runs）
   const { data: runs } = useAsyncData(async () => {
     if (!task?.agentId) return []
-    const r = await fetch(`${WF_BASE}/api/runs?workflowId=${task.agentId}`)
-    const list = await r.json()
-    return Array.isArray(list) ? list : []
+    return runApi.list(task.agentId).catch(() => [])
   }, [taskId, task?.agentId])
 
   const [enabled, setEnabled] = useState<boolean | null>(null)
@@ -143,8 +141,8 @@ export default function TaskDetailPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(runs ?? []).map((run: { runId?: string; id?: string; status?: string; startedAt?: string; trigger?: string; durationMs?: number | null }) => (
-                <TableRow key={run.runId ?? run.id ?? "run"} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/config/tasks/${task.id}/runs/${run.runId ?? run.id}`)}>
+              {(runs ?? []).map((run) => (
+                <TableRow key={run.runId} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/config/tasks/${task.id}/runs/${run.runId}`)}>
                   <TableCell className="text-sm tabular-nums">{run.startedAt ? formatCompactDateTime(run.startedAt) : "—"}</TableCell>
                   <TableCell className="text-sm">{run.trigger ?? "—"}</TableCell>
                   <TableCell className="text-sm">—</TableCell>
@@ -158,8 +156,8 @@ export default function TaskDetailPage() {
                         <Button variant="ghost" size="icon" className="size-7"><MoreHorizontal className="size-4" /></Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => navigate(`/config/tasks/${task.id}/runs/${run.runId ?? run.id}`)}>查看详情</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setRerunId(run.runId ?? run.id ?? null)}>重新运行</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate(`/config/tasks/${task.id}/runs/${run.runId}`)}>查看详情</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setRerunId(run.runId)}>重新运行</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

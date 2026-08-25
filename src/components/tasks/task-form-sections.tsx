@@ -16,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { FormField } from "@/components/app/form-field"
 import { SectionHeader } from "@/components/app/page"
 import { defApi, type DefinitionDTO } from "@/services/resource-api"
-import { WF_BASE } from "@/services/wf-api"
+import { agentApi, listDataAssets } from "@/services/wf-api"
 import type { AgentDetail, DataAsset, DataAssetField } from "@/domain/types"
 import { cn } from "@/lib/utils"
 
@@ -31,7 +31,7 @@ let catalogLoaded = false
 function loadCatalog() {
   if (catalogLoaded) return
   catalogLoaded = true
-  fetch(`${WF_BASE}/api/agents?pageSize=100`).then((r) => r.json()).then((r) => {
+  agentApi.list({ page: 1, pageSize: 100 }).then((r) => {
     agents = ((r.items ?? []) as { id: string; name: string; status: string }[]).map((a) => ({
       id: a.id, name: a.name, status: a.status === "published" ? "Published" : "Draft",
       inputSchema: DEFAULT_INPUT_SCHEMA,
@@ -39,7 +39,7 @@ function loadCatalog() {
     for (const a of agents) agentDetails[a.id] = a
     subs.forEach((f) => f())
   }).catch(() => undefined)
-  fetch(`${WF_BASE}/api/data-assets`).then((r) => r.json()).then((r) => {
+  listDataAssets().then((r) => {
     dataAssets = ((r.items ?? []) as { id: string; name: string; lifecycle?: string }[]).map((a) => ({
       id: a.id, name: a.name, lifecycle: a.lifecycle ?? "Ready", fields: [],
     } as unknown as DataAsset))

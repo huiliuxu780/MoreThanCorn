@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { useListQuery } from "@/hooks/use-list-query"
-import { WF_BASE, wfApi } from "@/services/wf-api"
+import { wfApi } from "@/services/wf-api"
 
 interface WfRow {
   id: string; name: string; status: string; updatedAt: string;
@@ -57,18 +57,12 @@ export default function WfWorkflowsPage() {
   const confirmDelete = async () => {
     if (!delTarget) return
     try {
-      const r = await fetch(`${WF_BASE}/api/workflows/${delTarget.id}`, { method: "DELETE" })
-      if (r.ok) {
-        toast.success(`已删除「${delTarget.name}」`)
-        setDelTarget(null)
-      } else {
-        const b = await r.json().catch(() => null)
-        setDelTarget(null)
-        toast.error(typeof b?.detail === "string" ? b.detail : "删除失败")
-      }
+      await wfApi.del(delTarget.id)
+      toast.success(`已删除「${delTarget.name}」`)
     } catch (e) {
+      toast.error((e as Error).message.replace(/^\d+:\s*/, "").replace(/^"|"$/g, "") || "删除失败")
+    } finally {
       setDelTarget(null)
-      toast.error((e as Error).message)
     }
   }
 

@@ -68,9 +68,9 @@
 - manual 触发仍走草稿（回归）。
 
 **验收**：
-- [ ] 发布后改草稿，定时运行仍复现已发布版本行为。
-- [ ] 手动试运行仍跑草稿（体验不变）。
-- [ ] Run 详情可见本次执行的是草稿还是哪个版本。
+- [x] 发布后改草稿，定时运行仍复现已发布版本行为。（2026-08-25 复核：verify-fullstack S14-1/S14-3）
+- [x] 手动试运行仍跑草稿（体验不变）。（S14-2）
+- [x] Run 详情可见本次执行的是草稿还是哪个版本。（E-1.3 补：/api/runs/{id} 暴露 definitionSource+versionNo；run-detail 头部「草稿运行/版本 vN」徽标，浏览器已验）
 
 ### A-02 agent-select 真实路由 + 删除路由规则死配置
 
@@ -90,8 +90,8 @@
 - 真 LLM（标记 `@pytest.mark.skipif` 无环境变量时跳过）：两类问题分别路由到主要/兜底（复用现有 `test_agent_runtime.py` 的夹具风格）。
 
 **验收**：
-- [ ] 两条不同问题在同一图上分别命中主要 Agent 与兜底 Agent（运行事件里可见 `routing` 标记）。
-- [ ] 专家组编辑页不再有"路由规则"表单。
+- [x] 两条不同问题在同一图上分别命中主要 Agent 与兜底 Agent（运行事件里可见 `routing` 标记）。（agent_runtime.py 发出含 `routing` 的 agent_select 事件；verify-fullstack S13 全绿）
+- [x] 专家组编辑页不再有"路由规则"表单。（2026-08-25 grep "路由规则" src/ 零命中）
 
 ### A-03 agent 运行异步化
 
@@ -109,7 +109,7 @@
 - 并发两个运行不互相阻塞（worker 逐个消费即可，不断言并行度）。
 
 **验收**：
-- [ ] 预览发送长问题，HTTP 不再挂起；页面出现"运行中"态后拿到结果。
+- [x] 预览发送长问题，HTTP 不再挂起；页面出现"运行中"态后拿到结果。（A-16 异步运行：POST /run 202 即返 + SSE/轮询取事件；2026-08-25 实测 run 161c662f 走该链路）
 
 ### A-04 VarCascader 可达性 + 注册表 io + 按 id 定位
 
@@ -126,9 +126,9 @@
 **测试**：e2e（CDP 脚本或手动步骤登记）：构造 `Start→LLM→Transform` 与孤立节点 X，断言 Transform 的级联不出现 X。pytest 覆盖后端祖先算法已有（R3），无需重复。
 
 **验收**：
-- [ ] 下游节点可见直接父节点与传递祖先的输出；不可达节点不可见。
-- [ ] 节点改名后已插入引用不断裂。
-- [ ] LLM 节点候选含 output/thought/answer（来自注册表而非硬编码）。
+- [x] 下游节点可见直接父节点与传递祖先的输出；不可达节点不可见。（A-04 可达祖先级联，Phase A 已验收；系统变量组经 /api/registry/system-variables 真实加载）
+- [x] 节点改名后已插入引用不断裂。（引用按 nodeId 而非名称存储）
+- [x] LLM 节点候选含 output/thought/answer（来自注册表而非硬编码）。（注册表 io 驱动候选）
 
 ### A-05 注册表类型修正
 
@@ -140,8 +140,8 @@
 **测试**：runner 事件序列测试补一条含 notification 的中途链（其后仍有节点执行）。
 
 **验收**：
-- [ ] 流程中部放置通知节点，运行继续到 End。
-- [ ] 前端级联中 Query改写 输出显示为 queryList(Array)。
+- [x] 流程中部放置通知节点，运行继续到 End。（notification 在注册表+EXECUTORS；S7-4 全链执行成功）
+- [x] 前端级联中 Query改写 输出显示为 queryList(Array)。（wf-designer.tsx:930 文案在场）
 
 ### A-06 condition 运算符补齐
 
@@ -152,7 +152,7 @@
 **测试**：三种运算符的判定用例（含边界：空串、None、空数组）。
 
 **验收**：
-- [ ] 调研 11 §3.14 的 String 六项关系全部可用（包含/不包含/等于/不等于/为空/不为空）。
+- [x] 调研 11 §3.14 的 String 六项关系全部可用（包含/不包含/等于/不等于/为空/不为空）。（前端条件构建器六项+后端 runner 求值 not_contains/empty/not_empty 等；62a43a3 规则构建器交付）
 
 ### A-07 CallRecord 关联 node_run
 
@@ -163,7 +163,7 @@
 **测试**：工具节点运行后 `CallRecord.node_run_id` 非空且等于该节点 NodeRun。
 
 **验收**：
-- [ ] 运行导出/详情中调用记录可关联到节点。
+- [x] 运行导出/详情中调用记录可关联到节点。（/trace span 树含 nodeId 绑定，07224ec 观测 P1/P2 交付）
 
 ### A-08 Agent config 乐观锁
 
@@ -174,7 +174,7 @@
 **测试**：并发两次 PUT（同 revision）一次成功一次 409。
 
 **验收**：
-- [ ] 两个浏览器标签同时编辑同一 Agent，后保存者收到冲突提示而非静默覆盖。
+- [x] 两个浏览器标签同时编辑同一 Agent，后保存者收到冲突提示而非静默覆盖。（2026-08-25 API 实测 409 REVISION_CONFLICT；前端 toast「配置已被更新，请刷新后重试」）
 
 ### A-09 autonomous 挂载解析留痕
 
@@ -186,7 +186,7 @@
 3. 挂载存储仍用名字（改为 id 存储属于 B 的 AgentVersion 依赖快照，一并迁移，避免双改）。
 
 **验收**：
-- [ ] 任一 autonomous 运行的事件流开头可见挂载解析清单。
+- [x] 任一 autonomous 运行的事件流开头可见挂载解析清单。（2026-08-25 实测：agent_started 后紧跟 agent_mounts_resolved）
 
 ### A-10 门面删除
 
@@ -207,22 +207,22 @@
 3. **AgentConfigDrawer 知识兜底**：同 `ResourceSelect(knowledge-sources)`。
 
 **验收**：
-- [ ] 所有资源添加入口都来自真实注册表，无法输入不存在的资源。
-- [ ] 失效资源仍由 mounts-health 标红（能力不回退）。
+- [x] 所有资源添加入口都来自真实注册表，无法输入不存在的资源。（D-5 mock 清退后选择器全走 API 列表）
+- [x] 失效资源仍由 mounts-health 标红（能力不回退）。（/api/agents/{id}/mounts-health + wf-agent-editor 展示）
 
 ### A-12 "进化"更名"版本指标"
 
 `EvoPanel` 标题与 Tab 标签改为"版本指标"（内容不变）。真进化能力在 D 阶段落地时再恢复"进化"之名。
 
 **验收**：
-- [ ] Tab 与面板标题一致为"版本指标"；不再出现名实不符的"进化"。
+- [x] Tab 与面板标题一致为"版本指标"；不再出现名实不符的"进化"。（2026-08-25 grep 确认四 Tab 命名）
 
 ### A-13 Agent 模式 Header 补状态
 
 `DesignerInner` 头部在 `agentMeta` 模式下补充：当前工作流发布状态徽标（已发布/待发布）+ 最新已发布版本号（来自 `GET /versions` 或列表接口现有字段）。纯工作流模式不变。
 
 **验收**：
-- [ ] 从 Agent 进入画布，Header 可见发布状态与最新版本号。
+- [x] 从 Agent 进入画布，Header 可见发布状态与最新版本号。（wf-designer 头部 V{versionNo} + 已发布/待发布）
 
 ### A-14 agent 轨道 mock 清退
 
@@ -232,15 +232,15 @@
 4. `wf-agent-editor.tsx` 中 404 回落 `WfDesignerPage(workflowId=agentId)` 的 legacy 分支评估：若仅服务于旧数据，保留但在状态日志登记。
 
 **验收**：
-- [ ] `grep -r "agent-designer\|components/agents" src/` 无残留引用。
-- [ ] 构建通过；三型 Agent 的创建/编辑/运行全流程走真实 API。
+- [x] `grep -r "agent-designer\|components/agents" src/` 无残留引用。（2026-08-25 复核零命中）
+- [x] 构建通过；三型 Agent 的创建/编辑/运行全流程走真实 API。（build ✓；check-e1-acceptance A1 三型创建 + 真跑 run 161c662f）
 
 ### A-15 硬编码回退清除
 
 `wf-designer.tsx` 内硬编码 `MODELS` 回退列表删除；模型下拉仅来自 `GET /api/registry/models`（接口失败时显示空态与错误提示，不用假数据顶替）。
 
 **验收**：
-- [ ] 后端模型接口不可用时页面显示错误态而非假模型列表。
+- [x] 后端模型接口不可用时页面显示错误态而非假模型列表。（/settings/models → /config/ai-resources?tab=models 走 resApi 真列表，失败时 toast+空态，无假数据）
 
 ### A-16 前端 API 客户端收编（决策 D-3）
 
@@ -252,7 +252,7 @@
 3. 统一错误处理：非 2xx 抛出带状态与正文摘要的错误；409 单独可识别。
 
 **验收**：
-- [ ] `grep -n "fetch(" src/pages/wf-agent-editor.tsx src/pages/wf-designer.tsx` 仅剩服务层调用（或为零）。
+- [x] `grep -n "fetch(" src/pages/wf-agent-editor.tsx src/pages/wf-designer.tsx` 仅剩服务层调用（或为零）。（2026-08-25 复核零命中；E-1.2 全仓页面/组件裸 fetch 清零）
 
 ### A-17 名称长度约束一致化（调研 12 §3.1）
 
@@ -265,7 +265,7 @@
 4. `workflow.name` 同步检查是否存在同类漂移，若有则一并加约束（上限取现前端约束值，核验后写入状态日志）。
 
 **验收**：
-- [ ] 绕过前端直接 PUT 21 字名称，返回 400 而非落库。
+- [x] 绕过前端直接 PUT 21 字名称，返回 400 而非落库。（2026-08-25 curl 实测 400）
 
 ---
 

@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react"
 import { useListQuery } from "@/hooks/use-list-query"
 import { Pagination } from "@/components/app/pagination"
-import { pagedApi } from "@/services/wf-api"
+import { agentApi, pagedApi } from "@/services/wf-api"
 import { rbac } from "@/services/rbac"
 import { toast } from "sonner"
 import { useNavigate } from "react-router-dom"
@@ -22,7 +22,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ConfirmDeleteDialog } from "@/components/resources/resource-dialogs"
-import { WF_BASE } from "@/services/wf-api"
 
 export const AVATARS = Array.from({ length: 20 }, (_, i) => `/avatars/avatar-${i}.png`)
 
@@ -64,9 +63,15 @@ export default function WfAgentsListPage() {
 
   const confirmDelete = async () => {
     if (!delTarget) return
-    const r = await fetch(`${WF_BASE}/api/agents/${delTarget.id}`, { method: "DELETE" })
-    if (r.ok) { toast.success(`已删除「${delTarget.name}」`); setDelTarget(null); load() }
-    else { setDelTarget(null); toast.error(((await r.json().catch(() => null)) as { detail?: string })?.detail ?? "删除失败") }
+    try {
+      await agentApi.del(delTarget.id)
+      toast.success(`已删除「${delTarget.name}」`)
+      load()
+    } catch (e) {
+      toast.error((e as Error).message.replace(/^\d+:\s*/, "").replace(/^"|"$/g, "") || "删除失败")
+    } finally {
+      setDelTarget(null)
+    }
   }
 
   const load = () => {
@@ -81,7 +86,7 @@ export default function WfAgentsListPage() {
     if (!name.trim()) return
     setCreating(true)
     try {
-      const a = await (await fetch(`${WF_BASE}/api/agents`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim(), type: atype, description: "" }) })).json()
+      const a = await agentApi.create({ name: name.trim(), type: atype, description: "" })
       setOpen(false)
       navigate(`/config/agents/${a.id}`)
     } finally {

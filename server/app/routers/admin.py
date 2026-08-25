@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -492,14 +492,91 @@ def delete_model(mid: str, db: Session = Depends(get_db)):
 
 # ---------- 质检业务层：quality_result / evidence ----------
 
+_DIM_KEYS = ["department", "team", "brand", "productCategory", "issue", "requestType", "serviceType"]
+
+
+def _quality_dims(r, run) -> dict:
+    """E-1.1：质量结果的业务维度真实来源（词表聚合与列表筛选共用）：
+    run.input → structured_output → businessContext 依次合并，另取 org 块与坐席名。"""
+    so = r.structured_output if isinstance(r.structured_output, dict) else {}
+    bc = so.get("businessContext") if isinstance(so.get("businessContext"), dict) else {}
+    org = so.get("org") if isinstance(so.get("org"), dict) else {}
+    src = {**(run.input if run is not None and isinstance(run.input, dict) else {}), **so, **bc}
+    dims: dict[str, str] = {}
+    for k in _DIM_KEYS:
+        v = src.get(k) or (org.get("teamName") if k == "team" else org.get(k))
+        dims[k] = str(v) if v and str(v) != "-" else ""
+    a = org.get("agentName") or src.get("agentName") or src.get("agent")
+    dims["agent"] = str(a) if a and str(a) != "-" else ""
+    return dims
+
+
 @router.get("/api/quality-results")
-def list_quality_results(page: int = 1, pageSize: int = 20, review: str = "", db: Session = Depends(get_db)):
-    from ..models import QualityResult
+def list_quality_results(page: int = 1, pageSize: int = 20, review: str = "",
+                         tab: str = "", search: str = "", criterion: str = "", risk: str = "",
+                         quality: str = "", time: str = "", sort: str = "time:desc",
+                         reviewStatus: str = "", serviceType: str = "", team: str = "",
+                         department: str = "", agent: str = "", brand: str = "",
+                         productCategory: str = "", issue: str = "", requestType: str = "",
+                         db: Session = Depends(get_db)):
+    """E-1.1：筛选参数真落地（此前前端筛选不进后端）：列内条件走 SQL，业务维度走真实数据扫描。"""
+    from datetime import datetime, timedelta, timezone
+    from ..models import QualityResult, Run
     q = db.query(QualityResult)
-    if review:
+    if tab == "pending":
+        q = q.filter(QualityResult.review_status == "AI")
+    elif tab == "reviewed":
+        q = q.filter(QualityResult.review_status.in_(["REVIEWED", "EFFECTIVE"]))
+    elif review:
         q = q.filter(QualityResult.review_status == review)
+    if reviewStatus == "待复核":
+        q = q.filter(QualityResult.review_status == "AI")
+    elif reviewStatus == "已复核":
+        q = q.filter(QualityResult.review_status.in_(["REVIEWED", "EFFECTIVE"]))
+    elif reviewStatus == "AI/人工不一致":
+        q = q.filter(QualityResult.id.in_([]))  # 数据模型暂无不一致标记：诚实空结果
+    if risk:
+        q = q.filter(QualityResult.risk == risk)
+    if quality == "有问题":
+        q = q.filter(QualityResult.issue_count > 0)
+    elif quality == "Critical":
+        q = q.filter(QualityResult.risk == "Critical")
+    if criterion:
+        q = q.filter(QualityResult.issue_summary.ilike(f"%{criterion}%"))
+    if search:
+        like = f"%{search}%"
+        q = q.filter(or_(QualityResult.interaction_ref.ilike(like),
+                         QualityResult.issue_summary.ilike(like)))
+    if time == "今日":
+        q = q.filter(QualityResult.interaction_time >= datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0))
+    elif time == "近7日":
+        q = q.filter(QualityResult.interaction_time >= datetime.now(timezone.utc) - timedelta(days=7))
+    elif time == "近30日":
+        q = q.filter(QualityResult.interaction_time >= datetime.now(timezone.utc) - timedelta(days=30))
+    # 业务维度筛选：按 _quality_dims 扫描真实数据（原型规模），命中 id 集合后回表
+    dim_filters = {"serviceType": serviceType, "team": team, "department": department,
+                   "agent": agent, "brand": brand, "productCategory": productCategory,
+                   "issue": issue, "requestType": requestType}
+    dim_filters = {k: v for k, v in dim_filters.items() if v and v != "__all__"}
+    if dim_filters:
+        all_rows = db.query(QualityResult).all()
+        runs = {r.id: r for r in db.query(Run).filter(Run.id.in_([x.run_id for x in all_rows if x.run_id] or ["-"]))}
+        matched = [x.id for x in all_rows
+                   if all(_quality_dims(x, runs.get(x.run_id or "")).get(k, "") == v for k, v in dim_filters.items())]
+        q = q.filter(QualityResult.id.in_(matched or ["-"]))
     total = q.count()
-    rows = q.order_by(QualityResult.created_at.desc()).offset((page - 1) * pageSize).limit(pageSize).all()
+    if sort == "time:asc":
+        q = q.order_by(QualityResult.interaction_time.asc())
+    elif sort == "score:desc":
+        q = q.order_by(QualityResult.score.desc().nullslast())
+    elif sort == "score:asc":
+        q = q.order_by(QualityResult.score.asc().nullslast())
+    elif sort == "risk:desc":
+        q = q.order_by(case((QualityResult.risk == "Critical", 4), (QualityResult.risk == "High", 3),
+                            (QualityResult.risk == "Medium", 2), (QualityResult.risk == "Low", 1)).desc())
+    else:
+        q = q.order_by(QualityResult.interaction_time.desc())
+    rows = q.offset((page - 1) * pageSize).limit(pageSize).all()
     # R3：Tab 计数真数据（此前恒来自 mock）
     review_counts = dict(db.execute(select(QualityResult.review_status, func.count(QualityResult.id))
                                     .group_by(QualityResult.review_status)).all())
@@ -547,6 +624,28 @@ def list_quality_results(page: int = 1, pageSize: int = 20, review: str = "", db
             "counts": {"all": all_total,
                        "ai": review_counts.get("AI", 0),
                        "reviewed": review_counts.get("REVIEWED", 0) + review_counts.get("EFFECTIVE", 0)}}
+
+
+@router.get("/api/quality/vocab")
+def quality_vocab(db: Session = Depends(get_db)):
+    """E-1.1：筛选词表真实来源——聚合质量结果/运行输入的去重值 + 已发布结果规则目录（替代前端 mocks catalog）。"""
+    from ..models import QualityResult, ResultRuleSet, Run
+    acc: dict[str, set[str]] = {k: set() for k in _DIM_KEYS}
+    agents: set[str] = set()
+    rows = db.query(QualityResult).limit(2000).all()
+    runs = {r.id: r for r in db.query(Run).filter(Run.id.in_([x.run_id for x in rows if x.run_id] or ["-"]))}
+    for r in rows:
+        dims = _quality_dims(r, runs.get(r.run_id or ""))
+        for k in _DIM_KEYS:
+            if dims[k]:
+                acc[k].add(dims[k])
+        if dims["agent"]:
+            agents.add(dims["agent"])
+    pub = db.query(ResultRuleSet).filter_by(status="published").order_by(ResultRuleSet.version.desc()).first()
+    criteria = [{"criterion": str(x.get("criterion") or ""), "severity": str(x.get("severity") or "Medium")}
+                for x in ((pub.rules or {}).get("issueRules", []) if pub else []) if x.get("criterion")]
+    return {k: sorted(v) for k, v in acc.items()} | {
+        "agents": sorted(agents), "criteria": criteria}
 
 
 @router.get("/api/quality-results/{rid}")

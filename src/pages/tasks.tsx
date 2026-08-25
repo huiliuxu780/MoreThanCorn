@@ -19,7 +19,7 @@ import { TableFrame } from "@/components/app/table-frame"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { useListQuery } from "@/hooks/use-list-query"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
-import { bizApi, WF_BASE } from "@/services/wf-api"
+import { agentApi, bizApi, listDataAssets } from "@/services/wf-api"
 import { formatCompactDateTime } from "@/lib/time"
 import { toast } from "sonner"
 import { rbac } from "@/services/rbac"
@@ -38,8 +38,8 @@ export default function TasksPage() {
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([])
   const [dataAssets, setDataAssets] = useState<{ id: string; name: string }[]>([])
   useEffect(() => {
-    fetch(`${WF_BASE}/api/agents?pageSize=100`).then((r) => r.json()).then((r) => setAgents(r.items ?? [])).catch(() => undefined)
-    fetch(`${WF_BASE}/api/data-assets`).then((r) => r.json()).then((r) => setDataAssets(r.items ?? [])).catch(() => undefined)
+    agentApi.list({ page: 1, pageSize: 100 }).then((r) => setAgents(r.items ?? [])).catch(() => undefined)
+    listDataAssets().then((r) => setDataAssets(r.items ?? [])).catch(() => undefined)
   }, [])
 
   const [searchInput, setSearchInput] = useState(params.search ?? "")

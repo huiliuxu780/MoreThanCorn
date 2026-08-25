@@ -86,3 +86,20 @@ def test_validator_blocks_disabled_resource():
     rep = client.get(f"/api/workflows/{wid}/validation").json()
     assert not rep["ok"]
     assert any(i["kind"] == "dependency" for i in rep["issues"])
+
+
+def test_node_test_no_fk_violation_and_no_run_trace():
+    """E-1.3：节点单测对会发事件的节点（reply）不再 FK 违约，且真不落 Run。"""
+    wf = client.post("/api/workflows", json={"name": u("nt"), "description": ""}).json()
+    detail = client.get(f"/api/workflows/{wf['id']}").json()
+    defn = detail["definition"]
+    defn["graph"]["nodes"].append({"id": "r1", "type": "reply", "name": "回复",
+                                   "config": {}, "inputs": [{"name": "text", "type": "string",
+                                                              "source": {"kind": "fixed", "value": "你好"}}]})
+    client.put(f"/api/workflows/{wf['id']}/draft",
+               json={"definition": defn, "baseRevision": defn["workflow"]["draftRevision"]})
+    rep = client.post(f"/api/workflows/{wf['id']}/node-test",
+                      json={"nodeId": "r1", "input": {"text": "你好"}}).json()
+    assert rep["ok"] is True, rep
+    runs = client.get(f"/api/runs?workflowId={wf['id']}").json()
+    assert runs == [], "单测不应落 Run"

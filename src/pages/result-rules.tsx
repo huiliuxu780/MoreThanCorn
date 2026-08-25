@@ -30,7 +30,7 @@ import { FormField } from "@/components/app/form-field"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { useListQuery } from "@/hooks/use-list-query"
 import { formatDateTime } from "@/lib/time"
-import { bizApi, WF_BASE } from "@/services/wf-api"
+import { agentApi, bizApi } from "@/services/wf-api"
 import { rbac } from "@/services/rbac"
 
 export default function ResultRulesPage() {
@@ -40,7 +40,7 @@ export default function ResultRulesPage() {
   // D-5：Agent 选项改真数据（此前来自 mocks/data）
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([])
   useEffect(() => {
-    fetch(`${WF_BASE}/api/agents?pageSize=100`).then((r) => r.json()).then((r) => setAgents(r.items ?? [])).catch(() => undefined)
+    agentApi.list({ page: 1, pageSize: 100 }).then((r) => setAgents(r.items ?? [])).catch(() => undefined)
   }, [])
 
   const [searchInput, setSearchInput] = useState(params.search ?? "")

@@ -40,9 +40,10 @@ import { useListQuery } from "@/hooks/use-list-query"
 import { formatCallDuration, formatCompactDateTime } from "@/lib/time"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
 import { realQualityResultCounts, realQualityResults } from "@/services/wf-api"
-import { BRANDS, CRITERIA_CATALOG, ISSUES, PRODUCT_CATEGORIES, REQUEST_TYPES, SERVICE_TYPES, TEAMS, DEPARTMENTS, SERVICERS } from "@/mocks/catalog"
+import { useQualityVocab } from "@/components/quality/global-filters"
 
 export default function QualityResultsPage() {
+  const vocab = useQualityVocab()
   const navigate = useNavigate()
   const { params, update, queryString: searchParamsString } = useListQuery(50)
   const filters = useMemo(() => parseListFilters(params.filters), [params.filters])
@@ -124,7 +125,7 @@ export default function QualityResultsPage() {
           <SelectTrigger className="h-9 w-36"><SelectValue placeholder="质量问题" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">全部问题</SelectItem>
-            {CRITERIA_CATALOG.map((c) => (
+            {vocab.criteria.map((c) => (
               <SelectItem key={c.criterion} value={c.criterion}>{c.criterion}</SelectItem>
             ))}
           </SelectContent>
@@ -143,8 +144,8 @@ export default function QualityResultsPage() {
           <SelectTrigger className="h-9 w-32"><SelectValue placeholder="班组" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">全部班组</SelectItem>
-            {TEAMS.map((t) => (
-              <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>
+            {vocab.team.map((t) => (
+              <SelectItem key={t} value={t}>{t}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -152,8 +153,8 @@ export default function QualityResultsPage() {
           <SelectTrigger className="h-9 w-32"><SelectValue placeholder="服务类型" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">全部服务类型</SelectItem>
-            {SERVICE_TYPES.map((s) => (
-              <SelectItem key={s} value={s}>{s}</SelectItem>
+            {vocab.serviceType.map((sv) => (
+              <SelectItem key={sv} value={sv}>{sv}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -171,8 +172,8 @@ export default function QualityResultsPage() {
               <DropdownMenuItem onClick={() => setFilter("quality", "Critical")}>Critical</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>已保存</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => update({ filters: serializeListFilters({ serviceType: "维修服务", quality: "有问题" }) }, true)}>维修问题</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => update({ filters: serializeListFilters({ team: "上海热线一组" }) }, true)}>上海热线一组</DropdownMenuItem>
+              {vocab.serviceType[0] && <DropdownMenuItem onClick={() => update({ filters: serializeListFilters({ serviceType: vocab.serviceType[0], quality: "有问题" }) }, true)}>{vocab.serviceType[0]}问题</DropdownMenuItem>}
+              {vocab.team[0] && <DropdownMenuItem onClick={() => update({ filters: serializeListFilters({ team: vocab.team[0] }) }, true)}>{vocab.team[0]}</DropdownMenuItem>}
             </DropdownMenuContent>
           </DropdownMenu>
           <Select value={params.sort || "time:desc"} onValueChange={(v) => update({ sort: v }, true)}>
@@ -247,11 +248,11 @@ export default function QualityResultsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.items.map((r) => (
+                {data.items.map((r, i) => (
                   <TableRow
-                    key={r.interactionId}
+                    key={r.id ?? `${r.interactionId}-${i}`}
                     className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => navigate(`/quality/results/${r.interactionId}?from=${encodeURIComponent(searchParamsString)}`)}
+                    onClick={() => navigate(`/quality/results/${r.id ?? r.interactionId}?from=${encodeURIComponent(searchParamsString)}`)}
                   >
                     <TableCell>
                       <div className="text-sm tabular-nums">{formatCompactDateTime(r.interactionTime)}</div>
@@ -329,7 +330,7 @@ export default function QualityResultsPage() {
                 <SelectTrigger><SelectValue placeholder="全部部门" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部部门</SelectItem>
-                  {DEPARTMENTS.map((d) => (<SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>))}
+                  {vocab.department.map((d) => (<SelectItem key={d} value={d}>{d}</SelectItem>))}
                 </SelectContent>
               </Select>
             </FormField>
@@ -338,7 +339,7 @@ export default function QualityResultsPage() {
                 <SelectTrigger><SelectValue placeholder="全部坐席" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部坐席</SelectItem>
-                  {SERVICERS.map((s) => (<SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>))}
+                  {vocab.agents.map((a) => (<SelectItem key={a} value={a}>{a}</SelectItem>))}
                 </SelectContent>
               </Select>
             </FormField>
@@ -347,7 +348,7 @@ export default function QualityResultsPage() {
                 <SelectTrigger><SelectValue placeholder="全部品牌" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部品牌</SelectItem>
-                  {BRANDS.map((b) => (<SelectItem key={b} value={b}>{b}</SelectItem>))}
+                  {vocab.brand.map((b) => (<SelectItem key={b} value={b}>{b}</SelectItem>))}
                 </SelectContent>
               </Select>
             </FormField>
@@ -356,7 +357,7 @@ export default function QualityResultsPage() {
                 <SelectTrigger><SelectValue placeholder="全部品类" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部品类</SelectItem>
-                  {PRODUCT_CATEGORIES.map((b) => (<SelectItem key={b} value={b}>{b}</SelectItem>))}
+                  {vocab.productCategory.map((b) => (<SelectItem key={b} value={b}>{b}</SelectItem>))}
                 </SelectContent>
               </Select>
             </FormField>
@@ -365,7 +366,7 @@ export default function QualityResultsPage() {
                 <SelectTrigger><SelectValue placeholder="全部问题" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部问题</SelectItem>
-                  {ISSUES.map((b) => (<SelectItem key={b} value={b}>{b}</SelectItem>))}
+                  {vocab.issue.map((b) => (<SelectItem key={b} value={b}>{b}</SelectItem>))}
                 </SelectContent>
               </Select>
             </FormField>
@@ -374,7 +375,7 @@ export default function QualityResultsPage() {
                 <SelectTrigger><SelectValue placeholder="全部诉求类型" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">全部诉求类型</SelectItem>
-                  {REQUEST_TYPES.map((b) => (<SelectItem key={b} value={b}>{b}</SelectItem>))}
+                  {vocab.requestType.map((b) => (<SelectItem key={b} value={b}>{b}</SelectItem>))}
                 </SelectContent>
               </Select>
             </FormField>

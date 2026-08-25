@@ -39,16 +39,28 @@ def list_runs(workflowId: str = "", db: Session = Depends(get_db)):
 
 @router.get("/{run_id}")
 def get_run(run_id: str, db: Session = Depends(get_db)):
+    from ..models import AgentVersion, WorkflowVersion
     run = db.get(Run, run_id)
     if not run:
         raise HTTPException(404, "run not found")
     nrs = db.query(NodeRun).filter_by(run_id=run_id).order_by(NodeRun.started_at).all()
+    # SDD A-01 验收：Run 详情可见本次执行的是草稿还是哪个版本
+    version_no = None
+    av = db.get(AgentVersion, run.agent_version_id) if run.agent_version_id else None
+    wv = db.get(WorkflowVersion, run.workflow_version_id) if run.workflow_version_id else None
+    if av:
+        version_no = av.version_no
+    elif wv:
+        version_no = wv.version_no
     return {
         "runId": run.id, "status": run.status, "trigger": run.trigger,
         "input": run.input, "output": run.output, "error": run.error,
         "startedAt": run.started_at.isoformat() if run.started_at else None,
         "endedAt": run.ended_at.isoformat() if run.ended_at else None,
         "durationMs": run.duration_ms,
+        "definitionSource": run.definition_source,  # draft|version
+        "versionNo": version_no,
+        "originRunId": run.origin_run_id,
         "nodeRuns": [{
             "nodeRunId": n.id, "nodeId": n.node_id, "nodeType": n.node_type,
             "status": n.status, "input": n.input, "output": n.output, "error": n.error,

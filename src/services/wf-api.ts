@@ -1,4 +1,6 @@
 /** 真实后端客户端（P0）。VITE_WF_API=1 时启用。契约源：server/contracts。 */
+import { parseListFilters } from "@/lib/list-filters"
+
 export const WF_BASE = import.meta.env.VITE_WF_API_BASE ?? "http://127.0.0.1:8100"
 
 export interface WfSummary {
@@ -117,6 +119,7 @@ export const wfApi = {
       body: JSON.stringify({ name, description }),
     }),
   get: (id: string) => req<WfDetail>(`/api/workflows/${id}`),
+  del: (id: string) => req<{ ok: boolean }>(`/api/workflows/${id}`, { method: "DELETE" }),
   saveDraft: (id: string, definition: WfDefinition, baseRevision: number) =>
     req<{ workflowCode: string; draftVersion: string; savedAt: string }>(
       `/api/workflows/${id}/draft`,
@@ -196,6 +199,13 @@ export const runCancel = (runId: string) =>
 export const runEventsList = (runId: string) =>
   req<{ items: { sequence: number; type: string; nodeId?: string; at: string; payload: Record<string, unknown> }[] }>(`/api/runs/${runId}/events-list`)
 export const runExportUrl = (runId: string) => `${WF_BASE}/api/runs/${runId}/export`
+/* E-1.2：服务层补齐，页面零裸 fetch */
+export const auditList = (limit = 200) =>
+  req<{ items: Record<string, unknown>[] }>(`/api/audit?limit=${limit}`)
+export const registrySystemVariables = () =>
+  req<{ items: { name: string; label: string }[] }>("/api/registry/system-variables")
+export const listDataAssets = () =>
+  req<{ items: { id: string; name: string; revision?: number }[] }>("/api/data-assets")
 
 /* ---------- P1：Run Detail 真 API 适配（冻结页 run-detail 复用） ---------- */
 import type { ExecutionStatus, InteractionExecution, Run, RunStatus } from "@/domain/types"
@@ -216,7 +226,10 @@ export async function realRunDetail(runId: string): Promise<{ run: Run; executio
     duration: d.durationMs != null ? `${d.durationMs}ms` : undefined,
     dataWindow: { start: "-", end: "-", label: "-" },
     snapshot: {
-      agentName: "workflow", agentVersion: "-", dataAssetName: "-", dataAssetRevision: 0,
+      agentName: "workflow",
+      // SDD A-01 验收：可见本次执行的是草稿还是哪个版本
+      agentVersion: d.definitionSource === "version" ? `版本 v${d.versionNo ?? "?"}` : d.definitionSource === "draft" ? "草稿" : "-",
+      dataAssetName: "-", dataAssetRevision: 0,
       scope: "-", sampling: "-", runtime: "fastapi-kernel", toolVersions: [], inputMapping: [],
     },
     summary: {
@@ -277,6 +290,7 @@ export const agentApi = {
     return req<{ items: { id: string; name: string; type: string; status: string }[]; total: number }>(`/api/agents?${q}`)
   },
   get: (id: string) => req<AgentInfo>(`/api/agents/${id}`),
+  del: (id: string) => req<{ ok: boolean }>(`/api/agents/${id}`, { method: "DELETE" }),
   create: (body: { name: string; type: string; description?: string; config?: Record<string, unknown> }) =>
     req<{ id: string; workflowId: string | null; configRevision: number }>("/api/agents", {
       method: "POST", body: JSON.stringify(body) }),
@@ -326,8 +340,8 @@ export const agentApi = {
     req<(AgentVersionInfo & { frozenMembers: { ref: string; version: string | null }[] })[]>(`/api/agents/${id}/versions`),
   evalSamples: (id: string) =>
     req<{ items: { id: string; name: string; input: Record<string, unknown>; expected?: unknown }[] }>(`/api/agents/${id}/eval-samples`),
-  addEvalSample: (id: string, name: string, input: Record<string, unknown>) =>
-    req<{ id: string }>(`/api/agents/${id}/eval-samples`, { method: "POST", body: JSON.stringify({ name, input }) }),
+  addEvalSample: (id: string, name: string, input: Record<string, unknown>, expected?: { text?: string } | null) =>
+    req<{ id: string }>(`/api/agents/${id}/eval-samples`, { method: "POST", body: JSON.stringify({ name, input, ...(expected ? { expected } : {}) }) }),
   delEvalSample: (sampleId: string) => req<{ ok: boolean }>(`/api/eval-samples/${sampleId}`, { method: "DELETE" }),
   evalRun: (id: string, judge: "none" | "rule" | "model" = "none") =>
     req<{ total: number; succeeded: number; results: { sampleId: string; name: string; runId?: string; status: string; durationMs?: number | null; output?: string; judge?: { kind: string; score: number; passed?: boolean; note?: string } | null; error?: string | null }[] }>(
@@ -378,6 +392,10 @@ export async function streamRunEvents(runId: string, onEvent: (ev: { type: strin
   }
 }
 
+/* ---------- E-1.1：质量筛选词表真实来源（后端聚合） ---------- */
+export const qualityVocab = () =>
+  req<import("@/components/quality/global-filters").QualityVocab>("/api/quality/vocab")
+
 /* ---------- 观测（SDD design-run-observability）：span 树组装端点 ---------- */
 export const runTrace = (runId: string) =>
   req<import("@/components/run/trace-view").TraceData>(`/api/runs/${runId}/trace`)
@@ -415,12 +433,21 @@ const REVIEW_MAP: Record<string, "NONE" | "PENDING" | "IN_REVIEW" | "COMPLETED" 
 const ORG = { agentId: "-", agentName: "-", teamId: "-", teamName: "-", departmentId: "-", departmentName: "-" }
 const BC_Q = { brand: "-", productCategory: "-", serviceType: "-", issueTopic: "-" }
 
-export async function realQualityResults(params: { page?: number; pageSize?: number }): Promise<ListResponse<QualityResult>> {
-  const r = await req<Paged<Record<string, any>>>(
-    `/api/quality-results?page=${params.page ?? 1}&pageSize=${params.pageSize ?? 20}`)
+export async function realQualityResults(params: {
+  page?: number; pageSize?: number; tab?: string; search?: string; sort?: string; filters?: string
+}): Promise<ListResponse<QualityResult>> {
+  // E-1.1：筛选参数真进后端（此前仅 page/pageSize，其余筛选全是摆设）
+  const q = new URLSearchParams({ page: String(params.page ?? 1), pageSize: String(params.pageSize ?? 20) })
+  if (params.tab && params.tab !== "all") q.set("tab", params.tab)
+  if (params.search) q.set("search", params.search)
+  if (params.sort && params.sort !== "time:desc") q.set("sort", params.sort)
+  for (const [k, v] of Object.entries(parseListFilters(params.filters ?? ""))) {
+    if (v && v !== "__all__") q.set(k, v)
+  }
+  const r = await req<Paged<Record<string, any>>>(`/api/quality-results?${q.toString()}`)
   return {
     items: r.items.map((q) => ({
-      interactionId: q.interactionId || q.id, interactionTime: q.interactionTime,
+      id: q.id, interactionId: q.interactionId || q.id, interactionTime: q.interactionTime,
       org: { ...ORG, agentName: q.agentName ?? "-", teamName: "-", departmentName: "-" },
       businessContext: { ...BC_Q, serviceType: q.serviceType ?? "-" },
       requestType: "-", requestSummary: q.requestSummary ?? q.issueSummary ?? "-",
@@ -455,7 +482,7 @@ export async function realQualityResultDetail(id: string): Promise<Record<string
 }
 
 /* ---------- R3：质检页真数据适配（取代 mock 双轨） ---------- */
-/* D-5：类型从 mock-service 迁出（mock-service 已删除）。 */
+/* D-5：类型已从旧 mock 层迁出（旧 mock 模块已删除）。 */
 export interface OverviewData {
   kpis: { label: string; value: string; delta: string; deltaTone: "success" | "danger" | "warning" | "neutral" }[]
   trend: { date: string; avgScore: number; issueRate: number; critical: number }[]

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { agentApi, WF_BASE } from "@/services/wf-api"
+import { agentApi, runEventsList } from "@/services/wf-api"
 
 const INK = "#1F2329"; const INK2 = "#5A6472"; const INK3 = "#B9C2CF"; const CARD = "#EDF0F4"
 
@@ -24,8 +24,7 @@ export function AgentRunsPanel({ agentId }: { agentId: string }) {
   useEffect(() => { load() }, [agentId])  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!selected) { setEvents([]); return }
-    fetch(`${WF_BASE}/api/runs/${selected}/events-list`).then((r) => r.json())
-      .then((j) => setEvents(j.items ?? [])).catch(() => undefined)
+    runEventsList(selected).then((j) => setEvents((j.items ?? []) as unknown as typeof events)).catch(() => undefined)
   }, [selected])
   return (
     <div className="h-full space-y-4 overflow-y-auto p-6">
@@ -114,10 +113,8 @@ export function AgentEvalPanel({ agentId }: { agentId: string }) {
           <Input className="h-8 text-xs" placeholder="期望答案（可选；供规则/模型 Judge 对照）" value={expectedText} onChange={(e) => setExpectedText(e.target.value)} />
           <Button size="sm" variant="outline" onClick={async () => {
             try {
-              await fetch(`${WF_BASE}/api/agents/${agentId}/eval-samples`, {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: name || "样本", input: JSON.parse(inputJson || "{}"), ...(expectedText.trim() ? { expected: { text: expectedText.trim() } } : {}) }),
-              })
+              await agentApi.addEvalSample(agentId, name || "样本", JSON.parse(inputJson || "{}"),
+                expectedText.trim() ? { text: expectedText.trim() } : null)
               setName(""); setExpectedText(""); load()
             } catch { toast.error("输入 JSON 非法") }
           }}>添加样本</Button>

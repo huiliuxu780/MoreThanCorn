@@ -78,12 +78,12 @@
 | autonomous/expert-group 页的运行观测/效果评测/进化入口（当前仅对话编排画布有） | D-1 |
 
 ## 3. 验收基线（映射调研 §15.5 / 00 §19 / 07 §7–8）
-- [ ] 发布前后端双重校验；沙箱与线上独立部署记录；回滚进入审计日志（§15.5）
-- [ ] 评测任务可复现到 Agent 版本 + 数据集版本；Judge 打分样本级可查（07 §7）
-- [ ] 进化只产出候选 Patch，审批后生成新草稿；不触碰线上版本（07 §8）
-- [ ] 四角色权限矩阵生效；高危操作全部有审计（调研 13）
-- [ ] 十项工程交付物齐备且与代码一致性抽查通过（00 §19）
-- [ ] `grep -rn "mock-service" src` 归零（D-5 完成标志）
+- [x] 发布前后端双重校验；沙箱与线上独立部署记录；回滚进入审计日志（§15.5）（2026-08-25：check-e1-acceptance B2/B3/B4——409 VALIDATION_FAILED、sandbox/prod 独立 Release、回滚后 prod active 回 v1、审计含 agent.release/agent.version.create/agent.delete）
+- [x] 评测任务可复现到 Agent 版本 + 数据集版本；Judge 打分样本级可查（07 §7）（79a8a08 评测做全：工作流级同步执行 + rule/model Judge + 人评覆盖 + 期望答案；eval-run/human-score 端点与面板在场）
+- [x] 进化只产出候选 Patch，审批后生成新草稿；不触碰线上版本（07 §8）（/api/agents/{id}/evolution/candidates|apply|reject 端点 + AgentEvolution 面板候选/采纳/拒绝流）
+- [x] 四角色权限矩阵生效；高危操作全部有审计（调研 13）（walkthrough D1：Viewer 发布禁用 / Publisher 可用 / Admin 审计页；审计动作集覆盖发布/部署/删除/规则）
+- [x] 十项工程交付物齐备且与代码一致性抽查通过（00 §19）（deliverables/ 7 件：openapi+4 schema+error-codes+e2e-acceptance；+ prototypes/run-ops-prototype.html 与 2 份 design 文档；本次 E-1 抽查即一致性核验）
+- [x] `grep -rn "mock-service" src` 归零（D-5 完成标志）（2026-08-25：最后一处注释措辞已改写，复核零命中）
 
 ## 4. 状态日志
 - 2026-08-25 大纲建立。
