@@ -199,14 +199,70 @@ def test_a06_operators_semantics():
     assert _branch_ok("gt", "abc", 3) is False
     assert _branch_ok(None, "truthy", None) is True
     assert _branch_ok(None, "", None) is False
+    # 规则构建器扩展：gte/lte/starts_with/ends_with/数组成员/布尔不敏感
+    assert _branch_ok("gte", 5, 5) is True and _branch_ok("gte", 4, 5) is False
+    assert _branch_ok("lte", 5, 5) is True and _branch_ok("lte", 6, 5) is False
+    assert _branch_ok("starts_with", "return-policy", "return") is True
+    assert _branch_ok("ends_with", "order.csv", ".csv") is True
+    assert _branch_ok("contains", ["a", "b"], "b") is True
+    assert _branch_ok("not_contains", ["a", "b"], "c") is True
+    assert _branch_ok("eq", True, "true") is True
+    assert _branch_ok("eq", 0, "0") is True
 
 
 def test_a06_registry_enum_complete():
     from app.registry import BY_TYPE
     ops = (BY_TYPE["condition"]["schema"]["properties"]["branches"]["items"]
-           ["properties"]["operator"]["enum"])
-    # 调研 11 §3.14 的 String 六项 + 数值比较
-    assert {"eq", "neq", "contains", "not_contains", "empty", "not_empty", "gt", "lt"} <= set(ops)
+           ["properties"]["conditions"]["items"]["properties"]["operator"]["enum"])
+    # 调研 11 §3.14 的 String 六项 + 数值比较 + 规则构建器扩展
+    assert {"eq", "neq", "contains", "not_contains", "empty", "not_empty", "gt", "lt",
+            "gte", "lte", "starts_with", "ends_with"} <= set(ops)
+
+
+def _cond_ctx(outputs: dict, run_input: dict | None = None):
+    from app.runner import Ctx
+    c = Ctx.__new__(Ctx)
+    c.outputs = outputs
+    c.run_input = run_input or {}
+    return c
+
+
+def test_condition_rule_builder_groups():
+    """SDD design-condition-rule-builder：每分支多条件且/或、变量引用比较值、旧格式兼容。"""
+    from app.runner import exec_condition
+    node = {"inputs": [], "config": {"branches": [
+        {"handle": "b1", "logic": "AND", "conditions": [
+            {"variable": "{{n1.outputs.answer}}", "operator": "contains",
+             "valueMode": "LITERAL", "value": "退货"},
+            {"variable": "{{n1.outputs.score}}", "operator": "gte",
+             "valueMode": "LITERAL", "value": "3"}]},
+        {"handle": "b2", "logic": "OR", "conditions": [
+            {"variable": "{{n1.outputs.answer}}", "operator": "contains",
+             "valueMode": "LITERAL", "value": "投诉"},
+            {"variable": "{{n1.outputs.tag}}", "operator": "eq",
+             "valueMode": "VARIABLE", "valueRef": "{{n1.outputs.expect}}"}]},
+    ]}}
+    ctx = _cond_ctx({"n1": {"answer": "我要退货", "score": 4, "tag": "vip", "expect": "vip"}})
+    assert exec_condition(node, ctx)["selected"] == "b1"
+    ctx = _cond_ctx({"n1": {"answer": "我要投诉", "score": 1, "tag": "x", "expect": "y"}})
+    assert exec_condition(node, ctx)["selected"] == "b2"  # OR 第一项命中
+    ctx = _cond_ctx({"n1": {"answer": "咨询", "score": 1, "tag": "vip", "expect": "vip"}})
+    assert exec_condition(node, ctx)["selected"] == "b2"  # OR 变量引用比较命中
+    ctx = _cond_ctx({"n1": {"answer": "我要退货", "score": 1, "tag": "x", "expect": "y"}})
+    assert exec_condition(node, ctx)["selected"] == "else"  # AND 第二项不满足
+
+
+def test_condition_legacy_branch_compat():
+    """旧格式分支（顶层 variable/operator/value）与空分支兼容。"""
+    from app.runner import exec_condition
+    node = {"inputs": [], "config": {"branches": [
+        {"handle": "legacy"},
+        {"handle": "old", "variable": "{{n1.outputs.x}}", "operator": "eq", "value": "1"},
+    ]}}
+    ctx = _cond_ctx({"n1": {"x": "1"}})
+    assert exec_condition(node, ctx)["selected"] == "old"  # 空分支跳过，旧格式命中
+    ctx = _cond_ctx({"n1": {"x": "2"}})
+    assert exec_condition(node, ctx)["selected"] == "else"
 
 
 # ---------- A-07 调用记录关联节点运行 ----------

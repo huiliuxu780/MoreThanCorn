@@ -256,33 +256,72 @@ def scheduler_loop(stop: threading.Event) -> None:
 
 
 def exec_condition(node, ctx) -> dict:
+    """条件判断（规则构建器，SDD design-condition-rule-builder）。
+
+    每分支含 conditions[] 与 logic(AND/OR)；自上而下命中即走，兜底 else。
+    兼容旧格式：分支顶层 variable/operator/value 视为单条件。
+    """
     inputs = resolve_bindings(node.get("inputs", []), ctx.outputs, ctx.run_input)
     branches = (node.get("config") or {}).get("branches", []) or []
     selected = "else"
     for b in branches:
-        var = b.get("variable") or ""
-        m = REF.match(var.strip()) if var else None
-        val = None
-        if m:
-            val = _dig(ctx.outputs.get(m.group(1), {}), m.group(2))
-        elif var:
-            val = inputs.get(var) or ctx.run_input.get(var)
-        if _branch_ok(b.get("operator"), val, b.get("value")):
+        conds = b.get("conditions")
+        if conds is None:
+            if not (b.get("variable") or b.get("operator")):
+                continue  # 空分支不参与匹配
+            conds = [{"variable": b.get("variable"), "operator": b.get("operator"),
+                      "valueMode": "LITERAL", "value": b.get("value")}]
+        if not conds:
+            continue
+        results = [_cond_ok(c, inputs, ctx) for c in conds]
+        hit = all(results) if (b.get("logic") or "AND").upper() != "OR" else any(results)
+        if hit:
             selected = b.get("handle") or "yes"
             break
     return {"selected": selected}
 
 
+def _cond_ok(cond: dict, inputs: dict, ctx) -> bool:
+    var = (cond.get("variable") or "").strip()
+    m = REF.match(var) if var else None
+    val = None
+    if m:
+        val = _dig(ctx.outputs.get(m.group(1), {}), m.group(2))
+    elif var:
+        val = inputs.get(var) or ctx.run_input.get(var)
+    if (cond.get("valueMode") or "LITERAL").upper() == "VARIABLE":
+        ref = (cond.get("valueRef") or "").strip()
+        rm = REF.match(ref) if ref else None
+        expect_raw = _dig(ctx.outputs.get(rm.group(1), {}), rm.group(2)) if rm else None
+    else:
+        expect_raw = cond.get("value")
+    return _branch_ok(cond.get("operator"), val, expect_raw)
+
+
 def _branch_ok(op: str | None, val: Any, expect_raw: Any) -> bool:
-    """条件运算符（SDD A-06）：String 六项 + gt/lt 数值比较；无运算符时按真值。"""
-    expect = str(expect_raw or "")
+    """条件运算符（SDD A-06 + 规则构建器扩展）：
+    String 八项（含 starts_with/ends_with）、数值六项（含 gte/lte）、empty/not_empty；
+    数组 contains 按成员匹配；布尔 eq 大小写不敏感；无运算符时按真值。"""
+    expect = str(expect_raw if expect_raw is not None else "")
     if op in (None, ""):
         return bool(val)
     if op == "empty":
         return val is None or val in ("", [], {})
     if op == "not_empty":
         return not (val is None or val in ("", [], {}))
-    sv = str(val or "")
+    if op in ("gt", "lt", "gte", "lte"):
+        try:
+            lv, rv = float(val), float(expect_raw)
+        except (TypeError, ValueError):
+            return False
+        return {"gt": lv > rv, "lt": lv < rv, "gte": lv >= rv, "lte": lv <= rv}[op]
+    if op in ("contains", "not_contains") and isinstance(val, (list, tuple, set)):
+        hit = any(str(x) == expect for x in val)
+        return hit if op == "contains" else not hit
+    sv = str(val if val is not None else "")
+    if isinstance(val, bool):
+        sv = sv.lower()
+        expect = expect.lower()
     if op == "eq":
         return sv == expect
     if op == "neq":
@@ -291,12 +330,10 @@ def _branch_ok(op: str | None, val: Any, expect_raw: Any) -> bool:
         return expect in sv
     if op == "not_contains":
         return expect not in sv
-    if op in ("gt", "lt"):
-        try:
-            lv, rv = float(val), float(expect_raw)
-        except (TypeError, ValueError):
-            return False
-        return lv > rv if op == "gt" else lv < rv
+    if op == "starts_with":
+        return sv.startswith(expect)
+    if op == "ends_with":
+        return sv.endswith(expect)
     return False
 
 

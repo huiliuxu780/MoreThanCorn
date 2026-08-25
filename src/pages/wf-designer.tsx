@@ -48,6 +48,8 @@ import {
   FilePlus2,
   Bell,
   Server,
+  GripVertical,
+  Trash2,
 } from "lucide-react"
 import {
   Background,
@@ -211,10 +213,6 @@ function SummaryRows({ n }: { n: WfNode }) {
     rows.push({ label: "MCP", body: cfg.mcpServerId ? <span className="text-xs">已绑定</span> : un })
     rows.push({ label: "工具", body: cfg.toolName ? <span className="text-xs">{String(cfg.toolName)}</span> : un })
   }
-  if (n.type === "condition") {
-    rows.push({ label: "如果", body: (cfg.branches as unknown[])?.length ? <span className="text-xs">已配置</span> : <span style={{ color: C.ink3 }} className="text-xs">未完成条件配置</span> })
-    rows.push({ label: "否则", body: <span className="text-xs" style={{ color: C.ink2 }}>默认分支</span> })
-  }
   if (n.type === "transform") rows.push({ label: "表达式", body: cfg.template ? <span className="text-xs">已配置</span> : un })
   if (n.type === "end") {
     rows.push({ label: "输出", body: <span className="text-xs">output <TypeChip t="Str" /></span> })
@@ -225,6 +223,32 @@ function SummaryRows({ n }: { n: WfNode }) {
         <div key={r.label} className="flex items-start gap-2 text-xs">
           <span className="w-11 shrink-0" style={{ color: C.ink3 }}>{r.label}</span>
           <div className="min-w-0 flex-1 overflow-hidden" style={{ color: C.ink }}>{r.body}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/* 条件节点摘要行：每分支一行，右侧各挂一个 source handle（调研 11 §3.14：分支=出边 handle） */
+function ConditionRows({ n }: { n: WfNode }) {
+  const bs = normCondBranches((n.config as Record<string, any>)?.branches)
+  const rows = [
+    ...bs.map((b, i) => ({
+      handle: b.handle,
+      label: i === 0 ? "如果" : `否则如果 ${i}`,
+      desc: b.conditions.length === 0 ? "未配置条件"
+        : `${b.conditions.length} 个条件 · ${b.logic === "OR" ? "或" : "且"}`,
+    })),
+    { handle: "else", label: "否则", desc: "默认分支" },
+  ]
+  return (
+    <div className="mt-2 space-y-2">
+      {rows.map((r) => (
+        <div key={r.handle} className="relative flex items-center gap-2 text-xs">
+          <span className="w-14 shrink-0 truncate" style={{ color: C.ink3 }}>{r.label}</span>
+          <span className="min-w-0 flex-1 truncate" style={{ color: C.ink }}>{r.desc}</span>
+          <Handle id={r.handle} type="source" position={Position.Right}
+            style={{ width: 12, height: 12, background: r.handle === "else" ? "#94A3B8" : C.primary, border: "2px solid #fff", borderRadius: 6 }} />
         </div>
       ))}
     </div>
@@ -244,7 +268,11 @@ function WfNodeCard({ data, selected }: NodeProps) {
   return (
     <div className={`relative w-[300px] overflow-hidden rounded-lg border bg-white p-3 shadow-sm ${ring}`} style={{ borderColor: selected ? C.primary : C.cardBorder }}>
       {n.type !== "input" && <Handle type="target" position={Position.Left} style={{ width: 12, height: 12, background: "#fff", border: `2px solid ${C.primary}`, borderRadius: 6 }} />}
-      {n.type !== "end" && <Handle type="source" position={Position.Right} style={{ width: 12, height: 12, background: C.primary, border: "2px solid #fff", borderRadius: 6 }} />}
+      {n.type !== "end" && n.type !== "condition" && <Handle type="source" position={Position.Right} style={{ width: 12, height: 12, background: C.primary, border: "2px solid #fff", borderRadius: 6 }} />}
+      {n.type === "condition" && collapsed && condHandlesOf(n).map((h, i, arr) => (
+        <Handle key={h} id={h} type="source" position={Position.Right}
+          style={{ width: 12, height: 12, background: h === "else" ? "#94A3B8" : C.primary, border: "2px solid #fff", borderRadius: 6, top: `${((i + 1) / (arr.length + 1)) * 100}%` }} />
+      ))}
       <div className="flex items-center gap-2">
         <span className="flex size-6 shrink-0 items-center justify-center rounded-md" style={{ background: NEUTRAL }}>
           <TypeIcon type={n.type} className="size-3.5 text-white" />
@@ -274,7 +302,7 @@ function WfNodeCard({ data, selected }: NodeProps) {
           {collapsed ? <ChevronRight className="size-4" /> : <ChevronDown className="size-4" />}
         </button>
       </div>
-      {!collapsed && <SummaryRows n={n} />}
+      {!collapsed && (n.type === "condition" ? <ConditionRows n={n} /> : <SummaryRows n={n} />)}
     </div>
   )
 }
@@ -299,7 +327,7 @@ function parseIoOutputs(def: NodeDefinition | undefined): { name: string; type: 
 }
 
 function VarCascader({ nodes, edges, selfId, defs, onPick }: {
-  nodes: WfNode[]; edges: WfEdge[]; selfId: string; defs: NodeDefinition[]; onPick: (v: string) => void
+  nodes: WfNode[]; edges: WfEdge[]; selfId: string; defs: NodeDefinition[]; onPick: (v: string, type?: string) => void
 }) {
   const [sysVars, setSysVars] = useState<{ name: string; label: string }[]>(SYS_VARS_CACHE ?? [])
   useEffect(() => { if (!SYS_VARS_CACHE) loadSystemVars().then(setSysVars) }, [])
@@ -351,7 +379,7 @@ function VarCascader({ nodes, edges, selfId, defs, onPick }: {
       <div className="w-40 py-1">
         {itemsFor(gid).map((it) => (
           <button key={it.name} className="flex w-full items-center gap-1 px-2 py-1 hover:bg-neutral-50"
-            onClick={() => onPick(`{{${gid === "system" ? "system" : gid}.outputs.${it.name}}}`)}
+            onClick={() => onPick(`{{${gid === "system" ? "system" : gid}.outputs.${it.name}}}`, it.type)}
             title={it.label}>
             {it.label ?? it.name} <TypeChip t={it.type === "array" ? "Arr" : it.type === "object" ? "Obj" : "Str"} />
           </button>
@@ -361,6 +389,60 @@ function VarCascader({ nodes, edges, selfId, defs, onPick }: {
       </div>
     </div>
   )
+}
+
+/* ============ 条件规则构建器（SDD design-condition-rule-builder；调研 11 §3.14） ============ */
+interface CondCondition {
+  variable: string; variableType: string; operator: string
+  valueMode: "LITERAL" | "VARIABLE"; value: string; valueRef: string
+}
+interface CondBranch { handle: string; logic: "AND" | "OR"; conditions: CondCondition[] }
+
+const OP_LABEL: Record<string, string> = {
+  eq: "等于", neq: "不等于", contains: "包含", not_contains: "不包含",
+  starts_with: "开头是", ends_with: "结尾是", empty: "为空", not_empty: "不为空",
+  gt: "大于", gte: "大于等于", lt: "小于", lte: "小于等于",
+}
+const OPS_BY_TYPE: Record<string, string[]> = {
+  string: ["eq", "neq", "contains", "not_contains", "starts_with", "ends_with", "empty", "not_empty"],
+  number: ["eq", "neq", "gt", "gte", "lt", "lte", "empty", "not_empty"],
+  boolean: ["eq", "not_empty"],
+  array: ["contains", "not_contains", "empty", "not_empty"],
+  object: ["empty", "not_empty"],
+}
+const NO_VALUE_OPS = new Set(["empty", "not_empty"])
+
+/** 旧格式（分支顶层 variable/operator/value）归一为 conditions[]；空分支保留为空。 */
+function normCondBranches(raw: unknown): CondBranch[] {
+  const bs = Array.isArray(raw) ? raw : []
+  return bs.map((b, i) => {
+    const x = b as Record<string, any>
+    const conds: CondCondition[] = Array.isArray(x?.conditions)
+      ? x.conditions.map((c: any) => ({
+          variable: c?.variable ?? "", variableType: c?.variableType || "string",
+          operator: c?.operator || "eq",
+          valueMode: c?.valueMode === "VARIABLE" ? "VARIABLE" as const : "LITERAL" as const,
+          value: String(c?.value ?? ""), valueRef: c?.valueRef ?? "",
+        }))
+      : (x?.variable || x?.operator)
+          ? [{ variable: x.variable ?? "", variableType: "string", operator: x.operator || "eq",
+               valueMode: "LITERAL" as const, value: String(x.value ?? ""), valueRef: "" }]
+          : []
+    return { handle: x?.handle || `b${i + 1}`, logic: x?.logic === "OR" ? "OR" as const : "AND" as const, conditions: conds }
+  })
+}
+
+/** 条件节点出边 handle 集 = 各分支 handle + else 兜底 */
+function condHandlesOf(n: WfNode): string[] {
+  return [...normCondBranches((n.config as Record<string, any>)?.branches).map((b) => b.handle), "else"]
+}
+
+/** {{nodeId.outputs.x}} → “节点名.x”，抽屉与卡片展示真实变量路径 */
+function describeVar(ref: string, nodes?: WfNode[]): string {
+  const m = /^\{\{(.+?)\.outputs\.(.+?)\}\}$/.exec(ref)
+  if (!m) return ref || "选择变量"
+  const nm = m[1] === "system" ? "系统" : nodes?.find((n) => n.id === m[1])?.name ?? m[1]
+  return `${nm}.${m[2]}`
 }
 
 /* ============ 配置抽屉（16 §6） ============ */
@@ -413,10 +495,11 @@ function ConfigDrawer(props: {
   agentId?: string
   onClose: () => void
   onChange: (n: WfNode) => void
+  onRemoveBranchEdges?: (nodeId: string, handles: string[], nextNode: WfNode) => void
 }) {
-  const { node, defs, nodes, edges, agentId, onClose, onChange } = props
+  const { node, defs, nodes, edges, agentId, onClose, onChange, onRemoveBranchEdges } = props
   const [varTarget, setVarTarget] = useState<"prompt" | string | null>(null)
-  const [openBr, setOpenBr] = useState<Record<number, boolean>>({})
+  const [dragBr, setDragBr] = useState<number | null>(null)
   if (!node) return null
   const def = defs.find((d) => d.type_key === node.type)
   const [models, setModels] = useState<{ id: string; caps: string[] }[]>([])
@@ -445,16 +528,57 @@ function ConfigDrawer(props: {
   }, [agentId, node?.type])  // eslint-disable-line react-hooks/exhaustive-deps
   const cfg = node.config as Record<string, any>
   const set = (k: string, v: unknown) => onChange({ ...node, config: { ...cfg, [k]: v } })
-  const setBranch = (i: number, patch: Record<string, unknown>) => {
-    const bs = [...(cfg.branches ?? [])]
-    bs[i] = { ...bs[i], ...patch }
-    set("branches", bs)
+  /* 规则构建器：branches 写入即同步节点声明 handle（含 else 兜底），校验器 R7 依赖 */
+  const condBranches = normCondBranches(cfg.branches)
+  const setCondBranches = (bs: CondBranch[]) =>
+    onChange({ ...node, config: { ...cfg, branches: bs }, branches: [...bs.map((b) => b.handle), "else"] })
+  const patchBranch = (bi: number, patch: Partial<CondBranch>) => {
+    const bs = [...condBranches]
+    bs[bi] = { ...bs[bi], ...patch }
+    setCondBranches(bs)
   }
-  const insertVar = (v: string) => {
+  const patchCond = (bi: number, ci: number, patch: Partial<CondCondition>) => {
+    const bs = [...condBranches]
+    const conds = [...bs[bi].conditions]
+    conds[ci] = { ...conds[ci], ...patch }
+    bs[bi] = { ...bs[bi], conditions: conds }
+    setCondBranches(bs)
+  }
+  const addBranch = () => {
+    const used = condBranches.map((b) => b.handle)
+    let n = condBranches.length + 1
+    while (used.includes(`b${n}`)) n++
+    setCondBranches([...condBranches, { handle: `b${n}`, logic: "AND", conditions: [] }])
+  }
+  const removeBranch = (bi: number) => {
+    const removed = condBranches[bi].handle
+    const bs = condBranches.filter((_, j) => j !== bi)
+    const nextNode: WfNode = { ...node, config: { ...cfg, branches: bs }, branches: [...bs.map((b) => b.handle), "else"] }
+    if (onRemoveBranchEdges) onRemoveBranchEdges(node.id, [removed], nextNode)
+    else onChange(nextNode)
+  }
+  const dropBranch = (to: number) => {
+    if (dragBr === null || dragBr === to) { setDragBr(null); return }
+    const bs = [...condBranches]
+    const [m] = bs.splice(dragBr, 1)
+    bs.splice(to, 0, m)
+    setDragBr(null)
+    setCondBranches(bs)
+  }
+  const emptyCond: CondCondition = { variable: "", variableType: "string", operator: "eq", valueMode: "LITERAL", value: "", valueRef: "" }
+  const insertVar = (v: string, t?: string) => {
     if (varTarget === "prompt") set("prompt", `${cfg.prompt ?? ""}${v}`)
-    else if (varTarget?.startsWith("__brv")) setBranch(Number(varTarget.slice(5)), { value: v })
-    else if (varTarget?.startsWith("__br")) setBranch(Number(varTarget.slice(4)), { variable: v })
-    else if (varTarget) {
+    else if (varTarget?.startsWith("__cL:")) {
+      const [bi, ci] = varTarget.slice(5).split(":").map(Number)
+      const vt = t && OPS_BY_TYPE[t] ? t : "string"
+      const ops = OPS_BY_TYPE[vt]
+      const cur = condBranches[bi]?.conditions[ci]
+      patchCond(bi, ci, { variable: v, variableType: vt,
+        ...(cur && !ops.includes(cur.operator) ? { operator: ops[0], value: "", valueRef: "" } : {}) })
+    } else if (varTarget?.startsWith("__cR:")) {
+      const [bi, ci] = varTarget.slice(5).split(":").map(Number)
+      patchCond(bi, ci, { valueMode: "VARIABLE", valueRef: v })
+    } else if (varTarget) {
       const inputs = (node.inputs ?? []).map((b) => (b.name === varTarget ? { ...b, source: { kind: "fixed" as const, value: v } } : b))
       onChange({ ...node, inputs })
     }
@@ -617,45 +741,100 @@ function ConfigDrawer(props: {
       )}
       {node.type === "condition" && (
         <Section title="条件分支">
-          {(cfg.branches ?? []).map((b: any, i: number) => (
-            <div key={i} className="mb-2 rounded-md p-2" style={{ background: "#F7F9FC" }}>
-              <button className="flex items-center gap-1 pb-1 text-xs" style={{ color: C.ink2 }} onClick={() => setOpenBr((s) => ({ ...s, [i]: !(s[i] ?? true) }))}>
-                {openBr[i] ?? true ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-                {i === 0 ? "如果" : `否则如果 ${i}`}
-              </button>
-              {(openBr[i] ?? true) && (
-                <div className="grid grid-cols-[1fr_auto] gap-1">
-                  <Popover>
-                    <PopoverTrigger asChild><button className="truncate rounded border bg-white px-1 py-0.5 text-left text-xs" style={{ borderColor: (b as any).variable ? C.cardBorder : C.danger }} onClick={() => setVarTarget(`__br${i}`)}>{(b as any).variable ? "已引用" : "引用变量"}</button></PopoverTrigger>
-                    <PopoverContent><VarCascader nodes={nodes} edges={edges} selfId={node.id} defs={defs} onPick={insertVar} /></PopoverContent>
-                  </Popover>
-                  <Select value={(b as any).operator || undefined} onValueChange={(v) => setBranch(i, { operator: v })}>
-                    <SelectTrigger className="h-6 w-28 text-xs"><SelectValue placeholder="条件关系" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="eq">等于</SelectItem><SelectItem value="neq">不等于</SelectItem>
-                      <SelectItem value="contains">包含</SelectItem><SelectItem value="not_contains">不包含</SelectItem>
-                      <SelectItem value="empty">为空</SelectItem><SelectItem value="not_empty">不为空</SelectItem>
-                      <SelectItem value="gt">大于</SelectItem><SelectItem value="lt">小于</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Input className="h-6 text-xs" placeholder="比较变量" value={(b as any).value ?? ""} onChange={(e) => setBranch(i, { value: e.target.value })} />
-                  <Popover>
-                    <PopoverTrigger asChild><button className="flex size-6 items-center justify-center rounded border bg-white" style={{ borderColor: C.cardBorder }} title="引用变量" onClick={() => setVarTarget(`__brv${i}`)}><Settings className="size-3 text-neutral-500" /></button></PopoverTrigger>
-                    <PopoverContent><VarCascader nodes={nodes} edges={edges} selfId={node.id} defs={defs} onPick={insertVar} /></PopoverContent>
-                  </Popover>
+          {condBranches.map((b, bi) => (
+            <div key={b.handle} className={`mb-2 rounded-md p-2 ${dragBr === bi ? "opacity-60" : ""}`} style={{ background: "#F7F9FC" }}
+              onDragOver={(e) => e.preventDefault()} onDrop={() => dropBranch(bi)}>
+              <div className="flex items-center gap-1 pb-1.5">
+                <span className="cursor-grab text-neutral-400" draggable onDragStart={() => setDragBr(bi)} title="拖拽排序">
+                  <GripVertical className="size-3.5" />
+                </span>
+                <span className="flex-1 text-xs font-medium" style={{ color: C.ink }}>{bi === 0 ? "如果" : `否则如果 ${bi}`}</span>
+                <div className="flex overflow-hidden rounded border" style={{ borderColor: C.cardBorder }} title="组内多条件的连接方式">
+                  {(["AND", "OR"] as const).map((lg) => (
+                    <button key={lg} className="px-1.5 py-0.5 text-[10px]"
+                      style={{ background: b.logic === lg ? NEUTRAL : "#fff", color: b.logic === lg ? "#fff" : C.ink2 }}
+                      onClick={() => patchBranch(bi, { logic: lg })}>{lg === "AND" ? "且" : "或"}</button>
+                  ))}
                 </div>
-              )}
+                <button title="删除分支" onClick={() => removeBranch(bi)}><Trash2 className="size-3 text-neutral-400 hover:text-red-500" /></button>
+              </div>
+              {b.conditions.map((c, ci) => (
+                <div key={ci} className="mb-1.5 rounded border bg-white p-1.5" style={{ borderColor: C.cardBorder }}>
+                  <div className="flex items-center gap-1">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button className="min-w-0 flex-1 truncate rounded border px-1.5 py-1 text-left text-xs"
+                          style={{ borderColor: c.variable ? C.cardBorder : C.danger, color: c.variable ? C.ink : C.ink3 }}
+                          onClick={() => setVarTarget(`__cL:${bi}:${ci}`)}>
+                          {c.variable ? describeVar(c.variable, nodes) : "选择变量"}
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent><VarCascader nodes={nodes} edges={edges} selfId={node.id} defs={defs} onPick={insertVar} /></PopoverContent>
+                    </Popover>
+                    <button title="删除条件" onClick={() => patchBranch(bi, { conditions: b.conditions.filter((_, j) => j !== ci) })}>
+                      <X className="size-3 text-neutral-400" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1 pt-1">
+                    <Select value={c.operator} onValueChange={(v) => patchCond(bi, ci, { operator: v })}>
+                      <SelectTrigger className="h-6 w-24 shrink-0 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {(OPS_BY_TYPE[c.variableType] ?? OPS_BY_TYPE.string).map((op) => (
+                          <SelectItem key={op} value={op}>{OP_LABEL[op]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {!NO_VALUE_OPS.has(c.operator) && (c.valueMode === "VARIABLE" ? (
+                      <div className="flex min-w-0 flex-1 items-center gap-1">
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button className="min-w-0 flex-1 truncate rounded border px-1.5 py-1 text-left text-xs"
+                              style={{ borderColor: C.cardBorder, color: c.valueRef ? C.primary : C.ink3 }}
+                              onClick={() => setVarTarget(`__cR:${bi}:${ci}`)}>
+                              {c.valueRef ? describeVar(c.valueRef, nodes) : "选择变量"}
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent><VarCascader nodes={nodes} edges={edges} selfId={node.id} defs={defs} onPick={insertVar} /></PopoverContent>
+                        </Popover>
+                        <button title="改为字面量" onClick={() => patchCond(bi, ci, { valueMode: "LITERAL", valueRef: "" })}>
+                          <X className="size-3 text-neutral-400" />
+                        </button>
+                      </div>
+                    ) : c.variableType === "boolean" ? (
+                      <Select value={c.value || undefined} onValueChange={(v) => patchCond(bi, ci, { value: v })}>
+                        <SelectTrigger className="h-6 flex-1 text-xs"><SelectValue placeholder="选择" /></SelectTrigger>
+                        <SelectContent><SelectItem value="true">true</SelectItem><SelectItem value="false">false</SelectItem></SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="flex min-w-0 flex-1 items-center gap-1">
+                        <Input className="h-6 min-w-0 flex-1 text-xs" placeholder={c.variableType === "number" ? "数值" : "比较值"}
+                          type={c.variableType === "number" ? "number" : "text"}
+                          value={c.value} onChange={(e) => patchCond(bi, ci, { value: e.target.value })} />
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button className="shrink-0 rounded border px-1 py-0.5 text-[10px]" style={{ borderColor: C.cardBorder, color: C.primary }}
+                              title="引用变量" onClick={() => setVarTarget(`__cR:${bi}:${ci}`)}>引用</button>
+                          </PopoverTrigger>
+                          <PopoverContent><VarCascader nodes={nodes} edges={edges} selfId={node.id} defs={defs} onPick={insertVar} /></PopoverContent>
+                        </Popover>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <button className="flex items-center gap-1 pt-0.5 text-xs" style={{ color: C.primary }}
+                onClick={() => patchBranch(bi, { conditions: [...b.conditions, { ...emptyCond }] })}>
+                <Plus className="size-3" /> 添加条件
+              </button>
             </div>
           ))}
-          <div className="flex gap-3">
-            <button className="flex items-center gap-1 text-xs" style={{ color: C.primary }} onClick={() => set("branches", [...(cfg.branches ?? []), { handle: `b${(cfg.branches ?? []).length + 1}` }])}>
-              <Plus className="size-3" /> 添加条件
-            </button>
-            <button className="flex items-center gap-1 text-xs" style={{ color: C.primary }} onClick={() => set("branches", [...(cfg.branches ?? []), { handle: `b${(cfg.branches ?? []).length + 1}` }])}>
-              <Plus className="size-3" /> 添加分支
-            </button>
+          <button className="flex items-center gap-1 text-xs" style={{ color: C.primary }} onClick={addBranch}>
+            <Plus className="size-3" /> 添加分支
+          </button>
+          <div className="mt-2 flex items-center justify-between rounded-md px-2 py-1.5" style={{ background: "#F7F9FC" }}>
+            <span className="text-xs" style={{ color: C.ink2 }}>否则（Else）</span>
+            <span className="text-[10px]" style={{ color: C.ink3 }}>兜底分支 · 不可删除</span>
           </div>
-          <div className="pt-1 text-xs" style={{ color: C.ink2 }}>否则</div>
         </Section>
       )}
       {node.type === "end" && (
@@ -1353,9 +1532,23 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
     let alive = true
     Promise.all([wfApi.get(workflowId), wfApi.nodeDefinitions()]).then(([d, nd]) => {
       if (!alive) return
-      historyRef.current = [JSON.parse(JSON.stringify(d.definition))]
+      /* 旧条件数据归一：分支升级为 conditions[] 结构，并同步声明 handle（含 else） */
+      const defn = d.definition as WfDefinition
+      defn.graph.nodes = defn.graph.nodes.map((n) => {
+        if (n.type !== "condition") return n
+        const bs = normCondBranches((n.config as Record<string, any>)?.branches)
+        return { ...n, config: { ...(n.config as Record<string, any>), branches: bs }, branches: [...bs.map((b) => b.handle), "else"] }
+      })
+      defn.graph.edges = defn.graph.edges.map((e) => {
+        if (e.sourceHandle) return e
+        const src = defn.graph.nodes.find((n) => n.id === e.source)
+        if (src?.type !== "condition") return e
+        const first = (src.config as Record<string, any>).branches?.[0]?.handle
+        return first ? { ...e, sourceHandle: first } : e  // 旧图单出边视为第一分支
+      })
+      historyRef.current = [JSON.parse(JSON.stringify(defn))]
       pointerRef.current = 0
-      setDef(d.definition); setRevision(d.draftRevision); setDefs(nd); setSavedAt(d.updatedAt)
+      setDef(defn); setRevision(d.draftRevision); setDefs(nd); setSavedAt(d.updatedAt)
       wfApi.validate(workflowId).then((r) => alive && setIssues(r.issues))
     })
     wfApi.versions(workflowId).then((vs) => alive && setLatestVersion(vs[0]?.versionNo ?? null)).catch(() => undefined)
@@ -1439,11 +1632,24 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
     } satisfies WfNodeData,
   })), [def, defs, issues, runState, mutate, nodeDims])
 
-  const edges: Edge[] = useMemo(() => (def?.graph.edges ?? []).map((e) => ({
-    id: e.id, source: e.source, target: e.target,
-    style: { stroke: selectedEdgeId === e.id ? "#F56C6C" : "#A8B3C5", strokeWidth: selectedEdgeId === e.id ? 2.5 : 1.5 },
-    interactionWidth: 24,
-  })), [def, selectedEdgeId])
+  const edges: Edge[] = useMemo(() => (def?.graph.edges ?? []).map((e) => {
+    // 条件分支出边标注分支名（不持久化，渲染期从源节点推导）
+    let label: string | undefined
+    if (e.sourceHandle) {
+      const src = def?.graph.nodes.find((n) => n.id === e.source)
+      if (src?.type === "condition") {
+        const bs = normCondBranches((src.config as Record<string, any>)?.branches)
+        const idx = bs.findIndex((b) => b.handle === e.sourceHandle)
+        label = e.sourceHandle === "else" ? "否则" : idx >= 0 ? (idx === 0 ? "如果" : `否则如果 ${idx}`) : e.sourceHandle
+      }
+    }
+    return {
+      id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle ?? undefined, label,
+      labelStyle: { fontSize: 10, fill: C.ink2 }, labelBgStyle: { fill: "#fff", fillOpacity: 0.9 },
+      style: { stroke: selectedEdgeId === e.id ? "#F56C6C" : "#A8B3C5", strokeWidth: selectedEdgeId === e.id ? 2.5 : 1.5 },
+      interactionWidth: 24,
+    }
+  }), [def, selectedEdgeId])
 
   const families = useMemo(() => {
     // SDD C-2：按编排器类型过滤节点目录（调研 11 §7 editorKinds）
@@ -1491,13 +1697,18 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
 
   const selected = def.graph.nodes.find((n) => n.id === selectedId) ?? null
 
-  const onConnect = (conn: { source: string | null; target: string | null }) => {
+  const onConnect = (conn: { source: string | null; target: string | null; sourceHandle?: string | null }) => {
     if (!conn.source || !conn.target) return
-    if (def.graph.edges.some((e) => e.source === conn.source && e.target === conn.target)) {
+    const sh = conn.sourceHandle ?? undefined
+    if (def.graph.edges.some((e) => e.source === conn.source && e.target === conn.target && (e.sourceHandle ?? undefined) === sh)) {
       toast.error("不能重复连线", { position: "top-center" })
       return
     }
-    mutate({ ...def, graph: { ...def.graph, edges: [...def.graph.edges, { id: `e_${Date.now() % 100000}`, source: conn.source, target: conn.target }] } })
+    if (sh && def.graph.edges.some((e) => e.source === conn.source && e.sourceHandle === sh)) {
+      toast.error("该分支已有出边，请先删除", { position: "top-center" })
+      return
+    }
+    mutate({ ...def, graph: { ...def.graph, edges: [...def.graph.edges, { id: `e_${Date.now() % 100000}`, source: conn.source, target: conn.target, sourceHandle: sh }] } })
   }
 
   const addNode = (typeKey: string) => {
@@ -1505,8 +1716,8 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
     const id = `n_${typeKey}_${Date.now() % 100000}`
     const node: WfNode = {
       id, type: typeKey, name: d?.label ?? typeKey,
-      config: typeKey === "condition" ? { branches: [{ handle: "b1" }] } : {},
-      inputs: [], branches: typeKey === "condition" ? ["yes", "no"] : undefined,
+      config: typeKey === "condition" ? { branches: [{ handle: "b1", logic: "AND", conditions: [] }] } : {},
+      inputs: [], branches: typeKey === "condition" ? ["b1", "else"] : undefined,
     }
     mutate({
       ...def,
@@ -1783,7 +1994,14 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
         {/* 抽屉层 */}
         {drawer === "config" && selected && (
           <ConfigDrawer node={selected} defs={defs} nodes={def.graph.nodes} edges={def.graph.edges} agentId={agentId || undefined} onClose={() => setDrawer(null)}
-            onChange={(n) => mutate({ ...def, graph: { ...def.graph, nodes: def.graph.nodes.map((x) => (x.id === n.id ? n : x)) } })} />
+            onChange={(n) => mutate({ ...def, graph: { ...def.graph, nodes: def.graph.nodes.map((x) => (x.id === n.id ? n : x)) } })}
+            onRemoveBranchEdges={(nodeId, handles, nextNode) => mutate({
+              ...def,
+              graph: {
+                nodes: def.graph.nodes.map((x) => (x.id === nodeId ? nextNode : x)),
+                edges: def.graph.edges.filter((e) => !(e.source === nodeId && handles.includes(e.sourceHandle ?? ""))),
+              },
+            })} />
         )}
         {drawer === "debug" && <DebugDrawer def={def} onClose={() => setDrawer(null)} onRun={startDebugRun} />}
         {drawer === "schedule" && <ScheduleDrawer workflowId={workflowId} onClose={() => setDrawer(null)} />}

@@ -52,11 +52,19 @@ V1_NODE_DEFINITIONS: list[dict] = [
             "properties": {"branches": {"type": "array", "items": {
                 "type": "object", "properties": {
                     "handle": {"type": "string"},
-                    "variable": {"type": "object", "x-control": "variable-picker"},
-                    "operator": {"type": "string",
-                                 "enum": ["eq", "neq", "contains", "not_contains",
-                                          "empty", "not_empty", "gt", "lt"]},
-                    "value": {"type": "string"}}}}},
+                    "logic": {"type": "string", "enum": ["AND", "OR"]},
+                    "conditions": {"type": "array", "items": {
+                        "type": "object", "properties": {
+                            "variable": {"type": "string", "x-control": "variable-picker"},
+                            "variableType": {"type": "string",
+                                             "enum": ["string", "number", "boolean", "array", "object"]},
+                            "operator": {"type": "string",
+                                         "enum": ["eq", "neq", "contains", "not_contains",
+                                                  "starts_with", "ends_with", "empty", "not_empty",
+                                                  "gt", "gte", "lt", "lte"]},
+                            "valueMode": {"type": "string", "enum": ["LITERAL", "VARIABLE"]},
+                            "value": {"type": "string"},
+                            "valueRef": {"type": "string", "x-control": "variable-picker"}}}}}}}},
         },
         "io": {},
     },
