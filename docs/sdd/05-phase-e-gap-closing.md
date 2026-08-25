@@ -1,6 +1,6 @@
 # Phase E：文档一致性 + 发布控制面 + 观测/对话体验深化（缺口收尾）
 
-状态：执行中
+状态：✅ 全部完成（2026-08-25；E-1=b71ba58 / E-2=8f49d1f / E-3=2a90247 / E-4=见提交）
 依据：2026-08-24 双代理对账（调研 00–14 vs 代码；docs/sdd+uiux vs 代码）结论；
 前置：Phase A–D 已交付、design-run-observability P1+P2、design-condition-rule-builder 已实现。
 节奏：E-1 → E-2 → E-3 → E-4 分批提交，每批 pytest+构建+浏览器复核。
@@ -47,7 +47,12 @@
 | E-3.3 | 嵌套子 Run span | agent-exec/agent-select 执行子 run 时 `ctx.call(kind="agent", target=sub_run_id)`；/trace 将子 run 树递归挂到该 span | pytest：group run 的 trace 含 agent 子树 |
 | E-3.4 | 首 token 耗时 | agent_metrics 从 RunEvent 首个 `llm_delta` 与 started_at 差值聚合 avg/p50；观测面板加卡 | pytest/浏览器卡可见 |
 
-## E-4 对话体验与画布补点（02/03/11）
+## E-4 对话体验与画布补点（02/03/11）✅ 2026-08-25 完成
+
+> 落地记录：预览消息复制/👍/👎（赞踩本地持久化+可取消）；rolePrompt `#` mention（挂载技能/插件/知识/记忆浮层，
+> 插入 #type:name，agent_runtime 组装 prompt 时展开为「引用资源：描述摘要」，含中文别名与无描述回落）；
+> 节点卡 ⋯「单测此节点」→ 输入 JSON → POST /node-test 展示 ✓输出/✗错误（E-1.3 已修该端点 FK 缺陷）。
+> 证据：97/97 pytest（test_prompt_mention_expansion）；scripts/check-e4.mjs 浏览器 6/6。
 
 | # | 条目 | 契约 | 验收 |
 | --- | --- | --- | --- |

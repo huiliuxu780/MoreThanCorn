@@ -148,6 +148,17 @@ function AutonomousBuilder({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
   const [invalid, setInvalid] = useState<string[]>([])
   const [generating, setGenerating] = useState(false)
   const [advOpen, setAdvOpen] = useState<string | null>(null)
+  /* E-4.2：rolePrompt 输入 # 唤起挂载资源选择，插入 #type:name token（运行时展开为描述摘要） */
+  const [mentionOpts, setMentionOpts] = useState<{ kind: string; name: string; token: string }[] | null>(null)
+  const buildMentionOpts = () => {
+    const opts: { kind: string; name: string; token: string }[] = []
+    const asName = (x: unknown): string | null => (typeof x === "string" ? x : ((x as { name?: string })?.name ?? null))
+    for (const s of (cfg.skills ?? []) as unknown[]) { const n = asName(s); if (n) opts.push({ kind: "技能", name: n, token: `#skill:${n}` }) }
+    for (const t of (cfg.tools ?? []) as unknown[]) { const n = asName(t); if (n) opts.push({ kind: "插件", name: n, token: `#tool:${n}` }) }
+    for (const k of (cfg.knowledges ?? []) as unknown[]) { const n = asName(k); if (n) opts.push({ kind: "知识", name: n, token: `#knowledge:${n}` }) }
+    for (const m of (cfg.memoriesSchema ?? []) as { name?: string }[]) { if (m?.name) opts.push({ kind: "记忆", name: m.name, token: `#memory:${m.name}` }) }
+    return opts
+  }
   const chatEndRef = useRef<HTMLDivElement>(null)
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [chat])
   useEffect(() => {
@@ -284,7 +295,30 @@ function AutonomousBuilder({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
                 }}><Sparkles className="size-3" />{generating ? "生成中…" : "AI 生成"}</button>
             </div>
           </div>
-          <Textarea className="min-h-40 text-xs" value={cfg.rolePrompt ?? ""} onChange={(e) => setCfg({ ...cfg, rolePrompt: e.target.value })} />
+          <div className="relative">
+            <Textarea className="min-h-40 text-xs" value={cfg.rolePrompt ?? ""}
+              onChange={(e) => {
+                const v = e.target.value
+                setCfg({ ...cfg, rolePrompt: v })
+                setMentionOpts(v.endsWith("#") ? buildMentionOpts() : null)
+              }}
+              placeholder="输入 # 引用已挂载的技能/插件/知识/记忆" />
+            {mentionOpts && (
+              <div className="absolute left-2 top-full z-10 mt-1 max-h-48 w-72 overflow-y-auto rounded-md border bg-white py-1 shadow-md" style={{ borderColor: CARD }}>
+                {mentionOpts.length === 0 && <div className="px-2 py-1 text-[11px]" style={{ color: INK3 }}>暂无已挂载资源（先在左侧添加）</div>}
+                {mentionOpts.map((o) => (
+                  <button key={o.token} className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs hover:bg-neutral-50"
+                    onClick={() => {
+                      setCfg({ ...cfg, rolePrompt: `${(cfg.rolePrompt ?? "").replace(/#$/, "")}${o.token} ` })
+                      setMentionOpts(null)
+                    }}>
+                    <span className="rounded bg-neutral-100 px-1 text-[10px]" style={{ color: INK2 }}>{o.kind}</span>
+                    <span>{o.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <div className="space-y-1">
           <Label className="text-xs">模型</Label>
@@ -405,12 +439,32 @@ function AutonomousBuilder({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
   )
 }
 
+/** E-4.1：预览消息赞踩（本地持久化，键=消息内容指纹）。 */
+const FEEDBACK_KEY = "wf-preview-feedback"
+function loadFeedback(): Record<string, "up" | "down"> {
+  try { return JSON.parse(localStorage.getItem(FEEDBACK_KEY) ?? "{}") } catch { return {} }
+}
+function msgFingerprint(text: string): string {
+  return `${text.length}:${text.slice(0, 48)}`
+}
+
 /** D-2：单列会话渲染（主模型与对比模型共用；语音播报仅主列）。 */
 function ChatColumn({ label, chat, greeting, speechOn, sendChat, chatEndRef }: {
   label?: string; chat: ChatMsg[]; greeting?: string; speechOn: boolean;
   sendChat: (q?: string) => void; chatEndRef?: React.RefObject<HTMLDivElement | null>
 }) {
   const prevDone = useRef(0)
+  /* E-4.1：复制/👍/👎 */
+  const [feedback, setFeedback] = useState<Record<string, "up" | "down">>(loadFeedback)
+  const react = (text: string, v: "up" | "down") => {
+    const key = msgFingerprint(text)
+    const next = { ...feedback }
+    if (next[key] === v) delete next[key]
+    else next[key] = v
+    setFeedback(next)
+    localStorage.setItem(FEEDBACK_KEY, JSON.stringify(next))
+    toast.success(next[key] === v ? (v === "up" ? "已点赞，感谢反馈" : "已点踩，我们会改进") : "已取消反馈")
+  }
   useEffect(() => {
     if (!speechOn || typeof speechSynthesis === "undefined") return
     const done = chat.filter((c) => c.role === "ai" && c.done && c.text)
@@ -436,6 +490,18 @@ function ChatColumn({ label, chat, greeting, speechOn, sendChat, chatEndRef }: {
               {c.fallback === "chitchat" && <span className="ml-1 rounded bg-white px-1 text-[10px]" style={{ color: INK3 }}>闲聊兜底</span>}
             </div>
             {c.role === "ai" && c.steps.length > 0 && <StepsBox msg={c} />}
+            {c.role === "ai" && c.done && c.text && !c.text.startsWith("❌") && (
+              <div className="flex items-center gap-2 pt-1 text-[10px]" style={{ color: INK3 }}>
+                <button className="hover:text-neutral-700" onClick={async () => {
+                  await navigator.clipboard.writeText(c.text)
+                  toast.success("已复制回答")
+                }}>复制</button>
+                <button className={feedback[msgFingerprint(c.text)] === "up" ? "text-blue-600" : "hover:text-neutral-700"}
+                  onClick={() => react(c.text, "up")}>👍</button>
+                <button className={feedback[msgFingerprint(c.text)] === "down" ? "text-red-500" : "hover:text-neutral-700"}
+                  onClick={() => react(c.text, "down")}>👎</button>
+              </div>
+            )}
             {c.role === "ai" && c.done && (c.followUps ?? []).length > 0 && (
               <div className="flex flex-wrap gap-1 pt-1">
                 {c.followUps!.map((f, k) => (

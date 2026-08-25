@@ -188,6 +188,38 @@ def _build_tools(db: Session, cfg: dict) -> tuple[list[dict], dict, dict]:
 
 # ---------- autonomous 循环 ----------
 
+_MENTION_RE = __import__("re").compile(r"#(skill|tool|knowledge|memory|workflow|技能|插件|知识|记忆):([^\s#]+)")
+
+
+def _expand_mentions(db: Session, text: str, cfg: dict) -> str:
+    """E-4.2：rolePrompt 里的 `#type:名称` token 展开为资源描述摘要。"""
+    if "#" not in text:
+        return text
+    kind_alias = {"技能": "skill", "插件": "tool", "知识": "knowledge", "记忆": "memory"}
+
+    def repl(m) -> str:
+        kind = kind_alias.get(m.group(1), m.group(1))
+        name = m.group(2)
+        desc = ""
+        try:
+            if kind == "tool":
+                t = db.query(Tool).filter_by(name=name).first()
+                desc = (t.description if t else "") or ""
+            elif kind == "knowledge":
+                k = db.query(KnowledgeSource).filter_by(name=name).first()
+                desc = (k.description if k else "") or ""
+            elif kind == "memory":
+                entry = next((x for x in (cfg.get("memoriesSchema") or []) if x.get("name") == name), None)
+                desc = (entry or {}).get("description", "") or ""
+            elif kind == "skill":
+                desc = name if name in (cfg.get("skills") or []) else ""
+        except Exception:  # noqa: BLE001
+            desc = ""
+        return f"[引用资源 {name}：{str(desc)[:200] or '无描述'}]"
+
+    return _MENTION_RE.sub(repl, text)
+
+
 def _autonomous_loop(db: Session, agent, run: Run, run_input: dict, call_chain: list[str]) -> None:
     cfg = agent.config or {}
     from .agent_release import build_common_config_dict
@@ -195,7 +227,9 @@ def _autonomous_loop(db: Session, agent, run: Run, run_input: dict, call_chain: 
     common = cfg.get("__common") or build_common_config_dict(cfg)
     ctx = _Ctx(db, run, run_input, call_chain)
     skills = cfg.get("skills", []) or []
-    system = (cfg.get("rolePrompt") or "") + "\n## 挂载技能\n" + "\n".join(f"- {s}" for s in skills)
+    # E-4.2：# mention 展开为资源描述摘要（无 token 时原样）
+    system = _expand_mentions(db, cfg.get("rolePrompt") or "", cfg) \
+        + "\n## 挂载技能\n" + "\n".join(f"- {s}" for s in skills)
     memories_declared = common.get("memories") or []
     if memories_declared:
         # R1 修复：description 一并注入（此前只写不读）

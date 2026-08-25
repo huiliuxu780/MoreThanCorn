@@ -179,3 +179,23 @@ def test_agent_metrics_first_token():
     ft = m.get("firstToken")
     assert isinstance(ft, dict) and {"avgMs", "p50Ms", "samples"} <= set(ft), ft
     assert ft["samples"] >= 1 and ft["avgMs"] is not None and ft["avgMs"] >= 0, ft
+
+
+def test_prompt_mention_expansion():
+    """E-4.2：rolePrompt 的 #tool:名称 token 在组装 prompt 时展开为资源描述摘要。"""
+    from app.agent_runtime import _expand_mentions
+    from app.db import SessionLocal
+    from app.models import Tool
+
+    db = SessionLocal()
+    t = Tool(name=f"提及工具{T}", description="用于验收提及展开的测试工具", kind="builtin")
+    db.add(t)
+    db.commit()
+    text = f"你可以使用 #tool:提及工具{T} 完成任务，也可以用 #技能:检索"
+    out = _expand_mentions(db, text, {"skills": ["检索"]})
+    assert f"[引用资源 提及工具{T}：用于验收提及展开的测试工具]" in out
+    assert "[引用资源 检索：检索]" in out
+    assert "#tool:" not in out
+    db.delete(t)
+    db.commit()
+    db.close()

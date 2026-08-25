@@ -179,6 +179,7 @@ interface WfNodeData extends Record<string, unknown> {
   issues: ValidationIssue[]
   run?: "running" | "success" | "failed" | "skipped"
   onRunNode?: (id: string) => void
+  onTestNode?: (id: string) => void  // E-4.3：单测此节点
   onDelete?: (id: string) => void
 }
 
@@ -293,7 +294,10 @@ function WfNodeCard({ data, selected }: NodeProps) {
                   <MoreHorizontal className="size-2.5 text-neutral-500" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-24 p-1">
+              <PopoverContent className="w-28 p-1">
+                <button className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-neutral-50" style={{ color: C.ink }} onClick={() => d.onTestNode?.(n.id)}>
+                  单测此节点
+                </button>
                 <button className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-neutral-50" style={{ color: C.danger }} onClick={() => d.onDelete?.(n.id)}>
                   删除节点
                 </button>
@@ -1500,6 +1504,23 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const [lastRunId, setLastRunId] = useState<string | null>(null)
   const [publishOpen, setPublishOpen] = useState(false)
   const [agentPublishOpen, setAgentPublishOpen] = useState(false)
+  /* E-4.3：节点单测（⋯菜单 → 填 mock 输入 → 后端执行单节点，不落 Run） */
+  const [testNodeId, setTestNodeId] = useState<string | null>(null)
+  const [testInput, setTestInput] = useState("{}")
+  const [testBusy, setTestBusy] = useState(false)
+  const [testResult, setTestResult] = useState<{ ok: boolean; output?: unknown; error?: string; durationMs?: number } | null>(null)
+  const runNodeTest = async () => {
+    if (!testNodeId) return
+    let input: Record<string, unknown>
+    try { input = JSON.parse(testInput || "{}") } catch { toast.error("输入 JSON 非法"); return }
+    setTestBusy(true); setTestResult(null)
+    try {
+      const r = await wfApi.nodeTest(workflowId, testNodeId, input)
+      setTestResult(r)
+    } catch (e) {
+      setTestResult({ ok: false, error: (e as Error).message.replace(/^\d+:\s*/, "").replace(/^"|"$/g, "") })
+    } finally { setTestBusy(false) }
+  }
   const rbacCanPublish = rbac.can("agent.publish")  // D-4：发布门禁
   /* SDD B：Agent 级版本/部署状态（agentMeta 模式的徽标与发布对话框） */
   const agentVersionState = useAgentVersionState(agentMeta && agentId ? agentId : undefined)
@@ -1629,6 +1650,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
       issues: issues.filter((i) => i.nodeId === n.id),
       run: runState[n.id],
       onRunNode: (id: string) => demoRun([id]),
+      onTestNode: (id: string) => setTestNodeId(id),  // E-4.3
       onDelete: (id: string) => {
         const d2 = defRef.current!
         mutate({ ...d2, graph: { nodes: d2.graph.nodes.filter((x) => x.id !== id), edges: d2.graph.edges.filter((e) => e.source !== id && e.target !== id) } })
@@ -2129,6 +2151,31 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
           versions={agentVersions.map((v) => ({ versionId: v.versionId, versionNo: v.versionNo }))}
           defaultLeft={diffVersion ?? undefined} defaultRight="draft" />
       )}
+
+      {/* E-4.3：节点单测对话框 */}
+      <Dialog open={!!testNodeId} onOpenChange={(o) => { if (!o) { setTestNodeId(null); setTestResult(null); setTestInput("{}") } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>单测节点：{def?.graph.nodes.find((n) => n.id === testNodeId)?.name ?? testNodeId}</DialogTitle>
+            <DialogDescription>填入该节点的输入（JSON，键=输入名），单独执行不落 Run、不记事件。</DialogDescription>
+          </DialogHeader>
+          <Textarea className="min-h-24 font-mono text-xs" value={testInput} onChange={(e) => setTestInput(e.target.value)}
+            placeholder='{ "text": "你好" }' />
+          {testResult && (
+            <div className={`max-h-48 overflow-auto rounded-md border p-2 font-mono text-[11px] ${testResult.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-600"}`}>
+              {testResult.ok
+                ? <>✓ 输出：{JSON.stringify(testResult.output ?? null)}（{testResult.durationMs ?? 0}ms）</>
+                : <>✗ {testResult.error}</>}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setTestNodeId(null); setTestResult(null); setTestInput("{}") }}>关闭</Button>
+            <Button className="bg-black text-white hover:bg-neutral-800" disabled={testBusy} onClick={runNodeTest}>
+              {testBusy ? "执行中…" : "执行单测"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

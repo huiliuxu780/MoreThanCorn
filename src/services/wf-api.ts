@@ -126,6 +126,10 @@ export const wfApi = {
       { method: "PUT", body: JSON.stringify({ definition, baseRevision }) },
     ),
   validate: (id: string) => req<ValidationReport>(`/api/workflows/${id}/validation`),
+  /** E-4.3：节点单测（用给定输入执行单节点执行器，不落 Run/事件） */
+  nodeTest: (id: string, nodeId: string, input: Record<string, unknown>) =>
+    req<{ ok: boolean; output?: unknown; error?: string; durationMs?: number }>(
+      `/api/workflows/${id}/node-test`, { method: "POST", body: JSON.stringify({ nodeId, input }) }),
   publish: (id: string, note = "") =>
     req<{ versionId: string; versionNo: number }>(
       `/api/workflows/${id}/publish?note=${encodeURIComponent(note)}`,
