@@ -62,7 +62,7 @@ def _resolve_base_secret(db: Session, model_key: str) -> tuple[str, str]:
 
 
 def _chat_completion(db: Session, model_key: str, messages: list[dict], tools: list[dict],
-                     on_delta=None) -> dict:
+                     on_delta=None, temperature: float = 0.7) -> dict:
     """返回 {"content": str|None, "tool_calls": [{"name","args"}]}。
     on_delta 提供时走流式（SDD B-08），逐块回调文本增量；mock 模式整段一次回调。"""
     base, secret = _resolve_base_secret(db, model_key)
@@ -76,7 +76,7 @@ def _chat_completion(db: Session, model_key: str, messages: list[dict], tools: l
         if on_delta:
             on_delta(content)
         return {"content": content, "tool_calls": []}
-    body = {"model": model_key, "messages": messages}
+    body = {"model": model_key, "messages": messages, "temperature": temperature}
     if tools:
         body["tools"] = tools
     if on_delta is None:
@@ -217,12 +217,27 @@ def _autonomous_loop(db: Session, agent, run: Run, run_input: dict, call_chain: 
         emit(db, run.id, "agent_completed", payload={"content": answer[:2000], "fallback": "chitchat"})
         return
 
-    messages = [{"role": "system", "content": system},
-                {"role": "user", "content": json.dumps(run_input, ensure_ascii=False)}]
+    # D-2：历史轮次真消费——预览传入 chatHistory，按 historyTurns 裁剪
+    model_ref = cfg.get("modelRef") or {}
+    history_turns = int(model_ref.get("historyTurns") or 5)
+    messages = [{"role": "system", "content": system}]
+    chat_history = run_input.get("chatHistory") or []
+    if isinstance(chat_history, list):
+        for turn in chat_history[-history_turns:]:
+            if isinstance(turn, dict):
+                if turn.get("user"):
+                    messages.append({"role": "user", "content": str(turn["user"])[:2000]})
+                if turn.get("ai"):
+                    messages.append({"role": "assistant", "content": str(turn["ai"])[:2000]})
+    user_msg = {k: v for k, v in run_input.items() if k not in ("chatHistory", "__modelOverride")}
+    messages.append({"role": "user", "content": json.dumps(user_msg, ensure_ascii=False)})
     tools, meta, resolved = _build_tools(db, cfg)
     # SDD A-09：挂载解析留痕（含失效项），运行可审计实际用到的资源与版本
     emit(db, run.id, "agent_mounts_resolved", payload=resolved)
-    model = (cfg.get("modelRef") or {}).get("modelId") or "qwen-plus"
+    # D-2：模型对比覆盖 + 生成多样性→temperature 真消费
+    model = str(run_input.get("__modelOverride") or "") or model_ref.get("modelId") or "qwen-plus"
+    temperature = {"rigorous": 0.2, "balanced": 0.7, "creative": 1.1}.get(
+        str(model_ref.get("diversity") or "balanced"), 0.7)
     declared_keys = {m.get("name") for m in memories_declared}
     memory: dict[str, str] = {}
     t0 = time.time()
@@ -230,7 +245,8 @@ def _autonomous_loop(db: Session, agent, run: Run, run_input: dict, call_chain: 
     while steps < MAX_STEPS and (time.time() - t0) < MAX_SECONDS:
         steps += 1
         resp = _chat_completion(db, model, messages, tools,
-                                on_delta=lambda d: emit(db, run.id, "llm_delta", payload={"delta": d}))
+                                on_delta=lambda d: emit(db, run.id, "llm_delta", payload={"delta": d}),
+                                temperature=temperature)
         if not resp["tool_calls"]:
             content = resp["content"] or ""
             output = {"content": content}

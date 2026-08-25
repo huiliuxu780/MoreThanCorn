@@ -138,6 +138,10 @@ function AutonomousBuilder({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
   const [revision, setRevision] = useState(agent.configRevision ?? 1)
   const [models, setModels] = useState<{ modelKey: string }[]>([])
   const [chat, setChat] = useState<ChatMsg[]>([])
+  // D-2：模型对比——第二个模型与其独立会话流（会话级配置，不进版本）
+  const [compareModel, setCompareModel] = useState<string | null>(null)
+  const [chat2, setChat2] = useState<ChatMsg[]>([])
+  const [speechOn, setSpeechOn] = useState(false)
   const [q, setQ] = useState("")
   const [running, setRunning] = useState(false)
   const [invalid, setInvalid] = useState<string[]>([])
@@ -173,24 +177,48 @@ function AutonomousBuilder({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
   const sendChat = async (question?: string) => {
     const query = (question ?? q).trim()
     if (!query || running) return
+    // D-2：历史轮次——把已有对话整理为 turns 传给后端（按 historyTurns 裁剪）
+    const turns: { user: string; ai: string }[] = []
+    for (let i = 0; i < chat.length; i++) {
+      if (chat[i].role === "user" && chat[i + 1]?.role === "ai") {
+        turns.push({ user: chat[i].text, ai: chat[i + 1].text })
+      }
+    }
     setChat((c) => [...c, { role: "user", text: query, steps: [], done: true },
                      { role: "ai", text: "", steps: [], done: false }])
+    if (compareModel) {
+      setChat2((c) => [...c, { role: "user", text: query, steps: [], done: true },
+                       { role: "ai", text: "", steps: [], done: false }])
+    }
     setQ(""); setRunning(true)
     const aiIdx = chat.length + 1
     const patchAi = (patch: Partial<ChatMsg> | ((m: ChatMsg) => Partial<ChatMsg>)) =>
       setChat((c) => c.map((m, i) => (i === aiIdx ? { ...m, ...(typeof patch === "function" ? patch(m) : patch) } : m)))
-    try {
-      const { runId } = await agentApi.run(agent.id, { userQuery: query })
-      await streamRunEvents(runId, (ev) => {
-        if (ev.type === "llm_delta") patchAi((m) => ({ text: m.text + (ev.payload.delta ?? "") }))
-        if (ev.type === "tool_call") patchAi((m) => ({ steps: [...m.steps, `🔧 调用 ${ev.payload.name}`] }))
-        if (ev.type === "tool_result") patchAi((m) => ({ steps: [...m.steps, `↩ ${String(ev.payload.result ?? "").slice(0, 120)}`] }))
-        if (ev.type === "agent_mounts_resolved" && (ev.payload.missing ?? []).length > 0)
-          patchAi((m) => ({ steps: [...m.steps, `⚠ 失效挂载：${ev.payload.missing.map((x: any) => x.name).join("、")}`] }))
-        if (ev.type === "agent_completed") patchAi({ done: true, followUps: ev.payload.followUps, fallback: ev.payload.fallback })
-        if (ev.type === "agent_failed") patchAi((m) => ({ done: true, text: m.text || `❌ ${ev.payload.error ?? "运行失败"}` }))
+    const runOne = async (overrideModel: string | null, patch: typeof patchAi) => {
+      const { runId } = await agentApi.run(agent.id, {
+        userQuery: query, chatHistory: turns,
+        ...(overrideModel ? { __modelOverride: overrideModel } : {}),
       })
-      setChat((c) => c.map((m, i) => (i === aiIdx ? { ...m, done: true } : m)))
+      await streamRunEvents(runId, (ev) => {
+        if (ev.type === "llm_delta") patch((m) => ({ text: m.text + (ev.payload.delta ?? "") }))
+        if (ev.type === "tool_call") patch((m) => ({ steps: [...m.steps, `🔧 调用 ${ev.payload.name}`] }))
+        if (ev.type === "tool_result") patch((m) => ({ steps: [...m.steps, `↩ ${String(ev.payload.result ?? "").slice(0, 120)}`] }))
+        if (ev.type === "agent_mounts_resolved" && (ev.payload.missing ?? []).length > 0)
+          patch((m) => ({ steps: [...m.steps, `⚠ 失效挂载：${ev.payload.missing.map((x: any) => x.name).join("、")}`] }))
+        if (ev.type === "agent_completed") patch({ done: true, followUps: ev.payload.followUps, fallback: ev.payload.fallback })
+        if (ev.type === "agent_failed") patch((m) => ({ done: true, text: m.text || `❌ ${ev.payload.error ?? "运行失败"}` }))
+      })
+      patch(() => ({ done: true }))
+    }
+    try {
+      const aiIdx2 = chat2.length + 1
+      const patchAi2 = (patch: Partial<ChatMsg> | ((m: ChatMsg) => Partial<ChatMsg>)) =>
+        setChat2((c) => c.map((m, i) => (i === aiIdx2 ? { ...m, ...(typeof patch === "function" ? patch(m) : patch) } : m)))
+      if (compareModel) {
+        await Promise.all([runOne(null, patchAi), runOne(compareModel, patchAi2)])
+      } else {
+        await runOne(null, patchAi)
+      }
     } catch (e) {
       patchAi((m) => ({ done: true, text: m.text || `❌ ${(e as Error).message}` }))
     } finally {
@@ -266,6 +294,40 @@ function AutonomousBuilder({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
             </SelectContent>
           </Select>
         </div>
+        {/* D-2：模型语义参数（多样性→temperature、历史轮次、工具调用辅助模型，后端真消费） */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="space-y-1">
+            <Label className="text-[11px]">生成多样性</Label>
+            <Select value={cfg.modelRef?.diversity ?? "balanced"} onValueChange={(v) => setCfg({ ...cfg, modelRef: { ...cfg.modelRef, diversity: v } })}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="rigorous">严谨</SelectItem>
+                <SelectItem value="balanced">平衡</SelectItem>
+                <SelectItem value="creative">创意</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-[11px]">历史轮次</Label>
+            <Select value={String(cfg.modelRef?.historyTurns ?? 5)} onValueChange={(v) => setCfg({ ...cfg, modelRef: { ...cfg.modelRef, historyTurns: Number(v) } })}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">较少（1）</SelectItem>
+                <SelectItem value="5">适中（5）</SelectItem>
+                <SelectItem value="15">较多（15）</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-[11px]">工具调用辅助模型</Label>
+            <Select value={cfg.modelRef?.toolCallModelId || undefined} onValueChange={(v) => setCfg({ ...cfg, modelRef: { ...cfg.modelRef, toolCallModelId: v } })}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="默认同主模型" /></SelectTrigger>
+              <SelectContent>
+                {models.map((m) => <SelectItem key={m.modelKey} value={m.modelKey}>{m.modelKey}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1">
             <div className="text-xs" style={{ color: INK2 }}>技能说明（注入提示词的文本）</div>
@@ -303,33 +365,32 @@ function AutonomousBuilder({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
         </div>
         <Button size="sm" className="bg-black text-white hover:bg-neutral-800" onClick={save}>保存</Button>
       </div>
-      <div className="flex w-[360px] max-w-[92vw] flex-col border-l bg-white" style={{ borderColor: CARD }}>
-        <div className="flex items-center justify-between px-4 py-3">
+      <div className={`flex ${compareModel ? "w-[560px]" : "w-[360px]"} max-w-[92vw] flex-col border-l bg-white`} style={{ borderColor: CARD }}>
+        <div className="flex items-center justify-between gap-2 px-4 py-3">
           <span className="text-[15px] font-semibold" style={{ color: INK }}>预览调试（流式）</span>
-          {chat.length > 0 && <button className="text-[11px]" style={{ color: INK3 }} onClick={() => setChat([])}>清空</button>}
+          <div className="flex items-center gap-2">
+            {/* D-2：模型对比（会话级，不进版本；调研 02 §3 / 07 §2） */}
+            <Select value={compareModel ?? undefined} onValueChange={(v) => { setCompareModel(v); setChat2([]) }}>
+              <SelectTrigger className="h-7 w-40 text-[11px]"><SelectValue placeholder="添加对比模型" /></SelectTrigger>
+              <SelectContent>
+                {models.filter((m) => m.modelKey !== cfg.modelRef?.modelId).map((m) => (
+                  <SelectItem key={m.modelKey} value={m.modelKey}>{m.modelKey}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {compareModel && <button className="text-[11px]" style={{ color: INK3 }} onClick={() => { setCompareModel(null); setChat2([]) }}>移除对比</button>}
+            <button className="text-[11px]" style={{ color: speechOn ? "#3D6BFF" : INK3 }} onClick={() => setSpeechOn(!speechOn)} title="语音播报（浏览器合成）">🔊{speechOn ? "开" : "关"}</button>
+            {(chat.length > 0) && <button className="text-[11px]" style={{ color: INK3 }} onClick={() => { setChat([]); setChat2([]) }}>清空</button>}
+          </div>
         </div>
-        <div className="flex-1 space-y-2 overflow-y-auto px-4">
-          {chat.length === 0 && greeting && (
-            <div className="max-w-[92%] rounded-md bg-neutral-100 px-2 py-1 text-xs">{greeting}</div>
-          )}
-          {chat.map((c, i) => (
-            <div key={i} className={c.role === "user" ? "ml-auto w-fit max-w-[85%]" : "w-full max-w-[92%]"}>
-              <div className={`rounded-md px-2 py-1 text-xs ${c.role === "user" ? "bg-neutral-900 text-white" : "bg-neutral-100"}`}>
-                {c.text || (!c.done ? "…" : "")}
-                {c.fallback === "chitchat" && <span className="ml-1 rounded bg-white px-1 text-[10px]" style={{ color: INK3 }}>闲聊兜底</span>}
-              </div>
-              {c.role === "ai" && c.steps.length > 0 && <StepsBox msg={c} />}
-              {c.role === "ai" && c.done && (c.followUps ?? []).length > 0 && (
-                <div className="flex flex-wrap gap-1 pt-1">
-                  {c.followUps!.map((f, k) => (
-                    <button key={k} className="rounded-full border px-2 py-0.5 text-[10px] hover:bg-neutral-50"
-                      style={{ borderColor: CARD, color: "#3D6BFF" }} onClick={() => sendChat(f)}>{f}</button>
-                  ))}
-                </div>
-              )}
+        <div className={`grid min-h-0 flex-1 ${compareModel ? "grid-cols-2" : "grid-cols-1"}`}>
+          <ChatColumn label={compareModel ? `主模型 ${cfg.modelRef?.modelId ?? ""}` : undefined}
+            chat={chat} greeting={greeting} speechOn={speechOn} sendChat={sendChat} chatEndRef={chatEndRef} />
+          {compareModel && (
+            <div className="border-l" style={{ borderColor: CARD }}>
+              <ChatColumn label={`对比 ${compareModel}`} chat={chat2} greeting={greeting} speechOn={false} sendChat={sendChat} />
             </div>
-          ))}
-          <div ref={chatEndRef} />
+          )}
         </div>
         <div className="flex gap-1 p-3">
           <Input className="h-8 text-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder="说出你的问题吧"
@@ -338,6 +399,53 @@ function AutonomousBuilder({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
             <Send className="size-3" />{running ? "运行中" : ""}
           </Button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/** D-2：单列会话渲染（主模型与对比模型共用；语音播报仅主列）。 */
+function ChatColumn({ label, chat, greeting, speechOn, sendChat, chatEndRef }: {
+  label?: string; chat: ChatMsg[]; greeting?: string; speechOn: boolean;
+  sendChat: (q?: string) => void; chatEndRef?: React.RefObject<HTMLDivElement | null>
+}) {
+  const prevDone = useRef(0)
+  useEffect(() => {
+    if (!speechOn || typeof speechSynthesis === "undefined") return
+    const done = chat.filter((c) => c.role === "ai" && c.done && c.text)
+    if (done.length > prevDone.current) {
+      const newest = done[done.length - 1]
+      if (newest.text && !newest.text.startsWith("❌")) {
+        try { speechSynthesis.speak(new SpeechSynthesisUtterance(newest.text.slice(0, 500))) } catch { /* 无可用语音引擎时忽略 */ }
+      }
+    }
+    prevDone.current = done.length
+  }, [chat, speechOn])
+  return (
+    <div className="flex min-h-0 flex-col">
+      {label && <div className="border-b px-3 py-1.5 text-[11px] font-medium" style={{ borderColor: CARD, color: INK2 }}>{label}</div>}
+      <div className="flex-1 space-y-2 overflow-y-auto px-3 py-2">
+        {chat.length === 0 && greeting && (
+          <div className="max-w-[92%] rounded-md bg-neutral-100 px-2 py-1 text-xs">{greeting}</div>
+        )}
+        {chat.map((c, i) => (
+          <div key={i} className={c.role === "user" ? "ml-auto w-fit max-w-[85%]" : "w-full max-w-[92%]"}>
+            <div className={`rounded-md px-2 py-1 text-xs ${c.role === "user" ? "bg-neutral-900 text-white" : "bg-neutral-100"}`}>
+              {c.text || (!c.done ? "…" : "")}
+              {c.fallback === "chitchat" && <span className="ml-1 rounded bg-white px-1 text-[10px]" style={{ color: INK3 }}>闲聊兜底</span>}
+            </div>
+            {c.role === "ai" && c.steps.length > 0 && <StepsBox msg={c} />}
+            {c.role === "ai" && c.done && (c.followUps ?? []).length > 0 && (
+              <div className="flex flex-wrap gap-1 pt-1">
+                {c.followUps!.map((f, k) => (
+                  <button key={k} className="rounded-full border px-2 py-0.5 text-[10px] hover:bg-neutral-50"
+                    style={{ borderColor: CARD, color: "#3D6BFF" }} onClick={() => sendChat(f)}>{f}</button>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+        {chatEndRef && <div ref={chatEndRef} />}
       </div>
     </div>
   )
