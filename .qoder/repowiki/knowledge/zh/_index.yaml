@@ -3,7 +3,7 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-08-25T02:47:26Z"
+exported_at: "2026-08-25T04:17:40Z"
 modules:
     "":
         dir_name: AI 质量评价与工作流编排平台（单体仓库）
@@ -29,8 +29,8 @@ modules:
         depends_on: []
         related_to: []
     backend_service:
-        dir_name: 后端服务（FastAPI 工作流编排与 Agent 运行时）
-        title: 后端服务（FastAPI 工作流编排与 Agent 运行时）
+        dir_name: 后端服务（FastAPI + SQLAlchemy + Alembic）
+        title: 后端服务（FastAPI + SQLAlchemy + Alembic）
         scope:
             - server/
         source_files: []
@@ -89,8 +89,8 @@ modules:
             - path: frontend_app/tasks_feature
             - path: scripts_and_e2e
     docs_and_design:
-        dir_name: 轻量 Workflow 系统调研与资源管理 UI_UX 设计文档集
-        title: 轻量 Workflow 系统调研与资源管理 UI/UX 设计文档集
+        dir_name: 设计研究与 UI_UX 原型文档集
+        title: 设计研究与 UI/UX 原型文档集
         scope:
             - docs/
             - uiux/
@@ -155,8 +155,8 @@ modules:
         depends_on: []
         related_to: []
     frontend_app/quality_feature:
-        dir_name: 坐席质量复核工作台（总览_列表_详情）
-        title: 坐席质量复核工作台（总览/列表/详情）
+        dir_name: 坐席质量结果总览与复核工作台
+        title: 坐席质量结果总览与复核工作台
         scope:
             - src/pages/quality-overview.tsx
             - src/pages/quality-result-detail.tsx
@@ -179,8 +179,8 @@ modules:
         depends_on: []
         related_to: []
     frontend_app/services_and_mocks:
-        dir_name: 服务层与 Mock 数据（质检_工作流_资源管理）
-        title: 服务层与 Mock 数据（质检/工作流/资源管理）
+        dir_name: 质检与工作流服务层及 Mock 数据
+        title: 质检与工作流服务层及 Mock 数据
         scope:
             - src/services/
             - src/mocks/
@@ -190,8 +190,8 @@ modules:
         related_to:
             - path: backend_service/workflows_routers
     frontend_app/shared_layers:
-        dir_name: 共享 Hooks、工具库与领域类型定义
-        title: 共享 Hooks、工具库与领域类型定义
+        dir_name: 前端共享层：Hooks、工具函数与领域类型
+        title: 前端共享层：Hooks、工具函数与领域类型
         scope:
             - src/hooks/
             - src/lib/
@@ -201,8 +201,8 @@ modules:
         depends_on: []
         related_to: []
     frontend_app/tasks_feature:
-        dir_name: AnalysisTask 任务管理页面（列表_详情_编辑_向导）
-        title: AnalysisTask 任务管理页面（列表/详情/编辑/向导）
+        dir_name: 分析任务（AnalysisTask）CRUD 与向导创建页面
+        title: 分析任务（AnalysisTask）CRUD 与向导创建页面
         scope:
             - src/pages/tasks.tsx
             - src/pages/task-detail.tsx

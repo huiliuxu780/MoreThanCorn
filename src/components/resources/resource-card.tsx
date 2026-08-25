@@ -59,6 +59,7 @@ function MetaBadges({ dto }: { dto: ResourceDTO }) {
     case "workflow":
       if (m.currentVersion) items.push({ text: `v${m.currentVersion}`, outline: true })
       items.push({ text: `${m.nodeCount ?? 0} 节点` })
+      if (m.boundAgent) items.push({ text: "Agent 画布" })
       break
     case "agent":
       if (m.typeLabel) items.push({ text: String(m.typeLabel) })

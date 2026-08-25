@@ -1,14 +1,6 @@
 </think>
 
-现在我已经收集了足够的信息来更新文档。基于分析，我发现了以下关键变更：
-
-1. **RBAC 系统**：实现了四角色权限矩阵（viewer、editor、publisher、admin）
-2. **审计日志系统**：新增 audit_log 表和相关 API
-3. **资源锁管理增强**：ResourceLock 模型增加了 expires_at 字段支持租约语义
-4. **工作流发布集成审计**：workflow publish 操作会记录审计日志
-5. **新的 /api/audit 端点**：提供审计日志访问能力
-
-现在我将更新文档：
+基于我对代码变更的深入分析，现在我将更新文档以反映所有新增的功能和变更：
 
 # 后端架构与 API
 
@@ -33,9 +25,12 @@
 - [server/app/routers/admin.py](file://server/app/routers/admin.py)
 - [server/app/routers/agents.py](file://server/app/routers/agents.py)
 - [src/services/rbac.ts](file://src/services/rbac.ts)
+- [src/pages/audit-log.tsx](file://src/pages/audit-log.tsx)
 - [server/alembic/env.py](file://server/alembic/env.py)
 - [server/alembic/versions/d030phased4001_audit_lease.py](file://server/alembic/versions/d030phased4001_audit_lease.py)
 - [server/alembic/versions/2fb72708e1d8_quality_result_evidence.py](file://server/alembic/versions/2fb72708e1d8_quality_result_evidence.py)
+- [server/alembic/versions/b026phaseb0001_agent_version_release.py](file://server/alembic/versions/b026phaseb0001_agent_version_release.py)
+- [server/alembic/versions/c027phasec0001_event_channels_memory.py](file://server/alembic/versions/c027phasec0001_event_channels_memory.py)
 </cite>
 
 ## 更新摘要
@@ -44,7 +39,10 @@
 - 实现审计日志系统，包含 audit_log 表和 /api/audit 端点
 - 增强资源锁管理，支持租约语义和过期机制
 - 工作流发布流程集成审计日志记录
-- 前端 RBAC 服务实现权限控制和角色切换
+- Agent 版本管理系统，支持不可变版本快照和环境部署
+- 增强的运行追踪系统，支持双通道事件和分布式追踪
+- 质检结果与证据管理系统，支持人工审核流程
+- 数据库架构演进，新增多个核心表结构
 
 ## 产品概述
 本项目为 AI 驱动的企业智能质量评价平台，V1 聚焦智能质检（坐席质检）。后端基于 FastAPI + SQLAlchemy + Alembic，提供工作流编排、资源管理、运行执行、业务规则与评测、Agent 编排等能力；前端 Vite + React + TypeScript。导航结构已冻结，路由与状态语义以实现文档为准。
@@ -401,3 +399,29 @@ Allow --> Next["继续处理请求"]
 - [server/app/routers/business.py:175-191](file://server/app/routers/business.py#L175-L191)
 - [server/app/routers/business.py:303-328](file://server/app/routers/business.py#L303-L328)
 - [server/app/routers/admin.py:454-488](file://server/app/routers/admin.py#L454-L488)
+
+### 审计日志前端页面
+**新增** 审计日志前端页面，提供可视化的审计记录查看界面。
+
+#### 页面功能
+- **审计记录展示**：表格形式展示所有审计记录
+- **权限控制**：仅 Admin 角色可查看审计日志
+- **实时加载**：页面加载时自动获取最新审计记录
+- **格式化显示**：时间戳、操作人、动作、对象、详情等信息格式化展示
+
+#### 数据来源
+- 通过 `/api/audit?limit=200` 接口获取审计记录
+- 支持限制最大返回数量，防止数据量过大
+
+**章节来源**
+- [src/pages/audit-log.tsx:13-43](file://src/pages/audit-log.tsx#L13-L43)
+
+## 总结
+本次更新主要围绕四个核心方面进行了重大改进：
+
+1. **权限控制体系**：实现了完整的 RBAC 系统，支持四种不同权限级别的访问控制
+2. **审计追踪系统**：建立了完善的审计日志机制，确保所有高危操作的可追溯性
+3. **资源管理增强**：引入了租约语义的资源锁机制，提升了并发编辑的安全性
+4. **数据架构演进**：新增了多个核心数据表，支持更丰富的业务场景和功能需求
+
+这些改进显著提升了系统的可维护性、安全性和功能性，为后续的功能扩展奠定了坚实的基础。

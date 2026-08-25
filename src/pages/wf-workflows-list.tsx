@@ -102,6 +102,7 @@ export default function WfWorkflowsPage() {
                   lifecycleTone: w.status === "published" ? "success" : "warning",
                   currentVersion: w.versionCount || undefined,
                   nodeCount: w.nodeCount ?? 0,
+                  boundAgent: (w.agentRefCount ?? 0) > 0,
                 },
                 usage: { refCount: w.agentRefCount ?? 0, calls7d: 0 },
                 updatedAt: w.updatedAt,
