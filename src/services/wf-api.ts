@@ -329,9 +329,22 @@ export const agentApi = {
   addEvalSample: (id: string, name: string, input: Record<string, unknown>) =>
     req<{ id: string }>(`/api/agents/${id}/eval-samples`, { method: "POST", body: JSON.stringify({ name, input }) }),
   delEvalSample: (sampleId: string) => req<{ ok: boolean }>(`/api/eval-samples/${sampleId}`, { method: "DELETE" }),
-  evalRun: (id: string) =>
-    req<{ total: number; succeeded: number; results: { sampleId: string; name: string; runId?: string; status: string; durationMs?: number | null; output?: string; error?: string | null }[] }>(
-      `/api/agents/${id}/eval-run`, { method: "POST", body: "{}" }),
+  evalRun: (id: string, judge: "none" | "rule" | "model" = "none") =>
+    req<{ total: number; succeeded: number; results: { sampleId: string; name: string; runId?: string; status: string; durationMs?: number | null; output?: string; judge?: { kind: string; score: number; passed?: boolean; note?: string } | null; error?: string | null }[] }>(
+      `/api/agents/${id}/eval-run`, { method: "POST", body: JSON.stringify({ judge }) }),
+  humanScore: (id: string, sampleId: string, score: number, note = "") =>
+    req<{ id: string; judge: unknown }>(`/api/agents/${id}/eval-samples/${sampleId}/human-score`,
+      { method: "POST", body: JSON.stringify({ score, note }) }),
+  /* ---------- SDD D-3：进化（失败归因→候选补丁→审批应用） ---------- */
+  evolutionCandidates: (id: string) =>
+    req<{ id: string; attribution: string; basePrompt: string; proposedPrompt: string; status: string }>(
+      `/api/agents/${id}/evolution/candidates`, { method: "POST", body: "{}" }),
+  evolutionList: (id: string) =>
+    req<{ id: string; attribution: string; reason: string; status: string; createdAt: string }[]>(`/api/agents/${id}/evolution`),
+  evolutionApply: (id: string, patchId: string) =>
+    req<{ id: string; status: string; configRevision: number }>(`/api/agents/${id}/evolution/${patchId}/apply`, { method: "POST", body: "{}" }),
+  evolutionReject: (id: string, patchId: string) =>
+    req<{ id: string; status: string }>(`/api/agents/${id}/evolution/${patchId}/reject`, { method: "POST", body: "{}" }),
   generatePrompt: (name: string, hint: string) =>
     req<{ prompt: string }>("/api/agents/generate-prompt", { method: "POST", body: JSON.stringify({ name, hint }) }),
 }

@@ -296,12 +296,14 @@ def agent_metrics(aid: str, db: Session = Depends(get_db)):
 
 @router.post("/{aid}/eval-run", status_code=201)
 def agent_eval_run(aid: str, payload: dict | None = None, db: Session = Depends(get_db)):
-    """Agent 级评测：样本逐个真实运行（同步等待终态），返回结果（SDD D-1）。"""
+    """Agent 级评测：样本逐个真实运行（同步等待终态），返回结果（SDD D-1）。
+    D-3：judge=rule（期望包含匹配）或 model（LLM 打分 1-5）；结果落 judge_result。"""
     from ..models import EvalSample
     from ..agent_runtime import RunError, run_agent
     a = db.get(Agent, aid)
     if not a:
         raise HTTPException(404, "agent not found")
+    judge = (payload or {}).get("judge") or "none"
     samples = db.query(EvalSample).filter_by(agent_id=aid).all()
     ids = (payload or {}).get("sampleIds") or [s.id for s in samples]
     results = []
@@ -311,14 +313,131 @@ def agent_eval_run(aid: str, payload: dict | None = None, db: Session = Depends(
         try:
             run_id = run_agent(db, a, s.input or {}, trigger="eval", enqueue=False)
             r = db.get(Run, run_id)
+            output_text = str((r.output or {}).get("content", ""))
+            judge_result = None
+            expected_text = str((s.expected or {}).get("text", "")) if s.expected else ""
+            if judge == "rule" and expected_text:
+                score = 1.0 if expected_text in output_text else 0.0
+                judge_result = {"kind": "rule", "score": score,
+                                "passed": expected_text in output_text}
+            elif judge == "model" and (expected_text or output_text):
+                judge_result = _model_judge(db, str((s.input or {}).get("userQuery", "")),
+                                            expected_text, output_text)
+            if judge_result:
+                s.judge_result = judge_result
             results.append({"sampleId": s.id, "name": s.name, "runId": run_id, "status": r.status,
                             "durationMs": r.duration_ms,
-                            "output": str((r.output or {}).get("content", ""))[:120],
+                            "output": output_text[:120],
+                            "judge": judge_result,
                             "error": (r.error or {}).get("message") if r.status == "failed" else None})
         except RunError as e:
             results.append({"sampleId": s.id, "name": s.name, "status": "failed", "error": str(e)})
+    db.commit()
     succeeded = sum(1 for r in results if r["status"] == "succeeded")
     return {"total": len(results), "succeeded": succeeded, "results": results}
+
+
+def _model_judge(db, question: str, expected: str, actual: str) -> dict:
+    """模型 Judge：LLM 对回答打 1-5 分（真实调用；失败回落规则）。"""
+    from ..runner import _call_model
+    try:
+        answer, _t = _call_model(
+            db, "qwen-plus",
+            f"你是评测裁判。请给回答打 1-5 分（5 最好），只输出一个数字。\n问题：{question[:300]}\n"
+            f"参考答案：{expected[:300] or '（无）'}\n实际回答：{actual[:500]}")
+        digits = "".join(ch for ch in (answer or "") if ch.isdigit())
+        score = float(digits[0]) if digits else 3.0
+        return {"kind": "model", "score": min(max(score, 1.0), 5.0)}
+    except Exception:  # noqa: BLE001
+        score = 1.0 if expected and expected not in actual else (3.0 if not expected else 0.0)
+        return {"kind": "model-fallback-rule", "score": score}
+
+
+@router.post("/{aid}/eval-samples/{sid}/human-score")
+def human_score_sample(aid: str, sid: str, payload: dict, db: Session = Depends(get_db)):
+    """D-3：人评——手动给样本打分（覆盖/补充机器 Judge）。"""
+    from ..models import EvalSample
+    s = db.get(EvalSample, sid)
+    if not s or s.agent_id != aid:
+        raise HTTPException(404, "样本不存在")
+    score = (payload or {}).get("score")
+    if score is None or not (0 <= float(score) <= 5):
+        raise HTTPException(422, "score 必须在 0-5 之间")
+    s.judge_result = {"kind": "human", "score": float(score), "note": (payload or {}).get("note", "")}
+    db.commit()
+    return {"id": s.id, "judge": s.judge_result}
+
+
+# ---------- 进化：失败归因 → 候选补丁 → 审批应用（SDD D-3） ----------
+
+@router.post("/{aid}/evolution/candidates", status_code=201)
+def create_evolution_candidate(aid: str, db: Session = Depends(get_db)):
+    """基于近期失败运行归因，LLM 生成 Prompt 候选补丁（真实生成；失败给明确错误）。"""
+    from ..models import EvolutionPatch
+    from ..runner import _call_model
+    a = db.get(Agent, aid)
+    if not a:
+        raise HTTPException(404, "agent not found")
+    failed = (db.query(Run).filter(Run.agent_id == aid, Run.status == "failed")
+              .order_by(Run.created_at.desc()).limit(5).all())
+    if not failed:
+        raise HTTPException(422, detail={"code": "NO_FAILURES", "message": "近期没有失败运行，无需进化"})
+    errors = "\n".join(f"- {(r.error or {}).get('message', '未知错误')[:120]}" for r in failed)
+    base_prompt = str((a.config or {}).get("rolePrompt", ""))
+    attribution = "timeout" if any("护栏" in (r.error or {}).get("message", "") for r in failed) \
+        else ("tool_failed" if any("失败" in (r.error or {}).get("message", "") for r in failed) else "other")
+    try:
+        proposed, _t = _call_model(
+            db, "qwen-plus",
+            f"以下是 Agent 的角色提示词与近期失败原因。请输出改进后的完整提示词（保持原结构，"
+            f"针对失败原因补充约束与边界说明），直接输出提示词本身。\n原提示词：\n{base_prompt[:1500]}\n失败：\n{errors}")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, detail={"code": "GENERATE_FAILED", "message": str(exc)})
+    patch = EvolutionPatch(agent_id=aid, attribution=attribution, reason=errors[:800],
+                           base_prompt=base_prompt, proposed_prompt=str(proposed or "").strip())
+    db.add(patch)
+    db.commit()
+    return {"id": patch.id, "attribution": attribution, "basePrompt": base_prompt,
+            "proposedPrompt": patch.proposed_prompt, "status": patch.status}
+
+
+@router.get("/{aid}/evolution")
+def list_evolution(aid: str, db: Session = Depends(get_db)):
+    from ..models import EvolutionPatch
+    rows = (db.query(EvolutionPatch).filter_by(agent_id=aid)
+            .order_by(EvolutionPatch.created_at.desc()).limit(20).all())
+    return [{"id": p.id, "attribution": p.attribution, "reason": p.reason[:200],
+             "status": p.status, "createdAt": p.created_at.isoformat()} for p in rows]
+
+
+@router.post("/{aid}/evolution/{pid}/apply")
+def apply_evolution(aid: str, pid: str, db: Session = Depends(get_db)):
+    """应用候选补丁到草稿（可撤销=再次编辑；历史补丁保留记录）。"""
+    from ..models import EvolutionPatch
+    p = db.get(EvolutionPatch, pid)
+    if not p or p.agent_id != aid:
+        raise HTTPException(404, "补丁不存在")
+    if p.status != "pending":
+        raise HTTPException(409, "补丁已处理")
+    a = db.get(Agent, aid)
+    cfg = dict(a.config or {})
+    cfg["rolePrompt"] = p.proposed_prompt
+    a.config = cfg
+    a.config_revision += 1
+    p.status = "applied"
+    db.commit()
+    return {"id": p.id, "status": "applied", "configRevision": a.config_revision}
+
+
+@router.post("/{aid}/evolution/{pid}/reject")
+def reject_evolution(aid: str, pid: str, db: Session = Depends(get_db)):
+    from ..models import EvolutionPatch
+    p = db.get(EvolutionPatch, pid)
+    if not p or p.agent_id != aid:
+        raise HTTPException(404, "补丁不存在")
+    p.status = "rejected"
+    db.commit()
+    return {"id": p.id, "status": "rejected"}
 
 
 @router.get("/{aid}/eval-samples")

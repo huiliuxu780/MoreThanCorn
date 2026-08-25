@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: ""
-title: AI 质量评价与工作流编排平台（单体仓库）
+title: AI 质量评价与工作流编排平台单体仓库
 scope:
     - README.md
     - .gitignore

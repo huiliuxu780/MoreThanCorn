@@ -4,6 +4,7 @@
 **本文引用的文件**
 - [wf-designer.tsx](file://src/pages/wf-designer.tsx)
 - [wf-agent-editor.tsx](file://src/pages/wf-agent-editor.tsx)
+- [agent-common-config.tsx](file://src/components/agent-common-config.tsx)
 - [agent-ops-panels.tsx](file://src/components/agent-ops-panels.tsx)
 - [wf-agents-list.tsx](file://src/pages/wf-agents-list.tsx)
 - [agent-publish-dialog.tsx](file://src/components/agent-publish-dialog.tsx)
@@ -14,6 +15,7 @@
 - [validator.py](file://server/app/validator.py)
 - [runner.py](file://server/app/runner.py)
 - [registry.py](file://server/app/routers/registry.py)
+- [agent_runtime.py](file://server/app/agent_runtime.py)
 - [b026phaseb0001_agent_version_release.py](file://server/alembic/versions/b026phaseb0001_agent_version_release.py)
 - [c027phasec0001_event_channels_memory.py](file://server/alembic/versions/c027phasec0001_event_channels_memory.py)
 - [d028phased1001_eval_sample_agent.py](file://server/alembic/versions/d028phased1001_eval_sample_agent.py)
@@ -35,11 +37,15 @@
 - **新增** 高级知识检索配置：TopK、匹配分阈值、检索模式（混合/语义/全文）
 - **新增** AI Prompt 生成：基于角色描述自动生成中文提示词
 - **重大改进** 工作流设计器优化：移除LLM节点虚假的单批处理切换、transform节点schema统一使用template而非expression、agent-select查询参数移除改用决策类查询绑定、内存描述正确注入到提示词中
+- **新增** 模型语义参数控制：温度调节（严谨/平衡/创意）、历史轮次管理、工具调用辅助模型配置
+- **新增** 预览模型对比功能：支持主模型与对比模型的实时对比调试
+- **新增** 语音合成集成：基于浏览器原生SpeechSynthesis API的语音播报功能
+- **增强** 聊天历史上下文管理：改进对话历史的处理和传递机制
 
 ## 产品概述
 本工作流聚焦于"Agent 编辑器（节点图/Inspector/变量选择器/测试运行）""工作流设计器""Agent 版本管理与发布流程"。平台以可视化节点图编排 AI 能力，支持对话编排、自主规划与专家组协作三类 Agent；通过工作流定义、校验、发布与版本快照，形成从编辑到上线的闭环。前端基于 React + @xyflow/react 实现画布与 Inspector，后端 FastAPI 提供工作流与 Agent 的 CRUD、校验、发布与运行接口，数据库使用 SQLAlchemy/Alembic。
 
-**更新** 已集成 Phase B 的 Agent 版本发布系统与 Phase C 的事件通道、跟踪基础设施及新节点类型，并新增 Phase D-1 的四标签 Agent 编辑器界面、Agent 级评估系统、专家组增强功能和综合操作仪表板，形成完整的 Agent 全生命周期管理能力。同时对工作流设计器进行了重大改进，包括LLM节点配置优化、transform节点schema统一、agent-select查询参数改进和内存描述正确注入等。
+**更新** 已集成 Phase B 的 Agent 版本发布系统与 Phase C 的事件通道、跟踪基础设施及新节点类型，并新增 Phase D-1 的四标签 Agent 编辑器界面、Agent 级评估系统、专家组增强功能和综合操作仪表板，形成完整的 Agent 全生命周期管理能力。同时对工作流设计器进行了重大改进，包括LLM节点配置优化、transform节点schema统一、agent-select查询参数改进和内存描述正确注入等。**最新增强** 包括模型语义参数控制（温度调节、历史轮次管理、工具调用辅助模型）、预览模型对比功能、语音合成集成以及增强的聊天历史上下文管理。
 
 ## 核心业务流程
 - 创建工作流：创建默认包含"开始/结束"的工作流草稿，返回工作流 ID 与初始状态。
@@ -99,6 +105,9 @@ FE->>FE : 显示评测结果和成功率
   - **新增** 记忆 Schema 声明：支持 STRING/NUMBER/BOOLEAN/JSON 类型，运行时校验写入键。
   - **新增** 四标签界面：自主规划 Agent 提供搭建/运行观测/效果评测/版本指标四个标签页。
   - **重大改进** 内存描述正确注入：现在在提示词中正确注入memory变量的description字段，提升AI对记忆变量的理解。
+  - **新增** 模型语义参数控制：支持温度调节（严谨/平衡/创意）、历史轮次管理、工具调用辅助模型配置。
+  - **新增** 预览模型对比：支持主模型与对比模型的实时对比调试。
+  - **新增** 语音合成集成：基于浏览器SpeechSynthesis API的语音播报功能。
 - 变量选择器与资源选择器
   - 职责：根据拓扑可达性计算祖先集合，仅暴露上游输出；资源选择器拉取注册表 Enabled 项。
   - 用户价值：避免无效绑定，提升配置效率。
@@ -289,12 +298,14 @@ Run "1" -- "0..*" RunEvent : "events"
   - **新增** 版本一致性：Agent 运行强制使用版本快照，确保行为可重现；依赖冻结防止运行时漂移。
   - **新增** 事件完整性：所有事件必须携带 trace_id/span_id，支持端到端追踪；token 用量记录用于成本分析。
   - **新增** 评估性能：评测运行同步等待终态，支持批量样本处理，限制单次评测样本数量。
+  - **新增** 语音合成兼容性：语音播报功能仅在支持 SpeechSynthesis API 的浏览器中可用，不支持时自动降级。
 - 依赖与集成边界
   - 节点 IO 与执行器由 NodeDefinition 与 registry 决定；LLM/Tool/MCP/Knowledge 引用需处于 enabled/ready 状态。
   - 发布流程会收集节点对资源的引用，用于删除防护与审计。
   - **新增** 记忆 Schema 约束：写入记忆前必须验证键是否在 Agent 配置的 memoriesSchema 中声明。
   - **新增** 系统变量规范：14 个系统变量（tenantId、userId、userName、sysTime、language、memberId、formId、robotCode、nick、serviceId、serviceName、phoneNum、onlineChannelSource、initContext）通过注册表暴露。
   - **新增** 知识检索约束：TopK 范围 1-20，匹配分阈值 0-1，检索模式限定 HYBRID/SEMANTIC/TEXT。
+  - **新增** 模型参数约束：多样性参数限定 rigorous/balanced/creative，历史轮次范围 1-15，温度值映射为 0.2/0.7/1.1。
 - 业务约束
   - 工作流必须恰有一个开始节点与至少一个终端节点；条件分支与出边 handle 需一致；结构化输出键需被唯一节点产出。
   - Agent 名称长度上限为 20，前后端共用同一常量。
@@ -401,7 +412,7 @@ R9 --> End(["返回 ValidationReport"])
 - **用户体验**：生成过程中显示加载状态，完成后自动填充到角色提示词区域
 
 **章节来源**
-- [wf-agent-editor.tsx:235-251](file://src/pages/wf-agent-editor.tsx#L235-L251)
+- [wf-agent-editor.tsx:235-251](file://src/pages/wf-agent-editor.tsx#L235-251)
 - [agents.py:344-358](file://server/app/routers/agents.py#L344-L358)
 - [test_phase_d1.py:69-73](file://server/tests/test_phase_d1.py#L69-L73)
 
@@ -462,3 +473,47 @@ R9 --> End(["返回 ValidationReport"])
 **章节来源**
 - [agent_runtime.py:199-206](file://server/app/agent_runtime.py#L199-L206)
 - [runner.py:438-463](file://server/app/runner.py#L438-L463)
+
+### 模型语义参数控制（新增）
+- **温度调节**：支持严谨（rigorous=0.2）、平衡（balanced=0.7）、创意（creative=1.1）三种温度模式
+- **历史轮次管理**：配置历史对话轮次（1/5/15），控制上下文窗口大小
+- **工具调用辅助模型**：可为工具调用单独配置专用模型，提升工具调用的准确性
+- **后端真消费**：所有参数在后端实际生效，影响模型调用行为和响应质量
+- **配置界面**：在模型配置区域提供直观的三列布局配置界面
+
+**章节来源**
+- [wf-agent-editor.tsx:297-330](file://src/pages/wf-agent-editor.tsx#L297-L330)
+- [agent_runtime.py:220-240](file://server/app/agent_runtime.py#L220-L240)
+
+### 预览模型对比功能（新增）
+- **实时对比**：支持同时运行主模型和对比模型，并排显示结果
+- **会话级配置**：对比模型配置仅在当前会话有效，不影响版本配置
+- **独立会话流**：对比模型拥有独立的聊天历史和消息流
+- **动态切换**：可随时添加或移除对比模型，支持多模型对比
+- **用户体验**：对比模式下界面自动扩展为双列布局，清晰区分两个模型的响应
+
+**章节来源**
+- [wf-agent-editor.tsx:368-394](file://src/pages/wf-agent-editor.tsx#L368-L394)
+- [wf-agent-editor.tsx:141-143](file://src/pages/wf-agent-editor.tsx#L141-L143)
+
+### 语音合成集成（新增）
+- **浏览器原生API**：基于Web Speech Synthesis API实现语音播报
+- **智能播报**：自动播报最新的AI回复内容，限制最大500字符
+- **开关控制**：提供语音播报开关，用户可自由控制是否启用
+- **兼容性处理**：在不支持语音合成的环境中自动降级，不影响正常使用
+- **无障碍支持**：为视障用户提供语音反馈，提升可访问性
+
+**章节来源**
+- [wf-agent-editor.tsx:382-383](file://src/pages/wf-agent-editor.tsx#L382-L383)
+- [wf-agent-editor.tsx:414-423](file://src/pages/wf-agent-editor.tsx#L414-L423)
+
+### 增强的聊天历史上下文管理（增强）
+- **智能裁剪**：根据historyTurns配置自动裁剪历史对话，控制上下文大小
+- **格式转换**：将前端聊天历史转换为后端期望的{user, ai}格式
+- **内容限制**：每条消息限制最大2000字符，防止上下文过大
+- **双向支持**：同时支持用户消息和AI回复的历史传递
+- **性能优化**：仅传递必要的历史轮次，减少网络传输和模型处理开销
+
+**章节来源**
+- [wf-agent-editor.tsx:180-186](file://src/pages/wf-agent-editor.tsx#L180-L186)
+- [agent_runtime.py:220-233](file://server/app/agent_runtime.py#L220-L233)

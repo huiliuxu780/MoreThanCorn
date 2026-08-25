@@ -378,6 +378,21 @@ class EvalSample(Base):
     input: Mapped[dict] = mapped_column(JSONB, default=dict)
     expected: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     data_asset_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    judge_result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # SDD D-3：最近一次 Judge 结果
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class EvolutionPatch(Base):
+    """进化候选补丁（SDD D-3）：失败归因 → 候选 Prompt → 审批后应用到草稿。"""
+    __tablename__ = "evolution_patch"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agent.id"), index=True)
+    attribution: Mapped[str] = mapped_column(String(32), default="")  # tool_failed|timeout|hallucination|other
+    reason: Mapped[str] = mapped_column(Text, default="")
+    base_prompt: Mapped[str] = mapped_column(Text, default="")
+    proposed_prompt: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending|applied|rejected
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

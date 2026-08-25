@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
-import { AgentEvalPanel, AgentRunsPanel, AgentVersionsPanel } from "@/components/agent-ops-panels"
+import { AgentEvalPanel, AgentEvolutionPanel, AgentRunsPanel, AgentVersionsPanel } from "@/components/agent-ops-panels"
 import { ConversationPanel, MemorySchemaForm } from "@/components/agent-common-config"
 import { AgentPublishDialog, useAgentVersionState } from "@/components/agent-publish-dialog"
 import { Button } from "@/components/ui/button"
@@ -521,7 +521,12 @@ export default function WfAgentEditorPage() {
         {tab === "build" && <AutonomousBuilder agent={agent} onSaved={setAgent} />}
         {tab === "runs" && <AgentRunsPanel agentId={agent.id} />}
         {tab === "eval" && <AgentEvalPanel agentId={agent.id} />}
-        {tab === "versions" && <AgentVersionsPanel agentId={agent.id} />}
+        {tab === "versions" && (
+          <div className="grid h-full grid-cols-2 divide-x" style={{ borderColor: CARD }}>
+            <AgentVersionsPanel agentId={agent.id} />
+            <AgentEvolutionPanel agentId={agent.id} onApplied={() => agentApi.get(agent.id).then(setAgent).catch(() => undefined)} />
+          </div>
+        )}
       </div>
       <AgentPublishDialog agentId={agent.id} open={publishOpen} onClose={() => setPublishOpen(false)} onPublished={vs.refresh} />
     </div>

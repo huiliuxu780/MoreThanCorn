@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: frontend_app/tasks_feature
-title: 分析任务（AnalysisTask）CRUD 与向导创建
+title: AnalysisTask 任务管理页面（列表/详情/编辑/向导）
 scope:
     - src/pages/tasks.tsx
     - src/pages/task-detail.tsx

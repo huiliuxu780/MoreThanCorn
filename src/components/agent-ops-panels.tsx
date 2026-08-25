@@ -82,64 +82,159 @@ export function AgentRunsPanel({ agentId }: { agentId: string }) {
   )
 }
 
-/* ---------- 效果评测 ---------- */
+/* ---------- 效果评测（D-3：规则/模型/人评 Judge） ---------- */
 export function AgentEvalPanel({ agentId }: { agentId: string }) {
-  const [samples, setSamples] = useState<{ id: string; name: string; input: Record<string, unknown> }[]>([])
+  const [samples, setSamples] = useState<{ id: string; name: string; input: Record<string, unknown>; expected?: { text?: string } | null }[]>([])
   const [name, setName] = useState("")
   const [inputJson, setInputJson] = useState('{ "userQuery": "" }')
-  const [results, setResults] = useState<{ total: number; succeeded: number; results: { name: string; status: string; durationMs?: number | null; output?: string; error?: string | null }[] } | null>(null)
+  const [expectedText, setExpectedText] = useState("")
+  const [judge, setJudge] = useState<"none" | "rule" | "model">("rule")
+  const [results, setResults] = useState<{ total: number; succeeded: number; results: { sampleId: string; name: string; status: string; durationMs?: number | null; output?: string; judge?: { kind: string; score: number } | null; error?: string | null }[] } | null>(null)
   const [running, setRunning] = useState(false)
-  const load = () => agentApi.evalSamples(agentId).then((r) => setSamples(r.items)).catch(() => undefined)
+  const load = () => agentApi.evalSamples(agentId).then((r) => setSamples(r.items as typeof samples)).catch(() => undefined)
   useEffect(() => { load() }, [agentId])  // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="h-full space-y-4 overflow-y-auto p-6">
       <div className="rounded-lg border bg-white p-4" style={{ borderColor: CARD }}>
-        <div className="pb-2 text-[13px] font-medium" style={{ color: INK }}>评测集（样本 = 固定输入）</div>
+        <div className="pb-2 text-[13px] font-medium" style={{ color: INK }}>评测集（样本 = 固定输入 + 可选期望答案）</div>
         {samples.map((s) => (
           <div key={s.id} className="flex items-center gap-2 border-b py-1.5 text-xs" style={{ borderColor: CARD }}>
             <span className="flex-1 truncate" style={{ color: INK2 }}>{s.name}</span>
-            <span className="truncate font-mono" style={{ color: INK3 }}>{JSON.stringify(s.input).slice(0, 60)}</span>
+            <span className="truncate font-mono" style={{ color: INK3 }}>{JSON.stringify(s.input).slice(0, 40)}</span>
+            {s.expected?.text && <span className="truncate rounded bg-emerald-50 px-1 text-[10px] text-emerald-600">期望：{s.expected.text.slice(0, 16)}</span>}
             <button onClick={async () => { await agentApi.delEvalSample(s.id); load() }}><span className="text-neutral-400">×</span></button>
           </div>
         ))}
         <div className="space-y-2 pt-2">
           <Input className="h-8 text-xs" placeholder="样本名称" value={name} onChange={(e) => setName(e.target.value)} />
-          <Textarea className="min-h-16 text-xs"
-            value={inputJson} onChange={(e) => setInputJson(e.target.value)} />
+          <Textarea className="min-h-14 text-xs" placeholder='输入 JSON，如 { "userQuery": "…" }' value={inputJson} onChange={(e) => setInputJson(e.target.value)} />
+          <Input className="h-8 text-xs" placeholder="期望答案（可选；供规则/模型 Judge 对照）" value={expectedText} onChange={(e) => setExpectedText(e.target.value)} />
           <Button size="sm" variant="outline" onClick={async () => {
             try {
-              await agentApi.addEvalSample(agentId, name || "样本", JSON.parse(inputJson || "{}"))
-              setName(""); load()
+              await fetch(`${WF_BASE}/api/agents/${agentId}/eval-samples`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: name || "样本", input: JSON.parse(inputJson || "{}"), ...(expectedText.trim() ? { expected: { text: expectedText.trim() } } : {}) }),
+              })
+              setName(""); setExpectedText(""); load()
             } catch { toast.error("输入 JSON 非法") }
           }}>添加样本</Button>
         </div>
       </div>
       <div className="flex items-center gap-2">
+        <select className="h-8 rounded-md border bg-white px-2 text-xs" style={{ borderColor: CARD }}
+          value={judge} onChange={(e) => setJudge(e.target.value as typeof judge)}>
+          <option value="rule">规则 Judge（期望包含匹配）</option>
+          <option value="model">模型 Judge（LLM 打 1-5 分）</option>
+          <option value="none">不 Judge（只看运行成败）</option>
+        </select>
         <Button className="bg-black text-white hover:bg-neutral-800" disabled={running || samples.length === 0}
           onClick={async () => {
             setRunning(true)
-            try { setResults(await agentApi.evalRun(agentId)) } catch (e) { toast.error((e as Error).message) }
+            try { setResults(await agentApi.evalRun(agentId, judge)) } catch (e) { toast.error((e as Error).message) }
             finally { setRunning(false) }
           }}>{running ? "评测中…" : "运行评测"}</Button>
         {results && (
           <span className="text-xs" style={{ color: INK2 }}>
-            成功 {results.succeeded}/{results.total}（{results.total ? Math.round(results.succeeded / results.total * 100) : 0}%）
+            运行成功 {results.succeeded}/{results.total}
+            {results.results.some((r) => r.judge) && ` · 平均分 ${(results.results.reduce((a, r) => a + (r.judge?.score ?? 0), 0) / Math.max(1, results.results.filter((r) => r.judge).length)).toFixed(1)}/5`}
           </span>
         )}
       </div>
       {results && (
         <div className="rounded-lg border bg-white p-4" style={{ borderColor: CARD }}>
-          <div className="pb-2 text-[13px] font-medium" style={{ color: INK }}>评测结果</div>
+          <div className="pb-2 text-[13px] font-medium" style={{ color: INK }}>评测结果（可人评覆盖）</div>
           {results.results.map((r, i) => (
             <div key={i} className="flex items-center gap-2 border-b py-1.5 text-xs" style={{ borderColor: CARD }}>
-              <span className={`size-2 rounded-full ${r.status === "succeeded" ? "bg-emerald-400" : "bg-red-400"}`} />
+              <span className={`size-2 shrink-0 rounded-full ${r.status === "succeeded" ? "bg-emerald-400" : "bg-red-400"}`} />
               <span style={{ color: INK }}>{r.name}</span>
               <span className="flex-1 truncate" style={{ color: INK2 }}>{r.error ?? r.output ?? ""}</span>
+              {r.judge && (
+                <span className={`shrink-0 rounded px-1 py-0.5 text-[10px] ${r.judge.score >= 3 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"}`}>
+                  {r.judge.kind === "human" ? "人评" : r.judge.kind === "model" ? "模型" : "规则"} {r.judge.score}
+                </span>
+              )}
+              <span className="flex shrink-0 items-center gap-1">
+                <button className="rounded border px-1 text-[10px]" style={{ borderColor: CARD, color: INK2 }}
+                  onClick={async () => { await agentApi.humanScore(agentId, r.sampleId, 5); toast.success("已人评 5 分"); setRunning(false) }}>👍</button>
+                <button className="rounded border px-1 text-[10px]" style={{ borderColor: CARD, color: INK2 }}
+                  onClick={async () => { await agentApi.humanScore(agentId, r.sampleId, 1); toast.success("已人评 1 分") }}>👎</button>
+              </span>
               <span style={{ color: INK3 }}>{r.durationMs != null ? `${r.durationMs}ms` : ""}</span>
             </div>
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+/* ---------- 进化（D-3：失败归因 → 候选补丁 → 审批应用） ---------- */
+export function AgentEvolutionPanel({ agentId, onApplied }: { agentId: string; onApplied?: () => void }) {
+  const [patches, setPatches] = useState<{ id: string; attribution: string; reason: string; status: string; createdAt: string }[]>([])
+  const [candidate, setCandidate] = useState<{ id: string; attribution: string; basePrompt: string; proposedPrompt: string } | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const load = () => agentApi.evolutionList(agentId).then(setPatches).catch(() => undefined)
+  useEffect(() => { load() }, [agentId])  // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="h-full space-y-4 overflow-y-auto p-6">
+      <div className="rounded-lg border bg-white p-4" style={{ borderColor: CARD }}>
+        <div className="pb-1 text-[13px] font-medium" style={{ color: INK }}>生成候选补丁</div>
+        <p className="pb-2 text-[11px]" style={{ color: INK3 }}>
+          基于近期失败运行归因，LLM 生成改进后的角色提示词；审批后应用到草稿（不触碰已发布版本）。
+        </p>
+        <Button className="bg-black text-white hover:bg-neutral-800" disabled={generating} onClick={async () => {
+          setGenerating(true)
+          try { setCandidate(await agentApi.evolutionCandidates(agentId)) }
+          catch (e) { toast.error((e as Error).message.includes("{") ? JSON.stringify((e as Error).message) : (e as Error).message) }
+          finally { setGenerating(false) }
+        }}>{generating ? "归因与生成中…" : "从失败运行生成候选"}</Button>
+      </div>
+      {candidate && (
+        <div className="rounded-lg border bg-white p-4" style={{ borderColor: CARD }}>
+          <div className="flex items-center gap-2 pb-2">
+            <span className="text-[13px] font-medium" style={{ color: INK }}>候选补丁</span>
+            <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px]" style={{ color: INK2 }}>归因：{candidate.attribution}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <div className="pb-1 text-[11px] font-medium" style={{ color: INK3 }}>现提示词</div>
+              <Textarea className="min-h-32 text-[11px]" readOnly value={candidate.basePrompt} />
+            </div>
+            <div>
+              <div className="pb-1 text-[11px] font-medium" style={{ color: "#3D6BFF" }}>候选提示词</div>
+              <Textarea className="min-h-32 text-[11px]" readOnly value={candidate.proposedPrompt} />
+            </div>
+          </div>
+          <div className="flex gap-2 pt-2">
+            <Button size="sm" className="bg-black text-white hover:bg-neutral-800" onClick={async () => {
+              try {
+                await agentApi.evolutionApply(agentId, candidate.id)
+                toast.success("候选已应用到草稿（可继续编辑或撤销）")
+                setCandidate(null); load(); onApplied?.()
+              } catch (e) { toast.error((e as Error).message) }
+            }}>应用到草稿</Button>
+            <Button size="sm" variant="outline" onClick={async () => {
+              await agentApi.evolutionReject(agentId, candidate.id)
+              toast.success("已拒绝该候选")
+              setCandidate(null); load()
+            }}>拒绝</Button>
+          </div>
+        </div>
+      )}
+      <div className="rounded-lg border bg-white p-4" style={{ borderColor: CARD }}>
+        <div className="pb-2 text-[13px] font-medium" style={{ color: INK }}>补丁历史</div>
+        {patches.length === 0 && <p className="text-xs" style={{ color: INK3 }}>暂无补丁记录</p>}
+        {patches.map((p) => (
+          <div key={p.id} className="flex items-center gap-2 border-b py-1.5 text-xs" style={{ borderColor: CARD }}>
+            <span className="rounded bg-neutral-100 px-1 text-[10px]" style={{ color: INK2 }}>{p.attribution}</span>
+            <span className="flex-1 truncate" style={{ color: INK2 }}>{p.reason}</span>
+            <span className={`rounded px-1 py-0.5 text-[10px] ${p.status === "applied" ? "bg-emerald-50 text-emerald-600" : p.status === "rejected" ? "bg-neutral-100 text-neutral-500" : "bg-blue-50 text-blue-600"}`}>
+              {p.status === "applied" ? "已应用" : p.status === "rejected" ? "已拒绝" : "待审批"}
+            </span>
+            <span style={{ color: INK3 }}>{p.createdAt.slice(0, 16).replace("T", " ")}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
