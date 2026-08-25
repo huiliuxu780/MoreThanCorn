@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: frontend_app
-title: 质检与资源管理一体化前端工作台
+title: 质检与资源编排前端应用
 scope:
     - src/
 source_files: []

@@ -323,12 +323,13 @@ class Release(Base):
 
 
 class ResourceLock(Base):
-    """编辑锁（真实操作人展示）。"""
+    """编辑锁（租约语义，SDD D-4：expires_at 过期可接管）。"""
     __tablename__ = "resource_lock"
 
     resource_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     ws_id: Mapped[str] = mapped_column(String(16))
     user_name: Mapped[str] = mapped_column(String(64), default="")
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
@@ -393,6 +394,19 @@ class EvolutionPatch(Base):
     base_prompt: Mapped[str] = mapped_column(Text, default="")
     proposed_prompt: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(16), default="pending")  # pending|applied|rejected
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditLog(Base):
+    """审计日志（SDD D-4）：发布/回滚/删除/解锁等高危操作留痕。"""
+    __tablename__ = "audit_log"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    actor: Mapped[str] = mapped_column(String(64), default="")
+    action: Mapped[str] = mapped_column(String(64))
+    target_type: Mapped[str] = mapped_column(String(32), default="")
+    target_id: Mapped[str] = mapped_column(String(64), default="")
+    detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

@@ -130,6 +130,9 @@ def publish_workflow(wf_id: str, note: str = "", db: Session = Depends(get_db)):
     from ..models import Agent
     for a in db.query(Agent).filter_by(workflow_id=wf_id).all():
         a.status = "published"
+    from .admin import audit
+    audit(db, "质量管理员", "workflow.publish", "workflow", wf_id,
+          {"versionNo": ver.version_no})
     db.commit()
     return {"versionId": ver.id, "versionNo": ver.version_no}
 

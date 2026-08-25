@@ -1,9 +1,10 @@
+import { useState } from "react"
 import { PanelLeft, ShieldCheck } from "lucide-react"
 import { Outlet, useLocation } from "react-router-dom"
 import { UI_TERMS } from "@/config/ui-terms"
 import { Toaster } from "@/components/ui/sonner"
 import { NAV_GROUPS } from "@/components/app/app-sidebar"
-import { rbac } from "@/services/rbac"
+import { rbac, ROLES, currentRole, setRole, type Role } from "@/services/rbac"
 import { NavLink } from "react-router-dom"
 import { Breadcrumbs, type BreadcrumbEntry } from "@/components/app/page"
 
@@ -167,6 +168,8 @@ export function AppShell() {
   const { pathname } = useLocation()
   const workspace = isWorkspaceRoute(pathname)
   const breadcrumbs = useRouteBreadcrumbs()
+  const [role, setRoleState] = useState<Role>(currentRole())
+  const setRoleAndReload = (r: Role) => { setRole(r); setRoleState(r) }
 
   return (
     <div className="flex min-h-svh w-full">
@@ -175,6 +178,18 @@ export function AppShell() {
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75">
           {!workspace && <Breadcrumbs items={breadcrumbs} />}
           <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+            {/* D-4：角色切换（原型阶段权限来源；真鉴权矩阵见 rbac.ts） */}
+            <label className="flex items-center gap-1">
+              <ShieldCheck className="size-3.5" aria-hidden />
+              <select
+                className="h-7 rounded-md border bg-background px-1.5 text-xs"
+                value={role}
+                onChange={(e) => setRoleAndReload(e.target.value as Role)}
+                title="当前角色（RBAC）"
+              >
+                {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+            </label>
             <PanelLeft className="hidden size-4" aria-hidden />
           </div>
         </header>

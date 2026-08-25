@@ -29,6 +29,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { resApi } from "@/services/resource-api"
 import { agentApi, streamRunEvents, wfApi, type AgentInfo } from "@/services/wf-api"
+import { rbac } from "@/services/rbac"
 import WfDesignerPage from "./wf-designer"
 import { avatarFor, AVATARS } from "./wf-agents-list"
 
@@ -474,6 +475,7 @@ export default function WfAgentEditorPage() {
   const [agent, setAgent] = useState<AgentInfo | null>(null)
   const [legacy, setLegacy] = useState(false)
   const [publishOpen, setPublishOpen] = useState(false)
+  const canPublish = rbac.can("agent.publish")  // D-4：发布门禁（需 Publisher 及以上）
   const [tab, setTab] = useState<"build" | "runs" | "eval" | "versions">("build")
   const vs = useAgentVersionState(agent && agent.type === "autonomous" ? agent.id : undefined)
   useEffect(() => {
@@ -514,7 +516,9 @@ export default function WfAgentEditorPage() {
           ))}
         </div>
         <div className="ml-auto">
-          <Button size="sm" className="h-8 rounded-md bg-black text-white hover:bg-neutral-800" onClick={() => setPublishOpen(true)}>发布</Button>
+          <Button size="sm" className="h-8 rounded-md bg-black text-white hover:bg-neutral-800"
+            disabled={!canPublish} title={canPublish ? "" : "当前角色无发布权限（需 Publisher 及以上）"}
+            onClick={() => setPublishOpen(true)}>发布</Button>
         </div>
       </div>
       <div className="min-h-0 flex-1">

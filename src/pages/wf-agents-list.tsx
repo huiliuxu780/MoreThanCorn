@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 import { useListQuery } from "@/hooks/use-list-query"
 import { Pagination } from "@/components/app/pagination"
 import { pagedApi } from "@/services/wf-api"
+import { rbac } from "@/services/rbac"
 import { toast } from "sonner"
 import { useNavigate } from "react-router-dom"
 import { ChevronDown, MoreHorizontal, Plus, Search } from "lucide-react"
@@ -132,8 +133,12 @@ export default function WfAgentsListPage() {
                 <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                   <DropdownMenuItem onClick={() => navigate(`/config/agents/${w.id}`)}>查看详情</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate(`/config/agents/${w.id}`)}>编辑</DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="text-destructive" onClick={() => setDelTarget(w)}>删除</DropdownMenuItem>
+                  {rbac.can("agent.edit") && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="text-destructive" onClick={() => setDelTarget(w)}>删除</DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

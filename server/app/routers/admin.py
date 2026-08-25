@@ -1,7 +1,7 @@
 """P2 管理面：Connections / Models / Tools / Schedules / Run retry+export / metrics。"""
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -362,19 +362,58 @@ def metrics(db: Session = Depends(get_db)):
 
 @router.post("/api/locks")
 def acquire_lock(payload: dict, db: Session = Depends(get_db)):
+    """D-4 租约语义：锁 10 分钟过期自动可接管；续租=重复 acquire。"""
     from ..models import ResourceLock
     rid = payload["resourceId"]
     lock = db.get(ResourceLock, rid)
-    if lock and lock.ws_id != payload.get("wsId"):
-        return {"lockedByOther": True, "user": lock.user_name}
+    now = datetime.now(timezone.utc)
+    expired = lock is not None and lock.expires_at is not None and lock.expires_at < now
+    if lock and lock.ws_id != payload.get("wsId") and not expired:
+        return {"lockedByOther": True, "user": lock.user_name,
+                "expiresAt": lock.expires_at.isoformat() if lock.expires_at else None}
+    lease_until = now + timedelta(minutes=10)
     if not lock:
-        lock = ResourceLock(resource_id=rid, ws_id=payload.get("wsId", ""), user_name=payload.get("user", "质量管理员"))
+        lock = ResourceLock(resource_id=rid, ws_id=payload.get("wsId", ""),
+                            user_name=payload.get("user", "质量管理员"), expires_at=lease_until)
         db.add(lock)
     else:
         lock.ws_id = payload.get("wsId", "")
         lock.user_name = payload.get("user", "质量管理员")
+        lock.expires_at = lease_until
     db.commit()
-    return {"lockedByOther": False, "user": lock.user_name}
+    return {"lockedByOther": False, "user": lock.user_name, "expiresAt": lease_until.isoformat()}
+
+
+@router.delete("/api/locks/{rid}/force")
+def force_release_lock(rid: str, db: Session = Depends(get_db)):
+    """D-4：强制解锁（需 admin 角色；审计留痕）。"""
+    from ..models import ResourceLock
+    lock = db.get(ResourceLock, rid)
+    if lock:
+        audit(db, payload_actor("质量管理员"), "force_unlock", "resource_lock", rid, {})
+        db.delete(lock)
+        db.commit()
+    return {"ok": True}
+
+
+def payload_actor(default: str = "质量管理员") -> str:
+    return default
+
+
+def audit(db, actor: str, action: str, target_type: str, target_id: str, detail: dict | None = None):
+    """D-4：审计日志写入（高危操作留痕）。"""
+    from ..models import AuditLog
+    db.add(AuditLog(actor=actor, action=action, target_type=target_type,
+                    target_id=target_id, detail=detail or {}))
+
+
+@router.get("/api/audit")
+def list_audit(limit: int = 100, db: Session = Depends(get_db)):
+    from ..models import AuditLog
+    rows = db.query(AuditLog).order_by(AuditLog.created_at.desc()).limit(min(limit, 500)).all()
+    return {"items": [{"id": a.id, "actor": a.actor, "action": a.action,
+                       "targetType": a.target_type, "targetId": a.target_id,
+                       "detail": a.detail, "createdAt": a.created_at.isoformat()} for a in rows]}
 
 
 @router.delete("/api/locks/{rid}")
@@ -396,6 +435,7 @@ def delete_agent(aid: str, db: Session = Depends(get_db)):
     if not a:
         raise HTTPException(404, "Agent 不存在")
     # SDD B：先清理部署记录与不可变版本（FK 级联），再删 Agent 本体
+    audit(db, "质量管理员", "agent.delete", "agent", aid, {"name": a.name})
     db.query(Release).filter_by(agent_id=aid).delete()
     db.query(AgentVersion).filter_by(agent_id=aid).delete()
     db.delete(a)
@@ -412,6 +452,7 @@ def delete_workflow(wid: str, db: Session = Depends(get_db)):
     wf = db.get(Workflow, wid)
     if not wf:
         raise HTTPException(404, "工作流不存在")
+    audit(db, "质量管理员", "workflow.delete", "workflow", wid, {"name": wf.name})
     db.delete(wf)
     db.commit()
     return {"ok": True}

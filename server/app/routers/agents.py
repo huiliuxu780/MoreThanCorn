@@ -211,6 +211,9 @@ def create_agent_version(aid: str, payload: dict | None = None, db: Session = De
                        note=(payload or {}).get("note", ""))
     db.add(ver)
     a.status = "published"
+    from .admin import audit
+    audit(db, "质量管理员", "agent.version.create", "agent", aid,
+          {"versionNo": ver.version_no, "artifactHash": ver.artifact_hash})
     db.commit()
     return {"versionId": ver.id, "versionNo": ver.version_no, "artifactHash": ver.artifact_hash}
 
@@ -263,6 +266,9 @@ def create_release(aid: str, payload: dict, db: Session = Depends(get_db)):
     else:
         a.prod_version_id = v.id
     a.status = "published"
+    from .admin import audit
+    audit(db, "质量管理员", "agent.release", "agent", aid,
+          {"versionNo": v.version_no, "environment": env})
     db.commit()
     return {"releaseId": rel.id, "environment": env, "versionNo": v.version_no, "status": rel.status}
 

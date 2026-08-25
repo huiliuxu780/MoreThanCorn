@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: frontend_app/services_and_mocks
-title: 质检与资源管理服务层及 Mock 数据
+title: 质检与服务资源前端服务层及 Mock 数据
 scope:
     - src/services/
     - src/mocks/

@@ -96,6 +96,7 @@ import {
   type WfNode,
 } from "@/services/wf-api"
 import { resApi } from "@/services/resource-api"
+import { rbac } from "@/services/rbac"
 
 /* ============ 视觉令牌（16 §1） ============ */
 const C = {
@@ -1301,6 +1302,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const [lastRunId, setLastRunId] = useState<string | null>(null)
   const [publishOpen, setPublishOpen] = useState(false)
   const [agentPublishOpen, setAgentPublishOpen] = useState(false)
+  const rbacCanPublish = rbac.can("agent.publish")  // D-4：发布门禁
   /* SDD B：Agent 级版本/部署状态（agentMeta 模式的徽标与发布对话框） */
   const agentVersionState = useAgentVersionState(agentMeta && agentId ? agentId : undefined)
   const [pop, setPop] = useState<null | "add" | "zoom" | "search">(null)
@@ -1641,6 +1643,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
           )}
           <Button variant="outline" size="sm" className="rounded-md" onClick={() => doSave(defRef.current!)}>保存</Button>
           <Button size="sm" className="rounded-md bg-black text-white hover:bg-neutral-800"
+            disabled={!rbacCanPublish} title={rbacCanPublish ? "" : "当前角色无发布权限（需 Publisher 及以上）"}
             onClick={() => (agentMeta && agentId ? setAgentPublishOpen(true) : (issues.length ? setPublishOpen(true) : onPublish()))}>发布</Button>
         </div>
       </div>

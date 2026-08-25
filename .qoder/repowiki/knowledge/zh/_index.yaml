@@ -3,7 +3,7 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-08-25T01:18:00Z"
+exported_at: "2026-08-25T01:47:46Z"
 modules:
     "":
         dir_name: AI 质量评价与工作流编排平台单体仓库
@@ -29,8 +29,8 @@ modules:
         depends_on: []
         related_to: []
     backend_service:
-        dir_name: 后端服务（FastAPI + Alembic 工作流编排平台）
-        title: 后端服务（FastAPI + Alembic 工作流编排平台）
+        dir_name: 工作流编排后端服务（FastAPI + Alembic）
+        title: 工作流编排后端服务（FastAPI + Alembic）
         scope:
             - server/
         source_files: []
@@ -41,8 +41,8 @@ modules:
         depends_on: []
         related_to: []
     backend_service/shared_core:
-        dir_name: 后端共享核心（FastAPI 应用 + Alembic 迁移）
-        title: 后端共享核心（FastAPI 应用 + Alembic 迁移）
+        dir_name: 工作流内核后端服务（FastAPI + Alembic）
+        title: 工作流内核后端服务（FastAPI + Alembic）
         scope:
             - server/app/
             - server/alembic/
@@ -100,8 +100,8 @@ modules:
         depends_on: []
         related_to: []
     frontend_app:
-        dir_name: 质检与资源管理一体化前端工作台
-        title: 质检与资源管理一体化前端工作台
+        dir_name: 质检与资源编排前端应用
+        title: 质检与资源编排前端应用
         scope:
             - src/
         source_files: []
@@ -117,8 +117,8 @@ modules:
         depends_on: []
         related_to: []
     frontend_app/agents_feature:
-        dir_name: Agent 工作流编排与可视化设计器页面
-        title: Agent 工作流编排与可视化设计器页面
+        dir_name: Agent 工作流与可视化设计器页面
+        title: Agent 工作流与可视化设计器页面
         scope:
             - src/pages/wf-agents-list.tsx
             - src/pages/wf-agent-editor.tsx
@@ -179,8 +179,8 @@ modules:
         depends_on: []
         related_to: []
     frontend_app/services_and_mocks:
-        dir_name: 质检与资源管理服务层及 Mock 数据
-        title: 质检与资源管理服务层及 Mock 数据
+        dir_name: 质检与服务资源前端服务层及 Mock 数据
+        title: 质检与服务资源前端服务层及 Mock 数据
         scope:
             - src/services/
             - src/mocks/

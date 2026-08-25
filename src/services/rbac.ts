@@ -1,11 +1,9 @@
 /**
- * RBAC UI 行为（Implementation Spec §3）。
- * 原型阶段默认授予全部权限；真实接入时替换为权限服务 adapter。
- *
+ * RBAC（SDD D-4）：四角色权限矩阵，真鉴权（原型阶段角色存 localStorage，可切换）。
  * 规则：
  * - 无 View 权限 → 隐藏导航项 / route 403
- * - 无 Action 权限 → 默认隐藏（避免永久 Disabled 按钮）
- * - 有权限但对象状态约束 → Disabled + Tooltip 解释
+ * - 无 Action 权限 → 隐藏或禁用
+ * - viewer：只读；editor：可编辑不可发布；publisher：可发布；admin：全部
  */
 export type Permission =
   | "quality.view"
@@ -25,10 +23,49 @@ export type Permission =
   | "rules.publish"
   | "connection.view"
   | "connection.manage"
+  | "admin.audit"
+  | "admin.force-unlock"
+
+export type Role = "viewer" | "editor" | "publisher" | "admin"
+
+const VIEW_PERMS: Permission[] = [
+  "quality.view", "task.view", "agent.view", "tool.view", "asset.view",
+  "rules.view", "connection.view",
+]
+const MANAGE_PERMS: Permission[] = [
+  "task.manage", "agent.edit", "tool.manage", "asset.manage",
+  "rules.manage", "connection.manage", "quality.review",
+]
+const PUBLISH_PERMS: Permission[] = ["agent.publish", "tool.publish", "rules.publish"]
+const ADMIN_PERMS: Permission[] = ["admin.audit", "admin.force-unlock"]
+
+export const ROLES: { value: Role; label: string }[] = [
+  { value: "viewer", label: "Viewer（只读）" },
+  { value: "editor", label: "Editor（可编辑）" },
+  { value: "publisher", label: "Publisher（可发布）" },
+  { value: "admin", label: "Admin（全部）" },
+]
+
+export function currentRole(): Role {
+  if (typeof localStorage === "undefined") return "admin"
+  const r = localStorage.getItem("wf_role")
+  return (["viewer", "editor", "publisher", "admin"].includes(r ?? "") ? r : "admin") as Role
+}
+
+export function setRole(r: Role) {
+  if (typeof localStorage !== "undefined") localStorage.setItem("wf_role", r)
+}
+
+function permsFor(role: Role): Set<Permission> {
+  if (role === "viewer") return new Set(VIEW_PERMS)
+  if (role === "editor") return new Set([...VIEW_PERMS, ...MANAGE_PERMS])
+  if (role === "publisher") return new Set([...VIEW_PERMS, ...MANAGE_PERMS, ...PUBLISH_PERMS])
+  return new Set([...VIEW_PERMS, ...MANAGE_PERMS, ...PUBLISH_PERMS, ...ADMIN_PERMS])
+}
 
 export const rbac = {
-  can(_permission: Permission): boolean {
-    return true
+  can(permission: Permission): boolean {
+    return permsFor(currentRole()).has(permission)
   },
   /**
    * 返回动作可见性：

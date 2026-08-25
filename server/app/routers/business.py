@@ -115,6 +115,8 @@ def publish_rules(rid: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "规则不存在")
     r.version += 1
     r.status = "published"
+    from .admin import audit
+    audit(db, "质量管理员", "rules.publish", "result_rule_set", rid, {"version": r.version})
     db.commit()
     # 规则变更可重算：重算全部结果
     n = recalc_all(db)
