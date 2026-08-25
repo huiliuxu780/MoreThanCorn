@@ -1212,6 +1212,7 @@ function RunsDrawer({ workflowId, lastRunId, onClose }: { workflowId: string; la
   const [runs, setRuns] = useState<RunDetail[]>([])
   const [sel, setSel] = useState<RunDetail | null>(null)
   const [filter, setFilter] = useState("")
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const load = useCallback(async () => {
     const list = await runApi.list(workflowId)
     const details = await Promise.all(list.slice(0, 10).map((r) => runApi.detail(r.runId)))
@@ -1262,18 +1263,27 @@ function RunsDrawer({ workflowId, lastRunId, onClose }: { workflowId: string; la
         </div>
         {sel && (
           <div className="space-y-1 border-t pt-2" style={{ borderColor: C.cardBorder }}>
-            <div className="pb-1 text-xs font-medium" style={{ color: C.ink2 }}>节点执行顺序</div>
+            <div className="pb-1 text-xs font-medium" style={{ color: C.ink2 }}>节点执行顺序（点击行展开完整输出）</div>
             {sel.nodeRuns.map((n) => (
-              <div key={n.nodeRunId} className="rounded-md px-2 py-1.5 text-xs" style={{ background: "#F7F9FC" }}>
+              <button key={n.nodeRunId} className="w-full rounded-md px-2 py-1.5 text-left text-xs hover:opacity-90" style={{ background: "#F7F9FC" }}
+                onClick={() => setExpanded((s) => ({ ...s, [n.nodeRunId]: !s[n.nodeRunId] }))}>
                 <div className="flex items-center gap-2">
-                  <span className="size-2 rounded-full" style={{ background: STATUS_COLOR[n.status] ?? "#B9C2CF" }} />
-                  <span style={{ color: C.ink }}>{n.nodeId}</span>
-                  <span style={{ color: C.ink3 }}>{n.nodeType}</span>
-                  <span className="ml-auto" style={{ color: C.ink3 }}>{n.durationMs != null ? `${n.durationMs}ms` : n.status}</span>
+                  <span className="size-2 shrink-0 rounded-full" style={{ background: STATUS_COLOR[n.status] ?? "#B9C2CF" }} />
+                  <span className="truncate" style={{ color: C.ink }}>{n.nodeId}</span>
+                  <span className="shrink-0" style={{ color: C.ink3 }}>{n.nodeType}</span>
+                  <span className="ml-auto shrink-0" style={{ color: C.ink3 }}>{n.durationMs != null ? `${n.durationMs}ms` : n.status}</span>
                 </div>
-                {n.output && <div className="truncate pt-1" style={{ color: C.ink2 }}>{JSON.stringify(n.output).slice(0, 90)}</div>}
-                {n.error && <div className="pt-1" style={{ color: C.danger }}>{n.error.message}</div>}
-              </div>
+                {n.output && (
+                  expanded[n.nodeRunId] ? (
+                    <div className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-all rounded bg-white p-1.5 font-mono text-[11px]" style={{ color: C.ink2, border: `1px solid ${C.cardBorder}` }}>
+                      {JSON.stringify(n.output, null, 2)}
+                    </div>
+                  ) : (
+                    <div className="truncate pt-1" style={{ color: C.ink2 }}>{JSON.stringify(n.output).slice(0, 90)}…</div>
+                  )
+                )}
+                {n.error && <div className="break-all pt-1" style={{ color: C.danger }}>{n.error.message}</div>}
+              </button>
             ))}
           </div>
         )}
@@ -1574,9 +1584,15 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
         </div>
         {agentMeta && (
           <div className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg p-0.5" style={{ background: "#F1F3F7" }}>
-            {[["Agent搭建", () => setDrawer(null)], ["运行观测", () => setDrawer("runs")], ["效果评测", () => setDrawer("eval")], ["版本指标", () => setDrawer("evo")]].map(([label, fn], i) => (
-              <button key={label as string} className="rounded-md px-3 py-1 text-[13px]" style={i === 0 ? { background: "#fff", color: C.ink, boxShadow: "0 1px 3px rgba(31,35,41,.12)" } : { color: C.ink2 }} onClick={() => (fn as () => void)()}>{label as string}</button>
-            ))}
+            {/* bugfix：选中态跟随 drawer 状态（此前硬编码 i===0 不切换） */}
+            {([["build", "Agent搭建", null], ["runs", "运行观测", "runs"], ["eval", "效果评测", "eval"], ["evo", "版本指标", "evo"]] as [string, string, null | "runs" | "eval" | "evo"][]).map(([key, label, target]) => {
+              const active = (drawer === null && key === "build") || drawer === target
+              return (
+                <button key={key} className="rounded-md px-3 py-1 text-[13px]"
+                  style={active ? { background: "#fff", color: C.ink, boxShadow: "0 1px 3px rgba(31,35,41,.12)" } : { color: C.ink2 }}
+                  onClick={() => setDrawer(target)}>{label}</button>
+              )
+            })}
           </div>
         )}
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
