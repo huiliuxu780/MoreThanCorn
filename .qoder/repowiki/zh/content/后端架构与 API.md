@@ -22,6 +22,9 @@
 - [server/app/routers/agents.py](file://server/app/routers/agents.py)
 - [src/services/rbac.ts](file://src/services/rbac.ts)
 - [src/pages/audit-log.tsx](file://src/pages/audit-log.tsx)
+- [src/components/run/trace-view.tsx](file://src/components/run/trace-view.tsx)
+- [src/services/wf-api.ts](file://src/services/wf-api.ts)
+- [src/pages/run-detail.tsx](file://src/pages/run-detail.tsx)
 - [server/alembic/env.py](file://server/alembic/env.py)
 - [server/alembic/versions/d030phased4001_audit_lease.py](file://server/alembic/versions/d030phased4001_audit_lease.py)
 - [server/alembic/versions/2fb72708e1d8_quality_result_evidence.py](file://server/alembic/versions/2fb72708e1d8_quality_result_evidence.py)
@@ -36,6 +39,8 @@
 - 增强Agent评估功能，支持同步执行和多评判模式（rule/model/human）
 - 扩展EvalSample模型，新增judge_result字段存储评判结果
 - 支持批量样本评测，可指定sampleIds进行选择性评测
+- **新增 /api/runs/{run_id}/trace 端点，提供完整的运行追踪数据，包括 span 树结构、token 使用统计和模型调用计数**
+- **增强事件列表端点支持按 nodeRunId 过滤**
 
 ## 产品概述
 本项目为 AI 驱动的企业智能质量评价平台，V1 聚焦智能质检（坐席质检）。后端基于 FastAPI + SQLAlchemy + Alembic，提供工作流编排、资源管理、运行执行、业务规则与评测、Agent 编排等能力；前端 Vite + React + TypeScript。导航结构已冻结，路由与状态语义以实现文档为准。
@@ -46,6 +51,7 @@
 - 运行与可观测性：提交运行请求 → 入队或立即执行 → 记录 Run/NodeRun/RunEvent → 通过 SSE 推送事件 → 查询终态。
 - 业务规则与评测：维护结果规则集 → 对结构化输出求值派生分数/风险/问题 → 支持批量重算；维护评测样本并执行评估。
 - **工作流评估**：创建工作流样本 → 同步执行真实运行 → 多模式评判（rule/model/human）→ 统计成功率与性能指标。
+- **运行追踪与观测**：通过 trace 端点获取完整的 span 树结构，支持 token 使用统计和模型调用计数分析。
 - 资源管理：统一管理 AI Resources（模型、工具、MCP、知识库）与 Data Resources（数据源、数据资产、数据定义），提供测试、启用/停用、删除防护与变更审计。
 - 定时任务：为分析任务配置 Cron 调度，计算下次触发时间并关联运行来源。
 
@@ -75,12 +81,19 @@ API-->>FE : {total, succeeded, results}
 FE->>API : POST /api/eval-samples/{sid}/human-score (人评)
 API->>DB : 更新样本评分 0-5分
 API-->>FE : {id, judge}
+FE->>API : GET /api/runs/{runId}/trace (运行追踪)
+API->>DB : 查询 Run/NodeRun/CallRecord
+API-->>FE : {root : SpanNode, totalTokens, modelCalls}
+FE->>API : GET /api/runs/{runId}/events-list?nodeRunId=xxx (事件过滤)
+API->>DB : 按 nodeRunId 过滤事件
+API-->>FE : {items : Event[]}
 ```
 
 **图表来源**
 - [server/app/routers/workflows.py:41-134](file://server/app/routers/workflows.py#L41-L134)
 - [server/app/routers/admin.py:618-670](file://server/app/routers/admin.py#L618-L670)
 - [server/app/routers/agents.py:303-374](file://server/app/routers/agents.py#L303-L374)
+- [server/app/routers/runs.py:133-184](file://server/app/routers/runs.py#L133-L184)
 
 **章节来源**
 - [server/app/routers/workflows.py:20-162](file://server/app/routers/workflows.py#L20-L162)
@@ -91,7 +104,7 @@ API-->>FE : {id, judge}
 ## 功能模块清单
 - workflows：工作流 CRUD、草稿保存与乐观锁、校验、发布生成版本、版本列表。
 - registry：节点定义注册表查询，供设计器发现可用节点家族与元信息。
-- runs：运行实例的创建、列表、详情、取消、事件流（SSE）、事件列表。
+- runs：运行实例的创建、列表、详情、取消、事件流（SSE）、事件列表、**运行追踪（trace）**。
 - business：结果规则引擎、复核流程、数据资产与批量运行、分析与调度。
 - resources：AI/Data 资源统一 CRUD、测试、启用/停用、删除防护、变更日志、Data Definitions 管理、Picker 供给。
 - admin：Connections、Models/Providers、Tools、Schedules、运行重试/导出、指标、编辑锁、**评测样本管理、工作流评估、人评打分**。
@@ -142,6 +155,8 @@ RUN ||--o{ QUALITY_RESULT : "产出"
 QUALITY_RESULT ||--o{ EVIDENCE : "证据"
 RESULT_RULE_SET ||..|| QUALITY_RESULT : "求值"
 EVAL_SAMPLE ||..|| RUN : "评测关联"
+NODE_RUN ||--o{ CALL_RECORD : "调用记录"
+CALL_RECORD ||..|| RUN_EVENT : "追踪关联"
 DATA_ASSET ||--o{ DATA_DEFINITION : "字段语义"
 DATASOURCE ||--o{ DATA_ASSET : "来源"
 CONNECTION ||--o{ TOOL : "调用凭据"
@@ -194,7 +209,7 @@ Allow --> Next["继续处理请求"]
 - [server/app/main.py:10-64](file://server/app/main.py#L10-L64)
 - [server/app/config.py:1-10](file://server/app/config.py#L1-L10)
 - [server/app/db.py:1-20](file://server/app/db.py#L1-L20)
-- [server/alembic/env.py:20-89](file://server/alembic/env.py#L20-89)
+- [server/alembic/env.py:20-89](file://server/alembic/env.py#L20-L89)
 
 ## 新增功能详解
 
@@ -332,6 +347,62 @@ Allow --> Next["继续处理请求"]
 **章节来源**
 - [server/app/routers/workflows.py:110-137](file://server/app/routers/workflows.py#L110-L137)
 
+### 运行追踪与观测系统
+**新增** 完整的运行追踪系统，提供详细的执行过程可视化。
+
+#### 追踪端点
+- **GET /api/runs/{run_id}/trace**：获取完整的运行追踪数据
+- 返回数据结构包含：
+  - `root`: 根 span（Run 级别）
+  - `totalTokens`: 总 token 使用量
+  - `modelCalls`: LLM 调用次数
+
+#### Span 树结构
+- **Run Span**：根节点，包含运行基本信息、输入输出、错误信息
+- **NodeRun Spans**：子节点，对应工作流中的每个节点执行
+- **CallRecord Spans**：叶子节点，对应具体的工具调用、模型调用等
+
+#### Token 使用统计
+- 支持 inputTokens 和 outputTokens 统计
+- 聚合所有节点的 token 使用情况
+- 提供总 token 使用量的快速查看
+
+#### 模型调用计数
+- 自动统计 LLM 调用次数
+- 支持不同模型类型的识别（model/tool/mcp/knowledge）
+
+#### 前端集成
+- 提供可视化的 span 树展示
+- 支持展开/折叠节点查看详细信息
+- 显示每个 span 的耗时、状态、token 使用情况
+
+**章节来源**
+- [server/app/routers/runs.py:133-184](file://server/app/routers/runs.py#L133-L184)
+- [src/components/run/trace-view.tsx:1-279](file://src/components/run/trace-view.tsx#L1-L279)
+- [src/services/wf-api.ts:382-383](file://src/services/wf-api.ts#L382-L383)
+
+### 增强的事件列表过滤功能
+**更新** 事件列表端点现在支持按 nodeRunId 进行精确过滤。
+
+#### 过滤功能
+- **GET /api/runs/{run_id}/events-list?nodeRunId={nodeRunId}**：按节点运行ID过滤事件
+- 支持精确匹配特定的节点运行事件
+- 便于调试特定节点的执行过程
+
+#### 使用场景
+- 调试特定节点的执行问题
+- 分析单个节点的输入输出
+- 监控特定节点的性能指标
+
+#### 前端集成
+- 在 TraceView 组件中支持按 span 过滤事件
+- 点击 span 时自动过滤相关事件
+- 提供更精细的事件查看体验
+
+**章节来源**
+- [server/app/routers/runs.py:101-109](file://server/app/routers/runs.py#L101-L109)
+- [src/components/run/trace-view.tsx:74-135](file://src/components/run/trace-view.tsx#L74-L135)
+
 ### 数据库架构演进
 **新增** 多个数据库表以支持新功能：
 
@@ -344,6 +415,7 @@ Allow --> Next["继续处理请求"]
 - **evidence**：证据表，支撑质检结论的片段/调用事实，支持多种证据类型
 - **run_event 扩展**：新增 channel、trace_id、span_id、parent_span_id、duration_ms、tokens 字段
 - **eval_sample 扩展**：新增 agent_id、judge_result 字段支持多维度评测
+- **call_record**：调用记录表，支持追踪工具调用和模型调用的详细信息
 
 **迁移版本**：
 - `b026phaseb0001_agent_version_release.py`：Agent 版本管理表 + Agent 环境版本指针
@@ -433,11 +505,12 @@ Allow --> Next["继续处理请求"]
 - [src/pages/audit-log.tsx:13-43](file://src/pages/audit-log.tsx#L13-L43)
 
 ### 总结
-本次更新主要围绕四个核心方面进行了重大改进：
+本次更新主要围绕五个核心方面进行了重大改进：
 
 1. **工作流评估系统**：实现了完整的工作流评测能力，支持同步执行和多评判模式
 2. **人评机制**：提供了灵活的人工评分功能，支持0-5分制评分和备注
 3. **评测数据管理**：增强了EvalSample模型，支持存储多种评判结果
-4. **数据架构演进**：新增了多个数据库表和字段，支持更丰富的评测场景
+4. **运行追踪与观测**：新增了完整的运行追踪系统，提供详细的执行过程可视化
+5. **数据架构演进**：新增了多个数据库表和字段，支持更丰富的评测场景
 
-这些改进显著提升了系统的评测能力和可观测性，为工作流和Agent的质量保证提供了强有力的技术支持。
+这些改进显著提升了系统的评测能力和可观测性，为工作流和Agent的质量保证提供了强有力的技术支持。**特别是新增的运行追踪功能，使得开发者能够深入了解运行的内部执行过程，便于问题诊断和性能优化**。

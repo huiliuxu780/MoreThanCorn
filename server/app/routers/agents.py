@@ -294,10 +294,14 @@ def agent_metrics(aid: str, db: Session = Depends(get_db)):
     succeeded = sum(1 for r in runs if r.status == "succeeded")
     failed = sum(1 for r in runs if r.status == "failed")
     durs = [r.duration_ms for r in runs if r.duration_ms is not None]
+    # 调研 07 §6 观测指标：Token 消耗
+    total_tokens = sum(int((t := (r.token_usage or {})).get("total")
+                         or (t.get("prompt", 0) or 0) + (t.get("completion", 0) or 0)) for r in runs)
     return {"total": total, "succeeded": succeeded, "failed": failed,
             "successRate": round(succeeded / total, 3) if total else 0,
             "avgDurationMs": int(sum(durs) / len(durs)) if durs else 0,
-            "maxDurationMs": max(durs) if durs else 0}
+            "maxDurationMs": max(durs) if durs else 0,
+            "totalTokens": total_tokens}
 
 
 @router.post("/{aid}/eval-run", status_code=201)

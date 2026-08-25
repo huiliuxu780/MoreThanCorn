@@ -114,6 +114,22 @@ def _tok_total(d: dict | None) -> int:
     return int(d.get("total") or (d.get("prompt", 0) or 0) + (d.get("completion", 0) or 0) or 0)
 
 
+# 调研 07 §3 Trace 模型对齐：span type 词表 / usage / attributes / error{code,message,retryable}
+_SPAN_TYPE = {"model": "LLM", "tool": "TOOL", "mcp": "TOOL", "knowledge": "KNOWLEDGE"}
+
+
+def _usage(d: dict | None) -> dict:
+    d = d or {}
+    return {"inputTokens": int(d.get("prompt", 0) or 0), "outputTokens": int(d.get("completion", 0) or 0)}
+
+
+def _err(e: dict | None) -> dict | None:
+    if not e:
+        return None
+    return {"code": e.get("code") or "RUN_ERROR", "message": e.get("message") or str(e),
+            "retryable": bool(e.get("retryable", False))}
+
+
 @router.get("/{run_id}/trace")
 def run_trace(run_id: str, db: Session = Depends(get_db)):
     """观测视图（SDD design-run-observability）：Run→NodeRun→CallRecord 组装 span 树。"""
@@ -134,26 +150,35 @@ def run_trace(run_id: str, db: Session = Depends(get_db)):
     def call_span(c: CallRecord) -> dict:
         ended = c.created_at
         started = ended - timedelta(milliseconds=c.latency_ms or 0)
-        return {"id": c.id, "kind": c.kind, "name": c.target_id or c.kind, "status": c.status,
+        return {"id": c.id, "kind": c.kind, "type": _SPAN_TYPE.get(c.kind, "TOOL"),
+                "name": c.target_id or c.kind, "status": c.status,
                 "startedAt": iso(started), "endedAt": iso(ended), "durationMs": c.latency_ms,
-                "tokenUsage": c.token_usage or {}, "input": c.request, "output": c.response,
-                "error": c.error, "children": []}
+                "usage": _usage(c.token_usage), "tokenUsage": c.token_usage or {},
+                "attributes": {"protocol": c.kind, "targetType": c.target_type},
+                "input": c.request, "output": c.response,
+                "error": _err(c.error), "children": []}
 
     children = []
     for n in nrs:
         children.append({
-            "id": n.id, "kind": "node", "name": n.node_id, "nodeType": n.node_type,
+            "id": n.id, "kind": "node", "type": "WORKFLOW", "name": n.node_id, "nodeType": n.node_type,
             "status": n.status, "startedAt": iso(n.started_at), "endedAt": iso(n.ended_at),
             "durationMs": n.duration_ms, "attempt": n.attempt,
-            "tokenUsage": n.token_usage or {}, "input": n.input, "output": n.output,
-            "error": n.error, "children": [call_span(c) for c in by_nr.get(n.id, [])],
+            "usage": _usage(n.token_usage), "tokenUsage": n.token_usage or {},
+            "attributes": {"nodeId": n.node_id, "nodeType": n.node_type, "attempt": n.attempt},
+            "input": n.input, "output": n.output,
+            "error": _err(n.error), "children": [call_span(c) for c in by_nr.get(n.id, [])],
         })
     total_tokens = _tok_total(run.token_usage) or sum(_tok_total(c.token_usage) for c in calls)
     return {
-        "root": {"id": run.id, "kind": "run", "name": f"Run {run.id[:8]}", "status": run.status,
+        "root": {"id": run.id, "kind": "run", "type": "AGENT" if run.agent_id else "WORKFLOW",
+                 "name": f"Run {run.id[:8]}", "status": run.status,
                  "startedAt": iso(run.started_at), "endedAt": iso(run.ended_at),
-                 "durationMs": run.duration_ms, "tokenUsage": run.token_usage or {},
-                 "input": run.input, "output": run.output, "error": run.error, "children": children},
+                 "durationMs": run.duration_ms, "usage": _usage(run.token_usage),
+                 "tokenUsage": run.token_usage or {},
+                 "attributes": {"trigger": run.trigger, "agentId": run.agent_id,
+                                "originRunId": run.origin_run_id},
+                 "input": run.input, "output": run.output, "error": _err(run.error), "children": children},
         "totalTokens": total_tokens,
         "modelCalls": sum(1 for c in calls if c.kind == "model"),
     }

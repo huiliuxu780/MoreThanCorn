@@ -16,10 +16,13 @@ export interface SpanNode {
   endedAt: string | null
   durationMs: number | null
   attempt?: number
+  type?: string
+  usage?: { inputTokens: number; outputTokens: number }
   tokenUsage?: Record<string, unknown>
+  attributes?: Record<string, unknown>
   input?: unknown
   output?: unknown
-  error?: { message?: string } | null
+  error?: { code?: string; message?: string; retryable?: boolean } | null
   children: SpanNode[]
 }
 export interface TraceData { root: SpanNode; totalTokens: number; modelCalls: number }
@@ -108,11 +111,16 @@ function SpanDetail({ span, events }: { span: SpanNode; events: TraceEvent[] }) 
           </TabsContent>
           <TabsContent value="meta" className="m-0">
             <div className="grid grid-cols-[110px_1fr] gap-y-1.5 text-xs">
-              {([["kind", KIND_LABEL[span.kind]], ["status", span.status],
+              {([["kind", KIND_LABEL[span.kind]],
+                 ...((span.type ? [["span.type（调研 07 §3）", span.type]] : []) as string[][]),
+                 ["status", span.status],
                  ["开始", span.startedAt ? new Date(span.startedAt).toLocaleTimeString(undefined, { hour12: false, fractionalSecondDigits: 3 } as Intl.DateTimeFormatOptions) : "—"],
                  ["结束", span.endedAt ? new Date(span.endedAt).toLocaleTimeString(undefined, { hour12: false, fractionalSecondDigits: 3 } as Intl.DateTimeFormatOptions) : "—"],
-                 ["耗时", fmtMs(span.durationMs)], ["tokens", String(tokOf(span))],
+                 ["耗时", fmtMs(span.durationMs)],
+                 ["tokens", span.usage ? `in ${span.usage.inputTokens} · out ${span.usage.outputTokens}` : String(tokOf(span))],
+                 ...((span.error ? [["error.code", span.error.code ?? "RUN_ERROR"], ["error.retryable", String(!!span.error.retryable)]] : []) as string[][]),
                  ...((span.nodeType ? [["节点类型", span.nodeType]] : []) as string[][]),
+                 ...(Object.entries(span.attributes ?? {}).map(([k, v]) => [`attributes.${k}`, String(v)])),
               ] as string[][]).map(([k, v]) => (
                 <div key={k} className="contents">
                   <span className="text-[#B9C2CF]">{k}</span><span className="font-mono text-[#1F2329]">{v}</span>
@@ -126,11 +134,61 @@ function SpanDetail({ span, events }: { span: SpanNode; events: TraceEvent[] }) 
   )
 }
 
+/* 调研 02/07 同款的步骤手风琴数据：thinking（LLM）/tool/…/answer，节点 span 展开为其调用子 span */
+export function collectSteps(trace: TraceData): SpanNode[] {
+  const acc: SpanNode[] = []
+  const walk = (s: SpanNode) => {
+    if (s.kind === "run") { s.children.forEach(walk); return }
+    if (s.kind === "node" && s.children.length) { s.children.forEach(walk); return }
+    acc.push(s)
+  }
+  walk(trace.root)
+  return acc
+}
+
+function StepsView({ trace }: { trace: TraceData }) {
+  const [open, setOpen] = useState<Record<string, boolean>>({})
+  const steps = useMemo(() => collectSteps(trace), [trace])
+  const labelOf = (s: SpanNode) =>
+    s.type === "LLM" ? `thinking · ${s.name}` : `${(KIND_LABEL as Record<string, string>)[s.kind] ?? s.kind} · ${s.name}`
+  return (
+    <div className="py-1">
+      {steps.map((s) => {
+        const Icon = KIND_ICON[s.kind] ?? Box
+        return (
+          <div key={s.id} className="border-b last:border-0" style={{ borderColor: "#EDF0F4" }}>
+            <button className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-neutral-50"
+              onClick={() => setOpen((o) => ({ ...o, [s.id]: !o[s.id] }))}>
+              {open[s.id] ? <ChevronDown className="size-3 text-neutral-400" /> : <ChevronRight className="size-3 text-neutral-400" />}
+              <Icon className="size-3.5 text-[#5A6472]" />
+              <span className="truncate text-[#1F2329]">{labelOf(s)}</span>
+              <span className="ml-auto shrink-0 tabular-nums text-[#B9C2CF]">{fmtMs(dispDur(s))}</span>
+            </button>
+            {open[s.id] && (
+              <div className="space-y-2 px-8 pb-2">
+                <div><div className="pb-1 text-[10px] text-[#B9C2CF]">Input</div><JsonView value={s.input} /></div>
+                <div><div className="pb-1 text-[10px] text-[#B9C2CF]">Output</div>
+                  {s.error ? <pre className="overflow-x-auto rounded-md bg-red-50 p-2 text-[11px] text-red-600">{s.error.message}</pre> : <JsonView value={s.output} />}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })}
+      <div className="space-y-1 px-3 py-2">
+        <div className="flex items-center gap-2 text-xs font-medium text-[#1F2329]"><Flag className="size-3.5 text-[#5A6472]" /> answer</div>
+        <JsonView value={trace.root.output} />
+      </div>
+    </div>
+  )
+}
+
 export function TraceView({ trace, events, focusSpanId }: {
   trace: TraceData
   events: TraceEvent[]
   focusSpanId?: string | null
 }) {
+  const [mode, setMode] = useState<"tree" | "steps">("tree")
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [selectedId, setSelectedId] = useState<string>(trace.root.id)
   useEffect(() => {
@@ -163,16 +221,21 @@ export function TraceView({ trace, events, focusSpanId }: {
     <div className="grid min-h-0 flex-1 grid-cols-2 divide-x rounded-lg border bg-white" style={{ borderColor: "#EDF0F4" }}>
       {/* 左：span 树 + 真时间轴瀑布 */}
       <div className="flex min-h-0 flex-col">
-        <div className="flex border-b px-3 py-1.5 text-[10px] text-[#B9C2CF]" style={{ borderColor: "#EDF0F4" }}>
-          <span className="w-1/2">Span</span>
-          <span className="relative flex-1">
-            {ticks.map((t) => (
-              <span key={t} className="absolute -translate-x-1/2 tabular-nums" style={{ left: `${t * 100}%` }}>{fmtMs(Math.round(total * t))}</span>
-            ))}
-          </span>
+        <div className="flex items-center border-b px-3 py-1.5 text-[10px] text-[#B9C2CF]" style={{ borderColor: "#EDF0F4" }}>
+          <div className="flex w-1/2 items-center gap-1">
+            <button className={`rounded px-1.5 py-0.5 ${mode === "tree" ? "bg-[#1F2329] text-white" : "hover:bg-neutral-100"}`} onClick={() => setMode("tree")}>Span 树</button>
+            <button className={`rounded px-1.5 py-0.5 ${mode === "steps" ? "bg-[#1F2329] text-white" : "hover:bg-neutral-100"}`} onClick={() => setMode("steps")}>查看 {collectSteps(trace).length + 1} 个步骤</button>
+          </div>
+          {mode === "tree" && (
+            <span className="relative flex-1">
+              {ticks.map((t) => (
+                <span key={t} className="absolute -translate-x-1/2 tabular-nums" style={{ left: `${t * 100}%` }}>{fmtMs(Math.round(total * t))}</span>
+              ))}
+            </span>
+          )}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto py-1">
-          {flat.map(({ span, depth }) => {
+          {mode === "steps" ? <StepsView trace={trace} /> : flat.map(({ span, depth }) => {
             const Icon = KIND_ICON[span.kind] ?? Box
             const st0 = dispStart(span)
             const left = st0 ? Math.min(100, Math.max(0, ((Date.parse(st0) - runStart) / total) * 100)) : 0
@@ -191,6 +254,9 @@ export function TraceView({ trace, events, focusSpanId }: {
                   <Icon className="size-3.5 shrink-0 text-[#5A6472]" />
                   <span className="truncate text-[#1F2329]">{span.name}</span>
                   {span.nodeType && <span className="shrink-0 truncate text-[10px] text-[#B9C2CF]">{span.nodeType}</span>}
+                  {span.kind === "run" && span.usage && (
+                    <span className="shrink-0 rounded bg-neutral-100 px-1 text-[10px] tabular-nums text-[#5A6472]">in {span.usage.inputTokens} · out {span.usage.outputTokens}</span>
+                  )}
                   {tok > 0 && <span className="shrink-0 rounded bg-neutral-100 px-1 text-[10px] tabular-nums text-[#5A6472]">{fmtTok(tok)} tok</span>}
                   <span className="ml-auto shrink-0 tabular-nums text-[#5A6472]">{fmtMs(dispDur(span))}</span>
                   <span className="size-2 shrink-0 rounded-full" style={{ background: statusColor(span.status) }} />

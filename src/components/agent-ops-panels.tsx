@@ -13,7 +13,7 @@ const INK = "#1F2329"; const INK2 = "#5A6472"; const INK3 = "#B9C2CF"; const CAR
 
 /* ---------- 运行观测 ---------- */
 export function AgentRunsPanel({ agentId }: { agentId: string }) {
-  const [metrics, setMetrics] = useState<{ total: number; succeeded: number; failed: number; successRate: number; avgDurationMs: number; maxDurationMs: number } | null>(null)
+  const [metrics, setMetrics] = useState<{ total: number; succeeded: number; failed: number; successRate: number; avgDurationMs: number; maxDurationMs: number; totalTokens?: number } | null>(null)
   const [runs, setRuns] = useState<{ runId: string; status: string; trigger: string; startedAt: string | null; durationMs: number | null; error?: { message?: string } | null }[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [events, setEvents] = useState<{ type: string; payload: Record<string, any>; at: string }[]>([])
@@ -33,6 +33,8 @@ export function AgentRunsPanel({ agentId }: { agentId: string }) {
         <div className="grid grid-cols-4 gap-3">
           {[["总运行", metrics.total], ["成功", metrics.succeeded], ["失败", metrics.failed],
             ["成功率", `${Math.round(metrics.successRate * 100)}%`],
+            ["错误率", `${Math.round((1 - metrics.successRate) * 100)}%`],
+            ["Token 消耗", metrics.totalTokens != null ? metrics.totalTokens.toLocaleString("zh-CN") : "—"],
             ["平均时长", metrics.avgDurationMs ? `${metrics.avgDurationMs}ms` : "—"],
             ["最长时长", metrics.maxDurationMs ? `${metrics.maxDurationMs}ms` : "—"]].map(([l, v]) => (
             <div key={String(l)} className="rounded-lg border bg-white p-3" style={{ borderColor: CARD }}>

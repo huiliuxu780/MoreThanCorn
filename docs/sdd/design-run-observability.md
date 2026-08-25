@@ -8,6 +8,12 @@
 
 ---
 
+## 0. 调研对齐（2026-08-24 补）
+
+- span 字段对齐调研 07 §3 Trace 模型：`type` 词表（LLM/TOOL/KNOWLEDGE/WORKFLOW/AGENT）、`usage{inputTokens,outputTokens}`、`attributes`（nodeId/attempt/trigger）、`error{code,message,retryable}`。
+- 参考产品主 trace 形态＝对话内“查看 N 个步骤”手风琴（调研 02 §Trace Accordion + 证据截图 08/09：thinking/tool/answer 逐行展开）→ Trace Tab 左栏提供 [Span 树 | 查看 N 个步骤] 双模式。
+- 观测指标对齐调研 07 §6：运行观测面板补 Token 消耗/错误率卡。
+
 ## 1. 现状问题（为什么"完全平铺"不对）
 
 1. 五段纵向平铺（指标卡 / Frozen Snapshot / 节点时间线 / 事件流 / Interaction Executions），无层级、无钻取，扫读成本随 run 复杂度线性增长。
