@@ -54,21 +54,25 @@ SYSTEM_VARIABLES = [
 CONTENT_EVENTS = {"llm_delta", "reply_sent"}
 
 
+_EMIT_LOCK = threading.Lock()  # 08-26 并发执行：sequence 分配串行化
+
+
 def emit(db: Session, run_id: str, type_: str, node_id: str | None = None,
          node_run_id: str | None = None, payload: dict | None = None,
          channel: str | None = None, span_id: str | None = None,
          parent_span_id: str | None = None, duration_ms: int | None = None,
          tokens: dict | None = None) -> RunEvent:
-    seq = (db.execute(text("SELECT coalesce(max(sequence),0)+1 FROM run_event WHERE run_id=:r"),
-                      {"r": run_id}).scalar())
-    ev = RunEvent(run_id=run_id, sequence=int(seq), type=type_, node_id=node_id,
-                  node_run_id=node_run_id, payload=payload or {},
-                  channel=channel or ("CONTENT" if type_ in CONTENT_EVENTS else "CONTROL"),
-                  trace_id=run_id, span_id=span_id or node_run_id,
-                  parent_span_id=parent_span_id or run_id, duration_ms=duration_ms, tokens=tokens)
-    db.add(ev)
-    db.commit()
-    return ev
+    with _EMIT_LOCK:
+        seq = (db.execute(text("SELECT coalesce(max(sequence),0)+1 FROM run_event WHERE run_id=:r"),
+                          {"r": run_id}).scalar())
+        ev = RunEvent(run_id=run_id, sequence=int(seq), type=type_, node_id=node_id,
+                      node_run_id=node_run_id, payload=payload or {},
+                      channel=channel or ("CONTENT" if type_ in CONTENT_EVENTS else "CONTROL"),
+                      trace_id=run_id, span_id=span_id or node_run_id,
+                      parent_span_id=parent_span_id or run_id, duration_ms=duration_ms, tokens=tokens)
+        db.add(ev)
+        db.commit()
+        return ev
 
 
 # ---------- variable resolution ----------
@@ -1058,96 +1062,141 @@ def execute_run(run_id: str, call_chain: list[str] | None = None, resume: dict |
         active_handle: dict[str, str | None] = {}  # source -> selected handle (condition)
         failed = False
 
-        while ready and not failed:
-            nid = ready.pop(0)
-            node = by_id[nid]
-            _resolved = resolve_bindings(node.get("inputs", []), outputs, run.input or {})
-            nr = NodeRun(run_id=run_id, node_id=nid, node_type=node["type"], status="running",
-                         started_at=datetime.now(timezone.utc), input=_resolved or {})
-            db.add(nr)
-            db.commit()
-            emit(db, run_id, "node_started", nid, nr.id, {"nodeType": node["type"], "name": node["name"]})
-            ctx.current_node_run_id = nr.id  # SDD A-07：节点内调用记录关联到本节点运行
-            # 07-SDD §3.2：execution 块统一拦截（retry / onError 三值）
-            policy = node.get("execution") or {}
-            max_retries = int(policy.get("retries") or 0)
-            retry_interval = float(policy.get("retryIntervalMs") or 1000) / 1000.0
-            on_error = policy.get("onError") or "fail"
-            out, exc_final, attempt = None, None, 0
-            while True:
-                try:
-                    fn = EXECUTORS.get(node["type"]) or _agent_family_executor(node["type"])
-                    if not fn:
-                        raise RunError(f"no executor for {node['type']}")
-                    out = fn(node, ctx)
-                    break
-                except _Paused:
-                    raise
-                except Exception as exc:  # noqa: BLE001
-                    exc_final = exc
-                    attempt += 1
-                    if attempt <= max_retries and _retryable(exc):
-                        emit(db, run_id, "node_retry", nid, nr.id,
-                             {"attempt": attempt, "error": str(exc), "name": node["name"]})
-                        time.sleep(min(retry_interval * attempt, 10))
-                        continue
-                    break
-            if exc_final is None:
-                outputs[nid] = out if isinstance(out, dict) else {"output": out}
-                nr.status = "success"
-                nr.output = outputs[nid]
-                nr.ended_at = datetime.now(timezone.utc)
-                nr.duration_ms = int((nr.ended_at - nr.started_at).total_seconds() * 1000) if nr.started_at else None
-                db.commit()
-                _tok = getattr(ctx, "last_tokens", None) or {}
-                ctx.last_tokens = {}
-                emit(db, run_id, "node_completed", nid, nr.id,
-                     {"output": outputs[nid], "input": nr.input, "nodeType": node["type"], "name": node["name"],
-                      "tokens": _tok.get("totalTokens") or _tok.get("total_tokens") or 0},
-                     duration_ms=nr.duration_ms)
-                done.add(nid)
-                _activate_successors(node, outputs[nid], succ, indeg, ready, done, skipped, db, run_id, by_id)
-            elif on_error == "skip":
-                # 07-SDD：skip=记 skipped、空输出、下游继续
-                nr.status = "skipped"
-                nr.error = {"message": str(exc_final)}
-                nr.ended_at = datetime.now(timezone.utc)
-                db.commit()
-                emit(db, run_id, "node_skipped", nid, nr.id, {"error": str(exc_final), "name": node["name"]})
-                skipped.add(nid)
-                outputs[nid] = {}
-                _activate_successors(node, {}, succ, indeg, ready, done, skipped, db, run_id, by_id)
-            elif on_error == "branch":
-                # 07-SDD：error 输出供 {{nid.error.x}} 引用，仅激活 error handle 边
-                err = {"code": type(exc_final).__name__, "message": str(exc_final),
-                       "retryable": _retryable(exc_final)}
-                nr.status = "failed"
-                nr.error = err
-                nr.ended_at = datetime.now(timezone.utc)
-                db.commit()
-                emit(db, run_id, "node_failed", nid, nr.id,
-                     {"error": err["message"], "name": node["name"], "routed": True})
-                outputs[nid] = {"error": err}
-                done.add(nid)
-                for tgt, handle in succ.get(nid, []):
-                    if handle == "error":
-                        indeg[tgt] -= 1
-                        if indeg[tgt] <= 0 and tgt not in done and tgt not in skipped:
-                            ready.append(tgt)
-                    else:
-                        _skip_downstream(tgt, succ, skipped, db, run_id, by_id)
-            else:
-                nr.status = "failed"
-                nr.error = {"message": str(exc_final)}
-                nr.ended_at = datetime.now(timezone.utc)
-                db.commit()
-                emit(db, run_id, "node_failed", nid, nr.id, {"error": str(exc_final), "name": node["name"]})
-                failed_ids.add(nid)
-                if not first_error:
-                    first_error = str(exc_final)
-                failed = True
+        # 07-SDD B6（08-26 收尾）：ready 批次并发执行——每节点独立 session，共享态加锁
+        import os
+        import threading as _th
+        from concurrent.futures import ThreadPoolExecutor as _TPE
+        _lock = _th.Lock()
+        _paused = {"v": False}
+        _par = max(1, int(os.environ.get("WF_PAR_RUN", "4")))
 
-        for nid in [n["id"] for n in nodes if nid_not_done(n["id"], done, skipped, ready) and nid not in failed_ids]:
+        def run_one(nid):
+            nonlocal failed, first_error
+            node = by_id[nid]
+            db2 = SessionLocal()
+            ctx2 = Ctx(db2, run, outputs)
+            ctx2.call_chain = chain
+            ctx2.frozen_agent_versions = frozen_agent_versions
+            ctx2.by_id = by_id
+            ctx2.loop_bodies = loop_bodies
+            ctx2.loop_orders = loop_orders
+            ctx2.resume = resume
+            try:
+                _resolved = resolve_bindings(node.get("inputs", []), outputs, run.input or {})
+                nr = NodeRun(run_id=run_id, node_id=nid, node_type=node["type"], status="running",
+                             started_at=datetime.now(timezone.utc), input=_resolved or {})
+                db2.add(nr)
+                db2.commit()
+                emit(db2, run_id, "node_started", nid, nr.id, {"nodeType": node["type"], "name": node["name"]})
+                ctx2.current_node_run_id = nr.id
+                policy = node.get("execution") or {}
+                max_retries = int(policy.get("retries") or 0)
+                retry_interval = float(policy.get("retryIntervalMs") or 1000) / 1000.0
+                on_error = policy.get("onError") or "fail"
+                out, exc_final, attempt = None, None, 0
+                while True:
+                    try:
+                        fn = EXECUTORS.get(node["type"]) or _agent_family_executor(node["type"])
+                        if not fn:
+                            raise RunError(f"no executor for {node['type']}")
+                        out = fn(node, ctx2)
+                        break
+                    except _Paused:
+                        raise
+                    except Exception as exc:  # noqa: BLE001
+                        exc_final = exc
+                        attempt += 1
+                        if attempt <= max_retries and _retryable(exc):
+                            emit(db2, run_id, "node_retry", nid, nr.id,
+                                 {"attempt": attempt, "error": str(exc), "name": node["name"]})
+                            time.sleep(min(retry_interval * attempt, 10))
+                            continue
+                        break
+                if exc_final is None:
+                    with _lock:
+                        outputs[nid] = out if isinstance(out, dict) else {"output": out}
+                        nr.status = "success"
+                        nr.output = outputs[nid]
+                        nr.ended_at = datetime.now(timezone.utc)
+                        nr.duration_ms = int((nr.ended_at - nr.started_at).total_seconds() * 1000) if nr.started_at else None
+                        db2.commit()
+                        _tok = getattr(ctx2, "last_tokens", None) or {}
+                        ctx2.last_tokens = {}
+                        emit(db2, run_id, "node_completed", nid, nr.id,
+                             {"output": outputs[nid], "input": nr.input, "nodeType": node["type"], "name": node["name"],
+                              "tokens": _tok.get("totalTokens") or _tok.get("total_tokens") or 0},
+                             duration_ms=nr.duration_ms)
+                        done.add(nid)
+                        _activate_successors(node, outputs[nid], succ, indeg, ready, done, skipped, db2, run_id, by_id)
+                elif on_error == "skip":
+                    with _lock:
+                        nr.status = "skipped"
+                        nr.error = {"message": str(exc_final)}
+                        nr.ended_at = datetime.now(timezone.utc)
+                        db2.commit()
+                        emit(db2, run_id, "node_skipped", nid, nr.id, {"error": str(exc_final), "name": node["name"]})
+                        skipped.add(nid)
+                        outputs[nid] = {}
+                        _activate_successors(node, {}, succ, indeg, ready, done, skipped, db2, run_id, by_id)
+                elif on_error == "branch":
+                    err = {"code": type(exc_final).__name__, "message": str(exc_final),
+                           "retryable": _retryable(exc_final)}
+                    with _lock:
+                        nr.status = "failed"
+                        nr.error = err
+                        nr.ended_at = datetime.now(timezone.utc)
+                        db2.commit()
+                        emit(db2, run_id, "node_failed", nid, nr.id,
+                             {"error": err["message"], "name": node["name"], "routed": True})
+                        outputs[nid] = {"error": err}
+                        done.add(nid)
+                        for tgt, handle in succ.get(nid, []):
+                            if handle == "error":
+                                indeg[tgt] -= 1
+                                if indeg[tgt] <= 0 and tgt not in done and tgt not in skipped:
+                                    ready.append(tgt)
+                            else:
+                                _skip_downstream(tgt, succ, skipped, db2, run_id, by_id)
+                else:
+                    with _lock:
+                        nr.status = "failed"
+                        nr.error = {"message": str(exc_final)}
+                        nr.ended_at = datetime.now(timezone.utc)
+                        db2.commit()
+                        emit(db2, run_id, "node_failed", nid, nr.id, {"error": str(exc_final), "name": node["name"]})
+                        failed_ids.add(nid)
+                        if not first_error:
+                            first_error = str(exc_final)
+                        failed = True
+            except _Paused:
+                _paused["v"] = True
+            finally:
+                db2.close()
+
+        while True:
+            with _lock:
+                if failed or _paused["v"] or not ready:
+                    break
+                batch = ready[:]
+                ready.clear()
+            if len(batch) == 1:
+                run_one(batch[0])
+            else:
+                with _TPE(max_workers=min(_par, len(batch))) as ex:
+                    list(ex.map(run_one, batch))
+
+        if _paused["v"]:
+            run.status = "paused"
+            db.commit()
+            waiting = db.execute(select(NodeRun).where(
+                NodeRun.run_id == run_id, NodeRun.status == "waiting")).scalars().first()
+            emit(db, run_id, "run_paused", waiting.node_id if waiting else None, None, {"run_id": run_id})
+            return
+
+
+        for nid in [n["id"] for n in nodes if nid_not_done(n["id"], done, skipped, ready)]:
+            if nid in failed_ids:
+                continue
             nr = NodeRun(run_id=run_id, node_id=nid, node_type=by_id[nid]["type"], status="skipped")
             db.add(nr)
             db.commit()
@@ -1178,7 +1227,7 @@ def execute_run(run_id: str, call_chain: list[str] | None = None, resume: dict |
             db.commit()
             waiting = db.execute(select(NodeRun).where(
                 NodeRun.run_id == run_id, NodeRun.status == "waiting")).scalars().first()
-            emit(db, run_id, "run_paused", waiting.node_id if waiting else None, {"run_id": run_id})
+            emit(db, run_id, "run_paused", waiting.node_id if waiting else None, None, {"run_id": run_id})
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         run = db.get(Run, run_id)

@@ -1433,9 +1433,20 @@ function GenericSchemaForm({ def, cfg, set, node, onChange, nodes, edges, defs }
           {(node.inputs ?? []).map((b) => (
             <div key={b.name} className="flex items-center gap-2 pb-1 text-xs">
               <span style={{ color: C.ink }}>{b.name}</span>
-              <Input className="h-6 text-xs" placeholder="请输入或引用变量值"
+              <Input className="h-6 flex-1 text-xs" placeholder="请输入或引用变量值"
                 value={b.source.kind === "fixed" ? String(b.source.value ?? "") : `{{引用}}`}
                 onChange={(e) => onChange({ ...node, inputs: (node.inputs ?? []).map((x) => (x.name === b.name ? { ...x, source: { kind: "fixed", value: e.target.value } } : x)) })} />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="shrink-0 rounded border px-1 text-[10px]" style={{ borderColor: C.cardBorder, color: C.primary }} title="引用变量">⚙</button>
+                </PopoverTrigger>
+                <PopoverContent align="start">
+                  <VarCascader nodes={nodes} edges={edges} selfId={node.id} defs={defs} onPick={(v) => {
+                    const m = /^\{\{(.+?)\.outputs\.(.+?)\}\}$/.exec(v)
+                    if (m) onChange({ ...node, inputs: (node.inputs ?? []).map((x) => (x.name === b.name ? { ...x, source: { kind: "upstream", nodeId: m[1], path: `outputs.${m[2]}` } } : x)) })
+                  }} />
+                </PopoverContent>
+              </Popover>
             </div>
           ))}
           <button className="flex items-center gap-1 pt-1 text-xs" style={{ color: C.primary }}

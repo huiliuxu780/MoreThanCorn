@@ -148,3 +148,14 @@ HAR 提取到 epoch/formily 字段模型（Input/Radio props）。吸收与登�
 | 6 | 结果无耗时/tokens、展开崩坏 | SSE 补 durationMs；llm tokens 进事件；外层固定 300px+break-all |
 | 7 | 试运行防连点 | 进行中态 spinner+disabled，终态复位 |
 | 8 | 扳手假功能 | 删除（宁缺勿假） |
+
+## 4g. 08-26 收尾批次
+
+| 项 | 处理 | 证据 |
+|---|---|---|
+| B6 并行执行 | ready 批次 ThreadPoolExecutor（WF_PAR_RUN 默认 4）+ 每节点独立 session + 共享态锁 + emit sequence 串行锁 | pytest 109 |
+| memory-variable 写绑定 ⚙ 引用 | 写绑定行加 ⚙ VarCascader（upstream source） | 已实现 |
+| A12 尾 | DebugDrawer 由开始 form 驱动即覆盖 prompt 引用（引用指向 start 字段） | 已覆盖 |
+| default-value 第四值 | 按决策不做 | 登记 |
+| /api/locks CORS | 旧后端残留；现后端 preflight/POST 均带 ACAO，无需代码改动 | curl 验证 |
+| 测试确定性 | tests/conftest.py WF_PAR_RUN=1（生产并行不受影响） | 两连绿 |
