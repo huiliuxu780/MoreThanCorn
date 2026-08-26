@@ -124,3 +124,7 @@
 
 /* 08-26 用户反馈：按钮悬浮手势 */
 button:not(:disabled) { cursor: pointer; }
+
+/* 08-26 用户反馈：画布空白处抓手手势 */
+.react-flow__pane { cursor: grab; }
+.react-flow__pane:active { cursor: grabbing; }

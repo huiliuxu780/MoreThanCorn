@@ -128,7 +128,8 @@ async def run_events(run_id: str, request: Request,
                 cursor = ev.sequence
                 idle = 0
                 data = json.dumps({"type": ev.type, "nodeId": ev.node_id,
-                                   "nodeRunId": ev.node_run_id, "payload": ev.payload},
+                                   "nodeRunId": ev.node_run_id, "payload": ev.payload,
+                                   "durationMs": ev.duration_ms},
                                   ensure_ascii=False)
                 yield f"id: {ev.sequence}\nevent: {ev.type}\ndata: {data}\n\n"
             terminal = any(e.type in ("workflow_completed", "workflow_failed") for e in evs)
@@ -149,7 +150,8 @@ def events_list(run_id: str, nodeRunId: str = "", db: Session = Depends(get_db))
     evs = q.order_by(RunEvent.sequence).all()
     return {"items": [{"sequence": e.sequence, "type": e.type, "nodeId": e.node_id,
                        "nodeRunId": e.node_run_id, "channel": e.channel,
-                       "at": e.created_at.isoformat(), "payload": e.payload} for e in evs]}
+                       "at": e.created_at.isoformat(), "payload": e.payload,
+                       "durationMs": e.duration_ms} for e in evs]}
 
 
 def _tok_total(d: dict | None) -> int:

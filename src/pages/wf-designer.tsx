@@ -319,6 +319,8 @@ interface WfNodeData extends Record<string, unknown> {
   run?: { status: "running" | "success" | "failed" | "skipped"; durationMs?: number; tokens?: number; input?: unknown; output?: unknown; error?: string }
   onRunNode?: (id: string) => void
   onTestNode?: (id: string) => void  // E-4.3：单测此节点
+  onQuickAdd?: (handle: string | null, typeKey: string) => void
+  palette?: [string, NodeDefinition[]][]
   onDelete?: (id: string) => void
 }
 
@@ -376,7 +378,7 @@ function SummaryRows({ n }: { n: WfNode }) {
 }
 
 /* 条件节点摘要行：每分支一行，右侧各挂一个 source handle（调研 11 §3.14：分支=出边 handle） */
-function ConditionRows({ n }: { n: WfNode }) {
+function ConditionRows({ n, onQuickAdd, palette }: { n: WfNode; onQuickAdd?: (h: string | null, t: string) => void; palette?: [string, NodeDefinition[]][] }) {
   const bs = normCondBranches((n.config as Record<string, any>)?.branches)
   const rows = [
     ...bs.map((b, i) => ({
@@ -395,6 +397,11 @@ function ConditionRows({ n }: { n: WfNode }) {
           <span className="min-w-0 flex-1 truncate" style={{ color: C.ink }}>{r.desc}</span>
           <Handle id={r.handle} type="source" position={Position.Right}
             style={{ width: 12, height: 12, background: r.handle === "else" ? "#94A3B8" : C.primary, border: "2px solid #fff", borderRadius: 6 }} />
+          {onQuickAdd && palette && (
+            <span className="absolute -right-1.5 top-1/2 -translate-y-1/2">
+              <QuickAddButton palette={palette} onPick={(t) => onQuickAdd(r.handle, t)} />
+            </span>
+          )}
         </div>
       ))}
     </div>
@@ -414,9 +421,10 @@ function WfNodeCard({ data, selected }: NodeProps) {
     selected ? `ring-[1.5px] ring-[#3D6BFF]` : ""
   // 08-26 用户反馈：悬浮边框+阴影效果
   const hoverFx = selected ? "" : "border-[#EDF0F4] hover:border-[#3D6BFF] hover:shadow-[0_4px_16px_rgba(61,107,255,0.18)]"
+  const isBranch = ["condition", "decision-class", "workflow-select"].includes(n.type)
   return (
-    <div>
-    <div className={`relative w-[300px] overflow-hidden rounded-[8px] border bg-white p-3 shadow-sm transition-all ${hoverFx} ${ring}`} style={{ borderColor: selected ? C.primary : undefined }}>
+    <div className="group relative w-[300px]">
+    <div className={`relative w-full overflow-hidden rounded-[8px] border bg-white p-3 shadow-sm transition-all ${hoverFx} ${ring}`} style={{ borderColor: selected ? C.primary : undefined }}>
       {n.type !== "input" && <Handle type="target" position={Position.Left} style={{ width: 12, height: 12, background: "#fff", border: `2px solid ${C.primary}`, borderRadius: 6 }} />}
       {n.type !== "end" && n.type !== "condition" && <Handle type="source" position={Position.Right} style={{ width: 12, height: 12, background: C.primary, border: "2px solid #fff", borderRadius: 6 }} />}
       {n.type === "condition" && collapsed && condHandlesOf(n).map((h, i, arr) => (
@@ -470,10 +478,42 @@ function WfNodeCard({ data, selected }: NodeProps) {
           {n.type === "workflow-fixed" && `版本策略：${((n.config as Record<string, unknown>)?.versionPolicy) ?? "latest"}`}
         </div>
       )}
-      {!collapsed && (n.type === "condition" ? <ConditionRows n={n} /> : <SummaryRows n={n} />)}
+      {!collapsed && (n.type === "condition" ? <ConditionRows n={n} onQuickAdd={d.onQuickAdd} palette={d.palette} /> : <SummaryRows n={n} />)}
     </div>
+    {!isBranch && d.onQuickAdd && d.palette && (
+      <span className={`absolute -right-3 top-1/2 z-10 -translate-y-1/2 transition-opacity ${selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+        <QuickAddButton palette={d.palette} onPick={(t) => d.onQuickAdd?.(null, t)} />
+      </span>
+    )}
     {d.run && d.run.status !== "running" && <NodeRunResult run={d.run} />}
     </div>
+  )
+}
+
+/* 08-26 用户反馈：节点尾部“+”快捷添加（点击后选节点并自动连线） */
+function QuickAddButton({ palette, onPick }: { palette: [string, NodeDefinition[]][]; onPick: (t: string) => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="flex size-5 items-center justify-center rounded-full border bg-white shadow-sm hover:border-[#3D6BFF]" style={{ borderColor: C.cardBorder }} title="快捷添加节点">
+          <Plus className="size-3" style={{ color: C.primary }} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="right" align="start" className="max-h-72 w-56 overflow-y-auto p-1">
+        {palette.map(([fam, list]) => (
+          <div key={fam} className="py-0.5">
+            <div className="px-1 pb-0.5 text-[10px]" style={{ color: C.ink2 }}>{fam}</div>
+            {list.map((dd) => (
+              <button key={dd.type_key} className="flex w-full items-center gap-2 rounded px-2 py-1 text-xs hover:bg-neutral-50" style={{ color: C.ink }}
+                onClick={() => { onPick(dd.type_key); setOpen(false) }}>
+                {dd.label}
+              </button>
+            ))}
+          </div>
+        ))}
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -492,7 +532,7 @@ function NodeRunResult({ run }: { run: NonNullable<WfNodeData["run"]> }) {
           {Object.entries(o).map(([k, v]) => (
             <div key={k}>
               <span className="text-[#7ED491]">{k}:</span>{" "}
-              <span className="text-neutral-200">{typeof v === "string" ? `"${v.slice(0, 160)}"` : JSON.stringify(v)?.slice(0, 160)}</span>
+              <span className="break-all text-neutral-200">{typeof v === "string" ? `"${v.slice(0, 160)}"` : JSON.stringify(v)?.slice(0, 160)}</span>
             </div>
           ))}
         </div>
@@ -1794,6 +1834,8 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const [drawer, setDrawer] = useState<"config" | "debug" | "history" | "runs" | "schedule" | "agent" | "eval" | "evo" | null>(null)
   const [showMiniMap, setShowMiniMap] = useState(true)
   const [runState, setRunState] = useState<Record<string, NonNullable<WfNodeData["run"]>>>({})
+  const [running, setRunning] = useState(false)
+  const runningRef = useRef(false)
   const [lastRunId, setLastRunId] = useState<string | null>(null)
   const [publishOpen, setPublishOpen] = useState(false)
   const [agentPublishOpen, setAgentPublishOpen] = useState(false)
@@ -1953,7 +1995,15 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
       wf: n, def: defs.find((d) => d.type_key === n.type),
       issues: issues.filter((i) => i.nodeId === n.id),
       run: runState[n.id],
-      onRunNode: (id: string) => demoRun([id]),
+      onRunNode: (id: string) => {
+        // 08-26 用户反馈：单节点运行不带动其他节点——真单测 node-test
+        setRunState({})
+        wfApi.nodeTest(workflowId, id, {}).then((r: { ok?: boolean; output?: unknown; durationMs?: number; error?: string }) => {
+          setRunState({ [id]: r.ok ? { status: "success", output: r.output, durationMs: r.durationMs } : { status: "failed", error: r.error || "单测失败" } })
+        }).catch((e: Error) => setRunState({ [id]: { status: "failed", error: e.message } }))
+      },
+      onQuickAdd: (h: string | null, t: string) => quickAdd(n.id, h, t),
+      palette: families,
       onTestNode: (id: string) => setTestNodeId(id),  // E-4.3
       onDelete: (id: string) => {
         const d2 = defRef.current!
@@ -1977,6 +2027,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
     return {
       id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle ?? undefined, label,
       labelStyle: { fontSize: 10, fill: C.ink2 }, labelBgStyle: { fill: "#fff", fillOpacity: 0.9 },
+      reconnectable: true,
       style: { stroke: selectedEdgeId === e.id ? "#F56C6C" : "#A8B3C5", strokeWidth: selectedEdgeId === e.id ? 2.5 : 1.5 },
       interactionWidth: 24,
     }
@@ -2008,11 +2059,14 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
       } }))
     }
     for (const t of ["node_started", "node_completed", "node_failed", "node_skipped"]) es.addEventListener(t, onNode)
-    es.addEventListener("workflow_completed", () => { toast.success("运行成功"); es.close() })
-    es.addEventListener("workflow_failed", (e) => { const d = JSON.parse((e as MessageEvent).data); toast.error(`运行失败：${d.payload?.error ?? ""}`); es.close() })
+    es.addEventListener("workflow_completed", () => { toast.success("运行成功"); runningRef.current = false; setRunning(false); es.close() })
+    es.addEventListener("workflow_failed", (e) => { const d = JSON.parse((e as MessageEvent).data); toast.error(`运行失败：${d.payload?.error ?? ""}`); runningRef.current = false; setRunning(false); es.close() })
   }, [])
 
   const startRealRun = useCallback(async (input: Record<string, unknown>) => {
+    if (runningRef.current) return  // 08-26：进行中禁止重复点击
+    runningRef.current = true
+    setRunning(true)
     const rep = await wfApi.validate(workflowId)
     setIssues(rep.issues)
     if (!rep.ok) { setDrawer(null); toast.error("请先配置节点"); return }
@@ -2024,10 +2078,11 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
       subscribeRun(r.runId)
     } catch (e) {
       toast.error((e as Error).message)
+      runningRef.current = false
+      setRunning(false)
     }
   }, [workflowId, subscribeRun])
   const startDebugRun = startRealRun
-  const demoRun = (_only?: string[]) => startRealRun({})
 
   if (!def) return <div className="p-8 text-sm" style={{ color: C.ink2 }}>加载中…</div>
 
@@ -2045,6 +2100,36 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
       return
     }
     mutate({ ...def, graph: { ...def.graph, edges: [...def.graph.edges, { id: `e_${Date.now() % 100000}`, source: conn.source, target: conn.target, sourceHandle: sh }] } })
+  }
+
+  // 08-26 用户反馈：节点尾部+快捷添加（自动连线；分支节点按分支 handle 连）
+  const quickAdd = (sourceId: string, handle: string | null, typeKey: string) => {
+    const d = defRef.current!
+    const defn = defs.find((x) => x.type_key === typeKey)
+    const id = `n_${typeKey}_${Date.now() % 100000}`
+    const srcPos = d.ui.positions[sourceId] ?? { x: 260, y: 160 }
+    const node: WfNode = {
+      id, type: typeKey, name: defn?.label ?? typeKey,
+      config: typeKey === "condition" ? { branches: [{ handle: "b1", logic: "AND", conditions: [] }] } : {},
+      inputs: [], branches: typeKey === "condition" ? ["b1", "else"] : undefined,
+    }
+    const edges2 = d.graph.edges.filter((e) =>
+      !(handle && e.source === sourceId && e.sourceHandle === handle))
+    edges2.push({ id: `e_${Date.now() % 100000}`, source: sourceId, target: id, sourceHandle: handle ?? undefined })
+    mutate({
+      ...d,
+      ui: { ...d.ui, positions: { ...d.ui.positions, [id]: { x: srcPos.x + 380, y: srcPos.y + (handle ? 60 : 0) } } },
+      graph: { ...d.graph, nodes: [...d.graph.nodes, node], edges: edges2 },
+    })
+    setSelectedId(id); setDrawer("config")
+  }
+  // 08-26 用户反馈：已连连线可拖动改接其他节点
+  const onReconnect = (oldEdge: Edge, conn: { source: string | null; target: string | null; sourceHandle?: string | null }) => {
+    if (!conn.source || !conn.target) return
+    const d = defRef.current!
+    const edges2 = d.graph.edges.filter((e) => e.id !== oldEdge.id)
+    edges2.push({ id: `e_${Date.now() % 100000}`, source: conn.source, target: conn.target, sourceHandle: conn.sourceHandle ?? undefined })
+    mutate({ ...d, graph: { ...d.graph, edges: edges2 } })
   }
 
   const addNode = (typeKey: string) => {
@@ -2270,6 +2355,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
             if (dimsChanged) setNodeDims((d) => ({ ...d, ...dims }))
           }}
           onConnect={onConnect}
+          onReconnect={onReconnect}
           onNodeClick={(_, n) => { setSelectedId(n.id); setSelectedEdgeId(null); setDrawer("config"); setPop(null) }}
           onEdgeClick={(_, e) => { setSelectedEdgeId(e.id); setSelectedId(null) }}
           onPaneClick={() => { setSelectedId(null); setSelectedEdgeId(null); setPop(null) }}
@@ -2328,9 +2414,8 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
               }} />
             </PopoverContent>
           </Popover>
-          <button className="rounded p-1.5 hover:bg-neutral-100" title="工具"><Wrench className="size-4" style={{ color: C.ink2 }} /></button>
-          <Button size="sm" className="rounded-md" style={{ background: C.primary }} onClick={tryRun}>
-            <Play className="size-3.5" /> 试运行
+          <Button size="sm" className="rounded-md" style={{ background: C.primary }} disabled={running} onClick={tryRun}>
+            {running ? <span className="size-3 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Play className="size-3.5" />} {running ? "运行中" : "试运行"}
           </Button>
         </div>
 
