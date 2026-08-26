@@ -1993,6 +1993,17 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
     return () => window.removeEventListener("keydown", onKey)
   }, [undo, redo, selectedEdgeId, mutate])
 
+  const families = useMemo(() => {
+    // SDD C-2：按编排器类型过滤节点目录（调研 11 §7 editorKinds）
+    const kind: "FLOW" | "GROUP" | "WORKFLOW" = agentMeta
+      ? ((agentMeta as { agentType?: string }).agentType === "expert-group" ? "GROUP" : "FLOW")
+      : "WORKFLOW"
+    // 07-SDD D8：deprecated（退役 agent 三键）不进 palette
+    const visible = defs.filter((d) => (d.editor_kinds ?? ["WORKFLOW"]).includes(kind) && !(d as unknown as Record<string, unknown>).deprecated)
+    const m = new Map<string, NodeDefinition[]>()
+    for (const d of visible) m.set(d.family, [...(m.get(d.family) ?? []), d])
+    return [...m.entries()]
+  }, [defs, agentMeta])
   const nodes: Node[] = useMemo(() => (def?.graph.nodes ?? []).map((n) => ({
     id: n.id, type: "wf",
     position: def!.ui.positions[n.id] ?? { x: 120, y: 160 },
@@ -2039,17 +2050,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
     }
   }), [def, selectedEdgeId])
 
-  const families = useMemo(() => {
-    // SDD C-2：按编排器类型过滤节点目录（调研 11 §7 editorKinds）
-    const kind: "FLOW" | "GROUP" | "WORKFLOW" = agentMeta
-      ? ((agentMeta as { agentType?: string }).agentType === "expert-group" ? "GROUP" : "FLOW")
-      : "WORKFLOW"
-    // 07-SDD D8：deprecated（退役 agent 三键）不进 palette
-    const visible = defs.filter((d) => (d.editor_kinds ?? ["WORKFLOW"]).includes(kind) && !(d as unknown as Record<string, unknown>).deprecated)
-    const m = new Map<string, NodeDefinition[]>()
-    for (const d of visible) m.set(d.family, [...(m.get(d.family) ?? []), d])
-    return [...m.entries()]
-  }, [defs, agentMeta])
+
 
   /* demo-run（16 §7，P1 换真 SSE） */
   /* P1：真执行 — POST /api/runs + SSE 事件驱动画布状态 */
