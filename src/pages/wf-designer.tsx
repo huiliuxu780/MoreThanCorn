@@ -2204,13 +2204,10 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
         {agentMeta && avatar ? (
           <img src={avatar} alt={agentMeta.name} className="size-8 shrink-0 rounded-md object-cover" />
         ) : (
-          <span className="flex size-7 items-center justify-center rounded-lg" style={{ background: NEUTRAL }}>
-            <Zap className="size-4 text-white" />
-          </span>
+          <WfIcon icon={(def.workflow as unknown as { icon?: string }).icon} className="size-7 shrink-0 rounded-lg" iconCls="size-4" />
         )}
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            {!agentMeta && <WfIcon icon={(def.workflow as unknown as { icon?: string }).icon} className="size-6 rounded-md" iconCls="size-3.5" />}
             <span className="truncate text-[15px] font-semibold" style={{ color: C.ink }}>{agentMeta ? agentMeta.name : def.workflow.name}</span>
             {agentMeta ? (
               <button className="flex items-center gap-1 rounded border bg-white px-1.5 py-0.5 text-[11px]" style={{ borderColor: C.cardBorder, color: C.ink2 }} onClick={() => setDrawer("history")}>
@@ -2273,7 +2270,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
                   <DialogHeader><DialogTitle>选择图标</DialogTitle></DialogHeader>
                   <div className="grid grid-cols-6 gap-3">
                     {WORKFLOW_ICONS.map((w) => (
-                      <button key={w.key} className={`flex items-center justify-center rounded-lg ${metaIcon === w.key ? "ring-2 ring-primary" : ""}`}
+                      <button key={w.key} className={`flex aspect-square w-full items-center justify-center rounded-lg ${metaIcon === w.key ? "ring-2 ring-primary" : ""}`}
                         style={{ background: w.color }} title={w.label}
                         onClick={() => { setMetaIcon(w.key); setAvatarOpen(false) }}>
                         <w.Icon className="size-6 text-white" />
@@ -2283,7 +2280,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
                   <div className="pb-1 pt-2 text-xs text-muted-foreground">或使用头像库</div>
                   <div className="grid grid-cols-6 gap-3">
                     {AVATARS.map((src) => (
-                      <button key={src} className={`overflow-hidden rounded-lg ${(metaIcon ?? avatarFor(def.workflow.id)) === src ? "ring-2 ring-primary" : ""}`}
+                      <button key={src} className={`aspect-square w-full overflow-hidden rounded-lg ${(metaIcon ?? avatarFor(def.workflow.id)) === src ? "ring-2 ring-primary" : ""}`}
                         onClick={() => { setMetaIcon(src); setAvatarOpen(false) }}>
                         <img src={src} alt="" className="size-full object-cover" />
                       </button>
