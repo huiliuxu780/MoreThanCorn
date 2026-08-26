@@ -2186,7 +2186,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
 
   const onPublish = async () => {
     try {
-      const res = await wfApi.publish(agentId, "replica publish")
+      const res = await wfApi.publish(workflowId, "replica publish")  // 08-26 修复：独立工作流页无 agentId，发布必须用 workflowId
       toast.success(`已发布 V${res.versionNo}`, { position: "top-center" })
       setPublishOpen(false)
       setDef((d) => d && { ...d, workflow: { ...d.workflow, status: "published" } })
