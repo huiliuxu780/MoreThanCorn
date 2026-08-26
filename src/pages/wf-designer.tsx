@@ -532,12 +532,12 @@ function NodeRunResult({ run }: { run: NonNullable<WfNodeData["run"]> }) {
     return (
       <div>
         <div className="pb-0.5 text-[10px] text-neutral-300">{title}</div>
-        <div className="max-h-56 overflow-auto whitespace-pre-wrap rounded bg-[#2A3242] p-2 font-mono text-[10px] leading-4">
+        <div className="whitespace-pre-wrap break-all rounded bg-[#2A3242] p-2 font-mono text-[10px] leading-4">
           {Object.entries(o).length === 0 && <span className="text-neutral-400">∅</span>}
           {Object.entries(o).map(([k, v]) => (
             <div key={k}>
               <span className="text-[#7ED491]">{k}:</span>{" "}
-              <span className="break-all text-neutral-200">{typeof v === "string" ? `"${v.slice(0, 160)}"` : JSON.stringify(v)?.slice(0, 160)}</span>
+              <span className="break-all text-neutral-200">{typeof v === "string" ? `"${v}"` : JSON.stringify(v)}</span>
             </div>
           ))}
         </div>
