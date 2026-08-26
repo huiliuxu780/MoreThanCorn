@@ -83,7 +83,7 @@ function DesignControl({ f }: { f: FormField }) {
     )
     case "select": return (
       <Select>
-        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={f.placeholder || "请选择"} /></SelectTrigger>
+        <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder={f.placeholder || "请选择"} /></SelectTrigger>
         <SelectContent>{opts.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
       </Select>
     )
@@ -233,7 +233,7 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                     const dt = itemOf(v)?.dataType ?? cur.dataType
                     patch(cur.id!, { type: v, dataType: dt })
                   }}>
-                    <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-7 w-full text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {(COMPAT[cur.type] ?? [cur.type]).map((t) => (
                         <SelectItem key={t} value={t}>{itemOf(t)?.label ?? t}</SelectItem>
@@ -243,7 +243,7 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                   <div className="rounded bg-neutral-50 px-2 py-1 font-mono text-[10px] text-neutral-500">dataType = {cur.dataType}</div>
                   {cur.type === "switch" ? (
                     <Select value={cur.default || "false"} onValueChange={(v) => patch(cur.id!, { default: v })}>
-                      <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-7 w-full text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent><SelectItem value="true">true</SelectItem><SelectItem value="false">false</SelectItem></SelectContent>
                     </Select>
                   ) : (
@@ -315,7 +315,7 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                   <label className="flex items-center justify-between text-xs"><span>禁用（HAR disabled）</span>
                     <Checkbox checked={!!cur.display?.disabled} onCheckedChange={(v) => patch(cur.id!, { display: { ...cur.display, disabled: !!v } })} /></label>
                   <Select value={String(cur.layout?.span ?? 12)} onValueChange={(v) => patch(cur.id!, { layout: { span: Number(v) } })}>
-                    <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-7 w-full text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>{SPANS.map((s) => <SelectItem key={s} value={String(s)}>{s} / 12 列</SelectItem>)}</SelectContent>
                   </Select>
                 </AccordionContent>
@@ -325,7 +325,7 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                 <AccordionTrigger className="py-2 text-xs">Binding</AccordionTrigger>
                 <AccordionContent className="space-y-1.5">
                   <Select value={cur.binding?.type ?? "manual"} onValueChange={(v) => patch(cur.id!, { binding: { type: v } })}>
-                    <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-7 w-full text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>{BIND_TYPES.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}</SelectContent>
                   </Select>
                   {(cur.binding?.type === "workflow_output" || cur.binding?.type === "constant") && (
@@ -350,11 +350,11 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                 <AccordionContent className="space-y-1.5">
                   <div className="grid grid-cols-[1fr_90px] gap-1">
                     <Select value={cur.condition?.visibleWhen?.field ?? ""} onValueChange={(v) => patch(cur.id!, { condition: { visibleWhen: { field: v, operator: cur.condition?.visibleWhen?.operator ?? "eq", value: cur.condition?.visibleWhen?.value } } })}>
-                      <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Visible When" /></SelectTrigger>
+                      <SelectTrigger className="h-7 w-full text-xs"><SelectValue placeholder="Visible When" /></SelectTrigger>
                       <SelectContent>{fields.filter((x) => x.id !== cur.id && x.dataType !== "none").map((x) => <SelectItem key={x.key} value={x.key}>{x.key}</SelectItem>)}</SelectContent>
                     </Select>
                     <Select value={cur.condition?.visibleWhen?.operator ?? "eq"} onValueChange={(v) => patch(cur.id!, { condition: { visibleWhen: { field: cur.condition?.visibleWhen?.field ?? "", operator: v, value: cur.condition?.visibleWhen?.value } } })}>
-                      <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-7 w-full text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent>{COND_OPS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>

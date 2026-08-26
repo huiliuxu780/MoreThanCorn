@@ -97,7 +97,7 @@ export function FormRenderer({ fields, values, onChange, showErrors = false }: {
           case "select":
             control = (
               <Select value={(values[f.key] as string) ?? f.default ?? undefined} onValueChange={(v) => set(f.key, v)}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={f.placeholder || "请选择"} /></SelectTrigger>
+                <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder={f.placeholder || "请选择"} /></SelectTrigger>
                 <SelectContent>{opts.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
               </Select>
             )
