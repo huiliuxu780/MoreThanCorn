@@ -1061,7 +1061,7 @@ def execute_run(run_id: str, call_chain: list[str] | None = None, resume: dict |
         while ready and not failed:
             nid = ready.pop(0)
             node = by_id[nid]
-            _resolved = resolve_bindings(node.get("inputs", []), outputs, run_input)
+            _resolved = resolve_bindings(node.get("inputs", []), outputs, run.input or {})
             nr = NodeRun(run_id=run_id, node_id=nid, node_type=node["type"], status="running",
                          started_at=datetime.now(timezone.utc), input=_resolved or {})
             db.add(nr)
