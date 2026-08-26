@@ -1,15 +1,13 @@
-/** 07-SDD（08-26 决策）：集中表单管理页——工作流输入契约实体 CRUD。 */
-import { ArrowDown, ArrowUp, Copy, Pencil, Plus, Trash2 } from "lucide-react"
+/** 07-SDD（08-26 决策）：集中表单管理——列表页 + 独立新建/编辑页（三栏构建器）。 */
+import { ArrowDown, ArrowLeft, ArrowUp, Copy, Pencil, Plus, Save, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
+import { useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
 import { EmptyState } from "@/components/app/list-state"
 import { PageContainer, PageHeader } from "@/components/app/page"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -19,8 +17,6 @@ import { formsApi, type FormDef, type FormField } from "@/services/wf-api"
 
 const TYPES = ["string", "number", "boolean", "array", "object", "datetime"]
 const CONTROLS = ["text", "textarea", "number", "select", "switch", "date"]
-
-/* 07-SDD（08-26）：三栏表单构建器（参考 shadcn-builder UX，自写实现）：字段面板｜实时预览｜属性面板 */
 const CONTROL_LABEL: Record<string, string> = {
   text: "单行文本", textarea: "多行文本", number: "数字", select: "下拉选择", switch: "开关", date: "日期",
 }
@@ -45,6 +41,7 @@ function PreviewControl({ f }: { f: FormField }) {
   return <Input className="h-8 text-xs" placeholder={f.default || f.description || f.name} />
 }
 
+/* 三栏构建器（参考 shadcn-builder UX 自写）：字段面板｜实时预览｜属性面板 */
 function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: FormField[]) => void }) {
   const [sel, setSel] = useState<number | null>(fields.length ? 0 : null)
   const patch = (i: number, p: Partial<FormField>) =>
@@ -67,9 +64,8 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
   }
   const cur = sel != null ? fields[sel] : null
   return (
-    <div className="grid grid-cols-[170px_1fr_240px] gap-3">
-      {/* 左：字段面板 */}
-      <div className="space-y-1 rounded-md border p-2">
+    <div className="grid grid-cols-[170px_1fr_260px] gap-3">
+      <div className="h-fit space-y-1 rounded-md border bg-white p-2">
         <div className="pb-1 text-xs text-muted-foreground">字段类型</div>
         {CONTROLS.map((c) => (
           <button key={c} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-neutral-50"
@@ -79,8 +75,7 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
         ))}
         <p className="pt-1 text-[10px] text-neutral-400">点击添加；预览区点选字段后右侧编辑属性。</p>
       </div>
-      {/* 中：实时预览 */}
-      <div className="min-h-[300px] space-y-3 rounded-md border bg-neutral-50/50 p-3">
+      <div className="min-h-[420px] space-y-3 rounded-md border bg-neutral-50/50 p-3">
         {fields.length === 0 && <div className="py-10 text-center text-xs text-neutral-400">从左侧添加字段，实时预览表单</div>}
         {fields.map((f, i) => (
           <div key={i}
@@ -99,8 +94,7 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
           </div>
         ))}
       </div>
-      {/* 右：属性面板 */}
-      <div className="space-y-2 rounded-md border p-2">
+      <div className="h-fit space-y-2 rounded-md border bg-white p-2">
         <div className="pb-1 text-xs text-muted-foreground">字段属性</div>
         {!cur && <div className="py-6 text-center text-xs text-neutral-400">预览区点选字段</div>}
         {cur && sel != null && (
@@ -136,14 +130,63 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
   )
 }
 
-export default function WfFormsPage() {
-  const [rows, setRows] = useState<FormDef[]>([])
-  const [loading, setLoading] = useState(true)
-  const [editing, setEditing] = useState<FormDef | null>(null)
-  const [isNew, setIsNew] = useState(false)
+/* 独立新建/编辑页（08-26 决策：新建/编辑走页面，与 tasks/ai-resources 约定一致） */
+export function WfFormEditorPage() {
+  const { formId } = useParams()
+  const navigate = useNavigate()
   const [name, setName] = useState("")
   const [desc, setDesc] = useState("")
   const [fields, setFields] = useState<FormField[]>([])
+  const [loaded, setLoaded] = useState(!formId)
+
+  useEffect(() => {
+    if (!formId) return
+    formsApi.get(formId)
+      .then((d) => { setName(d.name); setDesc(d.description ?? ""); setFields((d.fields ?? []).map((x) => ({ ...x }))) })
+      .catch(() => toast.error("表单不存在"))
+      .finally(() => setLoaded(true))
+  }, [formId])
+
+  const save = async () => {
+    if (!name.trim()) { toast.error("名称必填"); return }
+    try {
+      if (formId) {
+        await formsApi.update(formId, { name: name.trim(), description: desc, fields })
+        toast.success("已保存")
+      } else {
+        const r = await formsApi.create({ name: name.trim(), description: desc, fields })
+        toast.success("已创建")
+        navigate(`/config/forms/${r.id}`, { replace: true })
+      }
+    } catch (e) { toast.error((e as Error).message) }
+  }
+
+  if (!loaded) return <PageContainer><div className="py-10 text-center text-xs text-muted-foreground">加载中…</div></PageContainer>
+  return (
+    <PageContainer wide className="space-y-3">
+      <PageHeader
+        title={formId ? `编辑表单 · ${name}` : "新建表单"}
+        description="字段即工作流输入契约：开始节点引用后成为全局固定输入变量"
+        actions={
+          <span className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => navigate("/config/forms")}><ArrowLeft className="size-4" /> 返回</Button>
+            <Button size="sm" onClick={save}><Save className="size-4" /> 保存</Button>
+          </span>
+        }
+      />
+      <div className="grid grid-cols-2 gap-2">
+        <Input value={name} placeholder="表单名称" onChange={(e) => setName(e.target.value)} />
+        <Input value={desc} placeholder="描述" onChange={(e) => setDesc(e.target.value)} />
+      </div>
+      <FormBuilder fields={fields} onChange={setFields} />
+    </PageContainer>
+  )
+}
+
+export default function WfFormsPage() {
+  const navigate = useNavigate()
+  const [rows, setRows] = useState<FormDef[]>([])
+  const [loading, setLoading] = useState(true)
 
   const load = () => {
     setLoading(true)
@@ -151,43 +194,24 @@ export default function WfFormsPage() {
   }
   useEffect(load, [])
 
-  const openNew = () => {
-    setEditing(null); setIsNew(true); setName(""); setDesc(""); setFields([])
-  }
-  const openEdit = async (f: FormDef) => {
-    const d = await formsApi.get(f.id)
-    setEditing(d); setIsNew(false); setName(d.name); setDesc(d.description ?? "")
-    setFields((d.fields ?? []).map((x) => ({ ...x })))
-  }
-  const save = async () => {
-    if (!name.trim()) { toast.error("名称必填"); return }
-    try {
-      if (isNew) await formsApi.create({ name: name.trim(), description: desc, fields })
-      else await formsApi.update(editing!.id, { name: name.trim(), description: desc, fields })
-      toast.success("已保存")
-      setEditing(null); setIsNew(false)
-      load()
-    } catch (e) { toast.error((e as Error).message) }
-  }
-
   return (
     <PageContainer wide className="space-y-3">
       <PageHeader
         title="表单"
         description="工作流输入契约：开始节点引用表单，字段即全局固定输入变量"
-        actions={<Button size="sm" onClick={openNew}><Plus className="size-4" /> 新建表单</Button>}
+        actions={<Button size="sm" onClick={() => navigate("/config/forms/new")}><Plus className="size-4" /> 新建表单</Button>}
       />
       {loading ? (
         <div className="py-10 text-center text-xs text-muted-foreground">加载中…</div>
       ) : rows.length === 0 ? (
-        <EmptyState title="暂无表单" action={<Button size="sm" onClick={openNew}><Plus className="size-4" /> 新建表单</Button>} />
+        <EmptyState title="暂无表单" action={<Button size="sm" onClick={() => navigate("/config/forms/new")}><Plus className="size-4" /> 新建表单</Button>} />
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {rows.map((f) => (
             <div key={f.id} className="rounded-lg border bg-white p-3 shadow-sm">
               <div className="flex items-center gap-2">
-                <span className="flex-1 truncate text-sm font-medium">{f.name}</span>
-                <button title="编辑" onClick={() => openEdit(f)}><Pencil className="size-3.5 text-neutral-500" /></button>
+                <button className="flex-1 truncate text-left text-sm font-medium hover:underline" onClick={() => navigate(`/config/forms/${f.id}`)}>{f.name}</button>
+                <button title="编辑" onClick={() => navigate(`/config/forms/${f.id}`)}><Pencil className="size-3.5 text-neutral-500" /></button>
                 <button title="创建副本" onClick={async () => { await formsApi.duplicate(f.id); load() }}>
                   <Copy className="size-3.5 text-neutral-500" />
                 </button>
@@ -212,25 +236,6 @@ export default function WfFormsPage() {
           ))}
         </div>
       )}
-
-      <Dialog open={isNew || !!editing} onOpenChange={(o) => { if (!o) { setEditing(null); setIsNew(false) } }}>
-        <DialogContent className="max-h-[90vh] max-w-6xl overflow-y-auto">
-          <DialogHeader><DialogTitle>{isNew ? "新建表单" : `编辑表单 · ${editing?.name}`}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-2">
-              <Input value={name} placeholder="表单名称" onChange={(e) => setName(e.target.value)} />
-              <Input value={desc} placeholder="描述" onChange={(e) => setDesc(e.target.value)} />
-            </div>
-            <FormBuilder fields={fields} onChange={setFields} />
-            <Textarea className="min-h-16 text-xs" readOnly
-              value={"预置模板：对话六件套 = userQuery*(textarea)/chatHistory/userId/conversationId/chatId/reference"} />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setEditing(null); setIsNew(false) }}>取消</Button>
-            <Button onClick={save}>保存</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </PageContainer>
   )
 }
