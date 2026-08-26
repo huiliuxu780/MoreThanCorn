@@ -108,3 +108,14 @@
 | RHF+Zod | 未引（后端 Python 校验+前端受控组件） | 🟡 偏差 |
 | DnD dnd-kit | 缓（点击添加+↑↓） | ⏸ |
 | Property Registry schema 驱动属性面板 | 未做（统一面板硬编码） | 🟡 偏差 |
+
+## 4d. 构建器 v3（08-26 用户六条反馈）
+
+| 反馈 | 处理 | 结果 |
+|---|---|---|
+| 1 无预览功能 | 构建器“预览”模式：FormRenderer 真渲染（无 Key/边框/拖拽柄，showErrors） | ✅ |
+| 2 日期/日期时间/附件非标准 shadcn | 新增 ui/calendar.tsx（react-day-picker v9+date-fns v4）+ DatePicker(Popover+Calendar)；FilePick（隐藏 input+Paperclip 按钮+文件名 chip） | ✅ |
+| 3 下拉单选/多选自写样式 | 单选=shadcn Select；多选=MultiSelect（Popover+Command+Check+已选 badges） | ✅ |
+| 4 每个组件增加 icon | palette 15 种字段各配 lucide 图标；设计卡头部同图标 | ✅ |
+| 5 属性面板丑/类型感知 | Accordion 六组（Basic/Data/Validation/Display/Binding/Condition）；dataType 不可改（随 type 派生只读展示）；类型切换限兼容组（§39 矩阵）；validation 按类型显示 | ✅ |
+| 6 quickservice form HAR | 已解析：仅设计器壳+布尔接口，无字段 schema；UX 以 shadcn 约定+开发方案为准 | 🟡 参考有限 |
