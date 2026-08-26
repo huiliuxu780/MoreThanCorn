@@ -86,7 +86,7 @@ V1_NODE_DEFINITIONS: list[dict] = [
         "io": {},
     },
     {
-        "type_key": "create-record", "family": "副作用", "label": "创建质检记录", "icon": "file-plus", "accent": "#188F00",
+        "type_key": "create-record", "family": "外部动作", "label": "创建质检记录", "icon": "file-plus", "accent": "#188F00",
         "editor_kinds": ["FLOW", "GROUP", "WORKFLOW"],
         "executor_key": "sink_quality_record",
         "schema": {"type": "object", "properties": {"outputKey": {"type": "string"}}},
@@ -101,7 +101,7 @@ V1_NODE_DEFINITIONS: list[dict] = [
         "io": {},
     },
     {
-        "type_key": "notification", "family": "副作用", "label": "通知", "icon": "bell", "accent": "#AA00FF",
+        "type_key": "notification", "family": "外部动作", "label": "通知", "icon": "bell", "accent": "#AA00FF",
         "editor_kinds": ["FLOW", "GROUP", "WORKFLOW"],
         "executor_key": "notify_log",
         "schema": {"type": "object", "properties": {"message": {"type": "string"}}},

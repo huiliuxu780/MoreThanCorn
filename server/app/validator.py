@@ -67,7 +67,7 @@ def validate(defn: WorkflowDefinition) -> ValidationReport:
     terminals = [n for n in nodes if n.type in TERMINAL_TYPES]
     if not terminals and nodes:
         issues.append(ValidationIssue(nodeId=starts[0].id if starts else nodes[0].id, kind="graph",
-                                      message="缺少结束/副作用终端节点"))
+                                      message="缺少结束/外部动作终端节点"))
 
     # R2: 无环（07-SDD：loop 回边白名单——指向 loop 的边不参与环检测）；无孤儿
     cycle_edges = [e for e in edges if by_id.get(e.target) is None or by_id[e.target].type != "loop"]
