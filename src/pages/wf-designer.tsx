@@ -210,6 +210,28 @@ const NODE_DESC: Record<string, string> = {
 }
 
 /* 07-SDD 08-26 决策：添加节点=左侧固定面板（可折叠+搜索），替代底部 Popover */
+/* 08-26：分组节点列表共用组件（左面板与快捷+共用，杜绝手搓两份） */
+function PaletteGroups({ families, onPick }: { families: [string, NodeDefinition[]][]; onPick: (t: string) => void }) {
+  return (
+    <>
+      {families.map(([fam, list]) => (
+        <div key={fam} className="py-1">
+          <div className="px-1 pb-1 text-xs" style={{ color: C.ink2 }}>{fam}</div>
+          {list.map((d) => (
+            <button key={d.type_key} className="flex w-full items-center gap-2 rounded px-2 py-1 text-[13px] hover:bg-neutral-50" style={{ color: C.ink }}
+              onClick={() => onPick(d.type_key)}>
+              <span className="flex size-4 shrink-0 items-center justify-center rounded" style={{ background: NEUTRAL }}>
+                <TypeIcon type={d.type_key} className="size-2.5 text-white" />
+              </span>
+              {d.label}
+            </button>
+          ))}
+        </div>
+      ))}
+    </>
+  )
+}
+
 function NodePalette({ families, onAdd, open, onToggle }: {
   families: [string, NodeDefinition[]][]; onAdd: (typeKey: string) => void
   open: boolean; onToggle: () => void
@@ -239,20 +261,7 @@ function NodePalette({ families, onAdd, open, onToggle }: {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {fs.length === 0 && <div className="px-1 py-2 text-[11px]" style={{ color: C.ink3 }}>无匹配节点</div>}
-        {fs.map(([fam, list]) => (
-          <div key={fam} className="py-1">
-            <div className="px-1 pb-1 text-xs" style={{ color: C.ink2 }}>{fam}</div>
-            {list.map((d) => (
-              <button key={d.type_key} className="flex w-full items-center gap-2 rounded px-2 py-1 text-[13px] hover:bg-neutral-50" style={{ color: C.ink }}
-                onClick={() => onAdd(d.type_key)}>
-                <span className="flex size-4 shrink-0 items-center justify-center rounded" style={{ background: NEUTRAL }}>
-                  <TypeIcon type={d.type_key} className="size-2.5 text-white" />
-                </span>
-                {d.label}
-              </button>
-            ))}
-          </div>
-        ))}
+        <PaletteGroups families={fs} onPick={onAdd} />
       </div>
     </div>
   )
@@ -501,17 +510,7 @@ function QuickAddButton({ palette, onPick }: { palette: [string, NodeDefinition[
         </button>
       </PopoverTrigger>
       <PopoverContent side="right" align="start" className="max-h-72 w-56 overflow-y-auto p-1">
-        {palette.map(([fam, list]) => (
-          <div key={fam} className="py-0.5">
-            <div className="px-1 pb-0.5 text-[10px]" style={{ color: C.ink2 }}>{fam}</div>
-            {list.map((dd) => (
-              <button key={dd.type_key} className="flex w-full items-center gap-2 rounded px-2 py-1 text-xs hover:bg-neutral-50" style={{ color: C.ink }}
-                onClick={() => { onPick(dd.type_key); setOpen(false) }}>
-                {dd.label}
-              </button>
-            ))}
-          </div>
-        ))}
+        <PaletteGroups families={palette} onPick={(t) => { onPick(t); setOpen(false) }} />
       </PopoverContent>
     </Popover>
   )
