@@ -129,7 +129,7 @@ export function FormRenderer({ fields, values, onChange, showErrors = false }: {
                 {f.label}{f.validation?.required && <span className="text-red-500"> *</span>}
               </Label>
             )}
-            {control}
+            <div className={f.display?.disabled ? "pointer-events-none opacity-50" : ""}>{control}</div>
             {err && <p className="text-[10px] text-red-500">{err}</p>}
           </div>
         )

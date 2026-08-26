@@ -119,3 +119,19 @@
 | 4 每个组件增加 icon | palette 15 种字段各配 lucide 图标；设计卡头部同图标 | ✅ |
 | 5 属性面板丑/类型感知 | Accordion 六组（Basic/Data/Validation/Display/Binding/Condition）；dataType 不可改（随 type 派生只读展示）；类型切换限兼容组（§39 矩阵）；validation 按类型显示 | ✅ |
 | 6 quickservice form HAR | 已解析：仅设计器壳+布尔接口，无字段 schema；UX 以 shadcn 约定+开发方案为准 | 🟡 参考有限 |
+
+## 4e. quickservice 新 HAR（getjsonschemabycode 真 schema）参考吸收
+
+HAR 提取到 epoch/formily 字段模型（Input/Radio props）。吸收与登记：
+
+| HAR 属性 | 处理 | 状态 |
+|---|---|---|
+| uniqueKey 唯一约束 | validation.unique + FormRecord 查重 422 + 构建器 Validation 勾选 | ✅ |
+| disabled | display.disabled + 渲染器 pointer-events+opacity + 构建器 Display 勾选 | ✅ |
+| readOnly | V2 | ⏸ |
+| visibleRole/permission4Browse/Update（字段级权限） | V2 | ⏸ |
+| dataSource/dataSourceLinkage（选项来自数据源+级联） | V2 | ⏸ |
+| intelligentAssistance（AI 辅助输入） | V2 | ⏸ |
+| tips | 已有 description/placeholder 覆盖 | ✅ 等价 |
+| fieldWidth/columnSpan | 已有 span 3/6/9/12 | ✅ 等价 |
+| options[{label,value,disabled}] | options 模型一致（disabled 入 V2） | ✅ |

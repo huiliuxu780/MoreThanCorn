@@ -668,8 +668,9 @@ export interface FormField {
   id?: string; key: string; type: string; dataType: string; label: string
   description?: string; placeholder?: string; default?: string
   options?: { label: string; value: string }[]
-  validation?: { required?: boolean; minLength?: number; maxLength?: number; min?: number; max?: number; pattern?: string; minSelections?: number; maxSelections?: number }
+  validation?: { required?: boolean; minLength?: number; maxLength?: number; min?: number; max?: number; pattern?: string; minSelections?: number; maxSelections?: number; unique?: boolean }
   layout?: { span?: number }
+  display?: { disabled?: boolean; readonly?: boolean }
   binding?: { type: string; path?: string; sourceId?: string; sourceField?: string; expression?: string }
   condition?: { visibleWhen?: { field: string; operator: string; value?: unknown } }
 }

@@ -203,7 +203,7 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                   </button>
                 </div>
               )}
-              <DesignControl f={f} />
+              <div className={f.display?.disabled ? "pointer-events-none opacity-50" : ""}><DesignControl f={f} /></div>
               <div className="pt-1 font-mono text-[10px] text-neutral-400">{f.key}</div>
             </div>
           ))}
@@ -258,6 +258,10 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                 <AccordionContent className="space-y-1.5">
                   <label className="flex items-center justify-between text-xs"><span>必填</span>
                     <Checkbox checked={!!val.required} onCheckedChange={(v) => setVal({ required: !!v })} /></label>
+                  {["text", "textarea", "number"].includes(cur.type) && (
+                    <label className="flex items-center justify-between text-xs"><span>唯一约束（HAR uniqueKey）</span>
+                      <Checkbox checked={!!val.unique} onCheckedChange={(v) => setVal({ unique: !!v })} /></label>
+                  )}
                   {["text", "textarea"].includes(cur.type) && (
                     <div className="grid grid-cols-2 gap-1">
                       <Input className="h-7 text-xs" type="number" placeholder="minLength" value={val.minLength ?? ""} onChange={(e) => setVal({ minLength: e.target.value === "" ? undefined : Number(e.target.value) })} />
@@ -284,6 +288,8 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
               <AccordionItem value="display">
                 <AccordionTrigger className="py-2 text-xs">Display</AccordionTrigger>
                 <AccordionContent className="space-y-1.5">
+                  <label className="flex items-center justify-between text-xs"><span>禁用（HAR disabled）</span>
+                    <Checkbox checked={!!cur.display?.disabled} onCheckedChange={(v) => patch(cur.id!, { display: { ...cur.display, disabled: !!v } })} /></label>
                   <Select value={String(cur.layout?.span ?? 12)} onValueChange={(v) => patch(cur.id!, { layout: { span: Number(v) } })}>
                     <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>{SPANS.map((s) => <SelectItem key={s} value={String(s)}>{s} / 12 列</SelectItem>)}</SelectContent>

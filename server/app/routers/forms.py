@@ -64,8 +64,10 @@ def _norm_field(f: dict, idx: int) -> dict:
         "options": norm_opts,
         "validation": {"required": bool(val.get("required")),
                        **{k: val[k] for k in ("minLength", "maxLength", "min", "max", "pattern",
-                                              "minSelections", "maxSelections") if val.get(k) is not None}},
+                                              "minSelections", "maxSelections", "unique") if val.get(k) is not None}},
         "layout": {"span": span},
+        "display": {"disabled": bool((f.get("display") or {}).get("disabled")),
+                    "readonly": bool((f.get("display") or {}).get("readonly"))},
         "binding": {"type": binding.get("type") or "manual",
                     **{k: binding[k] for k in ("path", "sourceId", "sourceField", "expression") if binding.get(k)}},
         "condition": f.get("condition") or {},
@@ -274,6 +276,14 @@ def create_record(fid: str, payload: dict, db: Session = Depends(get_db)):
     else:
         fields = f.fields or []
     errs = validate_form_input(fields, payload.get("values") or {})
+    values = payload.get("values") or {}
+    # 08-26 HAR 参考：uniqueKey 唯一性约束（对存量 FormRecord 查重）
+    for f in fields:
+        if (f.get("validation") or {}).get("unique") and values.get(f["key"]) not in (None, ""):
+            dup = db.query(FormRecord).filter(FormRecord.form_id == fid,
+                                              FormRecord.values.op("->")(f["key"]).astext == str(values[f["key"]])).first()
+            if dup:
+                errs.append(f"{f['key']} 值重复（唯一约束）")
     if errs:
         raise HTTPException(422, {"message": "；".join(errs)})
     rec = FormRecord(form_id=fid, form_version=int(version or 0), values=payload.get("values") or {},
