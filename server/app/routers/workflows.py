@@ -67,7 +67,8 @@ def list_workflows(search: str = "", page: int = 1, pageSize: int = 20,
         out.append({**WorkflowSummary(
             id=w.id, name=w.name, status=w.status, currentVersion=None,
             updatedAt=w.updated_at.isoformat()).model_dump(),
-            "versionCount": version_count, "nodeCount": node_count, "agentRefCount": agent_refs})
+            "versionCount": version_count, "nodeCount": node_count, "agentRefCount": agent_refs,
+            "icon": w.icon})
     return {"items": out, "total": total, "page": page, "pageSize": pageSize}
 
 

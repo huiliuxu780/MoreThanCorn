@@ -9,6 +9,7 @@ import { CardGridSkeleton, EmptyState, FilteredEmptyState } from "@/components/a
 import { PageContainer, PageHeader } from "@/components/app/page"
 import { Pagination } from "@/components/app/pagination"
 import { ResourceCard, type ResourceAction } from "@/components/resources/resource-card"
+import { WfIcon } from "@/components/wf/wf-icons"
 import { ConfirmDeleteDialog } from "@/components/resources/resource-dialogs"
 import { Button } from "@/components/ui/button"
 import {
@@ -88,6 +89,7 @@ export default function WfWorkflowsPage() {
           {rows.map((w) => (
             <ResourceCard
               key={w.id}
+              icon={(w as { icon?: string }).icon ? <WfIcon icon={(w as { icon?: string }).icon} className="size-8.5 rounded-lg" iconCls="size-4" /> : undefined}
               dto={{
                 id: w.id, type: "workflow", name: w.name, description: "",
                 status: "enabled", health: "healthy",

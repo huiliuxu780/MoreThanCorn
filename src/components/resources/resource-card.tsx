@@ -80,13 +80,15 @@ export type ResourceAction = "edit" | "test" | "toggle" | "delete"
 
 const ACTION_LABEL: Record<ResourceAction, string> = { edit: "编辑", test: "测试", toggle: "停用", delete: "删除" }
 
-export function ResourceCard({ dto, highlighted, actions, onOpen, onAction }: {
+export function ResourceCard({ dto, highlighted, actions, onOpen, onAction, icon }: {
   dto: ResourceDTO
   highlighted?: boolean
   /** 菜单动作裁剪，默认全部（按类型自动隐藏不适用项见调用方） */
   actions?: ResourceAction[]
   onOpen: () => void
   onAction: (action: ResourceAction) => void
+  /** 08-26：自定义图标（工作流图标组/头像），覆盖类型默认图标 */
+  icon?: React.ReactNode
 }) {
   const Icon = TYPE_ICON[dto.type as keyof typeof TYPE_ICON] ?? Cpu
   const disabled = dto.status === "disabled"
@@ -103,7 +105,7 @@ export function ResourceCard({ dto, highlighted, actions, onOpen, onAction }: {
     >
       <div className="flex items-start gap-2.5">
         <div className="flex size-8.5 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-          <Icon className="size-4" />
+          {icon ?? <Icon className="size-4" />}
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">{dto.name}</div>

@@ -6,6 +6,7 @@ import { python } from "@codemirror/lang-python"
 import { AgentPublishDialog, useAgentVersionState } from "@/components/agent-publish-dialog"
 import { AgentVersionDiffDialog } from "@/components/agent-version-diff"
 import { avatarFor, AVATARS } from "./wf-agents-list"
+import { WORKFLOW_ICONS, WfIcon } from "@/components/wf/wf-icons"
 import { ConversationPanel, MemorySchemaForm } from "@/components/agent-common-config"
 import { useNavigate, useParams } from "react-router-dom"
 import {
@@ -2209,6 +2210,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
         )}
         <div className="min-w-0">
           <div className="flex items-center gap-2">
+            {!agentMeta && <WfIcon icon={(def.workflow as unknown as { icon?: string }).icon} className="size-6 rounded-md" iconCls="size-3.5" />}
             <span className="truncate text-[15px] font-semibold" style={{ color: C.ink }}>{agentMeta ? agentMeta.name : def.workflow.name}</span>
             {agentMeta ? (
               <button className="flex items-center gap-1 rounded border bg-white px-1.5 py-0.5 text-[11px]" style={{ borderColor: C.cardBorder, color: C.ink2 }} onClick={() => setDrawer("history")}>
@@ -2263,12 +2265,22 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
                   <Textarea className="min-h-24 text-xs" value={metaDesc} placeholder="简介" onChange={(e) => setMetaDesc(e.target.value)} />
                 </div>
                 <button className="shrink-0 overflow-hidden rounded-lg border bg-white p-1" style={{ borderColor: C.cardBorder }} title="选择图标" onClick={() => setAvatarOpen(true)}>
-                  <img src={metaIcon ?? avatarFor(def.workflow.id)} alt="工作流图标" className="size-20 rounded-md object-cover" />
+                  <WfIcon icon={metaIcon} className="size-20 rounded-md" iconCls="size-8" />
                 </button>
               </div>
               <Dialog open={avatarOpen} onOpenChange={setAvatarOpen}>
                 <DialogContent className="max-w-2xl">
                   <DialogHeader><DialogTitle>选择图标</DialogTitle></DialogHeader>
+                  <div className="grid grid-cols-6 gap-3">
+                    {WORKFLOW_ICONS.map((w) => (
+                      <button key={w.key} className={`flex items-center justify-center rounded-lg ${metaIcon === w.key ? "ring-2 ring-primary" : ""}`}
+                        style={{ background: w.color }} title={w.label}
+                        onClick={() => { setMetaIcon(w.key); setAvatarOpen(false) }}>
+                        <w.Icon className="size-6 text-white" />
+                      </button>
+                    ))}
+                  </div>
+                  <div className="pb-1 pt-2 text-xs text-muted-foreground">或使用头像库</div>
                   <div className="grid grid-cols-6 gap-3">
                     {AVATARS.map((src) => (
                       <button key={src} className={`overflow-hidden rounded-lg ${(metaIcon ?? avatarFor(def.workflow.id)) === src ? "ring-2 ring-primary" : ""}`}
