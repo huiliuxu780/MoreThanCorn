@@ -67,6 +67,7 @@
 | D4 | 存量 console 警告 | /api/locks CORS（localhost vs 127.0.0.1）+ 某处 React 重复 key | 单独修 |
 | D5 | 单体拆分部分完成 | controls/sections 已抽；wf-designer 仍含画布/抽屉主体 | 渐进 |
 | D6 | pytest flaky | test_phase_a::a01 曾单次 flaky（多 worker 竞争 job_queue），重跑绿 | 观察 |
+| D7 | 添加节点改左侧固定面板（可折叠+搜索） | 08-26 用户决策；偏离 16 号复刻 §S3 底部 Popover（22 节点弹层 863px 溢出）；视觉基线已重采 | 已生效 |
 
 ## 5. 起床验收路线（manual）
 

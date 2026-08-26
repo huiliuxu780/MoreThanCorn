@@ -156,6 +156,55 @@ const NODE_DESC: Record<string, string> = {
   "data-read": "从 DataAsset 按窗口/抽样取数，与创建质检记录对称",
 }
 
+/* 07-SDD 08-26 决策：添加节点=左侧固定面板（可折叠+搜索），替代底部 Popover */
+function NodePalette({ families, onAdd, open, onToggle }: {
+  families: [string, NodeDefinition[]][]; onAdd: (typeKey: string) => void
+  open: boolean; onToggle: () => void
+}) {
+  const [kw, setQ] = useState("")
+  if (!open) {
+    return (
+      <div className="flex w-10 shrink-0 flex-col items-center gap-1 border-r bg-white py-2" style={{ borderColor: C.cardBorder }}>
+        <button className="rounded p-1.5 hover:bg-neutral-100" onClick={onToggle} title="展开节点面板">
+          <PanelLeftOpen className="size-4" style={{ color: C.ink2 }} />
+        </button>
+      </div>
+    )
+  }
+  const q = kw.trim()
+  const fs = q
+    ? families.map(([f, list]) => [f, list.filter((d) => d.label.includes(q) || f.includes(q) || d.type_key.includes(q))] as [string, NodeDefinition[]])
+        .filter(([, l]) => l.length > 0)
+    : families
+  return (
+    <div className="flex w-[224px] shrink-0 flex-col border-r bg-white" style={{ borderColor: C.cardBorder }}>
+      <div className="flex items-center gap-1 border-b p-2" style={{ borderColor: C.cardBorder }}>
+        <Input className="h-7 flex-1 text-xs" placeholder="搜索节点" value={q} onChange={(e) => setQ(e.target.value)} />
+        <button className="rounded p-1 hover:bg-neutral-100" onClick={onToggle} title="折叠节点面板">
+          <PanelLeftClose className="size-4" style={{ color: C.ink2 }} />
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        {fs.length === 0 && <div className="px-1 py-2 text-[11px]" style={{ color: C.ink3 }}>无匹配节点</div>}
+        {fs.map(([fam, list]) => (
+          <div key={fam} className="py-1">
+            <div className="px-1 pb-1 text-xs" style={{ color: C.ink2 }}>{fam}</div>
+            {list.map((d) => (
+              <button key={d.type_key} className="flex w-full items-center gap-2 rounded px-2 py-1 text-[13px] hover:bg-neutral-50" style={{ color: C.ink }}
+                onClick={() => onAdd(d.type_key)}>
+                <span className="flex size-4 shrink-0 items-center justify-center rounded" style={{ background: NEUTRAL }}>
+                  <TypeIcon type={d.type_key} className="size-2.5 text-white" />
+                </span>
+                {d.label}
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /* 07-SDD §4.3：提示词 AI 润色（替换/撤销） */
 function PolishRow({ text, onApply }: { text: string; onApply: (v: string) => void }) {
   const [busy, setBusy] = useState(false)
@@ -1658,6 +1707,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   /* SDD B：Agent 级版本/部署状态（agentMeta 模式的徽标与发布对话框） */
   const agentVersionState = useAgentVersionState(agentMeta && agentId ? agentId : undefined)
   const [pop, setPop] = useState<null | "add" | "zoom" | "search">(null)
+  const [paletteOpen, setPaletteOpen] = useState(() => localStorage.getItem("wf-palette-open") !== "0")
   const [versions, setVersions] = useState<{ versionNo: number; publishedAt: string }[]>([])
   const [agentVersions, setAgentVersions] = useState<{ versionId: string; versionNo: number; note: string; artifactHash: string; createdAt: string }[]>([])
   const [agentReleases, setAgentReleases] = useState<{ releaseId: string; environment: string; status: string; canaryPercent: number; versionNo: number | null }[]>([])
@@ -2072,6 +2122,8 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
       ))}
       {drawer === "evo" && <EvoPanel workflowId={workflowId} onClose={() => setDrawer(null)} />}
       {agentMeta && agentId && <AgentConfigDrawer agentId={agentId} onClose={() => undefined} inline avatar={agentAvatar} onAvatar={(v) => { setAgentAvatar(v); agentApi.update(agentId, { avatar: v }).catch(() => undefined) }} />}
+      <NodePalette families={families} onAdd={addNode} open={paletteOpen}
+        onToggle={() => setPaletteOpen((v) => { localStorage.setItem("wf-palette-open", v ? "0" : "1"); return !v })} />
       <div className="relative flex-1">
         <ReactFlow
           nodes={nodes} edges={edges} nodeTypes={nodeTypes}
@@ -2117,28 +2169,10 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
         </Panel>
         {/* 底部工具条（16 §4） */}
         <div className="absolute bottom-4 left-1/2 z-10 flex max-w-[95%] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-lg border bg-white px-2 py-1.5 shadow-sm" style={{ borderColor: C.cardBorder }}>
-          <Popover open={pop === "add"} onOpenChange={(o) => setPop(o ? "add" : null)}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="border-0 shadow-none" style={{ color: C.primary }}>
-                <Plus className="size-4" /> 添加节点
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent side="top" className="w-56">
-              {families.map(([fam, list]) => (
-                <div key={fam} className="py-1">
-                  <div className="px-1 pb-1 text-xs" style={{ color: C.ink2 }}>{fam}</div>
-                  {list.map((d) => (
-                    <button key={d.type_key} className="flex w-full items-center gap-2 rounded px-2 py-1 text-[13px] hover:bg-neutral-50" style={{ color: C.ink }} onClick={() => addNode(d.type_key)}>
-                      <span className="flex size-4 items-center justify-center rounded" style={{ background: NEUTRAL }}>
-                        <TypeIcon type={d.type_key} className="size-2.5 text-white" />
-                      </span>
-                      {d.label}
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </PopoverContent>
-          </Popover>
+          <button className="rounded p-1.5 hover:bg-neutral-100" title="节点面板开关"
+            onClick={() => setPaletteOpen((v) => { localStorage.setItem("wf-palette-open", v ? "0" : "1"); return !v })}>
+            {paletteOpen ? <PanelLeftClose className="size-4" style={{ color: C.ink2 }} /> : <PanelLeftOpen className="size-4" style={{ color: C.primary }} />}
+          </button>
           <span className="mx-1 h-4 w-px bg-neutral-200" />
           <button className="rounded p-1.5 hover:bg-neutral-100" title="撤销 (⌘Z)" onClick={undo}><Undo2 className="size-4" style={{ color: C.ink2 }} /></button>
           <button className="rounded p-1.5 hover:bg-neutral-100" title="重做 (⌘⇧Z)" onClick={redo}><Redo2 className="size-4" style={{ color: C.ink2 }} /></button>
