@@ -216,9 +216,9 @@ function PaletteGroups({ families, onPick }: { families: [string, NodeDefinition
     <>
       {families.map(([fam, list]) => (
         <div key={fam} className="py-1">
-          <div className="px-1 pb-1 text-xs" style={{ color: C.ink2 }}>{fam}</div>
+          <div className="px-1 pb-1 text-[11px] font-medium" style={{ color: C.ink2 }}>{fam}</div>
           {list.map((d) => (
-            <button key={d.type_key} className="flex w-full items-center gap-2 rounded px-2 py-1 text-[13px] hover:bg-neutral-50" style={{ color: C.ink }}
+            <button key={d.type_key} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-neutral-50" style={{ color: C.ink }}
               onClick={() => onPick(d.type_key)}>
               <span className="flex size-4 shrink-0 items-center justify-center rounded" style={{ background: NEUTRAL }}>
                 <TypeIcon type={d.type_key} className="size-2.5 text-white" />
@@ -432,7 +432,8 @@ function WfNodeCard({ data, selected }: NodeProps) {
   const hoverFx = selected ? "" : "border-[#EDF0F4] hover:border-[#3D6BFF] hover:shadow-[0_4px_16px_rgba(61,107,255,0.18)]"
   const isBranch = ["condition", "decision-class", "workflow-select"].includes(n.type)
   return (
-    <div className="group relative w-[300px]">
+    <div className="group w-[300px]">
+    <div className="relative">
     <div className={`relative w-full overflow-hidden rounded-[8px] border bg-white p-3 shadow-sm transition-all ${hoverFx} ${ring}`} style={{ borderColor: selected ? C.primary : undefined }}>
       {n.type !== "input" && <Handle type="target" position={Position.Left} style={{ width: 12, height: 12, background: "#fff", border: `2px solid ${C.primary}`, borderRadius: 6 }} />}
       {n.type !== "end" && n.type !== "condition" && <Handle type="source" position={Position.Right} style={{ width: 12, height: 12, background: C.primary, border: "2px solid #fff", borderRadius: 6 }} />}
@@ -494,6 +495,7 @@ function WfNodeCard({ data, selected }: NodeProps) {
         <QuickAddButton palette={d.palette} onPick={(t) => d.onQuickAdd?.(null, t)} />
       </span>
     )}
+    </div>
     {d.run && d.run.status !== "running" && <NodeRunResult run={d.run} />}
     </div>
   )
@@ -505,11 +507,11 @@ function QuickAddButton({ palette, onPick }: { palette: [string, NodeDefinition[
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button className="flex size-5 items-center justify-center rounded-full border bg-white shadow-sm hover:border-[#3D6BFF]" style={{ borderColor: C.cardBorder }} title="快捷添加节点">
-          <Plus className="size-3" style={{ color: C.primary }} />
+        <button className="flex size-6 items-center justify-center rounded-full border-2 bg-white shadow-md transition-transform hover:scale-110" style={{ borderColor: C.primary }} title="快捷添加节点">
+          <Plus className="size-3.5" style={{ color: C.primary }} />
         </button>
       </PopoverTrigger>
-      <PopoverContent side="right" align="start" className="max-h-72 w-56 overflow-y-auto p-1">
+      <PopoverContent side="right" align="start" className="max-h-80 w-64 overflow-y-auto p-2">
         <PaletteGroups families={palette} onPick={(t) => { onPick(t); setOpen(false) }} />
       </PopoverContent>
     </Popover>
