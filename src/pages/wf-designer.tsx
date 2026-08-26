@@ -9,6 +9,7 @@ import { avatarFor } from "./wf-agents-list"
 import { ConversationPanel, MemorySchemaForm } from "@/components/agent-common-config"
 import { useNavigate, useParams } from "react-router-dom"
 import {
+  Check,
   ArrowLeft,
   BookOpen,
   CheckCircle2,
@@ -315,7 +316,7 @@ interface WfNodeData extends Record<string, unknown> {
   wf: WfNode
   def?: NodeDefinition
   issues: ValidationIssue[]
-  run?: "running" | "success" | "failed" | "skipped"
+  run?: { status: "running" | "success" | "failed" | "skipped"; durationMs?: number; tokens?: number; input?: unknown; output?: unknown; error?: string }
   onRunNode?: (id: string) => void
   onTestNode?: (id: string) => void  // E-4.3：单测此节点
   onDelete?: (id: string) => void
@@ -404,14 +405,18 @@ function WfNodeCard({ data, selected }: NodeProps) {
   const d = data as WfNodeData
   const n = d.wf
   const [collapsed, setCollapsed] = useState(false)
+  const rs = d.run?.status
   const ring =
-    d.run === "running" ? `ring-[1.5px] ring-[#525252]` :
-    d.run === "success" ? `ring-[1.5px] ring-emerald-500/70` :
-    d.run === "failed" ? `ring-[1.5px] ring-red-500` :
-    d.run === "skipped" ? `ring-[1.5px] ring-neutral-300` :
+    rs === "running" ? `ring-[1.5px] ring-[#525252]` :
+    rs === "success" ? `ring-[1.5px] ring-emerald-500/70` :
+    rs === "failed" ? `ring-[1.5px] ring-red-500` :
+    rs === "skipped" ? `ring-[1.5px] ring-neutral-300` :
     selected ? `ring-[1.5px] ring-[#3D6BFF]` : ""
+  // 08-26 用户反馈：悬浮边框+阴影效果
+  const hoverFx = selected ? "" : "border-[#EDF0F4] hover:border-[#3D6BFF] hover:shadow-[0_4px_16px_rgba(61,107,255,0.18)]"
   return (
-    <div className={`relative w-[300px] overflow-hidden rounded-[8px] border bg-white p-3 shadow-sm ${ring}`} style={{ borderColor: selected ? C.primary : C.cardBorder }}>
+    <div>
+    <div className={`relative w-[300px] overflow-hidden rounded-[8px] border bg-white p-3 shadow-sm transition-all ${hoverFx} ${ring}`} style={{ borderColor: selected ? C.primary : undefined }}>
       {n.type !== "input" && <Handle type="target" position={Position.Left} style={{ width: 12, height: 12, background: "#fff", border: `2px solid ${C.primary}`, borderRadius: 6 }} />}
       {n.type !== "end" && n.type !== "condition" && <Handle type="source" position={Position.Right} style={{ width: 12, height: 12, background: C.primary, border: "2px solid #fff", borderRadius: 6 }} />}
       {n.type === "condition" && collapsed && condHandlesOf(n).map((h, i, arr) => (
@@ -430,7 +435,7 @@ function WfNodeCard({ data, selected }: NodeProps) {
             <CircleAlert className="size-3" />{d.issues.length}
           </span>
         )}
-        {d.run === "running" && <span className="size-3 animate-spin rounded-full border-2 border-neutral-400 border-t-transparent" />}
+        {rs === "running" && <span className="size-3 animate-spin rounded-full border-2 border-neutral-400 border-t-transparent" />}
         {selected && (
           <>
             <button className="flex size-5 items-center justify-center rounded-full border bg-white" style={{ borderColor: C.cardBorder }} onClick={() => d.onRunNode?.(n.id)} title="运行此节点">
@@ -466,6 +471,52 @@ function WfNodeCard({ data, selected }: NodeProps) {
         </div>
       )}
       {!collapsed && (n.type === "condition" ? <ConditionRows n={n} /> : <SummaryRows n={n} />)}
+    </div>
+    {d.run && d.run.status !== "running" && <NodeRunResult run={d.run} />}
+    </div>
+  )
+}
+
+/* 08-26 用户反馈：试运行结果展示在节点下方，可收起/展开（quickservice 深色面板形态） */
+function NodeRunResult({ run }: { run: NonNullable<WfNodeData["run"]> }) {
+  const [open, setOpen] = useState(false)
+  const ok = run.status === "success"
+  const skipped = run.status === "skipped"
+  const KV = ({ title, obj }: { title: string; obj: unknown }) => {
+    const o = (obj ?? {}) as Record<string, unknown>
+    return (
+      <div>
+        <div className="pb-0.5 text-[10px] text-neutral-300">{title}</div>
+        <div className="max-h-36 overflow-auto rounded bg-[#2A3242] p-2 font-mono text-[10px] leading-4">
+          {Object.entries(o).length === 0 && <span className="text-neutral-400">∅</span>}
+          {Object.entries(o).map(([k, v]) => (
+            <div key={k}>
+              <span className="text-[#7ED491]">{k}:</span>{" "}
+              <span className="text-neutral-200">{typeof v === "string" ? `"${v.slice(0, 160)}"` : JSON.stringify(v)?.slice(0, 160)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="mt-1.5 overflow-hidden rounded-md" style={{ background: "#3B4557" }}>
+      <button className="flex w-full items-center gap-2 px-2.5 py-1.5" onClick={() => setOpen((v) => !v)}>
+        <span className="flex size-3.5 items-center justify-center rounded-full" style={{ background: ok ? "#34C759" : skipped ? "#9AA4B2" : "#F56C6C" }}>
+          {ok ? <Check className="size-2.5 text-white" /> : <X className="size-2.5 text-white" />}
+        </span>
+        <span className="text-xs text-white">{ok ? "运行成功" : skipped ? "已跳过" : "运行失败"}</span>
+        {run.durationMs != null && <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white">{run.durationMs}ms</span>}
+        {!!run.tokens && <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white">{run.tokens} tokens</span>}
+        <ChevronDown className={`ml-auto size-3.5 text-white transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="space-y-1.5 px-2.5 pb-2">
+          {run.error && <div className="rounded bg-[#2A3242] p-2 font-mono text-[10px] text-red-300">{run.error}</div>}
+          <KV title="输入" obj={run.input} />
+          <KV title="输出" obj={run.output} />
+        </div>
+      )}
     </div>
   )
 }
@@ -1742,7 +1793,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [drawer, setDrawer] = useState<"config" | "debug" | "history" | "runs" | "schedule" | "agent" | "eval" | "evo" | null>(null)
   const [showMiniMap, setShowMiniMap] = useState(true)
-  const [runState, setRunState] = useState<Record<string, "running" | "success" | "failed" | "skipped">>({})
+  const [runState, setRunState] = useState<Record<string, NonNullable<WfNodeData["run"]>>>({})
   const [lastRunId, setLastRunId] = useState<string | null>(null)
   const [publishOpen, setPublishOpen] = useState(false)
   const [agentPublishOpen, setAgentPublishOpen] = useState(false)
@@ -1950,7 +2001,11 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
     const onNode = (e: MessageEvent) => {
       const d = JSON.parse(e.data)
       const st = e.type === "node_started" ? "running" : e.type === "node_completed" ? "success" : e.type === "node_skipped" ? "skipped" : "failed"
-      if (d.nodeId) setRunState((s) => ({ ...s, [d.nodeId]: st as "running" }))
+      if (d.nodeId) setRunState((s) => ({ ...s, [d.nodeId]: {
+        status: st, durationMs: d.durationMs ?? d.duration_ms,
+        tokens: d.payload?.tokens || undefined, input: d.payload?.input, output: d.payload?.output,
+        error: d.payload?.error,
+      } }))
     }
     for (const t of ["node_started", "node_completed", "node_failed", "node_skipped"]) es.addEventListener(t, onNode)
     es.addEventListener("workflow_completed", () => { toast.success("运行成功"); es.close() })

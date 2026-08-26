@@ -121,3 +121,6 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+/* 08-26 用户反馈：按钮悬浮手势 */
+button:not(:disabled) { cursor: pointer; }

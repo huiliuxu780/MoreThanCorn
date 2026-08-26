@@ -183,6 +183,7 @@ def exec_llm(node, ctx) -> dict:
         prompt += "\n请严格以单个 JSON 对象形式输出最终答案，不要包含其他说明文字。"
     t0 = time.time()
     answer, tokens = _call_model(ctx.db, model, prompt)
+    ctx.last_tokens = tokens or {}
     latency = int((time.time() - t0) * 1000)
     ctx.call("model", model, {"prompt": prompt, "inputs": inputs},
              {"output": answer}, latency, tokens)
@@ -939,6 +940,7 @@ class Ctx:
         self.run_input = run.input or {}
         self.outputs = outputs
         self.current_node_run_id: str | None = None  # SDD A-07：调用记录关联节点运行
+        self.last_tokens: dict = {}  # 08-26：节点级 token 供事件展示
 
     def call(self, kind, target, req, resp, latency, tokens):
         from .models import CallRecord
@@ -1087,8 +1089,11 @@ def execute_run(run_id: str, call_chain: list[str] | None = None, resume: dict |
                 nr.ended_at = datetime.now(timezone.utc)
                 nr.duration_ms = int((nr.ended_at - nr.started_at).total_seconds() * 1000) if nr.started_at else None
                 db.commit()
+                _tok = getattr(ctx, "last_tokens", None) or {}
+                ctx.last_tokens = {}
                 emit(db, run_id, "node_completed", nid, nr.id,
-                     {"output": outputs[nid], "nodeType": node["type"], "name": node["name"]},
+                     {"output": outputs[nid], "input": nr.input, "nodeType": node["type"], "name": node["name"],
+                      "tokens": _tok.get("totalTokens") or _tok.get("total_tokens") or 0},
                      duration_ms=nr.duration_ms)
                 done.add(nid)
                 _activate_successors(node, outputs[nid], succ, indeg, ready, done, skipped, db, run_id, by_id)
