@@ -154,8 +154,19 @@ def publish_workflow(wf_id: str, note: str = "", db: Session = Depends(get_db)):
         raise HTTPException(409, detail=report.model_dump())
     version_no = (db.query(WorkflowVersion)
                   .filter_by(workflow_id=wf_id).count()) + 1
+    # 07-SDD form：发布快照冻结 form 字段（与 tool 版本冻结同哲学）
+    import copy as _copy
+    frozen_def = _copy.deepcopy(wf.draft_definition)
+    from ..models import Form as _Form
+    for nd in (frozen_def or {}).get("graph", {}).get("nodes", []):
+        if nd.get("type") == "input":
+            fid = (nd.get("config") or {}).get("formId")
+            if fid:
+                f = db.get(_Form, fid)
+                if f:
+                    (nd.setdefault("config", {}))["formSnapshot"] = [dict(x) for x in (f.fields or [])]
     ver = WorkflowVersion(workflow_id=wf_id, version_no=version_no,
-                          definition=wf.draft_definition, note=note,
+                          definition=frozen_def, note=note,
                           **_collect_refs(wf.draft_definition))
     db.add(ver)
     wf.status = "published"

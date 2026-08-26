@@ -132,8 +132,27 @@ def render_refs(template: str, outputs: dict[str, dict], run_input: dict) -> str
 # ---------- executors ----------
 
 
+def start_form_fields(db: Session, defn) -> list[dict] | None:
+    """07-SDD form：开始节点字段解析 = formSnapshot（发布冻结）> formId 活引用 > None（存量回退）。"""
+    from .models import Form
+    start = next((n for n in defn.graph.nodes if n.type == "input"), None)
+    cfg = (start.config if start else {}) or {}
+    snap = cfg.get("formSnapshot")
+    if isinstance(snap, list):
+        return snap
+    fid = cfg.get("formId")
+    if fid:
+        f = db.get(Form, fid)
+        return (f.fields or []) if f else None
+    return None
+
+
 def exec_input(node, ctx) -> dict:
-    return {**ctx.run_input}
+    out = {**ctx.run_input}
+    for f in getattr(ctx, "start_fields", None) or []:
+        if out.get(f.get("name")) in (None, "") and f.get("default") not in (None, ""):
+            out[f["name"]] = f["default"]
+    return out
 
 
 def exec_llm(node, ctx) -> dict:
@@ -956,6 +975,7 @@ def execute_run(run_id: str, call_chain: list[str] | None = None, resume: dict |
         ctx = Ctx(db, run, outputs)
         ctx.call_chain = chain
         ctx.frozen_agent_versions = frozen_agent_versions  # SDD B：成员 Agent 冻结版本（可空）
+        ctx.start_fields = start_form_fields(db, defn)  # 07-SDD form
         ctx.by_id = by_id
         ctx.loop_bodies = loop_bodies
         ctx.loop_orders = loop_orders
@@ -1321,6 +1341,14 @@ def create_run(db: Session, workflow_id: str, trigger: str, run_input: dict,
     rep = validate(defn)
     if not rep.ok:
         raise RunError("validation failed: " + "; ".join(i.message for i in rep.issues[:3]))
+    # 07-SDD form：必填字段校验（default 可兜底的不算缺失）
+    fields = start_form_fields(db, defn)
+    if fields:
+        missing = [f["name"] for f in fields if f.get("required")
+                   and (run_input or {}).get(f["name"]) in (None, "")
+                   and f.get("default") in (None, "")]
+        if missing:
+            raise RunError("缺少必填输入：" + ", ".join(missing))
     run = Run(workflow_id=workflow_id, trigger=trigger, status="queued", input=run_input or {},
               idempotency_key=idempotency_key,
               workflow_version_id=chosen.id if chosen else None,

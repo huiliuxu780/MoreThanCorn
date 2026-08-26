@@ -69,6 +69,19 @@
 | D6 | pytest flaky | test_phase_a::a01 曾单次 flaky（多 worker 竞争 job_queue），重跑绿 | 观察 |
 | D7 | 添加节点改左侧固定面板（可折叠+搜索） | 08-26 用户决策；偏离 16 号复刻 §S3 底部 Popover（22 节点弹层 863px 溢出）；视觉基线已重采 | 已生效 |
 
+## 4b. form 特性（08-26 决策：集中表单=工作流输入契约）
+
+决策：form 独立实体+独立管理页；开始节点引用 formId，字段=全局固定输入变量（不允许追加）；发布快照冻结 form 字段。
+
+| 项 | 证据 | 结果 |
+|---|---|---|
+| form CRUD/删除防护/必填校验/默认值兜底/发布冻结/冻结不受后续编辑影响 | [pytest] test_p8_forms::test_form_crud_and_delete_guard | ✅ |
+| 迁移 f0rm20260826 双库（wf_dev/wf_test） | [api] alembic upgrade head ×2 | ✅ |
+| 种子表单（对话六件套/空表单） | [api] GET /api/forms | ✅ |
+| 管理页 /config/forms + 侧栏"表单" + 开始抽屉 picker/转表单/管理入口 | [manual] 起床目验 | 🟡 |
+| 消费点改读 form：变量级联开始组/调试抽屉/映射表(子流程 form)/输出变量区 | [manual]+单测间接 | 🟡 |
+| pytest 总量 | 109/109 | ✅ |
+
 ## 5. 起床验收路线（manual）
 
 1. 打开任一工作流：palette 应见 22 节点（无 Agent 三键）；逐节点开抽屉核对描述/分区。

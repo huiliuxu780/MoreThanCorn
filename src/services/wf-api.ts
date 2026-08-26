@@ -662,3 +662,23 @@ export async function realQualityDetail(id: string): Promise<Record<string, any>
     reviewHistory: hist,
   }
 }
+
+/* ---------- 07-SDD（08-26）：集中表单（工作流输入契约） ---------- */
+export interface FormField {
+  name: string; type: string; required?: boolean; default?: string
+  description?: string; control?: string; options?: string[]
+}
+export interface FormDef {
+  id: string; name: string; description?: string; fields: FormField[]
+  revision?: number; usage?: number; fieldCount?: number; updatedAt?: string
+}
+export const formsApi = {
+  list: () => req<{ items: FormDef[] }>("/api/forms"),
+  get: (id: string) => req<FormDef>(`/api/forms/${id}`),
+  create: (p: { name: string; description?: string; fields: FormField[] }) =>
+    req<{ id: string; name: string }>("/api/forms", { method: "POST", body: JSON.stringify(p) }),
+  update: (id: string, p: { name?: string; description?: string; fields?: FormField[] }) =>
+    req<{ id: string; revision: number }>(`/api/forms/${id}`, { method: "PUT", body: JSON.stringify(p) }),
+  duplicate: (id: string) => req<{ id: string; name: string }>(`/api/forms/${id}/duplicate`, { method: "POST" }),
+  remove: (id: string) => req<{ ok: boolean }>(`/api/forms/${id}`, { method: "DELETE" }),
+}

@@ -41,6 +41,11 @@ function loadSystemVars(): Promise<{ name: string; label: string }[]> {
     .catch(() => [] as { name: string; label: string }[])
 }
 
+/* 07-SDD form（08-26）：开始字段缓存——DesignerInner 注入，VarCascader/OutputVars 消费。 */
+let START_FIELDS: { name: string; type: string }[] | null = null
+export function setStartFields(f: { name: string; type: string }[] | null) { START_FIELDS = f }
+export function getStartFields() { return START_FIELDS }
+
 export function parseIoOutputs(def: NodeDefinition | undefined): { name: string; type: string }[] | null {
   const io = (def?.io ?? {}) as { outputs?: unknown }
   if (!Array.isArray(io.outputs)) return null  // 动态输出（如 tool from-tool-version）
@@ -82,6 +87,7 @@ export function VarCascader({ nodes, edges, selfId, defs, onPick }: {
     if (id === "system") return sysVars.map((v) => ({ name: v.name, type: "string", label: v.label }))
     const node = nodes.find((n) => n.id === id)
     if (!node) return []
+    if (node.type === "input" && START_FIELDS) return START_FIELDS
     return parseIoOutputs(defs.find((d) => d.type_key === node.type)) ?? []
   }
   const dynHint = (id: string) => {

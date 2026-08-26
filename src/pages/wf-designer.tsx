@@ -111,6 +111,58 @@ import { rbac } from "@/services/rbac"
 import { AgentEvalPanel } from "@/components/agent-ops-panels"
 import { C, NEUTRAL, TypeChip, VarCascader, describeVar, PromptArea, VarButton, ResourceSelect, Section, WorkflowPicker, OP_LABEL, OPS_BY_TYPE, NO_VALUE_OPS, normCondBranches, condHandlesOf, type CondBranch, type CondCondition } from "@/components/wf/controls"
 import { CandidatesMulti, DataReadSection, InputMappingTable, LoopSection, OutputSchemaEditor, OutputVarsSection, RobustnessSection, ToolParamsSection, WaitReviewSection } from "@/components/wf/sections"
+import { getStartFields, setStartFields } from "@/components/wf/controls"
+import { formsApi, type FormDef } from "@/services/wf-api"
+
+/* 07-SDD form：开始节点=引用集中表单（字段=全局固定输入变量，不允许追加） */
+const LEGACY_SIX_CLIENT = [
+  { name: "userQuery", type: "string", required: true, default: "", description: "用户问题", control: "textarea" },
+  { name: "chatHistory", type: "string", required: false, default: "", description: "历史对话", control: "textarea" },
+  { name: "userId", type: "string", required: false, default: "", description: "用户 ID", control: "text" },
+  { name: "conversationId", type: "string", required: false, default: "", description: "会话 ID", control: "text" },
+  { name: "chatId", type: "string", required: false, default: "", description: "对话 ID", control: "text" },
+  { name: "reference", type: "string", required: false, default: "", description: "引用内容", control: "text" },
+]
+function StartFormSection({ cfg, set }: { cfg: Record<string, any>; set: (k: string, v: unknown) => void }) {
+  const [forms, setForms] = useState<FormDef[]>([])
+  const [cur, setCur] = useState<FormDef | null>(null)
+  const navigate = useNavigate()
+  useEffect(() => { formsApi.list().then((r) => setForms(r.items)).catch(() => undefined) }, [])
+  useEffect(() => {
+    if (!cfg.formId) { setCur(null); return }
+    formsApi.get(cfg.formId).then(setCur).catch(() => setCur(null))
+  }, [cfg.formId])
+  return (
+    <Section title="输入表单（输入契约）">
+      <Select value={(cfg.formId as string) || undefined} onValueChange={(v) => set("formId", v)}>
+        <SelectTrigger className="h-7 w-full text-xs"><SelectValue placeholder="选择表单（字段=全局输入变量）" /></SelectTrigger>
+        <SelectContent>{forms.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>
+      </Select>
+      {cur && (
+        <div className="flex flex-wrap gap-1 pt-2">
+          {(cur.fields ?? []).map((f) => (
+            <span key={f.name} className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-600">
+              {f.name}{f.required ? " *" : ""} <span className="text-neutral-400">{f.type}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      {cur && <p className="pt-1 text-[11px]" style={{ color: C.ink3 }}>表单字段即本流程固定输入变量，不允许追加；需变体请“创建副本并编辑”。</p>}
+      {!cfg.formId && (
+        <Button variant="outline" size="sm" className="mt-2" onClick={async () => {
+          try {
+            const f = await formsApi.create({ name: `对话六件套-${new Date().getMinutes()}${new Date().getSeconds()}`, description: "存量六件套转表单", fields: LEGACY_SIX_CLIENT })
+            set("formId", f.id)
+            toast.success("已转为表单")
+          } catch { toast.error("转表单失败") }
+        }}>转为表单（ legacy 六件套）</Button>
+      )}
+      <div className="pt-2">
+        <button className="text-[11px] underline" style={{ color: C.primary }} onClick={() => navigate("/config/forms")}>管理表单</button>
+      </div>
+    </Section>
+  )
+}
 import { Repeat, Hourglass, Database } from "lucide-react"
 
 /* ============ 视觉令牌（16 §1） ============ */
@@ -1051,6 +1103,8 @@ function ConfigDrawer(props: {
         </Section>
       )}
       {/* SDD C-3：无专项表单的节点按注册表 schema 通用渲染（替代“暂无专项配置区”） */}
+      {/* 07-SDD form：开始节点=引用集中表单 */}
+      {node.type === "input" && <StartFormSection cfg={cfg} set={set} />}
       {/* 07-SDD §4：P2 三节点专项抽屉 */}
       {node.type === "loop" && <LoopSection cfg={cfg} set={set} nodes={nodes} edges={edges} selfId={node.id} defs={defs} />}
       {node.type === "wait-review" && <WaitReviewSection cfg={cfg} set={set} nodes={nodes} edges={edges} selfId={node.id} defs={defs} />}
@@ -1059,7 +1113,7 @@ function ConfigDrawer(props: {
       {node.type !== "input" && <RobustnessSection node={node} onChange={onChange} />}
       {node.type !== "input" && <OutputVarsSection def={def} />}
       {/* SDD C-3：无专项表单的节点按注册表 schema 通用渲染 */}
-      {!["llm", "tool", "knowledge-retrieval", "mcp-call", "condition", "end", "workflow-exec", "workflow-fixed", "workflow-select", "loop", "wait-review", "data-read", "agent-select", "agent", "agent-exec", "code-write", "query-rewrite", "decision-class"].includes(node.type) && (
+      {!["input", "llm", "tool", "knowledge-retrieval", "mcp-call", "condition", "end", "workflow-exec", "workflow-fixed", "workflow-select", "loop", "wait-review", "data-read", "agent-select", "agent", "agent-exec", "code-write", "query-rewrite", "decision-class"].includes(node.type) && (
         <GenericSchemaForm def={def} cfg={cfg} set={set} node={node} onChange={onChange} nodes={nodes} edges={edges} defs={defs} />
       )}
     </div>
@@ -1307,12 +1361,14 @@ function DebugDrawer(props: { def: WfDefinition; onClose: () => void; onRun: (va
         <button onClick={onClose}><X className="size-4 text-neutral-500" /></button>
       </div>
       <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4">
-        {["userQuery", "userId", "conversationId", "chatId"].map((k) => (
-          <div key={k}>
-            <div className="pb-1 text-[13px]" style={{ color: C.ink }}>{k} <span className="text-[11px]" style={{ color: C.ink3 }}>String</span></div>
-            <Input placeholder="系统内置参数，按需填写" value={vals[k] ?? ""} onChange={(e) => setVals({ ...vals, [k]: e.target.value })} />
+        {/* 07-SDD form：调试表单按开始节点 form 渲染（无 form 回退存量四字段） */}
+        {(getStartFields() ?? ["userQuery", "userId", "conversationId", "chatId"].map((n2) => ({ name: n2, type: "string" }))).map((f) => (
+          <div key={f.name}>
+            <div className="pb-1 text-[13px]" style={{ color: C.ink }}>{f.name}{(f as { required?: boolean }).required ? " *" : ""} <span className="text-[11px]" style={{ color: C.ink3 }}>{f.type}</span></div>
+            <Input placeholder="按需填写" value={vals[f.name] ?? ""} onChange={(e) => setVals({ ...vals, [f.name]: e.target.value })} />
           </div>
         ))}
+        {!getStartFields() && (
         <div>
           <div className="pb-1 text-[13px]" style={{ color: C.ink }}>chatHistory <span className="text-[11px]" style={{ color: C.ink3 }}>String</span></div>
           {chat.map((c, i) => (
@@ -1325,6 +1381,7 @@ function DebugDrawer(props: { def: WfDefinition; onClose: () => void; onRun: (va
             <Plus className="size-3" /> 添加一组对话
           </button>
         </div>
+        )}
       </div>
       <div className="p-4">
         <Button className="w-full bg-black text-white hover:bg-neutral-800" onClick={() => onRun(vals)}>开始运行</Button>
@@ -1708,6 +1765,16 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const agentVersionState = useAgentVersionState(agentMeta && agentId ? agentId : undefined)
   const [pop, setPop] = useState<null | "add" | "zoom" | "search">(null)
   const [paletteOpen, setPaletteOpen] = useState(() => localStorage.getItem("wf-palette-open") !== "0")
+  // 07-SDD form：开始字段缓存注入（VarCascader/DebugDrawer/OutputVars 消费）
+  const startFormId = (((def?.graph.nodes.find((n) => n.type === "input")?.config) as Record<string, unknown> | undefined)?.formId as string) || ""
+  const [, bumpStart] = useState(0)
+  useEffect(() => {
+    if (!startFormId) { setStartFields(null); bumpStart((x) => x + 1); return }
+    formsApi.get(startFormId).then((f) => {
+      setStartFields((f.fields ?? []).map((x) => ({ name: x.name, type: x.type })))
+      bumpStart((x) => x + 1)
+    }).catch(() => { setStartFields(null); bumpStart((x) => x + 1) })
+  }, [startFormId])
   const [versions, setVersions] = useState<{ versionNo: number; publishedAt: string }[]>([])
   const [agentVersions, setAgentVersions] = useState<{ versionId: string; versionNo: number; note: string; artifactHash: string; createdAt: string }[]>([])
   const [agentReleases, setAgentReleases] = useState<{ releaseId: string; environment: string; status: string; canaryPercent: number; versionNo: number | null }[]>([])

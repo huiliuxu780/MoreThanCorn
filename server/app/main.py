@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .runner import start_worker
-from .routers import admin, agents, business, registry, resources, runs, workflows
+from .routers import admin, agents, business, forms, registry, resources, runs, workflows
 
 
 @asynccontextmanager
@@ -20,6 +20,7 @@ async def lifespan(_app: FastAPI):
             for key, caps in [("deepseek-r1-distill-qwen-14b", ["text"]), ("qwen-max", ["text"]), ("qwen-plus", ["text", "thinking"])]:
                 db.add(Model(provider_id=prov.id, model_key=key, display_name=key, capabilities=caps))
             db.commit()
+        forms.seed_default_forms(db)
     finally:
         db.close()
     stop = start_worker()
@@ -56,6 +57,7 @@ app.include_router(business.router)
 app.include_router(resources.router)
 app.include_router(admin.router)
 app.include_router(agents.router)
+app.include_router(forms.router)
 
 
 @app.get("/healthz")

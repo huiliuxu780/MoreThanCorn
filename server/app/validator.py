@@ -163,6 +163,19 @@ def validate(defn: WorkflowDefinition) -> ValidationReport:
         if not n.config.get("branches"):
             issues.append(ValidationIssue(nodeId=n.id, kind="unconfigured", message="条件未配置"))
 
+    # R8b（07-SDD form）：开始节点 formId 必须存在
+    from .db import SessionLocal as _SL2
+    from .models import Form
+    _db2 = _SL2()
+    try:
+        for n in nodes:
+            if n.type == "input" and (n.config or {}).get("formId"):
+                if not _db2.get(Form, n.config["formId"]):
+                    issues.append(ValidationIssue(nodeId=n.id, kind="dependency",
+                                                  message="开始节点引用的表单不存在"))
+    finally:
+        _db2.close()
+
     # R8（07-SDD §4/§5）：控制流节点配置完整性
     for n in nodes:
         if n.type == "loop":

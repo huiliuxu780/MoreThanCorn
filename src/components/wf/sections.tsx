@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { resApi } from "@/services/resource-api"
-import { wfApi, type NodeDefinition, type WfEdge, type WfNode } from "@/services/wf-api"
+import { formsApi, wfApi, type NodeDefinition, type WfEdge, type WfNode } from "@/services/wf-api"
 
 import { C, PromptArea, ResourceSelect, Section, VarButton, parseIoOutputs } from "./controls"
 
@@ -113,8 +113,22 @@ export function InputMappingTable({ cfg, set, nodes, edges, selfId, defs }: {
   cfg: Record<string, any>; set: (k: string, v: unknown) => void
   nodes: WfNode[]; edges: WfEdge[]; selfId: string; defs: NodeDefinition[]
 }) {
+  // 07-SDD form：行=子工作流开始 form 字段（契约驱动），fallback legacy 六件套
+  const [childFields, setChildFields] = useState<string[] | null>(null)
+  useEffect(() => {
+    if (!cfg.workflowId) { setChildFields(null); return }
+    wfApi.get(cfg.workflowId).then(async (d) => {
+      const start = ((d.definition as { graph?: { nodes?: { type: string; config?: { formId?: string } }[] } })?.graph?.nodes ?? [])
+        .find((n) => n.type === "input")
+      const fid = start?.config?.formId
+      if (!fid) { setChildFields(null); return }
+      const f = await formsApi.get(fid)
+      setChildFields((f.fields ?? []).map((x) => x.name))
+    }).catch(() => setChildFields(null))
+  }, [cfg.workflowId])
   const mapping = (cfg.inputMapping ?? {}) as Record<string, string>
-  const rows = [...STD_VARS, ...Object.keys(mapping).filter((k) => !STD_VARS.includes(k))]
+  const base = childFields ?? STD_VARS
+  const rows = [...base, ...Object.keys(mapping).filter((k) => !base.includes(k))]
   const setRow = (k: string, v: string) => set("inputMapping", { ...mapping, [k]: v })
   return (
     <Section title="输入变量映射">

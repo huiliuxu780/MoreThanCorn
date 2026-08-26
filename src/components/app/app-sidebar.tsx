@@ -100,6 +100,12 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: "agent.view",
       },
       {
+        label: "表单",
+        to: "/config/forms",
+        icon: ClipboardList,
+        permission: "agent.view",
+      },
+      {
         label: UI_TERMS.navigation.aiResources,
         to: "/config/ai-resources",
         icon: Cpu,

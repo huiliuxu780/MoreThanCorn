@@ -335,6 +335,19 @@ class ResourceLock(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class Form(Base):
+    """07-SDD（08-26 决策）：集中表单实体=工作流输入契约；开始节点引用 formId，发布快照冻结字段。"""
+    __tablename__ = "form"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(Text, default="")
+    fields: Mapped[list] = mapped_column(JSONB, default=list)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class QualityResult(Base):
     """质检业务层：AI 结构化结果（Master §6 业务对象）。"""
     __tablename__ = "quality_result"

@@ -16,6 +16,7 @@ const RunDetailPage = lazy(() => import("@/pages/run-detail"))
 const WfAgentsPage = lazy(() => import("@/pages/wf-agents-list"))
 const WfAgentEditorPage = lazy(() => import("@/pages/wf-agent-editor"))
 const WfWorkflowsPage = lazy(() => import("@/pages/wf-workflows-list"))
+const WfFormsPage = lazy(() => import("@/pages/wf-forms"))
 const WfWorkflowEditorPage = lazy(() => import("@/pages/wf-designer"))
 const WfConnectionsPage = lazy(() => import("@/pages/wf-connections"))
 const AuditLogPage = lazy(() => import("@/pages/audit-log"))
@@ -81,6 +82,7 @@ export function App() {
 
           {/* 配置管理：工作流 */}
           <Route path="/config/workflows" element={<WfWorkflowsPage />} />
+          <Route path="/config/forms" element={<WfFormsPage />} />
           <Route path="/config/workflows/:agentId" element={<WfWorkflowEditorPage />} />
 
           {/* 配置管理：AI Resources / Data Resources（资源管理一期） */}
