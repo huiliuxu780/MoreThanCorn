@@ -326,12 +326,15 @@ function SummaryRows({ n }: { n: WfNode }) {
   const rows: { label: string; body: React.ReactNode }[] = []
   const un = <span style={{ color: C.ink3 }}>未配置</span>
   if (n.type === "input") {
+    // 08-26 用户反馈：选了表单后开始卡输入=表单字段（无表单回退六件套）
+    const sf = getStartFields()
+    const list = sf && sf.length ? sf : ["userQuery", "chatHistory", "userId", "conversationId", "chatId", "reference"].map((n2) => ({ name: n2, type: "string" }))
     rows.push({
       label: "输入",
       body: (
         <span className="flex flex-wrap gap-1">
-          {["userQuery", "chatHistory", "userId", "conversationId", "chatId", "reference"].map((k) => (
-            <span key={k} className="text-xs" style={{ color: C.ink }}>{k} <TypeChip t="Str" /></span>
+          {list.map((k) => (
+            <span key={k.name} className="text-xs" style={{ color: C.ink }}>{k.name} <TypeChip t={k.type === "array" ? "Arr" : k.type === "number" ? "Num" : k.type === "boolean" ? "Bool" : "Str"} /></span>
           ))}
         </span>
       ),
