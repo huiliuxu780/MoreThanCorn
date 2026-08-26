@@ -424,19 +424,20 @@ function WfNodeCard({ data, selected }: NodeProps) {
   const n = d.wf
   const [collapsed, setCollapsed] = useState(false)
   const rs = d.run?.status
-  const ring =
-    rs === "running" ? `ring-[1.5px] ring-[#525252]` :
-    rs === "success" ? `ring-[1.5px] ring-emerald-500/70` :
-    rs === "failed" ? `ring-[1.5px] ring-red-500` :
-    rs === "skipped" ? `ring-[1.5px] ring-neutral-300` :
-    selected ? `ring-[1.5px] ring-[#3D6BFF]` : ""
+  // 08-26 用户反馈：运行状态边框参考 reactflow NodeStatusIndicator（呼吸环/状态色边框）
+  const stCls =
+    rs === "running" ? "node-st-running" :
+    rs === "success" ? "node-st-success" :
+    rs === "failed" ? "node-st-failed" :
+    rs === "skipped" ? "node-st-skipped" : ""
+  const ring = selected ? `ring-[1.5px] ring-[#3D6BFF]` : ""
   // 08-26 用户反馈：悬浮边框+阴影效果
   const hoverFx = selected ? "" : "border-[#EDF0F4] hover:border-[#3D6BFF] hover:shadow-[0_4px_16px_rgba(61,107,255,0.18)]"
   const isBranch = ["condition", "decision-class", "workflow-select"].includes(n.type)
   return (
     <div className="group w-[300px]">
     <div className="relative">
-    <div className={`relative w-full overflow-hidden rounded-[8px] border bg-white p-3 shadow-sm transition-all ${hoverFx} ${ring}`} style={{ borderColor: selected ? C.primary : undefined }}>
+    <div className={`relative w-full overflow-hidden rounded-[8px] border bg-white p-3 shadow-sm transition-all ${hoverFx} ${ring} ${stCls}`} style={{ borderColor: selected ? C.primary : undefined }}>
       {n.type !== "input" && <Handle type="target" position={Position.Left} style={{ width: 12, height: 12, background: "#fff", border: `2px solid ${C.primary}`, borderRadius: 6 }} />}
       {n.type !== "end" && n.type !== "condition" && <Handle type="source" position={Position.Right} style={{ width: 12, height: 12, background: C.primary, border: "2px solid #fff", borderRadius: 6 }} />}
       {n.type === "condition" && collapsed && condHandlesOf(n).map((h, i, arr) => (
