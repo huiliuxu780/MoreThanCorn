@@ -690,9 +690,10 @@ export const formsApi = {
     req<{ id: string; revision: number }>(`/api/forms/${id}`, { method: "PUT", body: JSON.stringify(p) }),
   duplicate: (id: string) => req<{ id: string; name: string }>(`/api/forms/${id}/duplicate`, { method: "POST" }),
   remove: (id: string) => req<{ ok: boolean }>(`/api/forms/${id}`, { method: "DELETE" }),
+  records: (id: string) =>
+    req<{ recordId: string; formVersion: number; values: Record<string, unknown>; createdBy?: string; runId?: string; createdAt?: string }[]>(`/api/forms/${id}/records`),
   publish: (id: string, note = "") => req<{ versionNo: number }>(`/api/forms/${id}/publish`, { method: "POST", body: JSON.stringify({ note }) }),
   versions: (id: string) => req<{ versionId: string; versionNo: number; fieldCount: number; createdAt: string }[]>(`/api/forms/${id}/versions`),
   disable: (id: string) => req<{ ok: boolean }>(`/api/forms/${id}/disable`, { method: "POST" }),
-  records: (id: string) => req<{ recordId: string; formVersion: number; values: Record<string, unknown>; runId?: string }[]>(`/api/forms/${id}/records`),
   references: (id: string) => req<{ workflows: { id: string; name: string }[] }>(`/api/forms/${id}/references`),
 }

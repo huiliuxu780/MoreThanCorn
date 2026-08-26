@@ -1,6 +1,7 @@
 /** 07-SDD V1.5：Form Renderer——消费 Form Schema 真渲染（预览模式/运行时共用）。
  *  不显示 builder 边框/Key/拖拽柄（开发方案 §54）。 */
 import * as React from "react"
+import { Sparkles } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -9,7 +10,7 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import type { FormField } from "@/services/wf-api"
+import { wfApi, type FormField } from "@/services/wf-api"
 
 import { DatePicker, FilePick, MultiSelect } from "./field-controls"
 
@@ -125,8 +126,19 @@ export function FormRenderer({ fields, values, onChange, showErrors = false }: {
         return (
           <div key={f.id ?? f.key} style={{ gridColumn: `span ${f.layout?.span ?? 12} / span ${f.layout?.span ?? 12}` }} className="space-y-1.5">
             {f.dataType !== "none" && (
-              <Label className="text-xs">
+              <Label className="flex items-center gap-1 text-xs">
                 {f.label}{f.validation?.required && <span className="text-red-500"> *</span>}
+                {["text", "textarea"].includes(f.type) && !f.readOnly && (
+                  <button type="button" title="AI 辅助填写" className="text-neutral-400 hover:text-[#3D6BFF]"
+                    onClick={async () => {
+                      try {
+                        const r = await wfApi.polish(`请为字段「${f.label}」（${f.description || "无描述"}）生成一个示例填写值，只输出值本身`)
+                        onChange?.(f.key, r.text)
+                      } catch { /* 忽略 */ }
+                    }}>
+                    <Sparkles className="size-3" />
+                  </button>
+                )}
               </Label>
             )}
             <div className={f.display?.disabled ? "pointer-events-none opacity-50" : ""}>{control}</div>
