@@ -117,6 +117,22 @@ def polish_prompt(wf_id: str, payload: dict, db: Session = Depends(get_db)):
     return {"text": answer}
 
 
+@router.put("/{wf_id}/meta")
+def update_workflow_meta(wf_id: str, payload: dict, db: Session = Depends(get_db)):
+    """08-26：工作流基础信息编辑（名称/简介/图标）。"""
+    wf = db.get(Workflow, wf_id)
+    if not wf:
+        raise HTTPException(404, "workflow not found")
+    if payload.get("name"):
+        wf.name = str(payload["name"]).strip()[:64]
+    if "description" in payload:
+        wf.description = payload.get("description") or ""
+    if "icon" in payload:
+        wf.icon = payload.get("icon")
+    db.commit()
+    return {"ok": True}
+
+
 @router.put("/{wf_id}/draft")
 def save_draft(wf_id: str, req: SaveDraftRequest, db: Session = Depends(get_db)):
     wf = db.get(Workflow, wf_id)

@@ -5,7 +5,7 @@ import CodeMirror from "@uiw/react-codemirror"
 import { python } from "@codemirror/lang-python"
 import { AgentPublishDialog, useAgentVersionState } from "@/components/agent-publish-dialog"
 import { AgentVersionDiffDialog } from "@/components/agent-version-diff"
-import { avatarFor } from "./wf-agents-list"
+import { avatarFor, AVATARS } from "./wf-agents-list"
 import { ConversationPanel, MemorySchemaForm } from "@/components/agent-common-config"
 import { useNavigate, useParams } from "react-router-dom"
 import {
@@ -1836,6 +1836,12 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const [runState, setRunState] = useState<Record<string, NonNullable<WfNodeData["run"]>>>({})
   const [running, setRunning] = useState(false)
   const runningRef = useRef(false)
+  // 08-26 用户反馈：工作流基础信息编辑（名称/简介/图标，图标复用 agent 头像库）
+  const [metaOpen, setMetaOpen] = useState(false)
+  const [avatarOpen, setAvatarOpen] = useState(false)
+  const [metaName, setMetaName] = useState("")
+  const [metaDesc, setMetaDesc] = useState("")
+  const [metaIcon, setMetaIcon] = useState<string | null>(null)
   const [lastRunId, setLastRunId] = useState<string | null>(null)
   const [publishOpen, setPublishOpen] = useState(false)
   const [agentPublishOpen, setAgentPublishOpen] = useState(false)
@@ -2236,7 +2242,51 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
           </div>
         )}
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-          <button className="rounded p-1.5 hover:bg-neutral-100" title="设置"><Settings className="size-4" style={{ color: C.ink2 }} /></button>
+          <button className="rounded p-1.5 hover:bg-neutral-100" title="工作流基础信息"
+            onClick={() => {
+              setMetaName(def.workflow.name ?? "")
+              setMetaDesc(((def.workflow as unknown as { description?: string }).description) ?? "")
+              setMetaIcon(((def.workflow as unknown as { icon?: string | null }).icon) ?? null)
+              setMetaOpen(true)
+            }}><Settings className="size-4" style={{ color: C.ink2 }} /></button>
+          <Dialog open={metaOpen} onOpenChange={setMetaOpen}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader><DialogTitle>工作流基础信息</DialogTitle></DialogHeader>
+              <div className="flex gap-3">
+                <div className="flex-1 space-y-2">
+                  <Input value={metaName} placeholder="名称" onChange={(e) => setMetaName(e.target.value)} />
+                  <Textarea className="min-h-24 text-xs" value={metaDesc} placeholder="简介" onChange={(e) => setMetaDesc(e.target.value)} />
+                </div>
+                <button className="shrink-0 overflow-hidden rounded-lg border bg-white p-1" style={{ borderColor: C.cardBorder }} title="选择图标" onClick={() => setAvatarOpen(true)}>
+                  <img src={metaIcon ?? avatarFor(def.workflow.id)} alt="工作流图标" className="size-20 rounded-md object-cover" />
+                </button>
+              </div>
+              <Dialog open={avatarOpen} onOpenChange={setAvatarOpen}>
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader><DialogTitle>选择图标</DialogTitle></DialogHeader>
+                  <div className="grid grid-cols-6 gap-3">
+                    {AVATARS.map((src) => (
+                      <button key={src} className={`overflow-hidden rounded-lg ${(metaIcon ?? avatarFor(def.workflow.id)) === src ? "ring-2 ring-primary" : ""}`}
+                        onClick={() => { setMetaIcon(src); setAvatarOpen(false) }}>
+                        <img src={src} alt="" className="size-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                </DialogContent>
+              </Dialog>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setMetaOpen(false)}>取消</Button>
+                <Button onClick={async () => {
+                  try {
+                    await wfApi.updateMeta(workflowId, { name: metaName, description: metaDesc, icon: metaIcon })
+                    setDef({ ...def, workflow: { ...def.workflow, name: metaName, description: metaDesc, icon: metaIcon } as typeof def.workflow })
+                    toast.success("已保存")
+                    setMetaOpen(false)
+                  } catch (e) { toast.error((e as Error).message) }
+                }}>保存</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Popover>
             <PopoverTrigger asChild>
               <button className="relative rounded p-1.5 hover:bg-neutral-100" title="检查">

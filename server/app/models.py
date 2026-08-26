@@ -34,6 +34,7 @@ class Workflow(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(64))
     description: Mapped[str] = mapped_column(Text, default="")
+    icon: Mapped[str | None] = mapped_column(String(128), nullable=True)  # 08-26 基础信息编辑
     status: Mapped[str] = mapped_column(String(16), default="draft")  # draft|testing|published|deprecated
     current_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     draft_definition: Mapped[dict] = mapped_column(JSONB, default=dict)

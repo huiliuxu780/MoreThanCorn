@@ -120,6 +120,8 @@ export const wfApi = {
     }),
   get: (id: string) => req<WfDetail>(`/api/workflows/${id}`),
   del: (id: string) => req<{ ok: boolean }>(`/api/workflows/${id}`, { method: "DELETE" }),
+  updateMeta: (id: string, p: { name?: string; description?: string; icon?: string | null }) =>
+    req<{ ok: boolean }>(`/api/workflows/${id}/meta`, { method: "PUT", body: JSON.stringify(p) }),
   saveDraft: (id: string, definition: WfDefinition, baseRevision: number) =>
     req<{ workflowCode: string; draftVersion: string; savedAt: string }>(
       `/api/workflows/${id}/draft`,
