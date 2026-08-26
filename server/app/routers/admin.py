@@ -127,10 +127,16 @@ def delete_connection(cid: str, db: Session = Depends(get_db)):
     from ..resource_registry import assert_deletable
     if not db.get(Connection, cid):
         raise HTTPException(404, "connection not found")
-    # 08-27 用户反馈：被 provider 引用的连接允许删除——先解绑再删
-    from ..models import ModelProvider
+    # 08-27 用户反馈：连接始终可删——先解绑全部引用方（provider/tool/mcp/datasource）再删
+    from ..models import Datasource, McpServer, ModelProvider, Tool
     for prov in db.query(ModelProvider).filter_by(auth_connection_id=cid).all():
         prov.auth_connection_id = None
+    for t in db.query(Tool).filter_by(connection_id=cid).all():
+        t.connection_id = None
+    for m in db.query(McpServer).filter_by(connection_id=cid).all():
+        m.connection_id = None
+    for d in db.query(Datasource).filter_by(connection_id=cid).all():
+        d.connection_id = None
     db.flush()
     assert_deletable(db, "connection", cid)
     db.delete(db.get(Connection, cid))
