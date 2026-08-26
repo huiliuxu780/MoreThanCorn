@@ -241,15 +241,27 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                   <div className="rounded bg-neutral-50 px-2 py-1 font-mono text-[10px] text-neutral-500">dataType = {cur.dataType}</div>
                   <Input className="h-7 text-xs" value={cur.default ?? ""} placeholder="默认值" onChange={(e) => patch(cur.id!, { default: e.target.value })} />
                   {CHOICE_TYPES.includes(cur.type) && (
-                    <Textarea className="min-h-14 text-xs"
-                      placeholder={"选项（label=value 每行）\n合格=pass\n不合格=fail"}
-                      value={(cur.options ?? []).map((o) => `${o.label}=${o.value}`).join("\n")}
-                      onChange={(e) => patch(cur.id!, {
-                        options: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean).map((s) => {
-                          const [l, v] = s.split("=")
-                          return { label: l, value: v || l }
-                        }),
-                      })} />
+                    /* 开发方案 §24：选项右侧直接行编辑（label+value），不用弹窗/textarea */
+                    <div className="space-y-1">
+                      <div className="grid grid-cols-2 gap-1 text-[10px] text-neutral-500"><span>label</span><span>value</span></div>
+                      {(cur.options ?? []).map((o, oi) => (
+                        <div key={oi} className="flex items-center gap-1">
+                          <Input className="h-7 flex-1 text-xs" placeholder="合格" value={o.label}
+                            onChange={(e) => patch(cur.id!, { options: (cur.options ?? []).map((x, xi) => (xi === oi ? { ...x, label: e.target.value } : x)) })} />
+                          <Input className="h-7 flex-1 font-mono text-xs" placeholder="pass" value={o.value}
+                            onChange={(e) => patch(cur.id!, { options: (cur.options ?? []).map((x, xi) => (xi === oi ? { ...x, value: e.target.value } : x)) })} />
+                          <button title="删除选项" onClick={() => patch(cur.id!, { options: (cur.options ?? []).filter((_, xi) => xi !== oi) })}>
+                            <Trash2 className="size-3 text-neutral-400 hover:text-red-500" />
+                          </button>
+                        </div>
+                      ))}
+                      <Button variant="outline" size="sm" className="h-6 text-[10px]"
+                        onClick={() => patch(cur.id!, {
+                          options: [...(cur.options ?? []), { label: `选项${(cur.options ?? []).length + 1}`, value: `opt_${(cur.options ?? []).length + 1}` }],
+                        })}>
+                        <Plus className="size-3" /> 添加选项
+                      </Button>
+                    </div>
                   )}
                 </AccordionContent>
               </AccordionItem>
