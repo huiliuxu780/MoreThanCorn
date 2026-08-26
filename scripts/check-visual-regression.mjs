@@ -70,7 +70,7 @@ const tokens = await page.evaluate(() => {
   const out = {};
   const node = document.querySelector(".react-flow__node");
   if (node) {
-    const card = node.querySelector('[class*="w-[300px]"]') ?? node.querySelector("div") ?? node; // 取卡片本体
+    const card = node.querySelector('[class*="rounded-[8px]"]') ?? node.querySelector("div") ?? node; // 取卡片本体
     const cs = getComputedStyle(card);
     out.nodeWidth = cs.width; out.nodeRadius = cs.borderRadius;
   }
