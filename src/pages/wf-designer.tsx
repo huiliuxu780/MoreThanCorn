@@ -404,13 +404,13 @@ function ConditionRows({ n, onQuickAdd, palette }: { n: WfNode; onQuickAdd?: (h:
   return (
     <div className="mt-2 space-y-2">
       {rows.map((r) => (
-        <div key={r.handle} className="relative flex items-center gap-2 text-xs">
+        <div key={r.handle} className="relative flex items-center gap-2 pr-3 text-xs">
           <span className="w-14 shrink-0 truncate" style={{ color: C.ink3 }}>{r.label}</span>
           <span className="min-w-0 flex-1 truncate" style={{ color: C.ink }}>{r.desc}</span>
           <Handle id={r.handle} type="source" position={Position.Right}
             style={{ width: 12, height: 12, background: r.handle === "else" ? "#94A3B8" : C.primary, border: "2px solid #fff", borderRadius: 6 }} />
           {onQuickAdd && palette && (
-            <span className="absolute -right-1.5 top-1/2 -translate-y-1/2">
+            <span className="shrink-0">
               <QuickAddButton palette={palette} onPick={(t) => onQuickAdd(r.handle, t)} />
             </span>
           )}
@@ -495,7 +495,7 @@ function WfNodeCard({ data, selected }: NodeProps) {
       {!collapsed && (n.type === "condition" ? <ConditionRows n={n} onQuickAdd={d.onQuickAdd} palette={d.palette} /> : <SummaryRows n={n} />)}
     </div>
     {!isBranch && d.onQuickAdd && d.palette && (
-      <span className={`absolute -right-3 top-1/2 z-10 -translate-y-1/2 transition-opacity ${selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+      <span className={`absolute -right-2 -top-2 z-10 transition-opacity ${selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
         <QuickAddButton palette={d.palette} onPick={(t) => d.onQuickAdd?.(null, t)} />
       </span>
     )}
