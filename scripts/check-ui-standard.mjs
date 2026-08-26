@@ -44,7 +44,7 @@ for (const p of walk(SRC)) {
 }
 
 // 台账：components/wf 只允许登记文件（新增须先更新 SDD §6.2 与本清单）
-const WF_ALLOWED = new Set(["controls.tsx", "sections.tsx"]);
+const WF_ALLOWED = new Set(["controls.tsx", "sections.tsx", "field-controls.tsx", "form-renderer.tsx"]);
 const wfDir = join(SRC, "components/wf");
 const wfFiles = existsSync(wfDir) ? readdirSync(wfDir).filter((f) => f.endsWith(".tsx")) : [];
 const ledgerViol = wfFiles.filter((f) => !WF_ALLOWED.has(f));
