@@ -16,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { FormField } from "@/components/app/form-field"
 import { SectionHeader } from "@/components/app/page"
 import { defApi, type DefinitionDTO } from "@/services/resource-api"
-import { agentApi, listDataAssets } from "@/services/wf-api"
+import { formsApi, listDataAssets, wfApi } from "@/services/wf-api"
 import type { AgentDetail, DataAsset, DataAssetField } from "@/domain/types"
 import { cn } from "@/lib/utils"
 
@@ -31,11 +31,24 @@ let catalogLoaded = false
 function loadCatalog() {
   if (catalogLoaded) return
   catalogLoaded = true
-  agentApi.list({ page: 1, pageSize: 100 }).then((r) => {
-    agents = ((r.items ?? []) as { id: string; name: string; status: string }[]).map((a) => ({
-      id: a.id, name: a.name, status: a.status === "published" ? "Published" : "Draft",
-      inputSchema: DEFAULT_INPUT_SCHEMA,
-    } as unknown as AgentDetail))
+  // 08-27 用户链路：任务挂 workflow 主干——catalog 源换成工作流，inputSchema 取自开始节点 form
+  wfApi.list({ pageSize: 100 }).then(async (r) => {
+    const out: AgentDetail[] = []
+    for (const w of (r.items ?? []) as { id: string; name: string; status?: string }[]) {
+      let schema = DEFAULT_INPUT_SCHEMA
+      try {
+        const d = await wfApi.get(w.id)
+        const start = ((d.definition as { graph?: { nodes?: { type: string; config?: { formId?: string } }[] } })?.graph?.nodes ?? [])
+          .find((n) => n.type === "input")
+        const fid = start?.config?.formId
+        if (fid) {
+          const f = await formsApi.get(fid).catch(() => null)
+          if (f) schema = (f.fields ?? []).map((fd) => ({ key: fd.key, type: fd.dataType, label: fd.label })) as unknown as DataAssetField[]
+        }
+      } catch { /* 回退缺省 */ }
+      out.push({ id: w.id, name: w.name, status: w.status === "published" ? "Published" : "Draft", inputSchema: schema } as unknown as AgentDetail)
+    }
+    agents = out
     for (const a of agents) agentDetails[a.id] = a
     subs.forEach((f) => f())
   }).catch(() => undefined)
@@ -166,7 +179,7 @@ export function BasicTaskFields({
       <FormField label="描述">
         <Textarea value={form.description} className="min-h-16" placeholder="任务用途说明（可选）" onChange={(e) => set({ description: e.target.value })} />
       </FormField>
-      <FormField label="Agent" required>
+      <FormField label="执行工作流（workflow 主干）" required>
         <Select
           value={form.agentId || undefined}
           onValueChange={(agentId) => {
