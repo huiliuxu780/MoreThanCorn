@@ -138,3 +138,8 @@ button:not(:disabled) { cursor: pointer; }
 .node-st-success { border-color: #34C759 !important; }
 .node-st-failed { border-color: #F56C6C !important; }
 .node-st-skipped { border-color: #D1D5DB !important; }
+
+/* 08-26 用户反馈：SelectTrigger 的 data-size 变体覆盖 h-*，导致与 Input 高低不一致——全局对齐 */
+button[data-slot="select-trigger"].h-6 { height: 1.5rem !important; }
+button[data-slot="select-trigger"].h-7 { height: 1.75rem !important; }
+button[data-slot="select-trigger"].h-8 { height: 2rem !important; }
