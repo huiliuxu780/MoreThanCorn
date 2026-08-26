@@ -69,7 +69,7 @@ function DesignControl({ f }: { f: FormField }) {
   const opts = f.options ?? []
   switch (f.type) {
     case "textarea": return <Textarea className="min-h-14 text-xs" placeholder={f.placeholder || f.label} />
-    case "number": return <Input type="number" className="h-8 text-xs" placeholder={f.placeholder || "0"} />
+    case "number": return <Input type="number" readOnly={f.readOnly} className={`h-8 text-xs ${f.readOnly ? "opacity-60" : ""}`} placeholder={f.placeholder || "0"} />
     case "switch": return <div className="flex h-8 items-center"><Checkbox checked={f.default === "true"} /></div>
     case "date": return <DatePicker value="" onChange={() => undefined} />
     case "datetime": return <DatePicker withTime value="" onChange={() => undefined} />
@@ -77,14 +77,14 @@ function DesignControl({ f }: { f: FormField }) {
     case "radio": return (
       <div className="flex gap-3">
         {opts.map((o) => (
-          <label key={o.value} className="flex items-center gap-1.5 text-xs"><Checkbox /> {o.label}</label>
+          <label key={o.value} className={`flex items-center gap-1.5 text-xs ${o.disabled ? "opacity-50" : ""}`}><Checkbox disabled={o.disabled} /> {o.label}</label>
         ))}
       </div>
     )
     case "select": return (
       <Select>
         <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder={f.placeholder || "请选择"} /></SelectTrigger>
-        <SelectContent>{opts.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+        <SelectContent>{opts.map((o) => <SelectItem key={o.value} value={o.value} disabled={o.disabled}>{o.label}</SelectItem>)}</SelectContent>
       </Select>
     )
     case "multi-select":
@@ -93,7 +93,7 @@ function DesignControl({ f }: { f: FormField }) {
     case "description": return <p className="text-xs text-neutral-500">{f.description || f.label}</p>
     case "divider": return <div className="h-px w-full bg-neutral-200" />
     case "section": return <div className="border-b pb-1 text-xs font-medium text-neutral-600">{f.label}</div>
-    default: return <Input className="h-8 text-xs" placeholder={f.placeholder || f.label} />
+    default: return <Input readOnly={f.readOnly} className={`h-8 text-xs ${f.readOnly ? "opacity-60" : ""}`} placeholder={f.placeholder || f.label} />
   }
 }
 
@@ -248,6 +248,8 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                     </Select>
                   ) : (
                     <Input className="h-7 text-xs" value={cur.default ?? ""} placeholder="默认值" onChange={(e) => patch(cur.id!, { default: e.target.value })} />
+                  <label className="mt-1 flex items-center justify-between text-xs"><span>只读（运行时不可改）</span>
+                    <Checkbox checked={!!cur.readOnly} onCheckedChange={(v) => patch(cur.id!, { readOnly: !!v })} /></label>
                   )}
                   {CHOICE_TYPES.includes(cur.type) && (
                     /* 开发方案 §24：选项右侧直接行编辑（label+value），不用弹窗/textarea */

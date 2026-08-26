@@ -669,7 +669,8 @@ export async function realQualityDetail(id: string): Promise<Record<string, any>
 export interface FormField {
   id?: string; key: string; type: string; dataType: string; label: string
   description?: string; placeholder?: string; default?: string
-  options?: { label: string; value: string }[]
+  options?: { label: string; value: string; disabled?: boolean }[]
+  readOnly?: boolean
   validation?: { required?: boolean; minLength?: number; maxLength?: number; min?: number; max?: number; pattern?: string; minSelections?: number; maxSelections?: number; unique?: boolean }
   layout?: { span?: number }
   display?: { disabled?: boolean; readonly?: boolean }

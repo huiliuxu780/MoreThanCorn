@@ -98,7 +98,7 @@ export function MultiSelect({ options, values, onChange, placeholder = "请选�
             <CommandEmpty>无选项</CommandEmpty>
             <CommandGroup>
               {options.map((o) => (
-                <CommandItem key={o.value} value={o.label} onSelect={() => toggle(o.value)}>
+                <CommandItem key={o.value} value={o.label} disabled={o.disabled} onSelect={() => toggle(o.value)}>
                   <Check className={cn("mr-2 size-3.5", values.includes(o.value) ? "opacity-100" : "opacity-0")} />
                   {o.label}
                 </CommandItem>
