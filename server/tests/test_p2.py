@@ -61,13 +61,21 @@ def test_tool_version_increment():
     assert u["newVersion"] == 2
 
 
-def test_connection_referenced_delete_409():
+def test_connection_referenced_delete_unbinds_then_deletes():
+    """08-27 用户决策（7e00f17/9d1765c）：连接始终可删——先解绑全部引用方再删。
+    断言新语义：删除成功 + 引用方真解绑（原 409 阻断语义已废弃）。"""
+    from app.models import Connection, Tool
     c = client.post("/api/connections", json={"name": "conn1", "secret": "sk"}).json()
-    client.post("/api/tools", json={"name": "bound-tool", "connectionId": c["id"],
-                                    "spec": {"kind": "echo"}})
+    t = client.post("/api/tools", json={"name": "bound-tool", "connectionId": c["id"],
+                                        "spec": {"kind": "echo"}}).json()
     r = client.delete(f"/api/connections/{c['id']}")
-    assert r.status_code == 409
-    assert "bound-tool" in str(r.json())
+    assert r.status_code == 200
+    db = SessionLocal()
+    try:
+        assert db.get(Connection, c["id"]) is None  # 连接真删除
+        assert db.get(Tool, t["id"]).connection_id is None  # 工具真解绑
+    finally:
+        db.close()
 
 
 def test_connection_free_delete_ok():

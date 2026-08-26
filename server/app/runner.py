@@ -455,7 +455,12 @@ def exec_create_record(node, ctx) -> dict:
                        risk=out.get("risk") if isinstance(out, dict) else None,
                        critical=bool(out.get("critical")) if isinstance(out, dict) else False,
                        issue_count=int(out.get("issueCount") or 0) if isinstance(out, dict) else 0,
-                       issue_summary=out.get("issueSummary") if isinstance(out, dict) else None)
+                       issue_summary=out.get("issueSummary") if isinstance(out, dict) else None,
+                       # 09 §9.6/P0-08：追踪链（版本/批次字段由 TaskRunner 在 Run 上冻结后继承）
+                       workflow_version_id=ctx.run.workflow_version_id,
+                       task_run_id=ctx.run.task_run_id, task_id=ctx.run.task_id,
+                       task_version_id=ctx.run.task_version_id,
+                       output_schema_version_id=(ctx.run_input.get("__outputSchemaVersionId") or None))
     ctx.db.add(qr)
     ctx.db.commit()
     # 07-SDD V1.5：config.formId 存在 → 写 FormRecord（mapping 优先，field.binding.workflow_output 兜底）
@@ -490,7 +495,14 @@ def exec_create_record(node, ctx) -> dict:
                                   created_by="workflow", run_id=ctx.run.id))
             ctx.db.commit()
     from .routers.business import apply_rules_to_result
-    apply_rules_to_result(ctx.db, qr)
+    # 09 P0-07：Run 携带冻结 RuleVersion 时用它；否则取最近发布版本
+    apply_rules_to_result(ctx.db, qr, getattr(ctx.run, "rule_version_id", None))
+    # 09 INV-08：冻结 AI 原始结果（结构化输出+派生值），人工复核不得改写
+    qr.ai_result = {"structuredOutput": qr.structured_output, "score": qr.score,
+                    "risk": qr.risk, "critical": qr.critical,
+                    "issueCount": qr.issue_count, "issueSummary": qr.issue_summary,
+                    "ruleVersionId": qr.rule_version_id}
+    ctx.db.commit()
     evs = out.get("evidence", []) if isinstance(out, dict) else []
     for e in evs if isinstance(evs, list) else []:
         if isinstance(e, dict):

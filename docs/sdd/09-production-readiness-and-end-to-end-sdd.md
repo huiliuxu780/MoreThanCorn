@@ -1096,3 +1096,4 @@ P1/P2 还需增加：
 | 版本 | 日期 | 变更 | 状态 |
 | --- | --- | --- | --- |
 | v0.1 | 2026-08-27 | 根据生产上线复审，建立审计基线、目标架构、端到端不变量、P0–P3 与分级通过标准 | 待评审 |
+| v0.1-frozen | 2026-08-27 | 用户指令冻结本文（按 P0→P3 严格执行）；登记冻结决策：D09-1 Task 直接绑定 Workflow；D09-2 per-interaction 执行模式；D09-3 固定 QualityEvaluation Schema v1；D09-4 ResultRuleVersion 不可变版本且发布不全库重算；D09-5 ReviewRevision 只追加、AI 原始结果不可变；D09-6 存量数据只标记 is_latest=false 不删除。实施批次见 `09-p0-implementation-plan.md` | 已冻结（P0 执行中） |

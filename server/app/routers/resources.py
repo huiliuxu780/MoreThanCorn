@@ -351,16 +351,43 @@ def delete_definition(did: str, db: Session = Depends(get_db)):
 
 @router.post("/api/data-definitions/{did}/publish")
 def publish_definition(did: str, db: Session = Depends(get_db)):
+    """09 P0-B1：发布=冻结不可变 DataDefinitionVersion（供 TaskVersion/DataSnapshot 绑定）。"""
+    from sqlalchemy import func
+    from ..models import DataDefinitionVersion
     d = db.get(DataDefinition, did)
     if not d:
         raise HTTPException(404, "数据定义不存在")
     if not (d.field_schema or []):
         raise HTTPException(422, "字段 schema 为空，不能发布")
+    import copy as _copy
+    max_no = db.query(func.max(DataDefinitionVersion.version_no))\
+        .filter_by(definition_id=did).scalar() or 0
+    dv = DataDefinitionVersion(definition_id=did, version_no=max_no + 1,
+                               field_schema=_copy.deepcopy(d.field_schema or []),
+                               eligibility=_copy.deepcopy(d.eligibility or []),
+                               created_by="质量管理员")
+    db.add(dv)
     d.lifecycle = "Ready"
     d.revision += 1
     db.commit()
-    log_change(db, "definition", did, "publish", detail={"revision": d.revision})
-    return {"id": did, "revision": d.revision, "lifecycle": d.lifecycle}
+    log_change(db, "definition", did, "publish",
+               detail={"revision": d.revision, "versionId": dv.id})
+    return {"id": did, "revision": d.revision, "lifecycle": d.lifecycle,
+            "versionId": dv.id, "versionNo": dv.version_no}
+
+
+@router.get("/api/data-definitions/{did}/versions")
+def list_definition_versions(did: str, db: Session = Depends(get_db)):
+    from ..models import DataDefinitionVersion
+    d = db.get(DataDefinition, did)
+    if not d:
+        raise HTTPException(404, "数据定义不存在")
+    vs = db.query(DataDefinitionVersion).filter_by(definition_id=did)\
+        .order_by(DataDefinitionVersion.version_no.desc()).all()
+    return {"items": [{"id": v.id, "versionNo": v.version_no,
+                       "fieldSchema": v.field_schema, "eligibility": v.eligibility,
+                       "createdBy": v.created_by, "createdAt": v.created_at.isoformat()}
+                      for v in vs]}
 
 
 @router.post("/api/data-definitions/{did}/infer")
@@ -372,8 +399,8 @@ def infer_definition(did: str, db: Session = Depends(get_db)):
     asset = db.get(DataAsset, d.data_asset_id)
     rows = (asset.rows or [])[:20] if asset else []
     if not rows:
-        rows = [{"interactionId": "S-001", "interactionTime": "2026-08-01T10:00:00Z",
-                 "agentName": "坐席A", "text": "您好…"}]
+        # 09 §4.2 M-12：无样本不得推断（此前用固定 S-001/坐席A 造假 Schema）
+        raise HTTPException(422, "数据资产无样本行，无法推断字段 Schema；请先接入真实数据")
     schema = []
     for key, val in rows[0].items():
         t = "Number" if isinstance(val, (int, float)) and not isinstance(val, bool) \

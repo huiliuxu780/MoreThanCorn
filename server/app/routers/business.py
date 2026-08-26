@@ -1,4 +1,8 @@
-"""质检业务层深化：Result Rules 引擎 / Review 流 / Data Asset 批量 / Task×Schedule。"""
+"""质检业务层深化：Result Rules 引擎 / Review 流 / Data Asset 批量 / Task×Schedule。
+
+09-SDD P0-B1：Task 版本化（TaskVersion 不可变）、ResultRuleVersion 不可变、
+发布不全库重算（P0-07）、ReviewRevision 只追加（INV-08）。"""
+import copy
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,11 +10,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import (AnalysisTask, DataAsset, QualityResult, ResultRuleSet,
-                      Schedule)
+from ..models import (AnalysisTask, AnalysisTaskVersion, DataAsset,
+                      DataDefinitionVersion, QualityResult, ResultRuleSet,
+                      ResultRuleVersion, ReviewRevision, Schedule, Workflow,
+                      WorkflowVersion)
+from ..output_schema import latest_quality_schema
 from ..runner import create_run
 
 router = APIRouter(tags=["business"])
+
+# 09 §11.1：Task 状态机取值
+TASK_STATUSES = ("draft", "active", "paused", "archived")
 
 
 # ---------- 规则引擎 ----------
@@ -50,22 +60,29 @@ def evaluate_rules(rules: dict, output: dict) -> dict:
             "issueSummary": "；".join(r.get("criterion", "") for r in issues) or None}
 
 
-def active_ruleset(db: Session) -> ResultRuleSet | None:
+def active_rule_version(db: Session) -> ResultRuleVersion | None:
+    """最近发布的冻结规则版本（ResultRuleVersion 由发布动作创建，天然已发布）。"""
     return db.execute(
-        select(ResultRuleSet).where(ResultRuleSet.status == "published")
-        .order_by(ResultRuleSet.version.desc())).scalars().first()
+        select(ResultRuleVersion).order_by(ResultRuleVersion.created_at.desc(),
+                                           ResultRuleVersion.id.desc())).scalars().first()
 
 
-def apply_rules_to_result(db: Session, qr: QualityResult) -> None:
-    rs = active_ruleset(db)
-    if not rs:
+def apply_rules_to_result(db: Session, qr: QualityResult,
+                          rule_version_id: str | None = None) -> None:
+    """按冻结 RuleVersion 派生（09 §6.6）。未指定版本时取最近发布版本；
+    结果记录明确 rule_version_id（P0-07/P0-08）。"""
+    rv = (db.get(ResultRuleVersion, rule_version_id) if rule_version_id
+          else active_rule_version(db))
+    if not rv:
         return
-    derived = evaluate_rules(rs.rules or {}, qr.structured_output or {})
+    derived = evaluate_rules(rv.rules or {}, qr.structured_output or {})
     qr.score = derived["score"]
     qr.risk = derived["risk"]
     qr.issue_count = derived["issueCount"]
     qr.issue_summary = derived["issueSummary"]
-    qr.rules_version = rs.version
+    qr.rules_version = rv.version_no
+    qr.rule_version_id = rv.id
+    qr.derived_result = derived
 
 
 @router.get("/api/result-rules")
@@ -92,11 +109,18 @@ def get_rules(rid: str, db: Session = Depends(get_db)):
     r = db.get(ResultRuleSet, rid)
     if not r:
         raise HTTPException(404, "规则不存在")
-    return {"id": r.id, "name": r.name, "version": r.version, "status": r.status, "rules": r.rules}
+    vs = db.execute(select(ResultRuleVersion)
+                    .where(ResultRuleVersion.rule_set_id == rid)
+                    .order_by(ResultRuleVersion.version_no.desc())).scalars().all()
+    return {"id": r.id, "name": r.name, "description": r.description,
+            "version": r.version, "status": r.status, "rules": r.rules,
+            "versions": [{"id": v.id, "versionNo": v.version_no, "rules": v.rules,
+                          "createdAt": v.created_at.isoformat()} for v in vs]}
 
 
 @router.put("/api/result-rules/{rid}")
 def update_rules(rid: str, payload: dict, db: Session = Depends(get_db)):
+    """草稿编辑：只改草稿内容；已发布版本不受影响（下次发布生成新版本）。"""
     r = db.get(ResultRuleSet, rid)
     if not r:
         raise HTTPException(404, "规则不存在")
@@ -108,36 +132,44 @@ def update_rules(rid: str, payload: dict, db: Session = Depends(get_db)):
     return {"id": r.id, "version": r.version, "status": r.status}
 
 
-@router.post("/api/result-rules/{rid}/publish")
-def publish_rules(rid: str, db: Session = Depends(get_db)):
+@router.get("/api/result-rules/{rid}/versions")
+def list_rule_versions(rid: str, db: Session = Depends(get_db)):
     r = db.get(ResultRuleSet, rid)
     if not r:
         raise HTTPException(404, "规则不存在")
-    r.version += 1
+    vs = db.execute(select(ResultRuleVersion)
+                    .where(ResultRuleVersion.rule_set_id == rid)
+                    .order_by(ResultRuleVersion.version_no.desc())).scalars().all()
+    return {"items": [{"id": v.id, "versionNo": v.version_no, "rules": v.rules,
+                       "evaluationPriority": v.evaluation_priority,
+                       "createdBy": v.created_by,
+                       "createdAt": v.created_at.isoformat()} for v in vs]}
+
+
+@router.post("/api/result-rules/{rid}/publish")
+def publish_rules(rid: str, db: Session = Depends(get_db)):
+    """09-P0-07：发布=冻结不可变 ResultRuleVersion。
+    禁止全库重算（原 recalc_all 已废止）；存量结果保留各自冻结版本。"""
+    from sqlalchemy import func
+    r = db.get(ResultRuleSet, rid)
+    if not r:
+        raise HTTPException(404, "规则不存在")
+    max_no = db.query(func.max(ResultRuleVersion.version_no))\
+        .filter_by(rule_set_id=rid).scalar() or 0
+    version_no = max_no + 1
+    rv = ResultRuleVersion(rule_set_id=rid, version_no=version_no,
+                           rules=copy.deepcopy(r.rules or {}),
+                           evaluation_priority=r.evaluation_priority,
+                           created_by="质量管理员")
+    db.add(rv)
     r.status = "published"
+    r.version = version_no
+    db.flush()
     from .admin import audit
-    audit(db, "质量管理员", "rules.publish", "result_rule_set", rid, {"version": r.version})
+    audit(db, "质量管理员", "rules.publish", "result_rule_set", rid,
+          {"ruleVersionId": rv.id, "version": version_no})
     db.commit()
-    # 规则变更可重算：重算全部结果
-    n = recalc_all(db)
-    return {"id": r.id, "version": r.version, "recalculated": n}
-
-
-def recalc_all(db: Session) -> int:
-    rs = active_ruleset(db)
-    if not rs:
-        return 0
-    n = 0
-    for qr in db.query(QualityResult).all():
-        apply_rules_to_result(db, qr)
-        n += 1
-    db.commit()
-    return n
-
-
-@router.post("/api/result-rules/{rid}/recalc")
-def recalc(rid: str, db: Session = Depends(get_db)):
-    return {"recalculated": recalc_all(db)}
+    return {"id": r.id, "version": version_no, "ruleVersionId": rv.id}
 
 
 # ---------- Review 流 ----------
@@ -153,10 +185,14 @@ def _qr_by_any(db, rid: str):
 
 @router.post("/api/quality-results/{rid}/review")
 def review_result(rid: str, payload: dict, db: Session = Depends(get_db)):
+    """09 §9.7/INV-08：复核只追加 ReviewRevision；ai_result 不可变。
+    顶层 score/risk 为生效值（人工修订后更新），AI 原始值恒在 ai_result。"""
     qr = _qr_by_any(db, rid)
     if not qr:
         raise HTTPException(404, "质检结果不存在")
     action = payload.get("action", "approve")
+    if action not in ("approve", "revise", "effective", "reopen"):
+        raise HTTPException(422, "未知复核动作")
     note = payload.get("note", "")
     reviewer = payload.get("reviewer", "reviewer")
     before = {"status": qr.review_status, "score": qr.score, "risk": qr.risk}
@@ -172,15 +208,20 @@ def review_result(rid: str, payload: dict, db: Session = Depends(get_db)):
             qr.score = float(payload["score"])
         if payload.get("risk"):
             qr.risk = payload["risk"]
-    else:
-        raise HTTPException(422, "未知复核动作")
+    after = {"status": qr.review_status, "score": qr.score, "risk": qr.risk}
+    rev_no = db.query(ReviewRevision).filter_by(quality_result_id=qr.id).count() + 1
+    rev = ReviewRevision(quality_result_id=qr.id, revision_no=rev_no, action=action,
+                         reason=note, reviewer_id=reviewer, before=before, after=after)
+    db.add(rev)
+    db.flush()
+    qr.effective_review_revision_id = rev.id
     hist = list(qr.review_history or [])
     hist.append({"at": datetime.now(timezone.utc).isoformat(), "action": action,
-                 "reviewer": reviewer, "note": note, "before": before,
-                 "after": {"status": qr.review_status, "score": qr.score, "risk": qr.risk}})
+                 "reviewer": reviewer, "note": note, "before": before, "after": after})
     qr.review_history = hist
     db.commit()
-    return {"id": qr.id, "review": qr.review_status, "history": qr.review_history}
+    return {"id": qr.id, "review": qr.review_status, "history": qr.review_history,
+            "revisionId": rev.id, "revisionNo": rev.revision_no}
 
 
 @router.post("/api/quality-results/{rid}/evidence", status_code=201)
@@ -245,27 +286,185 @@ def append_rows(aid: str, payload: dict, db: Session = Depends(get_db)):
 
 # ---------- Analysis Task + 批量 + Schedule ----------
 
+def _norm_sampling(v) -> dict:
+    """09 §9.2：sampling 结构化。兼容旧扁平值（确定性转换，不静默丢弃）。"""
+    if isinstance(v, dict):
+        return v
+    if v in (None, "", "all"):
+        return {"mode": "all"}
+    if isinstance(v, str) and v.startswith("first_"):
+        try:
+            return {"mode": "count", "count": int(v.split("_")[1])}
+        except ValueError:
+            pass
+    return {"mode": "legacy", "expr": str(v)}
+
+
+def _norm_window(v) -> dict:
+    if isinstance(v, dict):
+        return v
+    if v in (None, "", "all"):
+        return {"mode": "all"}
+    if v in ("last_24h", "last_7d", "last_30d"):
+        return {"mode": "relative", "value": v, "timezone": "Asia/Shanghai"}
+    return {"mode": "legacy", "expr": str(v)}
+
+
+def _norm_scope(v) -> dict:
+    if isinstance(v, dict):
+        return v
+    if v in (None, "", "all"):
+        return {"op": "and", "conditions": []}
+    return {"mode": "legacy", "expr": str(v)}
+
+
+def _denorm_sampling(s: dict) -> str:
+    if s.get("mode") == "count":
+        return f"first_{s.get('count', 0)}"
+    if s.get("mode") == "all":
+        return "all"
+    return "all"
+
+
+def _denorm_window(w: dict) -> str:
+    if w.get("mode") == "relative":
+        return w.get("value", "all")
+    if w.get("mode") == "all":
+        return "all"
+    return w.get("expr", "all")
+
+
+def _denorm_scope(s: dict) -> str:
+    """legacy 扁平列（只读兼容）：结构化条件无法用字符串表达时记 all。"""
+    if s.get("mode") == "legacy":
+        return s.get("expr", "all")
+    return "all"
+
+
+def _task_version_dto(db: Session, v: AnalysisTaskVersion) -> dict:
+    os_label = ""
+    if v.output_schema_version_id:
+        from ..models import QualityOutputSchema
+        row = db.get(QualityOutputSchema, v.output_schema_version_id)
+        if row:
+            os_label = f"{row.key}@v{row.version_no}"
+    return {"id": v.id, "versionNo": v.version_no,
+            "workflowId": v.workflow_id,
+            "workflowVersionPolicy": v.workflow_version_policy,
+            "pinnedWorkflowVersionId": v.pinned_workflow_version_id,
+            "dataAssetId": v.data_asset_id,
+            "dataDefinitionVersionId": v.data_definition_version_id,
+            "resultRuleVersionId": v.result_rule_version_id,
+            "inputMapping": v.input_mapping or {},
+            "scope": v.scope or {},
+            "sampling": v.sampling or {},
+            "dataWindow": v.data_window or {},
+            "outputSchemaVersion": os_label,
+            "outputSchemaVersionId": v.output_schema_version_id,
+            "note": v.note, "createdBy": v.created_by,
+            "createdAt": v.created_at.isoformat()}
+
+
+def _validate_task_config(db: Session, workflow_id: str, policy: str,
+                          pinned: str | None, asset_id: str | None,
+                          rule_version_id: str | None, definition_version_id: str | None):
+    if not workflow_id:
+        raise HTTPException(422, "workflowId 必填")
+    wf = db.get(Workflow, workflow_id)
+    if not wf:
+        raise HTTPException(404, "工作流不存在")
+    if policy == "pinned":
+        if not pinned:
+            raise HTTPException(422, "pinned 策略必须提供 pinnedWorkflowVersionId")
+        wv = db.get(WorkflowVersion, pinned)
+        if not wv or wv.workflow_id != workflow_id:
+            raise HTTPException(422, "pinnedWorkflowVersionId 不存在或不属于该工作流")
+    if not asset_id or not db.get(DataAsset, asset_id):
+        raise HTTPException(422, "dataAssetId 必填且必须存在")
+    if rule_version_id and not db.get(ResultRuleVersion, rule_version_id):
+        raise HTTPException(422, "resultRuleVersionId 不存在")
+    if definition_version_id and not db.get(DataDefinitionVersion, definition_version_id):
+        raise HTTPException(422, "dataDefinitionVersionId 不存在")
+    return wf
+
+
 @router.get("/api/tasks")
 def list_tasks(db: Session = Depends(get_db)):
     rows = db.query(AnalysisTask).all()
-    return {"items": [{"id": t.id, "name": t.name, "description": t.description,
-                       "agentId": t.workflow_id, "agentVersionPolicy": t.version_policy,
-                       "dataAssetId": t.data_asset_id, "dataDefinitionId": t.data_definition_id,
-                       "scope": t.scope,
-                       "sampling": t.sampling, "schedule": t.data_window,
-                       "dataWindow": t.data_window, "status": t.status} for t in rows]}
+    items = []
+    for t in rows:
+        v = db.get(AnalysisTaskVersion, t.current_version_id) if t.current_version_id else None
+        items.append({"id": t.id, "name": t.name, "description": t.description,
+                      "workflowId": t.workflow_id,
+                      "workflowVersionPolicy": (v.workflow_version_policy if v else t.version_policy),
+                      # 兼容别名：P0-B4 前端切换后移除（09 P0-02）
+                      "agentId": t.workflow_id, "agentVersionPolicy": t.version_policy,
+                      "dataAssetId": t.data_asset_id,
+                      "dataDefinitionId": t.data_definition_id,
+                      "scope": v.scope if v else t.scope,
+                      "sampling": v.sampling if v else t.sampling,
+                      "schedule": v.data_window if v else t.data_window,
+                      "dataWindow": v.data_window if v else t.data_window,
+                      "status": t.status,
+                      "currentVersionNo": v.version_no if v else None})
+    return {"items": items}
 
 
 @router.post("/api/tasks", status_code=201)
 def create_task(payload: dict, db: Session = Depends(get_db)):
-    t = AnalysisTask(name=payload["name"], description=payload.get("description", ""),
-                     workflow_id=payload["workflowId"], data_asset_id=payload["dataAssetId"],
+    """09 §10.1：创建即生成 TaskVersion v1；返回已解析快照（确认页必须用它渲染）。"""
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(422, "任务名称必填")
+    workflow_id = payload.get("workflowId")
+    policy = payload.get("workflowVersionPolicy") or "latest_published"
+    if policy == "Latest Published":  # legacy 别名
+        policy = "latest_published"
+    if policy not in ("pinned", "latest_published"):
+        raise HTTPException(422, "workflowVersionPolicy 必须是 pinned|latest_published")
+    pinned = payload.get("pinnedWorkflowVersionId")
+    wf = _validate_task_config(db, workflow_id, policy, pinned, payload.get("dataAssetId"),
+                               payload.get("resultRuleVersionId"),
+                               payload.get("dataDefinitionVersionId"))
+    osrow = latest_quality_schema(db)
+    if not osrow:
+        raise HTTPException(500, "quality_evaluation 输出 Schema 未配置")
+    scope = _norm_scope(payload.get("scope"))
+    sampling = _norm_sampling(payload.get("sampling"))
+    window = _norm_window(payload.get("dataWindow", "all"))
+    mapping = payload.get("inputMapping") or {}
+    if not isinstance(mapping, dict):
+        raise HTTPException(422, "inputMapping 必须是对象")
+    # §11.1：配置校验通过且版本就绪才可 active
+    status = "active"
+    if policy == "latest_published" and not wf.current_version_id:
+        status = "draft"
+    t = AnalysisTask(name=name, description=payload.get("description", ""),
+                     workflow_id=workflow_id, version_policy=policy,
+                     data_asset_id=payload["dataAssetId"],
                      data_definition_id=payload.get("dataDefinitionId"),
-                     scope=payload.get("scope", "all"), sampling=payload.get("sampling", "all"),
-                     data_window=payload.get("dataWindow", "last_7d"))
+                     scope=_denorm_scope(scope),
+                     sampling=_denorm_sampling(sampling),
+                     data_window=_denorm_window(window),
+                     status=status, created_by="质量管理员", updated_by="质量管理员")
     db.add(t)
+    db.flush()
+    v = AnalysisTaskVersion(task_id=t.id, version_no=1, workflow_id=workflow_id,
+                            workflow_version_policy=policy,
+                            pinned_workflow_version_id=pinned,
+                            data_asset_id=payload["dataAssetId"],
+                            data_definition_version_id=payload.get("dataDefinitionVersionId"),
+                            result_rule_version_id=payload.get("resultRuleVersionId"),
+                            input_mapping=mapping, scope=scope, sampling=sampling,
+                            data_window=window,
+                            output_schema_version_id=osrow.id,
+                            created_by="质量管理员")
+    db.add(v)
+    db.flush()
+    t.current_version_id = v.id
     db.commit()
-    return {"id": t.id, "name": t.name}
+    return {"id": t.id, "name": t.name, "workflowId": workflow_id, "status": t.status,
+            "taskVersion": _task_version_dto(db, v)}
 
 
 def _resolve_rows(db: Session, task: AnalysisTask) -> list[dict]:
@@ -331,41 +530,110 @@ def batch_run(tid: str, payload: dict | None = None, db: Session = Depends(get_d
 
 @router.get("/api/tasks/{tid}")
 def get_task(tid: str, db: Session = Depends(get_db)):
-    """D-5：任务详情（此前前端走 mock）。"""
+    """D-5 + 09 §10.1：任务详情含当前 TaskVersion 快照。"""
     t = db.get(AnalysisTask, tid)
     if not t:
         raise HTTPException(404, "任务不存在")
+    v = db.get(AnalysisTaskVersion, t.current_version_id) if t.current_version_id else None
     return {"id": t.id, "name": t.name, "description": t.description,
+            "workflowId": t.workflow_id,
+            "workflowVersionPolicy": (v.workflow_version_policy if v else t.version_policy),
+            # 兼容别名：P0-B4 前端切换后移除（09 P0-02）
             "agentId": t.workflow_id, "agentVersionPolicy": t.version_policy,
             "dataAssetId": t.data_asset_id, "dataDefinitionId": t.data_definition_id,
-            "scope": t.scope, "sampling": t.sampling, "dataWindow": t.data_window,
-            "status": t.status}
+            "scope": v.scope if v else t.scope,
+            "sampling": v.sampling if v else t.sampling,
+            "dataWindow": v.data_window if v else t.data_window,
+            "status": t.status,
+            "taskVersion": _task_version_dto(db, v) if v else None}
+
+
+@router.get("/api/tasks/{tid}/versions")
+def list_task_versions(tid: str, db: Session = Depends(get_db)):
+    t = db.get(AnalysisTask, tid)
+    if not t:
+        raise HTTPException(404, "任务不存在")
+    vs = db.execute(select(AnalysisTaskVersion)
+                    .where(AnalysisTaskVersion.task_id == tid)
+                    .order_by(AnalysisTaskVersion.version_no.desc())).scalars().all()
+    return {"items": [_task_version_dto(db, v) for v in vs]}
 
 
 @router.put("/api/tasks/{tid}")
 def update_task(tid: str, payload: dict, db: Session = Depends(get_db)):
-    """R2：任务编辑保存（此前前端只 toast）。"""
+    """09 §9.2：编辑=生成新的不可变 TaskVersion（历史版本不受影响）。"""
     t = db.get(AnalysisTask, tid)
     if not t:
         raise HTTPException(404, "任务不存在")
-    for k, col in (("name", "name"), ("description", "description"), ("scope", "scope"),
-                   ("sampling", "sampling"), ("dataWindow", "data_window")):
-        if payload.get(k) is not None:
-            setattr(t, col, payload[k])
+    if t.status == "archived":
+        raise HTTPException(422, "已归档任务不可编辑")
+    cur = db.get(AnalysisTaskVersion, t.current_version_id) if t.current_version_id else None
+
+    def _cur(attr: str, default=None):
+        return (getattr(cur, attr) if cur is not None else default)
+
+    if payload.get("name") is not None:
+        t.name = str(payload["name"]).strip() or t.name
+    if payload.get("description") is not None:
+        t.description = payload["description"]
+    workflow_id = payload.get("workflowId") or (cur.workflow_id if cur else t.workflow_id)
+    policy = payload.get("workflowVersionPolicy") or _cur("workflow_version_policy", "latest_published")
+    pinned = (payload.get("pinnedWorkflowVersionId")
+              if "pinnedWorkflowVersionId" in payload else _cur("pinned_workflow_version_id"))
+    asset_id = payload.get("dataAssetId") or _cur("data_asset_id", t.data_asset_id)
+    rule_version_id = (payload.get("resultRuleVersionId")
+                       if "resultRuleVersionId" in payload else _cur("result_rule_version_id"))
+    def_version_id = (payload.get("dataDefinitionVersionId")
+                      if "dataDefinitionVersionId" in payload else _cur("data_definition_version_id"))
+    _validate_task_config(db, workflow_id, policy, pinned, asset_id, rule_version_id, def_version_id)
+    scope = _norm_scope(payload.get("scope")) if payload.get("scope") is not None else (_cur("scope") or {"op": "and", "conditions": []})
+    sampling = _norm_sampling(payload.get("sampling")) if payload.get("sampling") is not None else (_cur("sampling") or {"mode": "all"})
+    window = _norm_window(payload.get("dataWindow")) if payload.get("dataWindow") is not None else (_cur("data_window") or {"mode": "all"})
+    mapping = payload.get("inputMapping") if payload.get("inputMapping") is not None else (_cur("input_mapping") or {})
+    if not isinstance(mapping, dict):
+        raise HTTPException(422, "inputMapping 必须是对象")
+    from sqlalchemy import func
+    version_no = (db.query(func.max(AnalysisTaskVersion.version_no))
+                  .filter_by(task_id=tid).scalar() or 0) + 1
+    v = AnalysisTaskVersion(task_id=tid, version_no=version_no, workflow_id=workflow_id,
+                            workflow_version_policy=policy,
+                            pinned_workflow_version_id=pinned,
+                            data_asset_id=asset_id,
+                            data_definition_version_id=def_version_id,
+                            result_rule_version_id=rule_version_id,
+                            input_mapping=mapping, scope=scope, sampling=sampling,
+                            data_window=window,
+                            output_schema_version_id=_cur("output_schema_version_id") or (latest_quality_schema(db).id if latest_quality_schema(db) else None),
+                            note=payload.get("note", ""), created_by="质量管理员")
+    db.add(v)
+    db.flush()
+    t.current_version_id = v.id
+    t.workflow_id = workflow_id
+    t.version_policy = policy
+    t.data_asset_id = asset_id
+    t.scope = _denorm_scope(scope)
+    t.sampling = _denorm_sampling(sampling)
+    t.data_window = _denorm_window(window)
+    t.updated_by = "质量管理员"
     db.commit()
-    return {"id": t.id, "name": t.name, "status": t.status}
+    return {"id": t.id, "name": t.name, "status": t.status,
+            "taskVersion": _task_version_dto(db, v)}
 
 
 @router.post("/api/tasks/{tid}/status")
 def set_task_status(tid: str, payload: dict, db: Session = Depends(get_db)):
-    """R2：任务启用/停用（此前前端只 toast）。"""
+    """09 §11.1：draft->active<->paused->archived。兼容旧大小写取值。"""
     t = db.get(AnalysisTask, tid)
     if not t:
         raise HTTPException(404, "任务不存在")
-    status = (payload or {}).get("status")
-    if status not in ("Active", "Paused"):
-        raise HTTPException(422, "status 必须是 Active|Paused")
-    t.status = status
+    status = str((payload or {}).get("status") or "").lower()
+    aliases = {"active": "active", "paused": "paused", "draft": "draft",
+               "archived": "archived"}
+    if status not in aliases:
+        raise HTTPException(422, "status 必须是 active|paused|draft|archived")
+    if t.status == "archived":
+        raise HTTPException(422, "已归档任务不可变更状态")
+    t.status = aliases[status]
     db.commit()
     return {"id": t.id, "status": t.status}
 

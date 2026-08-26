@@ -28,20 +28,45 @@ def _wf_with_sink():
     return wf
 
 
+def _wait_run_terminal(run_id: str, timeout: float = 15.0) -> dict:
+    """确定性等待 Run 终态（替代固定 sleep；共享测试库下 2s 假设在全套件中不稳定）。"""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        r = client.get(f"/api/runs/{run_id}").json()
+        if r.get("status") in ("succeeded", "failed", "cancelled"):
+            return r
+        time.sleep(0.2)
+    raise AssertionError(f"run {run_id} 未在 {timeout}s 内到终态")
+
+
+def _qr_by_run(run_id: str):
+    """按 run_id 精确取结果（共享测试库累积数据后，列表首页假设不再成立）。"""
+    from app.db import SessionLocal
+    from app.models import QualityResult
+    db = SessionLocal()
+    try:
+        qr = db.query(QualityResult).filter_by(run_id=run_id).first()
+        assert qr is not None, f"run {run_id} 没有产生 QualityResult"
+        return {"id": qr.id, "runId": qr.run_id}
+    finally:
+        db.close()
+
+
 def test_rules_engine_derives_and_recalc():
-    wf = _wf_with_sink()
-    r = client.post("/api/runs", json={"workflowId": wf["id"], "trigger": "test", "input": {}})
-    time.sleep(2)
-    qrs = client.get("/api/quality-results").json()["items"]
-    qr = next(q for q in qrs if q["runId"] == r.json()["runId"])
-    # 建规则：issueRule 命中 promise 包含 回电 → Critical；scoreRule 失败扣分
+    """09-P0-07 新语义：发布=冻结不可变 RuleVersion（禁止全库重算）；
+    结果在创建时绑定当时的冻结版本并派生（旧"发布即重算全库"已废止）。"""
     rules = client.post("/api/result-rules", json={"name": "承诺规则", "rules": {
         "scoreRules": [{"id": "s1", "field": "score", "op": "gt", "value": 80, "weight": 0}],
         "issueRules": [{"id": "i1", "criterion": "承诺未兑现检查", "field": "promise", "op": "contains", "value": "回电", "severity": "High"}]}}).json()
     pub = client.post(f"/api/result-rules/{rules['id']}/publish").json()
-    assert pub["version"] == 2 and pub["recalculated"] >= 1
+    assert pub["version"] == 1 and pub["ruleVersionId"] and not pub.get("recalculated")
+    wf = _wf_with_sink()
+    r = client.post("/api/runs", json={"workflowId": wf["id"], "trigger": "test", "input": {}})
+    _wait_run_terminal(r.json()["runId"])
+    qr = _qr_by_run(r.json()["runId"])
     det = client.get(f"/api/quality-results/{qr['id']}").json()
     assert det["risk"] == "High" and det["issueCount"] == 1
+    assert det["ruleVersionId"] == pub["ruleVersionId"]  # 结果记录明确 RuleVersion
 
 
 def test_review_flow_history():

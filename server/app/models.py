@@ -9,10 +9,12 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -179,17 +181,30 @@ class JobQueue(Base):
 
 class Run(Base):
     __tablename__ = "run"
+    __table_args__ = (
+        # 09-SDD INV-02/§9.8：同一批次内一条 Interaction 一个 attempt 唯一
+        UniqueConstraint("task_run_id", "interaction_ref", "attempt", name="uq_run_taskrun_interaction_attempt"),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     workflow_version_id: Mapped[str | None] = mapped_column(ForeignKey("workflow_version.id", ondelete="SET NULL"), nullable=True, index=True)
     workflow_id: Mapped[str | None] = mapped_column(ForeignKey("workflow.id", ondelete="SET NULL"), nullable=True, index=True)
     agent_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)  # Agent 运行层（05 设计）
-    trigger: Mapped[str] = mapped_column(String(16), default="manual")  # manual|api|schedule|test|agent|eval
+    trigger: Mapped[str] = mapped_column(String(16), default="manual")  # manual|api|schedule|test|agent|eval|batch
     idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
     origin_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
     definition_source: Mapped[str | None] = mapped_column(String(8), nullable=True)  # draft|version（SDD A-01）
     agent_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)  # SDD B-03
+    # 09-SDD §9.5：Task 主链追踪（INV-05）
+    task_run_id: Mapped[str | None] = mapped_column(ForeignKey("task_run.id", ondelete="SET NULL"), nullable=True, index=True)
+    task_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    task_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    interaction_ref: Mapped[str] = mapped_column(String(128), default="", index=True)
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    definition_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    rule_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    data_snapshot_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     input: Mapped[dict] = mapped_column(JSONB, default=dict)
     output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -380,13 +395,22 @@ class FormRecord(Base):
 
 
 class QualityResult(Base):
-    """质检业务层：AI 结构化结果（Master §6 业务对象）。"""
+    """质检业务层：AI 结构化结果（09-SDD §9.6）。
+
+    INV-03：一个 Run 至多一条 is_latest 结果；谱系行以 is_latest=false 保留。
+    INV-08：ai_result 冻结 AI 原始值；人工修订走 ReviewRevision。
+    score/risk 等顶层列为"生效值"（AI 派生或最近人工修订）。"""
     __tablename__ = "quality_result"
+    __table_args__ = (
+        # 部分唯一：一个 Run 至多一条"生效"结果；is_latest=false 谱系行不受限
+        Index("uq_quality_result_run_latest", "run_id", unique=True,
+              postgresql_where=text("is_latest")),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     run_id: Mapped[str | None] = mapped_column(ForeignKey("run.id", ondelete="SET NULL"), nullable=True, index=True)
     workflow_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    interaction_ref: Mapped[str] = mapped_column(String(128), default="")
+    interaction_ref: Mapped[str] = mapped_column(String(128), default="", index=True)
     interaction_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     structured_output: Mapped[dict] = mapped_column(JSONB, default=dict)
     score: Mapped[float | None] = mapped_column(nullable=True)
@@ -396,8 +420,18 @@ class QualityResult(Base):
     issue_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     review_status: Mapped[str] = mapped_column(String(16), default="AI")  # AI|REVIEWED|EFFECTIVE
     transcript: Mapped[dict] = mapped_column(JSONB, default=list)  # [{start,end,speaker,text}]
-    rules_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rules_version: Mapped[int | None] = mapped_column(Integer, nullable=True)  # legacy（B1 起由 rule_version_id 取代）
     review_history: Mapped[dict] = mapped_column(JSONB, default=list)  # [{at,action,reviewer,note}]
+    # 09-SDD §9.6：追踪与版本链
+    task_run_id: Mapped[str | None] = mapped_column(ForeignKey("task_run.id", ondelete="SET NULL"), nullable=True, index=True)
+    task_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    task_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    rule_version_id: Mapped[str | None] = mapped_column(ForeignKey("result_rule_version.id", ondelete="SET NULL"), nullable=True, index=True)
+    output_schema_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    ai_result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # AI 原始：结构化输出+派生值（不可变）
+    derived_result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # 冻结规则版本派生的 score/risk/issues
+    effective_review_revision_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    is_latest: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -493,20 +527,150 @@ class DataAsset(Base):
 
 
 class AnalysisTask(Base):
-    """分析任务：workflow × 数据资产 × schedule。"""
+    """分析任务（09-SDD §9.1）：可变身份对象；配置全部下沉到 AnalysisTaskVersion。"""
     __tablename__ = "analysis_task"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(64))
     description: Mapped[str] = mapped_column(Text, default="")
-    workflow_id: Mapped[str] = mapped_column(String(64))
-    version_policy: Mapped[str] = mapped_column(String(16), default="Latest Published")
+    workflow_id: Mapped[str] = mapped_column(String(64))  # 冗余自 current TaskVersion，便于列表
+    version_policy: Mapped[str] = mapped_column(String(16), default="Latest Published")  # legacy 扁平列（B1 起只读）
     data_asset_id: Mapped[str] = mapped_column(String(64))
     data_definition_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     scope: Mapped[str] = mapped_column(String(128), default="all")
     sampling: Mapped[str] = mapped_column(String(64), default="all")
     data_window: Mapped[str] = mapped_column(String(64), default="last_7d")
-    status: Mapped[str] = mapped_column(String(16), default="Active")
+    status: Mapped[str] = mapped_column(String(16), default="active")  # draft|active|paused|archived（09 §11.1）
+    current_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    updated_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AnalysisTaskVersion(Base):
+    """分析任务不可变配置版本（09-SDD §9.2；INV-01 TaskRun 只绑定一个 TaskVersion）。"""
+    __tablename__ = "analysis_task_version"
+    __table_args__ = (UniqueConstraint("task_id", "version_no", name="uq_task_version_no"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    task_id: Mapped[str] = mapped_column(ForeignKey("analysis_task.id", ondelete="CASCADE"), index=True)
+    version_no: Mapped[int] = mapped_column(Integer)
+    workflow_id: Mapped[str] = mapped_column(String(64))
+    workflow_version_policy: Mapped[str] = mapped_column(String(16), default="latest_published")  # pinned|latest_published
+    pinned_workflow_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    data_asset_id: Mapped[str] = mapped_column(String(64))
+    data_definition_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    result_rule_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    input_mapping: Mapped[dict] = mapped_column(JSONB, default=dict)
+    scope: Mapped[dict] = mapped_column(JSONB, default=dict)      # {op,and/or,conditions[]}
+    sampling: Mapped[dict] = mapped_column(JSONB, default=dict)   # {mode: all|count|random, count, percent, seed}
+    data_window: Mapped[dict] = mapped_column(JSONB, default=dict)  # {mode: all|relative|fixed, value, timezone, start, end}
+    output_schema_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DataDefinitionVersion(Base):
+    """数据定义不可变版本（09-SDD §9.3/§9.5 追踪依赖）。"""
+    __tablename__ = "data_definition_version"
+    __table_args__ = (UniqueConstraint("definition_id", "version_no", name="uq_definition_version_no"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    definition_id: Mapped[str] = mapped_column(ForeignKey("data_definition.id", ondelete="CASCADE"), index=True)
+    version_no: Mapped[int] = mapped_column(Integer)
+    field_schema: Mapped[dict] = mapped_column(JSONB, default=list)
+    eligibility: Mapped[dict] = mapped_column(JSONB, default=list)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ResultRuleVersion(Base):
+    """结果规则不可变版本（09-SDD §6.6/P0-07；发布=快照冻结，不再全库重算）。"""
+    __tablename__ = "result_rule_version"
+    __table_args__ = (UniqueConstraint("rule_set_id", "version_no", name="uq_rule_version_no"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    rule_set_id: Mapped[str] = mapped_column(ForeignKey("result_rule_set.id", ondelete="CASCADE"), index=True)
+    version_no: Mapped[int] = mapped_column(Integer)
+    rules: Mapped[dict] = mapped_column(JSONB, default=dict)
+    evaluation_priority: Mapped[str] = mapped_column(String(32), default="Most Recent Completed")
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class QualityOutputSchema(Base):
+    """质检输出 Schema 版本（09-SDD §6.5/D09-3；key+version_no 不可变）。"""
+    __tablename__ = "quality_output_schema"
+    __table_args__ = (UniqueConstraint("key", "version_no", name="uq_output_schema_version"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    key: Mapped[str] = mapped_column(String(64), index=True)  # quality_evaluation
+    version_no: Mapped[int] = mapped_column(Integer)
+    schema_: Mapped[dict] = mapped_column("schema", JSONB, default=dict)
+    status: Mapped[str] = mapped_column(String(16), default="published")
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DataSnapshot(Base):
+    """一次 TaskRun 实际读取的数据快照（09-SDD §9.3）。"""
+    __tablename__ = "data_snapshot"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    asset_id: Mapped[str] = mapped_column(String(32), index=True)
+    asset_revision: Mapped[int] = mapped_column(Integer, default=0)
+    definition_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    locator: Mapped[dict] = mapped_column(JSONB, default=dict)      # 源/查询的脱敏快照
+    resolved_window: Mapped[dict] = mapped_column(JSONB, default=dict)
+    resolved_scope: Mapped[dict] = mapped_column(JSONB, default=dict)
+    resolved_sampling: Mapped[dict] = mapped_column(JSONB, default=dict)
+    checkpoint: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    expected_count: Mapped[int] = mapped_column(Integer, default=0)
+    read_count: Mapped[int] = mapped_column(Integer, default=0)
+    checksum: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class TaskRun(Base):
+    """任务批次运行（09-SDD §9.4；INV-01/INV-11）。"""
+    __tablename__ = "task_run"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    task_id: Mapped[str] = mapped_column(ForeignKey("analysis_task.id", ondelete="CASCADE"), index=True)
+    task_version_id: Mapped[str] = mapped_column(ForeignKey("analysis_task_version.id"), index=True)
+    data_snapshot_id: Mapped[str | None] = mapped_column(ForeignKey("data_snapshot.id", ondelete="SET NULL"), nullable=True)
+    trigger: Mapped[str] = mapped_column(String(16), default="manual")  # manual|schedule|backfill|api
+    schedule_fire_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="queued", index=True)  # queued|running|partial|succeeded|failed|cancelled
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    succeeded_count: Mapped[int] = mapped_column(Integer, default=0)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0)
+    skipped_count: Mapped[int] = mapped_column(Integer, default=0)
+    cancelled_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ReviewRevision(Base):
+    """复核修订（09-SDD §9.7/INV-08：只追加，不覆盖 AI 原始结果）。"""
+    __tablename__ = "review_revision"
+    __table_args__ = (UniqueConstraint("quality_result_id", "revision_no", name="uq_review_revision"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    quality_result_id: Mapped[str] = mapped_column(ForeignKey("quality_result.id", ondelete="CASCADE"), index=True)
+    revision_no: Mapped[int] = mapped_column(Integer)
+    action: Mapped[str] = mapped_column(String(16))  # approve|revise|effective|reopen
+    reason: Mapped[str] = mapped_column(Text, default="")
+    reviewer_id: Mapped[str] = mapped_column(String(64), default="")
+    before: Mapped[dict] = mapped_column(JSONB, default=dict)
+    after: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

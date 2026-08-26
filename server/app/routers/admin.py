@@ -668,7 +668,7 @@ def list_quality_results(page: int = 1, pageSize: int = 20, review: str = "",
 @router.get("/api/quality/vocab")
 def quality_vocab(db: Session = Depends(get_db)):
     """E-1.1：筛选词表真实来源——聚合质量结果/运行输入的去重值 + 已发布结果规则目录（替代前端 mocks catalog）。"""
-    from ..models import QualityResult, ResultRuleSet, Run
+    from ..models import QualityResult, Run
     acc: dict[str, set[str]] = {k: set() for k in _DIM_KEYS}
     agents: set[str] = set()
     rows = db.query(QualityResult).limit(2000).all()
@@ -680,9 +680,11 @@ def quality_vocab(db: Session = Depends(get_db)):
                 acc[k].add(dims[k])
         if dims["agent"]:
             agents.add(dims["agent"])
-    pub = db.query(ResultRuleSet).filter_by(status="published").order_by(ResultRuleSet.version.desc()).first()
+    # P0-B1：criteria 来自当前冻结的活跃规则版本（不再扫 ruleset 行）
+    from .business import active_rule_version
+    rv = active_rule_version(db)
     criteria = [{"criterion": str(x.get("criterion") or ""), "severity": str(x.get("severity") or "Medium")}
-                for x in ((pub.rules or {}).get("issueRules", []) if pub else []) if x.get("criterion")]
+                for x in ((rv.rules or {}).get("issueRules", []) if rv else []) if x.get("criterion")]
     return {k: sorted(v) for k, v in acc.items()} | {
         "agents": sorted(agents), "criteria": criteria}
 
@@ -706,11 +708,25 @@ def get_quality_result(rid: str, db: Session = Depends(get_db)):
             from ..models import Workflow
             bound = db.query(Agent).filter(Agent.workflow_id == run.workflow_id).first()
             agent_name = bound.name if bound else (db.get(Workflow, run.workflow_id).name if db.get(Workflow, run.workflow_id) else "-")
+    # 09 P0-B1：复核修订链（只追加）+ AI 原始值回查
+    from ..models import ReviewRevision
+    revs = db.query(ReviewRevision).filter_by(quality_result_id=r.id)\
+        .order_by(ReviewRevision.revision_no.asc()).all()
     return {"id": r.id, "runId": r.run_id, "interactionId": r.interaction_ref,
             "interactionTime": r.interaction_time.isoformat(), "agentName": agent_name,
             "structuredOutput": r.structured_output, "score": r.score, "risk": r.risk,
             "critical": r.critical, "issueCount": r.issue_count, "issueSummary": r.issue_summary,
             "review": r.review_status,
+            # 09 §9.6：追踪与版本链
+            "taskRunId": r.task_run_id, "taskId": r.task_id, "taskVersionId": r.task_version_id,
+            "workflowVersionId": r.workflow_version_id,
+            "ruleVersionId": r.rule_version_id,
+            "outputSchemaVersionId": r.output_schema_version_id,
+            "aiResult": r.ai_result, "derivedResult": r.derived_result,
+            "reviewRevisions": [{"id": v.id, "revisionNo": v.revision_no, "action": v.action,
+                                 "reason": v.reason, "reviewer": v.reviewer_id,
+                                 "before": v.before, "after": v.after,
+                                 "createdAt": v.created_at.isoformat()} for v in revs],
             "evidence": [{"id": e.id, "kind": e.kind, "locator": e.locator, "text": e.text, "sourceRef": e.source_ref} for e in evs]}
 
 
