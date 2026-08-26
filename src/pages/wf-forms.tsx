@@ -1,7 +1,7 @@
 /** 07-SDD（08-26 V1.5+v3）：集中表单——列表页 + 独立新建/编辑页（三栏构建器 v3）。
  *  v3：预览模式(FormRenderer 真渲染) + palette 图标 + 属性面板 Accordion 重设计 + 类型感知（dataType 不可改/兼容组切换）。 */
 import {
-  AlignLeft, ArrowLeft, ArrowUp, ArrowDown, Calendar as CalendarIcon, CalendarClock, CheckSquare,
+  AlignLeft, ArrowLeft, ArrowUp, ArrowDown, Ban, Calendar as CalendarIcon, CalendarClock, CheckSquare,
   CircleDot, Copy, Eye, FileText, Folder, Hash, Heading1, ListChecks, Minus, Paperclip,
   Pencil, Plus, Redo2, Save, Send, ToggleLeft, Trash2, Type, Undo2,
 } from "lucide-react"
@@ -426,19 +426,30 @@ export default function WfFormsPage() {
               <div className="flex items-center gap-2">
                 <button className="flex-1 truncate text-left text-sm font-medium hover:underline" onClick={() => navigate(`/config/forms/${f.id}`)}>{f.name}</button>
                 {badge(f.status)}
-                <button title="编辑" onClick={() => navigate(`/config/forms/${f.id}`)}><Pencil className="size-3.5 text-neutral-500" /></button>
-                <button title="发布" onClick={async () => {
-                  try { const r = await formsApi.publish(f.id); toast.success(`已发布 v${r.versionNo}`); load() }
-                  catch (e) { toast.error((e as Error).message) }
-                }}><Send className="size-3.5 text-neutral-500" /></button>
-                <button title="停用" onClick={async () => { await formsApi.disable(f.id); load() }}>
-                  <span className="text-[10px] text-neutral-500 underline">停用</span>
-                </button>
-                <button title="复制" onClick={async () => { await formsApi.duplicate(f.id); load() }}><Copy className="size-3.5 text-neutral-500" /></button>
-                <button title="删除" onClick={async () => {
-                  try { await formsApi.remove(f.id); toast.success("已删除"); load() }
-                  catch (e) { toast.error((e as Error).message) }
-                }}><Trash2 className="size-3.5 text-neutral-400 hover:text-red-500" /></button>
+                {/* 08-26 用户反馈：行操作统一为同尺寸同色图标按钮+tooltip */}
+                <span className="flex items-center">
+                  <button title="编辑" className="rounded p-1 hover:bg-neutral-100" onClick={() => navigate(`/config/forms/${f.id}`)}>
+                    <Pencil className="size-3.5 text-neutral-500" />
+                  </button>
+                  <button title="发布" className="rounded p-1 hover:bg-neutral-100" onClick={async () => {
+                    try { const r = await formsApi.publish(f.id); toast.success(`已发布 v${r.versionNo}`); load() }
+                    catch (e) { toast.error((e as Error).message) }
+                  }}>
+                    <Send className="size-3.5 text-neutral-500" />
+                  </button>
+                  <button title="停用" className="rounded p-1 hover:bg-neutral-100" onClick={async () => { await formsApi.disable(f.id); load() }}>
+                    <Ban className="size-3.5 text-neutral-500" />
+                  </button>
+                  <button title="复制" className="rounded p-1 hover:bg-neutral-100" onClick={async () => { await formsApi.duplicate(f.id); load() }}>
+                    <Copy className="size-3.5 text-neutral-500" />
+                  </button>
+                  <button title="删除" className="rounded p-1 hover:bg-neutral-100" onClick={async () => {
+                    try { await formsApi.remove(f.id); toast.success("已删除"); load() }
+                    catch (e) { toast.error((e as Error).message) }
+                  }}>
+                    <Trash2 className="size-3.5 text-neutral-500 hover:text-red-500" />
+                  </button>
+                </span>
               </div>
               <div className="pt-1 font-mono text-[10px] text-neutral-400">{f.key}</div>
               <div className="pt-1 text-xs text-muted-foreground">{f.description || "—"}</div>
