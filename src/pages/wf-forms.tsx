@@ -147,6 +147,7 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
   const cur = fields.find((f) => f.id === sel) ?? null
   const val = cur?.validation ?? {}
   const setVal = (p: Record<string, unknown>) => cur && patch(cur.id!, { validation: { ...val, ...p } })
+  const isLayout = cur?.dataType === "none"
 
   if (mode === "preview") {
     return (
@@ -223,6 +224,7 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                   <Input className="h-7 text-xs" value={cur.description ?? ""} placeholder="描述" onChange={(e) => patch(cur.id!, { description: e.target.value })} />
                 </AccordionContent>
               </AccordionItem>
+              {!isLayout && (
               <AccordionItem value="data">
                 <AccordionTrigger className="py-2 text-xs">Data</AccordionTrigger>
                 <AccordionContent className="space-y-1.5">
@@ -239,7 +241,14 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                     </SelectContent>
                   </Select>
                   <div className="rounded bg-neutral-50 px-2 py-1 font-mono text-[10px] text-neutral-500">dataType = {cur.dataType}</div>
-                  <Input className="h-7 text-xs" value={cur.default ?? ""} placeholder="默认值" onChange={(e) => patch(cur.id!, { default: e.target.value })} />
+                  {cur.type === "switch" ? (
+                    <Select value={cur.default || "false"} onValueChange={(v) => patch(cur.id!, { default: v })}>
+                      <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent><SelectItem value="true">true</SelectItem><SelectItem value="false">false</SelectItem></SelectContent>
+                    </Select>
+                  ) : (
+                    <Input className="h-7 text-xs" value={cur.default ?? ""} placeholder="默认值" onChange={(e) => patch(cur.id!, { default: e.target.value })} />
+                  )}
                   {CHOICE_TYPES.includes(cur.type) && (
                     /* 开发方案 §24：选项右侧直接行编辑（label+value），不用弹窗/textarea */
                     <div className="space-y-1">
@@ -265,6 +274,8 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                   )}
                 </AccordionContent>
               </AccordionItem>
+              )}
+              {!isLayout && (
               <AccordionItem value="validation">
                 <AccordionTrigger className="py-2 text-xs">Validation</AccordionTrigger>
                 <AccordionContent className="space-y-1.5">
@@ -297,6 +308,7 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                   )}
                 </AccordionContent>
               </AccordionItem>
+              )}
               <AccordionItem value="display">
                 <AccordionTrigger className="py-2 text-xs">Display</AccordionTrigger>
                 <AccordionContent className="space-y-1.5">
@@ -308,6 +320,7 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                   </Select>
                 </AccordionContent>
               </AccordionItem>
+              {!isLayout && (
               <AccordionItem value="binding">
                 <AccordionTrigger className="py-2 text-xs">Binding</AccordionTrigger>
                 <AccordionContent className="space-y-1.5">
@@ -331,6 +344,7 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                   )}
                 </AccordionContent>
               </AccordionItem>
+              )}
               <AccordionItem value="condition">
                 <AccordionTrigger className="py-2 text-xs">Condition</AccordionTrigger>
                 <AccordionContent className="space-y-1.5">
