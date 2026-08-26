@@ -131,8 +131,9 @@ const RAIL_SHORT: Record<string, string> = {
 }
 
 function AppRail() {
+  // 08-26 用户反馈：导航栏固定视口，不随页面滚动
   return (
-    <aside className="flex w-20 shrink-0 flex-col items-stretch border-r bg-sidebar py-3" data-testid="app-rail">
+    <aside className="sticky top-0 flex h-dvh w-20 shrink-0 flex-col items-stretch overflow-y-auto border-r bg-sidebar py-3" data-testid="app-rail">
       <div className="mb-2 flex justify-center">
         <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
           <ShieldCheck className="size-4.5" />
