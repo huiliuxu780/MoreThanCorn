@@ -150,8 +150,9 @@ def start_form_fields(db: Session, defn) -> list[dict] | None:
 def exec_input(node, ctx) -> dict:
     out = {**ctx.run_input}
     for f in getattr(ctx, "start_fields", None) or []:
-        if out.get(f.get("name")) in (None, "") and f.get("default") not in (None, ""):
-            out[f["name"]] = f["default"]
+        k = f.get("key") or f.get("name")
+        if out.get(k) in (None, "") and f.get("default") not in (None, ""):
+            out[k] = f["default"]
     return out
 
 
@@ -439,6 +440,37 @@ def exec_create_record(node, ctx) -> dict:
                        issue_summary=out.get("issueSummary") if isinstance(out, dict) else None)
     ctx.db.add(qr)
     ctx.db.commit()
+    # 07-SDD V1.5：config.formId 存在 → 写 FormRecord（mapping 优先，field.binding.workflow_output 兜底）
+    cfg = node.get("config") or {}
+    fid = cfg.get("formId")
+    if fid:
+        from .models import Form, FormRecord, FormVersion
+        form = ctx.db.get(Form, fid)
+        if form:
+            ver_no = cfg.get("formVersion")
+            fields = form.fields or []
+            if ver_no:
+                ver = ctx.db.query(FormVersion).filter_by(form_id=fid, version_no=int(ver_no)).first()
+                if ver:
+                    fields = ver.fields or []
+            else:
+                lv = ctx.db.query(FormVersion).filter_by(form_id=fid).order_by(FormVersion.version_no.desc()).first()
+                ver_no = lv.version_no if lv else 0
+            values = {}
+            mapping = cfg.get("mapping") or {}
+            for f in fields:
+                key = f.get("key")
+                ref = mapping.get(key)
+                if not ref and (f.get("binding") or {}).get("type") == "workflow_output":
+                    ref = (f.get("binding") or {}).get("path")
+                if ref:
+                    m = re.match(r"\{\{\s*([A-Za-z0-9_-]+)\.outputs\.([A-Za-z0-9_.-]+)\s*\}\}$", str(ref).strip())
+                    values[key] = _dig(ctx.outputs.get(m.group(1), {}), m.group(2)) if m else ref
+                elif isinstance(out, dict) and key in out:
+                    values[key] = out[key]
+            ctx.db.add(FormRecord(form_id=fid, form_version=int(ver_no or 0), values=values,
+                                  created_by="workflow", run_id=ctx.run.id))
+            ctx.db.commit()
     from .routers.business import apply_rules_to_result
     apply_rules_to_result(ctx.db, qr)
     evs = out.get("evidence", []) if isinstance(out, dict) else []
@@ -1341,14 +1373,13 @@ def create_run(db: Session, workflow_id: str, trigger: str, run_input: dict,
     rep = validate(defn)
     if not rep.ok:
         raise RunError("validation failed: " + "; ".join(i.message for i in rep.issues[:3]))
-    # 07-SDD form：必填字段校验（default 可兜底的不算缺失）
+    # 07-SDD V1.5：运行时校验引擎（required/length/min-max/pattern/selections；default 兜底）
     fields = start_form_fields(db, defn)
     if fields:
-        missing = [f["name"] for f in fields if f.get("required")
-                   and (run_input or {}).get(f["name"]) in (None, "")
-                   and f.get("default") in (None, "")]
-        if missing:
-            raise RunError("缺少必填输入：" + ", ".join(missing))
+        from .routers.forms import validate_form_input
+        errs = validate_form_input(fields, run_input or {})
+        if errs:
+            raise RunError("输入校验失败：" + "；".join(errs[:3]))
     run = Run(workflow_id=workflow_id, trigger=trigger, status="queued", input=run_input or {},
               idempotency_key=idempotency_key,
               workflow_version_id=chosen.id if chosen else None,

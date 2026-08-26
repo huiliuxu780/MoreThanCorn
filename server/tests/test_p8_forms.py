@@ -34,9 +34,10 @@ def _wf_with_form(form_id, required_input=None):
 
 
 def test_form_crud_and_delete_guard():
-    r = client.post("/api/forms", json={"name": "P8-form", "fields": [
-        {"name": "userQuery", "type": "string", "required": True, "control": "textarea"},
-        {"name": "bizLine", "type": "string", "required": False, "default": "corn", "control": "text"}]})
+    import uuid as _u
+    r = client.post("/api/forms", json={"name": "P8-form", "key": f"p8_form_{_u.uuid4().hex[:6]}", "fields": [
+        {"key": "userQuery", "type": "textarea", "dataType": "string", "label": "用户问题", "required": True},
+        {"key": "bizLine", "type": "text", "dataType": "string", "label": "业务线", "default": "corn"}]})
     assert r.status_code == 201
     fid = r.json()["id"]
     wid = _wf_with_form(fid)
@@ -64,15 +65,15 @@ def test_form_crud_and_delete_guard():
     db2.close()
     start = [n for n in snap_def["graph"]["nodes"] if n["type"] == "input"][0]
     snap = start["config"].get("formSnapshot")
-    assert snap and snap[0]["name"] == "userQuery"
+    assert snap and snap[0]["key"] == "userQuery"
     # 表单编辑后 revision+1，已发布快照不受影响
     client.put(f"/api/forms/{fid}", json={"fields": [
-        {"name": "userQuery", "type": "string", "required": True, "control": "textarea"},
-        {"name": "extra", "type": "string", "required": False, "control": "text"}]})
+        {"id": snap[0]["id"], "key": "userQuery", "type": "textarea", "dataType": "string", "label": "用户问题", "required": True},
+        {"key": "extra", "type": "text", "dataType": "string", "label": "额外"}]})
     db3 = SessionLocal()
     ver2 = db3.get(WorkflowVersion, p.json()["versionId"])
     snap_def2 = ver2.definition
     db3.close()
     start2 = [n for n in snap_def2["graph"]["nodes"] if n["type"] == "input"][0]
-    frozen_names = [f["name"] for f in start2["config"]["formSnapshot"]]
+    frozen_names = [f["key"] for f in start2["config"]["formSnapshot"]]
     assert frozen_names == ["userQuery", "bizLine"]  # 冻结=发布时两字段，不含后续编辑的 extra

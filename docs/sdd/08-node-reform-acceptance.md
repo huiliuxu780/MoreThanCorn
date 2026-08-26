@@ -91,3 +91,20 @@
 4. 画 wait-review：跑→PAUSED→run 详情"审核通过/驳回"→续跑。
 5. 健壮性分区：失败策略三值；error 分支拉红色虚线边跑通。
 6. 视觉：与原型 v3（docs/sdd/prototypes/node-master-spec-prototype.html）逐屏比对。
+
+## 4c. V1.5 吸收开发方案（08-26 用户全选）
+
+| 项 | 证据 | 结果 |
+|---|---|---|
+| field key/label 分离、key 正则+创建后不可改、字段 key 不可改（按 id 匹配） | [pytest] test_p8（409 key 不可改隐含）+ 后端 _norm_field | ✅ |
+| key 正则放宽大小写（触发内置字段 camelCase；推荐 snake） | 偏差登记 | 🟡 偏差 |
+| form status draft/published/disabled + POST publish→FormVersion + versions 列表 + 删除规则（被引用/有记录/已发布禁删） | [pytest] 109/109 + [manual] 列表页发布/停用按钮 | ✅/🟡 |
+| 校验引擎 required/minLength/maxLength/min/max/pattern/selections（前后端共用 validate_form_input） | [pytest] test_p8 必填 422/RunError | ✅ |
+| 字段族 15 种（radio/checkbox-group/multi-select/datetime/file/heading/description/divider/section）+ layout span 3/6/9/12（12 列网格预览） | [e2e] check-ui-standard；[manual] 构建器目验 | ✅/🟡 |
+| binding 字段侧（manual/workflow_output/data_source/constant/expression）+ condition visibleWhen | 构建器属性面板；create-record mapping 优先、binding.workflow_output 兜底写 FormRecord | ✅ |
+| undo/redo（history 栈 + ⌘Z/⇧Z） | [manual] 构建器 | 🟡 |
+| FormRecord 层（values+formVersion+runId）+ records API | [pytest] 隐含 + [manual] API | ✅ |
+| 工作流引用 formId+version（create-record config.formId/formVersion/mapping） | 后端 exec_create_record | ✅ |
+| RHF+Zod | 未引（后端 Python 校验+前端受控组件） | 🟡 偏差 |
+| DnD dnd-kit | 缓（点击添加+↑↓） | ⏸ |
+| Property Registry schema 驱动属性面板 | 未做（统一面板硬编码） | 🟡 偏差 |

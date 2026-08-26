@@ -665,20 +665,30 @@ export async function realQualityDetail(id: string): Promise<Record<string, any>
 
 /* ---------- 07-SDD（08-26）：集中表单（工作流输入契约） ---------- */
 export interface FormField {
-  name: string; type: string; required?: boolean; default?: string
-  description?: string; control?: string; options?: string[]
+  id?: string; key: string; type: string; dataType: string; label: string
+  description?: string; placeholder?: string; default?: string
+  options?: { label: string; value: string }[]
+  validation?: { required?: boolean; minLength?: number; maxLength?: number; min?: number; max?: number; pattern?: string; minSelections?: number; maxSelections?: number }
+  layout?: { span?: number }
+  binding?: { type: string; path?: string; sourceId?: string; sourceField?: string; expression?: string }
+  condition?: { visibleWhen?: { field: string; operator: string; value?: unknown } }
 }
 export interface FormDef {
-  id: string; name: string; description?: string; fields: FormField[]
+  id: string; key?: string; name: string; description?: string; status?: string; fields: FormField[]
   revision?: number; usage?: number; fieldCount?: number; updatedAt?: string
 }
 export const formsApi = {
   list: () => req<{ items: FormDef[] }>("/api/forms"),
   get: (id: string) => req<FormDef>(`/api/forms/${id}`),
-  create: (p: { name: string; description?: string; fields: FormField[] }) =>
+  create: (p: { name: string; key?: string; description?: string; fields: FormField[] }) =>
     req<{ id: string; name: string }>("/api/forms", { method: "POST", body: JSON.stringify(p) }),
   update: (id: string, p: { name?: string; description?: string; fields?: FormField[] }) =>
     req<{ id: string; revision: number }>(`/api/forms/${id}`, { method: "PUT", body: JSON.stringify(p) }),
   duplicate: (id: string) => req<{ id: string; name: string }>(`/api/forms/${id}/duplicate`, { method: "POST" }),
   remove: (id: string) => req<{ ok: boolean }>(`/api/forms/${id}`, { method: "DELETE" }),
+  publish: (id: string, note = "") => req<{ versionNo: number }>(`/api/forms/${id}/publish`, { method: "POST", body: JSON.stringify({ note }) }),
+  versions: (id: string) => req<{ versionId: string; versionNo: number; fieldCount: number; createdAt: string }[]>(`/api/forms/${id}/versions`),
+  disable: (id: string) => req<{ ok: boolean }>(`/api/forms/${id}/disable`, { method: "POST" }),
+  records: (id: string) => req<{ recordId: string; formVersion: number; values: Record<string, unknown>; runId?: string }[]>(`/api/forms/${id}/records`),
+  references: (id: string) => req<{ workflows: { id: string; name: string }[] }>(`/api/forms/${id}/references`),
 }

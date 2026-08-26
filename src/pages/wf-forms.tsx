@@ -1,5 +1,6 @@
-/** 07-SDD（08-26 决策）：集中表单管理——列表页 + 独立新建/编辑页（三栏构建器）。 */
-import { ArrowDown, ArrowLeft, ArrowUp, Copy, Pencil, Plus, Save, Trash2 } from "lucide-react"
+/** 07-SDD（08-26 V1.5）：集中表单——列表页 + 独立新建/编辑页（三栏构建器 v2）。
+ *  字段模型：{id,key,type(UI),dataType,label,validation,layout,binding,condition}（开发方案 §19-§36）。 */
+import { ArrowDown, ArrowLeft, ArrowUp, Copy, Pencil, Plus, Redo2, Save, Send, Trash2, Undo2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -9,132 +10,273 @@ import { PageContainer, PageHeader } from "@/components/app/page"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { formsApi, type FormDef, type FormField } from "@/services/wf-api"
 
-const TYPES = ["string", "number", "boolean", "array", "object", "datetime"]
-const CONTROLS = ["text", "textarea", "number", "select", "switch", "date"]
-const CONTROL_LABEL: Record<string, string> = {
-  text: "单行文本", textarea: "多行文本", number: "数字", select: "下拉选择", switch: "开关", date: "日期",
-}
-const CONTROL_TYPE: Record<string, string> = {
-  text: "string", textarea: "string", number: "number", select: "string", switch: "boolean", date: "datetime",
-}
+const DATA_TYPES = ["string", "number", "boolean", "array", "object", "datetime", "file", "none"]
+const PALETTE: { group: string; items: { type: string; label: string; dataType: string }[] }[] = [
+  { group: "Basic", items: [
+    { type: "text", label: "单行文本", dataType: "string" }, { type: "textarea", label: "多行文本", dataType: "string" },
+    { type: "number", label: "数字", dataType: "number" }, { type: "switch", label: "开关", dataType: "boolean" }] },
+  { group: "Choice", items: [
+    { type: "radio", label: "单选", dataType: "string" }, { type: "select", label: "下拉单选", dataType: "string" },
+    { type: "multi-select", label: "下拉多选", dataType: "array" }, { type: "checkbox-group", label: "多选组", dataType: "array" }] },
+  { group: "Date", items: [
+    { type: "date", label: "日期", dataType: "datetime" }, { type: "datetime", label: "日期时间", dataType: "datetime" }] },
+  { group: "File", items: [{ type: "file", label: "附件", dataType: "file" }] },
+  { group: "Layout", items: [
+    { type: "heading", label: "标题", dataType: "none" }, { type: "description", label: "描述文本", dataType: "none" },
+    { type: "divider", label: "分割线", dataType: "none" }, { type: "section", label: "分组", dataType: "none" }] },
+]
+const SPANS = [3, 6, 9, 12]
+const BIND_TYPES = ["manual", "workflow_output", "data_source", "constant", "expression"]
+const COND_OPS = ["eq", "neq", "contains", "not_contains", "empty", "not_empty", "gt", "lt"]
 
 function PreviewControl({ f }: { f: FormField }) {
-  const ctl = f.control ?? "text"
-  if (ctl === "textarea") return <Textarea className="min-h-14 text-xs" placeholder={f.description || f.name} />
-  if (ctl === "number") return <Input type="number" className="h-8 text-xs" placeholder={f.default || "0"} />
-  if (ctl === "switch") return <div className="flex h-8 items-center"><Checkbox checked={f.default === "true"} /></div>
-  if (ctl === "date") return <Input type="date" className="h-8 text-xs" />
-  if (ctl === "select") {
-    return (
-      <Select>
-        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="请选择" /></SelectTrigger>
-        <SelectContent>{(f.options ?? []).map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+  const opts = f.options ?? []
+  switch (f.type) {
+    case "textarea": return <Textarea className="min-h-14 text-xs" placeholder={f.placeholder || f.label} />
+    case "number": return <Input type="number" className="h-8 text-xs" placeholder={f.placeholder || "0"} />
+    case "switch": return <div className="flex h-8 items-center"><Checkbox checked={f.default === "true"} /></div>
+    case "date": return <Input type="date" className="h-8 text-xs" />
+    case "datetime": return <Input type="datetime-local" className="h-8 text-xs" />
+    case "file": return <Input type="file" className="h-8 text-xs" />
+    case "radio": return (
+      <RadioGroup defaultValue={f.default || undefined} className="flex gap-3">
+        {opts.map((o) => (
+          <label key={o.value} className="flex items-center gap-1 text-xs">
+            <RadioGroupItem value={o.value} /> {o.label}
+          </label>
+        ))}
+      </RadioGroup>
+    )
+    case "select": return (
+      <Select defaultValue={f.default || undefined}>
+        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={f.placeholder || "请选择"} /></SelectTrigger>
+        <SelectContent>{opts.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
       </Select>
     )
+    case "multi-select":
+    case "checkbox-group": return (
+      <div className="flex flex-wrap gap-3">
+        {opts.map((o) => (
+          <label key={o.value} className="flex items-center gap-1 text-xs"><Checkbox /> {o.label}</label>
+        ))}
+      </div>
+    )
+    case "heading": return <div className="text-sm font-semibold">{f.label}</div>
+    case "description": return <p className="text-xs text-neutral-500">{f.description || f.label}</p>
+    case "divider": return <div className="h-px w-full bg-neutral-200" />
+    case "section": return <div className="border-b pb-1 text-xs font-medium text-neutral-600">{f.label}</div>
+    default: return <Input className="h-8 text-xs" placeholder={f.placeholder || f.label} />
   }
-  return <Input className="h-8 text-xs" placeholder={f.default || f.description || f.name} />
 }
 
-/* 三栏构建器（参考 shadcn-builder UX 自写）：字段面板｜实时预览｜属性面板 */
 function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: FormField[]) => void }) {
-  const [sel, setSel] = useState<number | null>(fields.length ? 0 : null)
-  const patch = (i: number, p: Partial<FormField>) =>
-    onChange(fields.map((f, j) => (j === i ? { ...f, ...p } : f)))
-  const add = (ctl: string) => {
-    const next = [...fields, {
-      name: `field_${fields.length + 1}`, type: CONTROL_TYPE[ctl] ?? "string", control: ctl,
-      required: false, default: "", description: "", options: ctl === "select" ? ["选项1", "选项2"] : [],
-    }]
-    onChange(next)
-    setSel(next.length - 1)
+  const [sel, setSel] = useState<string | null>(fields[0]?.id ?? null)
+  const [past, setPast] = useState<FormField[][]>([])
+  const [future, setFuture] = useState<FormField[][]>([])
+  const commit = (next: FormField[]) => { setPast((p) => [...p.slice(-30), fields]); setFuture([]); onChange(next) }
+  const undo = () => setPast((p) => {
+    if (!p.length) return p
+    const prev = p[p.length - 1]
+    setFuture((f) => [fields, ...f]); onChange(prev)
+    return p.slice(0, -1)
+  })
+  const redo = () => setFuture((f) => {
+    if (!f.length) return f
+    const [next, ...rest] = f
+    setPast((p) => [...p, fields]); onChange(next)
+    return rest
+  })
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return
+      if (e.key.toLowerCase() !== "z") return
+      e.preventDefault()
+      if (e.shiftKey) redo(); else undo()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  })
+  const patch = (id: string, p: Partial<FormField>) =>
+    commit(fields.map((f) => (f.id === id ? { ...f, ...p } : f)))
+  const add = (type: string, label: string, dataType: string) => {
+    const n = fields.length + 1
+    const f: FormField = {
+      id: `local_${Date.now()}_${n}`, key: `field_${n}`, type, dataType, label,
+      options: ["radio", "select", "multi-select", "checkbox-group"].includes(type)
+        ? [{ label: "选项1", value: "opt_1" }, { label: "选项2", value: "opt_2" }] : [],
+      validation: {}, layout: { span: 12 }, binding: { type: "manual" }, condition: {},
+    }
+    commit([...fields, f])
+    setSel(f.id!)
   }
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir
     if (j < 0 || j >= fields.length) return
     const next = [...fields]
     ;[next[i], next[j]] = [next[j], next[i]]
-    onChange(next)
-    setSel(j)
+    commit(next)
   }
-  const cur = sel != null ? fields[sel] : null
+  const cur = fields.find((f) => f.id === sel) ?? null
+  const val = cur?.validation ?? {}
+  const setVal = (p: Partial<NonNullable<FormField["validation"]>>) => cur && patch(cur.id!, { validation: { ...val, ...p } })
   return (
-    <div className="grid grid-cols-[170px_1fr_260px] gap-3">
-      <div className="h-fit space-y-1 rounded-md border bg-white p-2">
-        <div className="pb-1 text-xs text-muted-foreground">字段类型</div>
-        {CONTROLS.map((c) => (
-          <button key={c} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-neutral-50"
-            onClick={() => add(c)}>
-            <Plus className="size-3 text-neutral-400" /> {CONTROL_LABEL[c]}
-          </button>
-        ))}
-        <p className="pt-1 text-[10px] text-neutral-400">点击添加；预览区点选字段后右侧编辑属性。</p>
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" disabled={!past.length} onClick={undo}><Undo2 className="size-3.5" /> 撤销</Button>
+        <Button variant="outline" size="sm" disabled={!future.length} onClick={redo}><Redo2 className="size-3.5" /> 重做</Button>
+        <span className="text-[10px] text-neutral-400">⌘Z 撤销 / ⌘⇧Z 重做</span>
       </div>
-      <div className="min-h-[420px] space-y-3 rounded-md border bg-neutral-50/50 p-3">
-        {fields.length === 0 && <div className="py-10 text-center text-xs text-neutral-400">从左侧添加字段，实时预览表单</div>}
-        {fields.map((f, i) => (
-          <div key={i}
-            className={`relative rounded-md border bg-white p-2 ${sel === i ? "ring-1 ring-blue-500" : ""}`}
-            style={{ borderColor: sel === i ? "#3D6BFF" : "#EDF0F4" }}
-            onClick={() => setSel(i)}>
-            <div className="flex items-center gap-1 pb-1 text-xs">
-              <span className="flex-1 font-medium">{f.description || f.name}{f.required && <span className="text-red-500"> *</span>}</span>
-              <button title="上移" onClick={(e) => { e.stopPropagation(); move(i, -1) }}><ArrowUp className="size-3 text-neutral-400" /></button>
-              <button title="下移" onClick={(e) => { e.stopPropagation(); move(i, 1) }}><ArrowDown className="size-3 text-neutral-400" /></button>
-              <button title="删除" onClick={(e) => { e.stopPropagation(); onChange(fields.filter((_, j) => j !== i)); setSel(null) }}>
-                <Trash2 className="size-3 text-neutral-400 hover:text-red-500" />
-              </button>
+      <div className="grid grid-cols-[180px_1fr_280px] gap-3">
+        {/* 左：字段库（按业务用途分组，开发方案 §11） */}
+        <div className="h-fit space-y-2 rounded-md border bg-white p-2">
+          {PALETTE.map((g) => (
+            <div key={g.group}>
+              <div className="pb-1 text-xs text-muted-foreground">{g.group}</div>
+              {g.items.map((it) => (
+                <button key={it.type} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-neutral-50"
+                  onClick={() => add(it.type, it.label, it.dataType)}>
+                  <Plus className="size-3 text-neutral-400" /> {it.label}
+                </button>
+              ))}
             </div>
-            <PreviewControl f={f} />
-          </div>
-        ))}
-      </div>
-      <div className="h-fit space-y-2 rounded-md border bg-white p-2">
-        <div className="pb-1 text-xs text-muted-foreground">字段属性</div>
-        {!cur && <div className="py-6 text-center text-xs text-neutral-400">预览区点选字段</div>}
-        {cur && sel != null && (
-          <>
-            <div><div className="pb-1 text-[10px] text-neutral-500">字段名</div>
-              <Input className="h-7 text-xs" value={cur.name} onChange={(e) => patch(sel, { name: e.target.value })} /></div>
-            <div><div className="pb-1 text-[10px] text-neutral-500">描述</div>
-              <Input className="h-7 text-xs" value={cur.description ?? ""} onChange={(e) => patch(sel, { description: e.target.value })} /></div>
-            <div><div className="pb-1 text-[10px] text-neutral-500">类型</div>
-              <Select value={cur.type} onValueChange={(v) => patch(sel, { type: v })}>
-                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>{TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-              </Select></div>
-            <div><div className="pb-1 text-[10px] text-neutral-500">控件</div>
-              <Select value={cur.control ?? "text"} onValueChange={(v) => patch(sel, { control: v })}>
-                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>{CONTROLS.map((t) => <SelectItem key={t} value={t}>{CONTROL_LABEL[t]}</SelectItem>)}</SelectContent>
-              </Select></div>
-            <label className="flex items-center justify-between text-xs">
-              <span>必填</span><Checkbox checked={!!cur.required} onCheckedChange={(v) => patch(sel, { required: !!v })} />
-            </label>
-            <div><div className="pb-1 text-[10px] text-neutral-500">默认值</div>
-              <Input className="h-7 text-xs" value={cur.default ?? ""} onChange={(e) => patch(sel, { default: e.target.value })} /></div>
-            {cur.control === "select" && (
-              <div><div className="pb-1 text-[10px] text-neutral-500">选项（逗号分隔）</div>
-                <Input className="h-7 text-xs" value={(cur.options ?? []).join(",")}
-                  onChange={(e) => patch(sel, { options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} /></div>
-            )}
-          </>
-        )}
+          ))}
+        </div>
+        {/* 中：12 列网格实时预览 */}
+        <div className="grid min-h-[420px] grid-cols-12 content-start gap-3 rounded-md border bg-neutral-50/50 p-3">
+          {fields.length === 0 && <div className="col-span-12 py-10 text-center text-xs text-neutral-400">从左侧添加字段，实时预览表单</div>}
+          {fields.map((f, i) => (
+            <div key={f.id} style={{ gridColumn: `span ${f.layout?.span ?? 12} / span ${f.layout?.span ?? 12}` }}
+              className={`relative rounded-md border bg-white p-2 ${sel === f.id ? "ring-1 ring-blue-500" : ""}`}
+              onClick={() => setSel(f.id!)}>
+              {f.dataType !== "none" && (
+                <div className="flex items-center gap-1 pb-1 text-xs">
+                  <span className="flex-1 font-medium">{f.label}{val.required && <span className="text-red-500"> *</span>}</span>
+                  <button title="上移" onClick={(e) => { e.stopPropagation(); move(i, -1) }}><ArrowUp className="size-3 text-neutral-400" /></button>
+                  <button title="下移" onClick={(e) => { e.stopPropagation(); move(i, 1) }}><ArrowDown className="size-3 text-neutral-400" /></button>
+                  <button title="删除" onClick={(e) => { e.stopPropagation(); commit(fields.filter((x) => x.id !== f.id)); setSel(null) }}>
+                    <Trash2 className="size-3 text-neutral-400 hover:text-red-500" />
+                  </button>
+                </div>
+              )}
+              <PreviewControl f={f} />
+              <div className="pt-1 text-[10px] text-neutral-400">{f.key}</div>
+            </div>
+          ))}
+        </div>
+        {/* 右：属性面板（Basic/Data/Validation/Display/Binding/Condition，开发方案 §20） */}
+        <div className="h-fit space-y-2 rounded-md border bg-white p-2">
+          <div className="pb-1 text-xs text-muted-foreground">字段属性</div>
+          {!cur && <div className="py-6 text-center text-xs text-neutral-400">预览区点选字段</div>}
+          {cur && (
+            <>
+              <div className="space-y-1 border-b pb-2">
+                <div className="text-[10px] font-medium text-neutral-500">Basic</div>
+                <Input className="h-7 text-xs" value={cur.label} placeholder="字段名称" onChange={(e) => patch(cur.id!, { label: e.target.value })} />
+                <Input className="h-7 text-xs font-mono" value={cur.key} placeholder="field_key" title="Field Key 保存后不可改"
+                  onChange={(e) => patch(cur.id!, { key: e.target.value })} />
+                <Input className="h-7 text-xs" value={cur.description ?? ""} placeholder="描述" onChange={(e) => patch(cur.id!, { description: e.target.value })} />
+                <Input className="h-7 text-xs" value={cur.placeholder ?? ""} placeholder="Placeholder" onChange={(e) => patch(cur.id!, { placeholder: e.target.value })} />
+              </div>
+              <div className="space-y-1 border-b pb-2">
+                <div className="text-[10px] font-medium text-neutral-500">Data</div>
+                <Select value={cur.dataType} onValueChange={(v) => patch(cur.id!, { dataType: v })}>
+                  <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>{DATA_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                </Select>
+                <Select value={cur.type} onValueChange={(v) => patch(cur.id!, { type: v })}>
+                  <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>{PALETTE.flatMap((g) => g.items).map((t) => <SelectItem key={t.type} value={t.type}>{t.label}</SelectItem>)}</SelectContent>
+                </Select>
+                <Input className="h-7 text-xs" value={cur.default ?? ""} placeholder="默认值" onChange={(e) => patch(cur.id!, { default: e.target.value })} />
+                {["radio", "select", "multi-select", "checkbox-group"].includes(cur.type) && (
+                  <div className="space-y-1">
+                    <div className="text-[10px] text-neutral-500">选项（label=value，逗号分隔行）</div>
+                    <Textarea className="min-h-14 text-xs"
+                      value={(cur.options ?? []).map((o) => `${o.label}=${o.value}`).join("\n")}
+                      onChange={(e) => patch(cur.id!, {
+                        options: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean).map((s) => {
+                          const [l, v] = s.split("=")
+                          return { label: l, value: v || l }
+                        }),
+                      })} />
+                  </div>
+                )}
+              </div>
+              <div className="space-y-1 border-b pb-2">
+                <div className="text-[10px] font-medium text-neutral-500">Validation</div>
+                <label className="flex items-center justify-between text-xs"><span>必填</span>
+                  <Checkbox checked={!!val.required} onCheckedChange={(v) => setVal({ required: !!v })} /></label>
+                <div className="grid grid-cols-2 gap-1">
+                  <Input className="h-7 text-xs" type="number" placeholder="minLength" value={val.minLength ?? ""} onChange={(e) => setVal({ minLength: e.target.value === "" ? undefined : Number(e.target.value) })} />
+                  <Input className="h-7 text-xs" type="number" placeholder="maxLength" value={val.maxLength ?? ""} onChange={(e) => setVal({ maxLength: e.target.value === "" ? undefined : Number(e.target.value) })} />
+                  <Input className="h-7 text-xs" type="number" placeholder="min" value={val.min ?? ""} onChange={(e) => setVal({ min: e.target.value === "" ? undefined : Number(e.target.value) })} />
+                  <Input className="h-7 text-xs" type="number" placeholder="max" value={val.max ?? ""} onChange={(e) => setVal({ max: e.target.value === "" ? undefined : Number(e.target.value) })} />
+                </div>
+                <Input className="h-7 text-xs font-mono" placeholder="pattern 正则" value={val.pattern ?? ""} onChange={(e) => setVal({ pattern: e.target.value || undefined })} />
+              </div>
+              <div className="space-y-1 border-b pb-2">
+                <div className="text-[10px] font-medium text-neutral-500">Display</div>
+                <Select value={String(cur.layout?.span ?? 12)} onValueChange={(v) => patch(cur.id!, { layout: { span: Number(v) } })}>
+                  <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>{SPANS.map((s) => <SelectItem key={s} value={String(s)}>{s} / 12 列</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1 border-b pb-2">
+                <div className="text-[10px] font-medium text-neutral-500">Binding</div>
+                <Select value={cur.binding?.type ?? "manual"} onValueChange={(v) => patch(cur.id!, { binding: { type: v } })}>
+                  <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>{BIND_TYPES.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}</SelectContent>
+                </Select>
+                {(cur.binding?.type === "workflow_output" || cur.binding?.type === "constant") && (
+                  <Input className="h-7 text-xs font-mono" placeholder={cur.binding?.type === "workflow_output" ? "result.path" : "常量值"}
+                    value={cur.binding?.path ?? ""} onChange={(e) => patch(cur.id!, { binding: { type: cur.binding?.type ?? "manual", path: e.target.value } })} />
+                )}
+                {cur.binding?.type === "data_source" && (
+                  <div className="grid grid-cols-2 gap-1">
+                    <Input className="h-7 text-xs" placeholder="sourceId" value={cur.binding?.sourceId ?? ""} onChange={(e) => patch(cur.id!, { binding: { type: cur.binding?.type ?? "manual", sourceId: e.target.value } })} />
+                    <Input className="h-7 text-xs" placeholder="sourceField" value={cur.binding?.sourceField ?? ""} onChange={(e) => patch(cur.id!, { binding: { type: cur.binding?.type ?? "manual", sourceField: e.target.value } })} />
+                  </div>
+                )}
+                {cur.binding?.type === "expression" && (
+                  <Input className="h-7 text-xs font-mono" placeholder="score > 80 ? 'pass' : 'fail'"
+                    value={cur.binding?.expression ?? ""} onChange={(e) => patch(cur.id!, { binding: { type: cur.binding?.type ?? "manual", expression: e.target.value } })} />
+                )}
+              </div>
+              <div className="space-y-1">
+                <div className="text-[10px] font-medium text-neutral-500">Condition</div>
+                <div className="grid grid-cols-[1fr_90px] gap-1">
+                  <Select value={cur.condition?.visibleWhen?.field ?? ""} onValueChange={(v) => patch(cur.id!, { condition: { visibleWhen: { field: v, operator: cur.condition?.visibleWhen?.operator ?? "eq", value: cur.condition?.visibleWhen?.value } } })}>
+                    <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Visible When 字段" /></SelectTrigger>
+                    <SelectContent>{fields.filter((x) => x.id !== cur.id && x.dataType !== "none").map((x) => <SelectItem key={x.key} value={x.key}>{x.key}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Select value={cur.condition?.visibleWhen?.operator ?? "eq"} onValueChange={(v) => patch(cur.id!, { condition: { visibleWhen: { field: cur.condition?.visibleWhen?.field ?? "", operator: v, value: cur.condition?.visibleWhen?.value } } })}>
+                    <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>{COND_OPS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <Input className="h-7 text-xs" placeholder="值" value={String(cur.condition?.visibleWhen?.value ?? "")}
+                  onChange={(e) => patch(cur.id!, { condition: { visibleWhen: { field: cur.condition?.visibleWhen?.field ?? "", operator: cur.condition?.visibleWhen?.operator ?? "eq", value: e.target.value } } })} />
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
 }
 
-/* 独立新建/编辑页（08-26 决策：新建/编辑走页面，与 tasks/ai-resources 约定一致） */
 export function WfFormEditorPage() {
   const { formId } = useParams()
   const navigate = useNavigate()
   const [name, setName] = useState("")
+  const [key, setKey] = useState("")
   const [desc, setDesc] = useState("")
   const [fields, setFields] = useState<FormField[]>([])
   const [loaded, setLoaded] = useState(!formId)
@@ -142,7 +284,7 @@ export function WfFormEditorPage() {
   useEffect(() => {
     if (!formId) return
     formsApi.get(formId)
-      .then((d) => { setName(d.name); setDesc(d.description ?? ""); setFields((d.fields ?? []).map((x) => ({ ...x }))) })
+      .then((d) => { setName(d.name); setKey(d.key ?? ""); setDesc(d.description ?? ""); setFields((d.fields ?? []).map((x) => ({ ...x }))) })
       .catch(() => toast.error("表单不存在"))
       .finally(() => setLoaded(true))
   }, [formId])
@@ -154,7 +296,7 @@ export function WfFormEditorPage() {
         await formsApi.update(formId, { name: name.trim(), description: desc, fields })
         toast.success("已保存")
       } else {
-        const r = await formsApi.create({ name: name.trim(), description: desc, fields })
+        const r = await formsApi.create({ name: name.trim(), key: key.trim() || undefined, description: desc, fields } as never)
         toast.success("已创建")
         navigate(`/config/forms/${r.id}`, { replace: true })
       }
@@ -166,7 +308,7 @@ export function WfFormEditorPage() {
     <PageContainer wide className="space-y-3">
       <PageHeader
         title={formId ? `编辑表单 · ${name}` : "新建表单"}
-        description="字段即工作流输入契约：开始节点引用后成为全局固定输入变量"
+        description="Form=业务 Schema：输入契约+结果结构；字段 Key 稳定、创建后不可改"
         actions={
           <span className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => navigate("/config/forms")}><ArrowLeft className="size-4" /> 返回</Button>
@@ -174,8 +316,9 @@ export function WfFormEditorPage() {
           </span>
         }
       />
-      <div className="grid grid-cols-2 gap-2">
-        <Input value={name} placeholder="表单名称" onChange={(e) => setName(e.target.value)} />
+      <div className="grid grid-cols-3 gap-2">
+        <Input value={name} placeholder="表单名称 *" onChange={(e) => setName(e.target.value)} />
+        <Input value={key} placeholder="标识 Key（^[a-z][a-z0-9_]*$，不可改）" disabled={!!formId} onChange={(e) => setKey(e.target.value)} />
         <Input value={desc} placeholder="描述" onChange={(e) => setDesc(e.target.value)} />
       </div>
       <FormBuilder fields={fields} onChange={setFields} />
@@ -194,11 +337,16 @@ export default function WfFormsPage() {
   }
   useEffect(load, [])
 
+  const badge = (s?: string) =>
+    s === "published" ? <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] text-green-600">已发布</span>
+      : s === "disabled" ? <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">已停用</span>
+        : <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500">草稿</span>
+
   return (
     <PageContainer wide className="space-y-3">
       <PageHeader
         title="表单"
-        description="工作流输入契约：开始节点引用表单，字段即全局固定输入变量"
+        description="工作流输入契约+业务结果结构：字段 Key 稳定、版本化、Binding 一级能力"
         actions={<Button size="sm" onClick={() => navigate("/config/forms/new")}><Plus className="size-4" /> 新建表单</Button>}
       />
       {loading ? (
@@ -211,20 +359,27 @@ export default function WfFormsPage() {
             <div key={f.id} className="rounded-lg border bg-white p-3 shadow-sm">
               <div className="flex items-center gap-2">
                 <button className="flex-1 truncate text-left text-sm font-medium hover:underline" onClick={() => navigate(`/config/forms/${f.id}`)}>{f.name}</button>
+                {badge(f.status)}
                 <button title="编辑" onClick={() => navigate(`/config/forms/${f.id}`)}><Pencil className="size-3.5 text-neutral-500" /></button>
-                <button title="创建副本" onClick={async () => { await formsApi.duplicate(f.id); load() }}>
-                  <Copy className="size-3.5 text-neutral-500" />
+                <button title="发布" onClick={async () => {
+                  try { const r = await formsApi.publish(f.id); toast.success(`已发布 v${r.versionNo}`); load() }
+                  catch (e) { toast.error((e as Error).message) }
+                }}><Send className="size-3.5 text-neutral-500" /></button>
+                <button title="停用" onClick={async () => { await formsApi.disable(f.id); load() }}>
+                  <Trash2 className="hidden" /><span className="text-[10px] text-neutral-500 underline">停用</span>
                 </button>
+                <button title="复制" onClick={async () => { await formsApi.duplicate(f.id); load() }}><Copy className="size-3.5 text-neutral-500" /></button>
                 <button title="删除" onClick={async () => {
                   try { await formsApi.remove(f.id); toast.success("已删除"); load() }
                   catch (e) { toast.error((e as Error).message) }
                 }}><Trash2 className="size-3.5 text-neutral-400 hover:text-red-500" /></button>
               </div>
+              <div className="pt-1 font-mono text-[10px] text-neutral-400">{f.key}</div>
               <div className="pt-1 text-xs text-muted-foreground">{f.description || "—"}</div>
               <div className="flex flex-wrap gap-1 pt-2">
                 {(f.fields ?? []).slice(0, 6).map((fd) => (
-                  <span key={fd.name} className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-600">
-                    {fd.name}{fd.required ? " *" : ""}
+                  <span key={fd.key} className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-600">
+                    {fd.key}{fd.validation?.required ? " *" : ""}
                   </span>
                 ))}
                 {(f.fieldCount ?? 0) > 6 && <span className="text-[10px] text-neutral-400">+{(f.fieldCount ?? 0) - 6}</span>}

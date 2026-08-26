@@ -336,16 +336,46 @@ class ResourceLock(Base):
 
 
 class Form(Base):
-    """07-SDD（08-26 决策）：集中表单实体=工作流输入契约；开始节点引用 formId，发布快照冻结字段。"""
+    """07-SDD（08-26 决策+V1.5）：集中表单实体=业务 Schema（输入契约+结果结构）。
+
+    V1.5：key 稳定标识（创建后不可改）+ status 生命周期 + 字段模型 {id,key,type(UI),dataType,label,...}。"""
     __tablename__ = "form"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    key: Mapped[str] = mapped_column(String(64), default="")
     name: Mapped[str] = mapped_column(String(64))
     description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(16), default="draft")  # draft|published|disabled
     fields: Mapped[list] = mapped_column(JSONB, default=list)
     revision: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class FormVersion(Base):
+    """07-SDD V1.5：Form 不可变版本（发布生成；Workflow Run 冻结 formId+version）。"""
+    __tablename__ = "form_version"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    form_id: Mapped[str] = mapped_column(String(32), index=True)
+    version_no: Mapped[int] = mapped_column(Integer)
+    fields: Mapped[list] = mapped_column(JSONB, default=list)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class FormRecord(Base):
+    """07-SDD V1.5：Form 记录层（values+formVersion+runId 追溯；动态字段不进列）。"""
+    __tablename__ = "form_record"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    form_id: Mapped[str] = mapped_column(String(32), index=True)
+    form_version: Mapped[int] = mapped_column(Integer, default=0)
+    values: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    task_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class QualityResult(Base):

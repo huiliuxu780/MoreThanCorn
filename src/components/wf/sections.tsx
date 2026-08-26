@@ -123,7 +123,7 @@ export function InputMappingTable({ cfg, set, nodes, edges, selfId, defs }: {
       const fid = start?.config?.formId
       if (!fid) { setChildFields(null); return }
       const f = await formsApi.get(fid)
-      setChildFields((f.fields ?? []).map((x) => x.name))
+      setChildFields((f.fields ?? []).map((x) => x.key ?? (x as unknown as { name?: string }).name ?? ""))
     }).catch(() => setChildFields(null))
   }, [cfg.workflowId])
   const mapping = (cfg.inputMapping ?? {}) as Record<string, string>

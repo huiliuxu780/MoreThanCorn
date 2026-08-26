@@ -116,12 +116,12 @@ import { formsApi, type FormDef } from "@/services/wf-api"
 
 /* 07-SDD form：开始节点=引用集中表单（字段=全局固定输入变量，不允许追加） */
 const LEGACY_SIX_CLIENT = [
-  { name: "userQuery", type: "string", required: true, default: "", description: "用户问题", control: "textarea" },
-  { name: "chatHistory", type: "string", required: false, default: "", description: "历史对话", control: "textarea" },
-  { name: "userId", type: "string", required: false, default: "", description: "用户 ID", control: "text" },
-  { name: "conversationId", type: "string", required: false, default: "", description: "会话 ID", control: "text" },
-  { name: "chatId", type: "string", required: false, default: "", description: "对话 ID", control: "text" },
-  { name: "reference", type: "string", required: false, default: "", description: "引用内容", control: "text" },
+  { key: "userQuery", type: "textarea", dataType: "string", label: "用户问题", required: true },
+  { key: "chatHistory", type: "textarea", dataType: "string", label: "历史对话" },
+  { key: "userId", type: "text", dataType: "string", label: "用户 ID" },
+  { key: "conversationId", type: "text", dataType: "string", label: "会话 ID" },
+  { key: "chatId", type: "text", dataType: "string", label: "对话 ID" },
+  { key: "reference", type: "text", dataType: "string", label: "引用内容" },
 ]
 function StartFormSection({ cfg, set }: { cfg: Record<string, any>; set: (k: string, v: unknown) => void }) {
   const [forms, setForms] = useState<FormDef[]>([])
@@ -141,8 +141,8 @@ function StartFormSection({ cfg, set }: { cfg: Record<string, any>; set: (k: str
       {cur && (
         <div className="flex flex-wrap gap-1 pt-2">
           {(cur.fields ?? []).map((f) => (
-            <span key={f.name} className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-600">
-              {f.name}{f.required ? " *" : ""} <span className="text-neutral-400">{f.type}</span>
+            <span key={f.key} className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-600">
+              {f.key}{f.validation?.required ? " *" : ""} <span className="text-neutral-400">{f.dataType}</span>
             </span>
           ))}
         </div>
@@ -1771,7 +1771,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   useEffect(() => {
     if (!startFormId) { setStartFields(null); bumpStart((x) => x + 1); return }
     formsApi.get(startFormId).then((f) => {
-      setStartFields((f.fields ?? []).map((x) => ({ name: x.name, type: x.type })))
+      setStartFields((f.fields ?? []).map((x) => ({ name: x.key ?? (x as unknown as { name?: string }).name ?? "", type: x.dataType ?? x.type })))
       bumpStart((x) => x + 1)
     }).catch(() => { setStartFields(null); bumpStart((x) => x + 1) })
   }, [startFormId])
