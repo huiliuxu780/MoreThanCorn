@@ -92,7 +92,7 @@ export function MultiSelect({ options, values, onChange, placeholder = "请选�
           <ChevronsUpDown className="ml-2 size-3.5 shrink-0 text-muted-foreground" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[240px] p-0">
+      <PopoverContent align="start" className="p-0" style={{ width: "var(--radix-popover-trigger-width)" }}>
         <Command>
           <CommandList>
             <CommandEmpty>无选项</CommandEmpty>
