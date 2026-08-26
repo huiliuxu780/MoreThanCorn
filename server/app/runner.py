@@ -187,7 +187,16 @@ def exec_llm(node, ctx) -> dict:
     latency = int((time.time() - t0) * 1000)
     ctx.call("model", model, {"prompt": prompt, "inputs": inputs},
              {"output": answer}, latency, tokens)
-    return {"output": answer, "thought": "", "answer": answer}
+    out = {"output": answer, "thought": "", "answer": answer}
+    # 08-26 用户反馈：JSON 模式自定义输出字段解析进输出，供下游 {{node.outputs.x}} 引用
+    if cfg.get("outputFormat") == "JSON":
+        try:
+            parsed = json.loads(answer)
+            if isinstance(parsed, dict):
+                out.update(parsed)
+        except Exception:  # noqa: BLE001 —— 解析失败保留原始 output
+            pass
+    return out
 
 
 def _call_model(db: Session, model_id: str, prompt: str) -> tuple[str, dict]:

@@ -357,7 +357,9 @@ function SummaryRows({ n }: { n: WfNode }) {
     const model = (cfg.modelRef as { modelId?: string })?.modelId
     rows.push({ label: "模型", body: model ? <span className="text-xs">{model}</span> : un })
     rows.push({ label: "提示词", body: cfg.prompt ? <span className="max-w-40 truncate text-xs">{String(cfg.prompt)}</span> : un })
-    rows.push({ label: "输出", body: <span className="flex flex-wrap gap-1 text-xs">output <TypeChip t="Str" /> thought <TypeChip t="Str" /> answer <TypeChip t="Str" /></span> })
+    const llmCfg = (n.config ?? {}) as { outputFormat?: string; outputSchema?: Record<string, unknown> }
+    const schemaKeys = llmCfg.outputFormat === "JSON" && llmCfg.outputSchema ? Object.keys(llmCfg.outputSchema) : []
+    rows.push({ label: "输出", body: <span className="flex flex-wrap gap-1 text-xs">output <TypeChip t="Str" /> thought <TypeChip t="Str" /> answer <TypeChip t="Str" />{schemaKeys.map((k) => <span key={k}>{k} <TypeChip t="Json" /></span>)}</span> })
   }
   if (n.type === "tool") {
     rows.push({ label: "工具", body: cfg.toolVersionId ? <span className="text-xs">已绑定</span> : un })

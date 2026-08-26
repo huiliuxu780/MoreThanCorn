@@ -88,6 +88,16 @@ export function VarCascader({ nodes, edges, selfId, defs, onPick }: {
     const node = nodes.find((n) => n.id === id)
     if (!node) return []
     if (node.type === "input" && START_FIELDS) return START_FIELDS
+    if (node.type === "llm") {
+      // 08-26 用户反馈：JSON 模式自定义输出字段必须可被下游引用
+      const base = parseIoOutputs(defs.find((d) => d.type_key === "llm")) ?? []
+      const cfg = (node.config ?? {}) as { outputFormat?: string; outputSchema?: Record<string, { type?: string }> }
+      if (cfg.outputFormat === "JSON" && cfg.outputSchema) {
+        const extra = Object.entries(cfg.outputSchema).map(([k, v]) => ({ name: k, type: v?.type ?? "string" }))
+        return [...base, ...extra.filter((x) => !base.some((b) => b.name === x.name))]
+      }
+      return base
+    }
     return parseIoOutputs(defs.find((d) => d.type_key === node.type)) ?? []
   }
   const dynHint = (id: string) => {

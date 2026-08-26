@@ -85,7 +85,15 @@ export function OutputSchemaEditor({ value, onChange }: {
     <div className="space-y-1 pt-1">
       {keys.map((k) => (
         <div key={k} className="flex items-center gap-1 text-xs">
-          <Input className="h-6 flex-1 text-xs" value={k} readOnly style={{ color: C.ink }} />
+          <Input key={k} className="h-6 flex-1 font-mono text-xs" defaultValue={k} placeholder="field_key"
+            title="字段名（回车/失焦生效）"
+            onBlur={(e) => {
+              const nk = e.target.value.trim()
+              if (!nk || nk === k || schema[nk]) return
+              const next: typeof schema = {}
+              for (const [ok, ov] of Object.entries(schema)) next[ok === k ? nk : ok] = ov
+              onChange(next)
+            }} />
           <Select value={schema[k]?.type ?? "string"} onValueChange={(v) => setRow(k, { type: v })}>
             <SelectTrigger className="h-6 w-24 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
