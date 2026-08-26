@@ -15,8 +15,12 @@ def _wf_with_sink():
     d = client.get(f"/api/workflows/{wf['id']}").json()["definition"]
     start = next(n for n in d["graph"]["nodes"] if n["type"] == "input")
     end = next(n for n in d["graph"]["nodes"] if n["type"] == "end")
+    # 输出满足 QualityEvaluation Schema（09 P0-06：任务主链强制校验）
     d["graph"]["nodes"].append({"id": "n_cr", "type": "create-record", "name": "落质检", "config": {}, "inputs": [
         {"name": "score", "type": "number", "source": {"kind": "fixed", "value": 90}},
+        {"name": "risk", "type": "string", "source": {"kind": "fixed", "value": "Low"}},
+        {"name": "issues", "type": "array", "source": {"kind": "fixed", "value": []}},
+        {"name": "summary", "type": "string", "source": {"kind": "fixed", "value": "ok"}},
         {"name": "promise", "type": "string", "source": {"kind": "fixed", "value": "我们会当天回电"}},
         {"name": "transcript", "type": "array", "source": {"kind": "fixed", "value": [
             {"start": 0, "end": 6, "speaker": "agent", "text": "我们会当天回电"}]}},
@@ -37,6 +41,16 @@ def _wait_run_terminal(run_id: str, timeout: float = 15.0) -> dict:
             return r
         time.sleep(0.2)
     raise AssertionError(f"run {run_id} 未在 {timeout}s 内到终态")
+
+
+def _wait_task_run_terminal(trid: str, timeout: float = 30.0) -> dict:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        r = client.get(f"/api/task-runs/{trid}").json()
+        if r.get("status") in ("succeeded", "partial", "failed", "cancelled"):
+            return r
+        time.sleep(0.3)
+    raise AssertionError(f"task-run {trid} 未在 {timeout}s 内到终态")
 
 
 def _qr_by_run(run_id: str):
@@ -81,12 +95,19 @@ def test_review_flow_history():
 
 
 def test_batch_run_and_schedule():
+    """09 P0-B2：batch-run 过渡入口改走 TaskRun 链路（202 + 批次统计）。"""
     wf = _wf_with_sink()
+    assert client.post(f"/api/workflows/{wf['id']}/publish").status_code == 201
     asset = client.post("/api/data-assets", json={"name": "资产A", "rows": [
         {"interactionId": "IX1", "userQuery": "a"}, {"interactionId": "IX2", "userQuery": "b"}]}).json()
     task = client.post("/api/tasks", json={"name": "任务T", "workflowId": wf["id"], "dataAssetId": asset["id"]}).json()
-    br = client.post(f"/api/tasks/{task['id']}/batch-run", json={}).json()
-    assert len(br["runIds"]) == 2
+    r = client.post(f"/api/tasks/{task['id']}/batch-run", json={})
+    assert r.status_code == 202
+    trid = r.json()["taskRunId"]
+    tr = _wait_task_run_terminal(trid)
+    assert tr["total"] == 2 and tr["succeeded"] == 2 and tr["failed"] == 0
+    runs = client.get(f"/api/task-runs/{trid}/runs").json()["items"]
+    assert len(runs) == 2 and sorted(x["interactionRef"] for x in runs) == ["IX1", "IX2"]
     sch = client.post(f"/api/tasks/{task['id']}/schedule", json={"cron": "0 9 * * *"}).json()
     assert sch["nextRunAt"]
 

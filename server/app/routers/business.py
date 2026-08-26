@@ -5,7 +5,7 @@
 import copy
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -15,7 +15,6 @@ from ..models import (AnalysisTask, AnalysisTaskVersion, DataAsset,
                       ResultRuleVersion, ReviewRevision, Schedule, Workflow,
                       WorkflowVersion)
 from ..output_schema import latest_quality_schema
-from ..runner import create_run
 
 router = APIRouter(tags=["business"])
 
@@ -257,8 +256,16 @@ def list_assets(db: Session = Depends(get_db)):
 
 @router.post("/api/data-assets", status_code=201)
 def create_asset(payload: dict, db: Session = Depends(get_db)):
+    from ..models import Datasource
+    ds_id = payload.get("datasourceId")
+    if ds_id and not db.get(Datasource, ds_id):
+        raise HTTPException(422, "datasourceId 不存在")
     a = DataAsset(name=payload["name"], description=payload.get("description", ""),
-                  source=payload.get("source", "manual"), rows=payload.get("rows", []))
+                  source=payload.get("source", "manual"), rows=payload.get("rows", []),
+                  datasource_id=ds_id,
+                  location=payload.get("location", ""),
+                  record_id_field=payload.get("recordIdField", "interactionId"),
+                  time_field=payload.get("timeField", "interactionTime"))
     db.add(a)
     db.commit()
     return {"id": a.id, "name": a.name}
@@ -467,65 +474,107 @@ def create_task(payload: dict, db: Session = Depends(get_db)):
             "taskVersion": _task_version_dto(db, v)}
 
 
-def _resolve_rows(db: Session, task: AnalysisTask) -> list[dict]:
-    """rows 解析：Definition→Asset；有 Datasource 且无内联 rows 时按 schema mock 抽样。"""
-    from ..models import DataDefinition
-    asset = db.get(DataAsset, task.data_asset_id)
-    if not asset:
-        raise HTTPException(404, "数据资产不存在")
-    rows = list(asset.rows or [])
-    if not rows and asset.datasource_id:
-        defn = db.get(DataDefinition, task.data_definition_id) if task.data_definition_id else None
-        schema = (defn.field_schema if defn and defn.field_schema else
-                  [{"key": "interactionId"}, {"key": "interactionTime"}, {"key": "text"}])
-        rows = [{f.get("key", f"col{i}"): f"mock-{i}" for i, f in enumerate(schema)}
-                for _ in range(5)]
-    return rows
+def _task_run_dto(tr) -> dict:
+    return {"id": tr.id, "taskId": tr.task_id, "taskVersionId": tr.task_version_id,
+            "dataSnapshotId": tr.data_snapshot_id, "trigger": tr.trigger,
+            "scheduleFireKey": tr.schedule_fire_key, "idempotencyKey": tr.idempotency_key,
+            "status": tr.status, "total": tr.total,
+            "succeeded": tr.succeeded_count, "failed": tr.failed_count,
+            "skipped": tr.skipped_count, "cancelled": tr.cancelled_count,
+            "errorSummary": tr.error_summary,
+            "startedAt": tr.started_at.isoformat() if tr.started_at else None,
+            "endedAt": tr.ended_at.isoformat() if tr.ended_at else None,
+            "createdAt": tr.created_at.isoformat()}
 
 
-def batch_run_task(db: Session, task: AnalysisTask, limit: int | None = None,
-                   window: dict | None = None) -> list[str]:
-    rows = _resolve_rows(db, task)
-    # 复核审计修复：回填日期窗真生效（按行的时间字段过滤）
-    if window and (window.get("start") or window.get("end")):
-        tf = task.data_window if False else None  # 时间字段名由 Definition 决定，缺省 interactionTime
-        from ..models import DataDefinition
-        time_field = "interactionTime"
-        if task.data_definition_id:
-            defn = db.get(DataDefinition, task.data_definition_id)
-            if defn and defn.time_field:
-                time_field = defn.time_field
-        def in_window(row: dict) -> bool:
-            v = str(row.get(time_field) or row.get("interactionTime") or "")
-            if window.get("start") and v and v < str(window["start"]):
-                return False
-            if window.get("end") and v and v > str(window["end"]) + "T23:59:59":
-                return False
-            return True
-        rows = [r for r in rows if in_window(r)]
-    if task.sampling.startswith("first_"):
-        try:
-            rows = rows[: int(task.sampling.split("_")[1])]
-        except ValueError:
-            pass
-    if limit:
-        rows = rows[: limit]
-    run_ids = []
-    for row in rows:
-        run = create_run(db, task.workflow_id, "batch", row or {}, enqueue=False)
-        from ..runner import execute_run
-        execute_run(run.id)
-        run_ids.append(run.id)
-    return run_ids
+def _start_or_409(db: Session, tid: str, trigger: str,
+                  idempotency_key: str | None = None,
+                  schedule_fire_key: str | None = None):
+    from ..task_runner import TaskStartError, start_task_run
+    try:
+        return start_task_run(db, tid, trigger=trigger,
+                              idempotency_key=idempotency_key,
+                              schedule_fire_key=schedule_fire_key)
+    except TaskStartError as exc:
+        raise HTTPException(exc.status_code, exc.args[0])
 
 
-@router.post("/api/tasks/{tid}/batch-run")
+@router.post("/api/tasks/{tid}/runs", status_code=202)
+def start_task_run_api(tid: str, payload: dict | None = None,
+                       idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                       db: Session = Depends(get_db)):
+    """09 §10.2：启动批次。202 + 异步执行；Idempotency-Key 重复返回原 TaskRun。"""
+    tr, resolved = _start_or_409(db, tid, "manual",
+                                 idempotency_key=idempotency_key or (payload or {}).get("idempotencyKey"))
+    return {"taskRunId": tr.id, "status": tr.status,
+            "resolvedVersions": {"taskVersionId": resolved.get("taskVersionId") or tr.task_version_id,
+                                 "workflowVersionId": resolved.get("workflowVersionId"),
+                                 "ruleVersionId": resolved.get("ruleVersionId"),
+                                 "outputSchemaVersionId": resolved.get("outputSchemaVersionId")},
+            "dataSnapshotId": resolved.get("dataSnapshotId") or tr.data_snapshot_id}
+
+
+@router.post("/api/tasks/{tid}/batch-run", status_code=202)
 def batch_run(tid: str, payload: dict | None = None, db: Session = Depends(get_db)):
+    """过渡入口（09-P0 前契约）：内部改走 TaskRun 新链路；B4 前端切到 /runs。"""
+    tr, resolved = _start_or_409(db, tid, "manual",
+                                 idempotency_key=(payload or {}).get("idempotencyKey"))
+    return {"taskRunId": tr.id, "status": tr.status}
+
+
+@router.get("/api/tasks/{tid}/runs")
+def list_task_runs(tid: str, db: Session = Depends(get_db)):
+    from ..models import TaskRun
     t = db.get(AnalysisTask, tid)
     if not t:
         raise HTTPException(404, "任务不存在")
-    ids = batch_run_task(db, t, (payload or {}).get("limit"), (payload or {}).get("window"))
-    return {"runIds": ids}
+    rows = db.query(TaskRun).filter_by(task_id=tid)\
+        .order_by(TaskRun.created_at.desc()).all()
+    return {"items": [_task_run_dto(x) for x in rows]}
+
+
+@router.get("/api/task-runs/{trid}")
+def get_task_run(trid: str, db: Session = Depends(get_db)):
+    from ..models import TaskRun
+    tr = db.get(TaskRun, trid)
+    if not tr:
+        raise HTTPException(404, "TaskRun 不存在")
+    return _task_run_dto(tr)
+
+
+def _run_dto(r) -> dict:
+    return {"id": r.id, "status": r.status, "interactionRef": r.interaction_ref,
+            "attempt": r.attempt, "workflowVersionId": r.workflow_version_id,
+            "taskRunId": r.task_run_id, "taskId": r.task_id,
+            "error": r.error,
+            "startedAt": r.started_at.isoformat() if r.started_at else None,
+            "endedAt": r.ended_at.isoformat() if r.ended_at else None,
+            "durationMs": r.duration_ms}
+
+
+@router.get("/api/task-runs/{trid}/runs")
+def list_task_run_runs(trid: str, db: Session = Depends(get_db)):
+    from ..models import Run, TaskRun
+    if not db.get(TaskRun, trid):
+        raise HTTPException(404, "TaskRun 不存在")
+    rows = db.query(Run).filter_by(task_run_id=trid).order_by(Run.created_at.asc()).all()
+    return {"items": [_run_dto(r) for r in rows]}
+
+
+@router.get("/api/task-runs/{trid}/results")
+def list_task_run_results(trid: str, db: Session = Depends(get_db)):
+    from ..models import QualityResult, TaskRun
+    if not db.get(TaskRun, trid):
+        raise HTTPException(404, "TaskRun 不存在")
+    rows = db.query(QualityResult).filter_by(task_run_id=trid)\
+        .order_by(QualityResult.created_at.asc()).all()
+    return {"items": [{"id": q.id, "runId": q.run_id, "interactionRef": q.interaction_ref,
+                       "taskId": q.task_id, "taskRunId": q.task_run_id,
+                       "workflowVersionId": q.workflow_version_id,
+                       "ruleVersionId": q.rule_version_id,
+                       "outputSchemaVersionId": q.output_schema_version_id,
+                       "score": q.score, "risk": q.risk, "review": q.review_status,
+                       "isLatest": q.is_latest} for q in rows]}
 
 
 @router.get("/api/tasks/{tid}")

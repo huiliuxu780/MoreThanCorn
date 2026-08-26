@@ -283,11 +283,19 @@ def schedule_tick() -> int:
                 continue
             try:
                 if sch.task_id:
-                    from .routers.business import batch_run_task
-                    from .models import AnalysisTask
-                    task = db.get(AnalysisTask, sch.task_id)
-                    if task:
-                        fired += len(batch_run_task(db, task))
+                    # 09 P0-B2/B3：调度→TaskRun 新链路；唯一业务键防重复触发（INV-11）；
+                    # paused/不可运行任务失败关闭但不计调度故障。
+                    from .task_runner import TaskStartError, start_task_run
+                    fire_slot = sch.next_run_at.isoformat() if sch.next_run_at else now.isoformat()
+                    try:
+                        _tr, _res = start_task_run(db, sch.task_id, trigger="schedule",
+                                                   schedule_fire_key=f"{sch.id}:{fire_slot}")
+                        fired += 1
+                    except TaskStartError as exc:
+                        if exc.status_code == 409:  # paused（INV-10）：静默跳过
+                            pass
+                        else:
+                            raise RunError(str(exc))
                 else:
                     create_run(db, sch.workflow_id, "schedule",
                                {"window": {"start": (now - __import__("datetime").timedelta(minutes=5)).isoformat(),
@@ -448,6 +456,17 @@ def exec_create_record(node, ctx) -> dict:
     from .models import Evidence, QualityResult
     inputs = resolve_bindings(node.get("inputs", []), ctx.outputs, ctx.run_input)
     out = inputs or dict(ctx.outputs)
+    # 09 P0-06/INV-06：任务主链的输出必须通过 QualityEvaluation Schema 本地校验；
+    # 非法输出 → Run 失败，不得创建正式 QualityResult（repair 走节点重试策略）。
+    if getattr(ctx.run, "task_run_id", None):
+        from .output_schema import validate_evaluation
+        from .models import QualityOutputSchema
+        os_id = ctx.run_input.get("__outputSchemaVersionId")
+        schema_row = ctx.db.get(QualityOutputSchema, os_id) if os_id else None
+        ok, errs = validate_evaluation(out if isinstance(out, dict) else {"value": out},
+                                       schema_row.schema_ if schema_row else None)
+        if not ok:
+            raise RunError("OUTPUT_SCHEMA_INVALID: " + "; ".join(errs[:3]))
     qr = QualityResult(run_id=ctx.run.id, interaction_ref=str(ctx.run_input.get("interactionId", "")),
                        structured_output=out if isinstance(out, dict) else {"value": out},
                        transcript=out.get("transcript") if isinstance(out, dict) and isinstance(out.get("transcript"), list) else [],
@@ -1391,6 +1410,9 @@ def claim_and_run(db: Session) -> bool:
         if row.type == "agent-execution":  # SDD A-03：Agent 顶层运行
             from .agent_runtime import execute_agent_job
             execute_agent_job(payload["run_id"])
+        elif row.type == "task-run":  # 09 P0-B2：任务批次（per-interaction）
+            from .task_runner import execute_task_run
+            execute_task_run(payload["task_run_id"])
         else:
             execute_run(payload["run_id"], resume=payload.get("resume"))
         st = "done"
