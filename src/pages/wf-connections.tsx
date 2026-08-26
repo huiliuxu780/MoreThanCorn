@@ -251,7 +251,16 @@ export default function WfConnectionsPage() {
                 <Input type={showSecret ? "text" : "password"} className="pr-9" value={form.secret}
                   onChange={(e) => set({ secret: e.target.value })} placeholder={form.id ? "••••••（已配置则留空）" : ""} />
                 <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
-                  onClick={() => setShowSecret((v) => !v)} title={showSecret ? "隐藏" : "显示"}>
+                  onClick={async () => {
+                    // 08-27 用户反馈：编辑态眼睛真回显密钥（reveal 端点）
+                    if (!showSecret && form.id && !form.secret) {
+                      try {
+                        const r = await pagedApi.reveal(form.id)
+                        set({ secret: r.secret ?? "" })
+                      } catch { /* 忽略 */ }
+                    }
+                    setShowSecret((v) => !v)
+                  }} title={showSecret ? "隐藏" : "显示"}>
                   {showSecret ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
               </div>

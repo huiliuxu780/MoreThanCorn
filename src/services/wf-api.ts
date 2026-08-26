@@ -271,6 +271,7 @@ export const pagedApi = {
     req<Paged<Record<string, any>>>(`/api/tools?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}&search=${encodeURIComponent(p.search ?? "")}`),
   connections: (p: { page?: number; pageSize?: number; search?: string }) =>
     req<Paged<Record<string, any>>>(`/api/connections?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}&search=${encodeURIComponent(p.search ?? "")}`),
+  reveal: (cid: string) => req<{ secret: string }>(`/api/connections/${cid}/reveal`),
   models: (p: { page?: number; pageSize?: number }) =>
     req<Paged<Record<string, any>>>(`/api/registry/models?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}`),
   providers: (p: { page?: number; pageSize?: number }) =>

@@ -82,6 +82,16 @@ def list_connections(page: int = 1, pageSize: int = 20, search: str = "", type: 
             "total": total, "page": page, "pageSize": pageSize}
 
 
+@router.get("/api/connections/{cid}/reveal")
+def reveal_connection(cid: str, db: Session = Depends(get_db)):
+    """08-27 用户反馈：编辑页眼睛可回显密钥（dev 明文；有 WF_SECRET_KEY 时解密）。"""
+    c = db.get(Connection, cid)
+    if not c:
+        raise HTTPException(404, "connection not found")
+    from ..runner import _decrypt
+    return {"secret": _decrypt(c.secret_ref) if c.secret_ref else ""}
+
+
 @router.post("/api/connections/{cid}/test")
 def test_connection(cid: str, db: Session = Depends(get_db)):
     c = db.get(Connection, cid)
@@ -117,6 +127,11 @@ def delete_connection(cid: str, db: Session = Depends(get_db)):
     from ..resource_registry import assert_deletable
     if not db.get(Connection, cid):
         raise HTTPException(404, "connection not found")
+    # 08-27 用户反馈：被 provider 引用的连接允许删除——先解绑再删
+    from ..models import ModelProvider
+    for prov in db.query(ModelProvider).filter_by(auth_connection_id=cid).all():
+        prov.auth_connection_id = None
+    db.flush()
     assert_deletable(db, "connection", cid)
     db.delete(db.get(Connection, cid))
     db.commit()
