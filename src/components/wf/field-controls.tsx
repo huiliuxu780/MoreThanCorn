@@ -72,7 +72,7 @@ export function FilePick({ value, onChange, placeholder = "上传附件" }: {
 
 /* 下拉多选：Popover + Command + Checkbox + 已选 badges */
 export function MultiSelect({ options, values, onChange, placeholder = "请选择" }: {
-  options: { label: string; value: string }[]; values: string[]; onChange: (v: string[]) => void; placeholder?: string
+  options: { label: string; value: string; disabled?: boolean }[]; values: string[]; onChange: (v: string[]) => void; placeholder?: string
 }) {
   const [open, setOpen] = React.useState(false)
   const toggle = (v: string) =>

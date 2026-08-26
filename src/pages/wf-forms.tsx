@@ -247,9 +247,11 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                       <SelectContent><SelectItem value="true">true</SelectItem><SelectItem value="false">false</SelectItem></SelectContent>
                     </Select>
                   ) : (
-                    <Input className="h-7 text-xs" value={cur.default ?? ""} placeholder="默认值" onChange={(e) => patch(cur.id!, { default: e.target.value })} />
-                  <label className="mt-1 flex items-center justify-between text-xs"><span>只读（运行时不可改）</span>
-                    <Checkbox checked={!!cur.readOnly} onCheckedChange={(v) => patch(cur.id!, { readOnly: !!v })} /></label>
+                    <>
+                      <Input className="h-7 text-xs" value={cur.default ?? ""} placeholder="默认值" onChange={(e) => patch(cur.id!, { default: e.target.value })} />
+                      <label className="mt-1 flex items-center justify-between text-xs"><span>只读（运行时不可改）</span>
+                        <Checkbox checked={!!cur.readOnly} onCheckedChange={(v) => patch(cur.id!, { readOnly: !!v })} /></label>
+                    </>
                   )}
                   {CHOICE_TYPES.includes(cur.type) && (
                     /* 开发方案 §24：选项右侧直接行编辑（label+value），不用弹窗/textarea */
