@@ -544,7 +544,7 @@ function NodeRunResult({ run }: { run: NonNullable<WfNodeData["run"]> }) {
     )
   }
   return (
-    <div className="mt-1.5 overflow-hidden rounded-md" style={{ background: "#3B4557" }}>
+    <div className="nodrag mt-1.5 overflow-hidden rounded-md" style={{ background: "#3B4557" }}>
       <button className="flex w-full items-center gap-2 px-2.5 py-1.5" onClick={() => setOpen((v) => !v)}>
         <span className="flex size-3.5 items-center justify-center rounded-full" style={{ background: ok ? "#34C759" : skipped ? "#9AA4B2" : "#F56C6C" }}>
           {ok ? <Check className="size-2.5 text-white" /> : <X className="size-2.5 text-white" />}
@@ -2017,8 +2017,8 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
       issues: issues.filter((i) => i.nodeId === n.id),
       run: runState[n.id],
       onRunNode: (id: string) => {
-        // 08-26 用户反馈：单节点运行不带动其他节点——真单测 node-test
-        setRunState({})
+        // 08-26 用户反馈：单节点运行不带动其他节点——真单测 node-test；先置 running 显示呼吸环
+        setRunState({ [id]: { status: "running" } })
         wfApi.nodeTest(workflowId, id, {}).then((r: { ok?: boolean; output?: unknown; durationMs?: number; error?: string }) => {
           setRunState({ [id]: r.ok ? { status: "success", output: r.output, durationMs: r.durationMs } : { status: "failed", error: r.error || "单测失败" } })
         }).catch((e: Error) => setRunState({ [id]: { status: "failed", error: e.message } }))
