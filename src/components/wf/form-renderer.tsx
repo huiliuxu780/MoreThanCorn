@@ -11,6 +11,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { wfApi, type FormField } from "@/services/wf-api"
+import { currentRole } from "@/services/rbac"
 
 import { DatePicker, FilePick, MultiSelect } from "./field-controls"
 
@@ -60,8 +61,16 @@ export function FormRenderer({ fields, values, onChange, showErrors = false }: {
     <div className="grid grid-cols-12 content-start gap-3">
       {fields.map((f) => {
         if (!evalVisibleWhen(f, values)) return null
+        if ((f.visibleRoles ?? []).length > 0 && !(f.visibleRoles ?? []).includes(currentRole())) return null
         const err = showErrors ? validateFieldLocal(f, values[f.key]) : null
-        const opts = f.options ?? []
+        const opts = (() => {
+    if (f.optionsSource?.type === "field" && f.optionsSource.field) {
+      const v = values[f.optionsSource.field]
+      const arr = Array.isArray(v) ? v : String(v ?? "").split(",").map((x) => x.trim()).filter(Boolean)
+      return arr.map((x) => (typeof x === "string" ? { label: x, value: x } : (x as { label: string; value: string })))
+    }
+    return f.options ?? []
+  })()
         let control: React.ReactNode
         switch (f.type) {
           case "textarea":

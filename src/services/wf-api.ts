@@ -671,6 +671,8 @@ export interface FormField {
   description?: string; placeholder?: string; default?: string
   options?: { label: string; value: string; disabled?: boolean }[]
   readOnly?: boolean
+  optionsSource?: { type: "custom" | "field"; field?: string }
+  visibleRoles?: string[]
   validation?: { required?: boolean; minLength?: number; maxLength?: number; min?: number; max?: number; pattern?: string; minSelections?: number; maxSelections?: number; unique?: boolean }
   layout?: { span?: number }
   display?: { disabled?: boolean; readonly?: boolean }

@@ -8,6 +8,7 @@ import {
 import * as React from "react"
 import { useEffect, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
+import { ROLES } from "@/services/rbac"
 import { toast } from "sonner"
 
 import { EmptyState } from "@/components/app/list-state"
@@ -63,6 +64,21 @@ const SPANS = [3, 6, 9, 12]
 const BIND_TYPES = ["manual", "workflow_output", "data_source", "constant", "expression"]
 const COND_OPS = ["eq", "neq", "contains", "not_contains", "empty", "not_empty", "gt", "lt"]
 const CHOICE_TYPES = ["radio", "select", "multi-select", "checkbox-group"]
+/* 08-27 V2：Property Registry 最小化——按 dataType 驱动 Validation 面板 */
+const VALIDATION_REGISTRY: Record<string, string[]> = {
+  string: ["required", "minLength", "maxLength", "pattern"],
+  number: ["required", "min", "max"],
+  boolean: ["required"],
+  array: ["required", "minSelections", "maxSelections"],
+  object: ["required"],
+  datetime: ["required"],
+  file: ["required"],
+  none: [],
+}
+const VAL_LABEL: Record<string, string> = {
+  required: "必填", minLength: "最小长度", maxLength: "最大长度", pattern: "正则",
+  min: "最小值", max: "最大值", minSelections: "最少选", maxSelections: "最多选",
+}
 
 /* 设计态字段卡：标准 shadcn 控件渲染（v3：日期/附件/多选不再裸 input） */
 function DesignControl({ f }: { f: FormField }) {
@@ -251,6 +267,16 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                       <Input className="h-7 text-xs" value={cur.default ?? ""} placeholder="默认值" onChange={(e) => patch(cur.id!, { default: e.target.value })} />
                       <label className="mt-1 flex items-center justify-between text-xs"><span>只读（运行时不可改）</span>
                         <Checkbox checked={!!cur.readOnly} onCheckedChange={(v) => patch(cur.id!, { readOnly: !!v })} /></label>
+                      <div className="pt-1 text-[10px] text-neutral-500">可见角色（不选=全部可见，HAR visibleRole）</div>
+                      <div className="flex flex-wrap gap-2">
+                        {ROLES.map((r) => (
+                          <label key={r.value} className="flex items-center gap-1 text-[10px]">
+                            <Checkbox checked={(cur.visibleRoles ?? []).includes(r.value)}
+                              onCheckedChange={(v) => patch(cur.id!, { visibleRoles: v ? [...(cur.visibleRoles ?? []), r.value] : (cur.visibleRoles ?? []).filter((x) => x !== r.value) })} />
+                            {r.label}
+                          </label>
+                        ))}
+                      </div>
                     </>
                   )}
                   {CHOICE_TYPES.includes(cur.type) && (
@@ -274,6 +300,19 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
                         })}>
                         <Plus className="size-3" /> 添加选项
                       </Button>
+                      <div className="flex items-center gap-1 pt-1 text-[10px] text-neutral-500">
+                        选项来源
+                        <Select value={cur.optionsSource?.type ?? "custom"} onValueChange={(v) => patch(cur.id!, { optionsSource: { type: v as "custom" | "field", field: cur.optionsSource?.field } })}>
+                          <SelectTrigger className="h-6 w-24 text-[10px]"><SelectValue /></SelectTrigger>
+                          <SelectContent><SelectItem value="custom">自定义</SelectItem><SelectItem value="field">联动字段</SelectItem></SelectContent>
+                        </Select>
+                        {cur.optionsSource?.type === "field" && (
+                          <Select value={cur.optionsSource?.field ?? ""} onValueChange={(v) => patch(cur.id!, { optionsSource: { type: "field", field: v } })}>
+                            <SelectTrigger className="h-6 w-28 text-[10px]"><SelectValue placeholder="字段" /></SelectTrigger>
+                            <SelectContent>{fields.filter((x) => x.id !== cur.id).map((x) => <SelectItem key={x.key} value={x.key}>{x.key}</SelectItem>)}</SelectContent>
+                          </Select>
+                        )}
+                      </div>
                     </div>
                   )}
                 </AccordionContent>
@@ -283,32 +322,22 @@ function FormBuilder({ fields, onChange }: { fields: FormField[]; onChange: (f: 
               <AccordionItem value="validation">
                 <AccordionTrigger className="py-2 text-xs">Validation</AccordionTrigger>
                 <AccordionContent className="space-y-1.5">
-                  <label className="flex items-center justify-between text-xs"><span>必填</span>
-                    <Checkbox checked={!!val.required} onCheckedChange={(v) => setVal({ required: !!v })} /></label>
+                  {(VALIDATION_REGISTRY[cur.dataType] ?? []).map((vk) =>
+                    vk === "required" ? (
+                      <label key={vk} className="flex items-center justify-between text-xs"><span>必填</span>
+                        <Checkbox checked={!!val.required} onCheckedChange={(v) => setVal({ required: !!v })} /></label>
+                    ) : (
+                      <div key={vk} className="grid grid-cols-2 items-center gap-1">
+                        <span className="text-[10px] text-neutral-500">{VAL_LABEL[vk]}</span>
+                        <Input className="h-7 text-xs" type={vk === "pattern" ? "text" : "number"} placeholder={VAL_LABEL[vk]}
+                          value={((val as Record<string, unknown>)[vk] as string | number | undefined) ?? ""}
+                          onChange={(e) => setVal({ [vk]: e.target.value === "" ? undefined : (vk === "pattern" ? e.target.value : Number(e.target.value)) } as Record<string, unknown>)} />
+                      </div>
+                    )
+                  )}
                   {["text", "textarea", "number"].includes(cur.type) && (
                     <label className="flex items-center justify-between text-xs"><span>唯一约束（HAR uniqueKey）</span>
                       <Checkbox checked={!!val.unique} onCheckedChange={(v) => setVal({ unique: !!v })} /></label>
-                  )}
-                  {["text", "textarea"].includes(cur.type) && (
-                    <div className="grid grid-cols-2 gap-1">
-                      <Input className="h-7 text-xs" type="number" placeholder="minLength" value={val.minLength ?? ""} onChange={(e) => setVal({ minLength: e.target.value === "" ? undefined : Number(e.target.value) })} />
-                      <Input className="h-7 text-xs" type="number" placeholder="maxLength" value={val.maxLength ?? ""} onChange={(e) => setVal({ maxLength: e.target.value === "" ? undefined : Number(e.target.value) })} />
-                    </div>
-                  )}
-                  {cur.dataType === "number" && (
-                    <div className="grid grid-cols-2 gap-1">
-                      <Input className="h-7 text-xs" type="number" placeholder="min" value={val.min ?? ""} onChange={(e) => setVal({ min: e.target.value === "" ? undefined : Number(e.target.value) })} />
-                      <Input className="h-7 text-xs" type="number" placeholder="max" value={val.max ?? ""} onChange={(e) => setVal({ max: e.target.value === "" ? undefined : Number(e.target.value) })} />
-                    </div>
-                  )}
-                  {["text", "textarea"].includes(cur.type) && (
-                    <Input className="h-7 font-mono text-xs" placeholder="pattern 正则" value={val.pattern ?? ""} onChange={(e) => setVal({ pattern: e.target.value || undefined })} />
-                  )}
-                  {CHOICE_TYPES.includes(cur.type) && (
-                    <div className="grid grid-cols-2 gap-1">
-                      <Input className="h-7 text-xs" type="number" placeholder="minSelections" value={val.minSelections ?? ""} onChange={(e) => setVal({ minSelections: e.target.value === "" ? undefined : Number(e.target.value) })} />
-                      <Input className="h-7 text-xs" type="number" placeholder="maxSelections" value={val.maxSelections ?? ""} onChange={(e) => setVal({ maxSelections: e.target.value === "" ? undefined : Number(e.target.value) })} />
-                    </div>
                   )}
                 </AccordionContent>
               </AccordionItem>
