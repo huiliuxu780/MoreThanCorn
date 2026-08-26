@@ -159,3 +159,18 @@ HAR 提取到 epoch/formily 字段模型（Input/Radio props）。吸收与登�
 | default-value 第四值 | 按决策不做 | 登记 |
 | /api/locks CORS | 旧后端残留；现后端 preflight/POST 均带 ACAO，无需代码改动 | curl 验证 |
 | 测试确定性 | tests/conftest.py WF_PAR_RUN=1（生产并行不受影响） | 两连绿 |
+
+## 4h. V2 八项收尾（08-27）
+
+| 项 | 实现 | commit |
+|---|---|---|
+| readOnly 字段 | 构建器开关 + 渲染器只读态 | 54cb966 |
+| options.disabled | 选项行"禁"勾选 + 渲染器禁用 | 54cb966 |
+| FormRecord 列表 UI | 表单编辑页"记录"Dialog（版本/来源/时间/值） | 7edf974 |
+| AI 辅助输入 | 渲染器 ✨ 按钮（polish 生成示例值） | 7edf974 |
+| dataSourceLinkage | 选项来源=自定义/联动字段，渲染器运行时取链接字段值 | d6b6f8e |
+| 字段级权限 visibleRoles | 构建器角色多选 + 渲染器按 currentRole 隐藏 | d6b6f8e |
+| Property Registry | Validation 面板由 VALIDATION_REGISTRY 按 dataType 驱动（最小化） | d6b6f8e |
+| DnD | palette 拖拽落画布任意位置（screenToFlowPosition）+ 表单选项行拖拽排序 | 75efdef |
+
+已知：全套件偶发 1 flaky（test_autonomous/test_business 跨测试 DB 串扰，单跑全绿），登记不阻塞。
