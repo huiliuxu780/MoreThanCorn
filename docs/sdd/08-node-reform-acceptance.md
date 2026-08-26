@@ -135,3 +135,16 @@ HAR 提取到 epoch/formily 字段模型（Input/Radio props）。吸收与登�
 | tips | 已有 description/placeholder 覆盖 | ✅ 等价 |
 | fieldWidth/columnSpan | 已有 span 3/6/9/12 | ✅ 等价 |
 | options[{label,value,disabled}] | options 模型一致（disabled 入 V2） | ✅ |
+
+## 4f. 画布 8 条反馈（08-26，commit 6e5c836）
+
+| # | 反馈 | 处理 |
+|---|---|---|
+| 1 | 节点 hover 用 @beui/tilt-card？ | 讨论后不引入（社区件供应链+3D transform 破坏 handle 命中+中性设计冲突）；保持蓝边+投影 |
+| 2 | 画布空白手势不对 | pane grab / 拖拽 grabbing |
+| 3 | 已连线可拖改接 | edges reconnectable + onReconnect |
+| 4 | 节点尾+快捷添加 | 非分支节点尾+；分支节点每分支 handle 旁+；自动连线/同分支改接 |
+| 5 | 单节点运行带动其他节点 | onRunNode 改 node-test 真单测，先清空结果 |
+| 6 | 结果无耗时/tokens、展开崩坏 | SSE 补 durationMs；llm tokens 进事件；外层固定 300px+break-all |
+| 7 | 试运行防连点 | 进行中态 spinner+disabled，终态复位 |
+| 8 | 扳手假功能 | 删除（宁缺勿假） |
