@@ -91,7 +91,11 @@ def _dig(d: Any, path: str) -> Any:
 def resolve_source(src: dict, outputs: dict[str, dict], run_input: dict) -> Any:
     kind = src.get("kind")
     if kind == "fixed":
-        return src.get("value")
+        v = src.get("value")
+        # 08-26 用户反馈：固定值内 {{...}} 模板渲染引用，结果面板展示解析后的真实值
+        if isinstance(v, str) and "{{" in v:
+            return render_refs(v, outputs, run_input)
+        return v
     if kind == "upstream":
         return _dig(outputs.get(src.get("nodeId", ""), {}), src.get("path", "").replace("outputs.", "", 1))
     if kind == "input":

@@ -532,7 +532,7 @@ function NodeRunResult({ run }: { run: NonNullable<WfNodeData["run"]> }) {
     return (
       <div>
         <div className="pb-0.5 text-[10px] text-neutral-300">{title}</div>
-        <div className="max-h-36 overflow-auto rounded bg-[#2A3242] p-2 font-mono text-[10px] leading-4">
+        <div className="max-h-56 overflow-auto whitespace-pre-wrap rounded bg-[#2A3242] p-2 font-mono text-[10px] leading-4">
           {Object.entries(o).length === 0 && <span className="text-neutral-400">∅</span>}
           {Object.entries(o).map(([k, v]) => (
             <div key={k}>
