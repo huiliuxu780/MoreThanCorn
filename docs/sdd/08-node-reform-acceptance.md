@@ -79,7 +79,7 @@
 | 迁移 f0rm20260826 双库（wf_dev/wf_test） | [api] alembic upgrade head ×2 | ✅ |
 | 种子表单（对话六件套/空表单） | [api] GET /api/forms | ✅ |
 | 管理页 /config/forms + 侧栏"表单" + 开始抽屉 picker/转表单/管理入口 | [manual] 起床目验 | 🟡 |
-| 三栏表单构建器（字段面板｜实时预览｜属性面板；参考 shadcn-builder UX 自写，08-26 决策 B） | [e2e] check-ui-standard 过；[manual] 目验 | 🟡 |
+| 三栏表单构建器（字段面板｜实时预览｜属性面板；参考 shadcn-builder UX 自写，08-26 决策 B）；新建/编辑走独立页面 /config/forms/new 与 /:formId（与 tasks/ai-resources 约定一致，弹窗退场） | [e2e] check-ui-standard 过；[manual] 目验 | 🟡 |
 | 消费点改读 form：变量级联开始组/调试抽屉/映射表(子流程 form)/输出变量区 | [manual]+单测间接 | 🟡 |
 | pytest 总量 | 109/109 | ✅ |
 
