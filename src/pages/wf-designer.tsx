@@ -2125,6 +2125,24 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
     mutate({ ...def, graph: { ...def.graph, edges: [...def.graph.edges, { id: `e_${Date.now() % 100000}`, source: conn.source, target: conn.target, sourceHandle: sh }] } })
   }
 
+  // 08-27 V2：palette 拖拽落画布任意位置
+  const quickAddAt = (typeKey: string, pos: { x: number; y: number }) => {
+    const d = defRef.current!
+    const defn = defs.find((x) => x.type_key === typeKey)
+    const id = `n_${typeKey}_${Date.now() % 100000}`
+    const node: WfNode = {
+      id, type: typeKey, name: defn?.label ?? typeKey,
+      config: typeKey === "condition" ? { branches: [{ handle: "b1", logic: "AND", conditions: [] }] } : {},
+      inputs: [], branches: typeKey === "condition" ? ["b1", "else"] : undefined,
+    }
+    mutate({
+      ...d,
+      ui: { ...d.ui, positions: { ...d.ui.positions, [id]: pos } },
+      graph: { ...d.graph, nodes: [...d.graph.nodes, node] },
+    })
+    setSelectedId(id); setDrawer("config")
+  }
+
   // 08-26 用户反馈：节点尾部+快捷添加（自动连线；分支节点按分支 handle 连）
   const quickAdd = (sourceId: string, handle: string | null, typeKey: string) => {
     const d = defRef.current!
@@ -2431,6 +2449,13 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
           }}
           onConnect={onConnect}
           onReconnect={onReconnect}
+          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move" }}
+          onDrop={(e) => {
+            const t = e.dataTransfer.getData("application/wf-node")
+            if (!t) return
+            e.preventDefault()
+            quickAddAt(t, rf.screenToFlowPosition({ x: e.clientX, y: e.clientY }))
+          }}
           onNodeClick={(_, n) => { setSelectedId(n.id); setSelectedEdgeId(null); setDrawer("config"); setPop(null) }}
           onEdgeClick={(_, e) => { setSelectedEdgeId(e.id); setSelectedId(null) }}
           onPaneClick={() => { setSelectedId(null); setSelectedEdgeId(null); setPop(null) }}
