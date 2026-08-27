@@ -1,15 +1,25 @@
 # 09-SDD P1 验收报告（业务可用与可运维）
 
-> ⚠️ **改判声明（2026-08-27，独立审计后）**：原"代码自验通过"被独立审计**推翻**。
+> ⚠️ **改判声明（2026-08-27，独立审计后）**：原"代码自验通过"曾被独立审计**推翻**。
 > 除 §14.1 需真实环境项外，审计另复现：队列无 heartbeat/Worker ID 固定、API 必然同启
 > Worker+Scheduler、行级重试不重汇父批次、复核领取非原子且可伪造、治理水位/保留缺失、
 > 告警不消费 notify、成本端点长期为 0（token 未汇总到 Run）、`by-dimension` SQL 注入、
 > 多列表未真分页、前端组件测试/无障碍不足、故障演练未注入真实故障等。
-> **当前判定：P1 未通过。** 修复进度见下方"修复轮记录"。
+>
+> **修复轮（2026-08-27，提交 `87abcd4`）**：审计可在代码层闭环的 P1 项已修复并补回归：
+> - `by-dimension` SQL 注入 → 白名单+标识符校验（`test_by_dimension_blocks_sql_injection`）；
+> - 成本恒 0 → cost-stats 改从 CallRecord 模型调用聚合（`test_cost_stats_aggregates_from_call_records`）;
+> - 复核领取非原子/可伪造 → 原子条件更新 + reviewer 来自鉴权身份；
+> - 行级重试不重汇 → `task-run-retry` 统一重试 + `reaggregate_task_run` 重汇父批次；
+> - 队列无心跳/Worker ID 固定 → 唯一 Worker ID（w-uuid）+ 心跳续租（`test_worker_id_unique_not_fixed`）；
+> - 告警不消费 notify → 消费 webhook/日志 + 数据源/模型指标（`test_alert_evaluate_consumes_notify`）。
+> 后端 212 绿 + 前端全绿。**尚未闭环**：API/Worker/Scheduler 进程拆分、多列表真分页、
+> 治理水位/保留删除、前端组件测试/无障碍、真实故障注入演练，以及 §14.1 真实环境项。
+> **当前判定：P1 修复轮部分闭环，整体仍未通过（待上述项 + 真实运行证据）。**
 
-- 验收版本：`c4adc13`（B1 `927dfb2` / B2 `eee5f64` / B3 `b1312be`+`142f78c` / B4 `3c35d74` / B5 `5dc7fea`+`c4adc13`）
-- 环境：后端 197 pytest（`wf_test` 隔离库）；核心 E2E 与故障演练在全新库 Production Profile 下
-- 验收日期：2026-08-27
+- 验收版本：`87abcd4`（B1 `927dfb2` / B2 `eee5f64` / B3 `b1312be`+`142f78c` / B4 `3c35d74` / B5 `5dc7fea`+`c4adc13` / 审计修复 `87abcd4`）
+- 环境：后端 212 pytest（`wf_test` 隔离库）；核心 E2E 与故障演练在全新库 Production Profile 下
+- 验收日期：2026-08-27（修复轮）
 - 验收人：Agent 自验（**未经用户最终确认**）
 
 > 依 09 §21 模板 + 用户验收规则（逐项：文件/迁移/测试/命令/结果/不变量/未关闭问题/结论）。
