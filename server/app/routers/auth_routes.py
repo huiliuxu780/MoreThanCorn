@@ -1,0 +1,68 @@
+"""身份端点（09-SDD P0-10）：登录 / 当前身份 / 用户管理（admin）。"""
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.orm import Session
+
+from ..auth import ROLES, create_token, hash_password, login, require_admin
+from ..db import get_db
+from ..models import AppUser
+
+router = APIRouter(tags=["auth"])
+
+
+@router.post("/api/auth/login")
+def login_endpoint(payload: dict, db: Session = Depends(get_db)):
+    username = str((payload or {}).get("username") or "").strip()
+    password = str((payload or {}).get("password") or "")
+    if not username or not password:
+        raise HTTPException(422, "用户名与密码必填")
+    user = login(db, username, password)
+    if not user:
+        raise HTTPException(401, "用户名或密码错误")
+    return {"token": create_token(user), "user": user}
+
+
+@router.get("/api/auth/me")
+def me(request: Request):
+    from ..auth import auth_enforced_now, current_user
+    user = current_user(request)
+    if user is None:
+        if auth_enforced_now():
+            raise HTTPException(401, "未授权：缺少有效登录凭证")
+        return {"username": "dev", "role": "admin", "displayName": "开发模式"}
+    db_user = None
+    from ..db import SessionLocal
+    db = SessionLocal()
+    try:
+        db_user = db.get(AppUser, user["uid"])
+    finally:
+        db.close()
+    return {"id": user["uid"], "username": user["username"], "role": user["role"],
+            "displayName": db_user.display_name if db_user else user["username"]}
+
+
+@router.post("/api/auth/users", status_code=201)
+def create_user(payload: dict, db: Session = Depends(get_db),
+                admin_user: dict = Depends(require_admin)):
+    username = str((payload or {}).get("username") or "").strip()
+    password = str((payload or {}).get("password") or "")
+    role = str((payload or {}).get("role") or "viewer")
+    if not username or len(password) < 8:
+        raise HTTPException(422, "用户名必填；密码至少 8 位")
+    if role not in ROLES:
+        raise HTTPException(422, f"role 必须是 {'/'.join(ROLES)}")
+    from ..auth import user_by_name
+    if user_by_name(db, username):
+        raise HTTPException(409, "用户名已存在")
+    u = AppUser(username=username, display_name=(payload or {}).get("displayName", username),
+                password_hash=hash_password(password), role=role)
+    db.add(u)
+    db.commit()
+    return {"id": u.id, "username": u.username, "role": u.role}
+
+
+@router.get("/api/auth/users")
+def list_users(db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
+    rows = db.query(AppUser).order_by(AppUser.created_at.desc()).all()
+    return {"items": [{"id": u.id, "username": u.username, "displayName": u.display_name,
+                       "role": u.role, "status": u.status,
+                       "createdAt": u.created_at.isoformat()} for u in rows]}

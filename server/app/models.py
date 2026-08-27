@@ -744,6 +744,19 @@ class DataDefinition(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class AppUser(Base):
+    """平台用户（09-SDD P0-10）：服务端身份与角色；actor 的唯一来源。"""
+    __tablename__ = "app_user"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(64), default="")
+    password_hash: Mapped[str] = mapped_column(String(256))
+    role: Mapped[str] = mapped_column(String(16), default="viewer")  # admin|operator|viewer
+    status: Mapped[str] = mapped_column(String(16), default="active")  # active|disabled
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class ResourceChangeLog(Base):
     """资源变更记录：无版本类型资源的审计（创建/配置变更/凭证轮换/停用启用/测试失败）。"""
     __tablename__ = "resource_change_log"

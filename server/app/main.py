@@ -2,24 +2,50 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
+from .config import auth_enforced, is_production
 from .runner import start_worker
-from .routers import admin, agents, business, forms, registry, resources, runs, workflows
+from .routers import admin, agents, auth_routes, business, forms, registry, resources, runs, workflows
+
+# 鉴权白名单：登录与探活不需要身份
+_PUBLIC_PATHS = ("/api/auth/login", "/healthz", "/readyz", "/openapi.json", "/docs")
+
+
+def check_production_ready() -> None:
+    """09 §12：生产启动门。缺关键配置拒绝启动（fail closed）。"""
+    import os
+    if not is_production():
+        return
+    if not os.environ.get("WF_SECRET_KEY"):
+        raise RuntimeError("WF_SECRET_KEY 未配置：生产环境禁止明文 Secret 模式，拒绝启动")
+
+
+def bootstrap_models(db) -> str:
+    """模型种子：仅非生产环境在无模型时创建确定性假提供方（mock:// 标记）。
+    生产：不种子；运行期模型调用失败关闭（09 §12 / M-01）。"""
+    from .models import Model, ModelProvider
+    if db.query(Model).count() > 0:
+        return "existing"
+    if is_production():
+        return "skipped-production"
+    prov = ModelProvider(name="platform", base_url="mock://")
+    db.add(prov)
+    db.commit()
+    for key, caps in [("deepseek-r1-distill-qwen-14b", ["text"]), ("qwen-max", ["text"]),
+                      ("qwen-plus", ["text", "thinking"])]:
+        db.add(Model(provider_id=prov.id, model_key=key, display_name=key, capabilities=caps))
+    db.commit()
+    return "seeded-dev"
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    check_production_ready()
     from .db import SessionLocal
-    from .models import Model, ModelProvider
     db = SessionLocal()
     try:
-        if db.query(Model).count() == 0:
-            prov = ModelProvider(name="platform", base_url="mock://")
-            db.add(prov)
-            db.commit()
-            for key, caps in [("deepseek-r1-distill-qwen-14b", ["text"]), ("qwen-max", ["text"]), ("qwen-plus", ["text", "thinking"])]:
-                db.add(Model(provider_id=prov.id, model_key=key, display_name=key, capabilities=caps))
-            db.commit()
+        bootstrap_models(db)
         forms.seed_default_forms(db)
     finally:
         db.close()
@@ -33,23 +59,33 @@ app = FastAPI(title="Lightweight Workflow Kernel", version="0.1.0", lifespan=lif
 
 @app.middleware("http")
 async def auth_middleware(request, call_next):
-    """RBAC 真鉴权（可选）：WF_API_TOKEN 设置后 /api/* 需 Bearer token。"""
-    import os
+    """09 P0-10：服务端鉴权。auth_enforced（生产恒开 / WF_AUTH=on）时
+    /api/* 必须携带有效登录令牌；否则 401。开发默认匿名透传。"""
     from fastapi.responses import JSONResponse
-    token = os.environ.get("WF_API_TOKEN", "")
-    if token and request.url.path.startswith("/api/"):
-        auth = request.headers.get("authorization", "")
-        if auth != f"Bearer {token}":
-            return JSONResponse({"detail": "未授权：缺少有效 Bearer token"}, status_code=401)
+    path = request.url.path
+    if auth_enforced() and path.startswith("/api/") and path not in _PUBLIC_PATHS:
+        from .auth import current_user
+        if current_user(request) is None:
+            return JSONResponse({"detail": "未授权：缺少有效登录凭证"}, status_code=401)
     return await call_next(request)
+
+
+def _cors_origins() -> list[str]:
+    """09 §12：生产 CORS 用明确域名列表（WF_CORS_ORIGINS 逗号分隔）。"""
+    import os
+    if is_production():
+        return [o.strip() for o in os.environ.get("WF_CORS_ORIGINS", "").split(",") if o.strip()]
+    return ["http://localhost:5173", "http://127.0.0.1:5173"]
+
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=_cors_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+app.include_router(auth_routes.router)
 app.include_router(workflows.router)
 app.include_router(registry.router)
 app.include_router(runs.router)
@@ -62,4 +98,22 @@ app.include_router(forms.router)
 
 @app.get("/healthz")
 def healthz():
+    """进程存活探针（不查依赖）。"""
     return {"ok": True}
+
+
+@app.get("/readyz")
+def readyz():
+    """09 §12：依赖就绪探针——数据库可达 + 迁移链 + 队列表可用。"""
+    from .db import SessionLocal
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+        head = db.execute(text("SELECT version_num FROM alembic_version")).scalar()
+        db.execute(text("SELECT count(*) FROM job_queue"))
+        return {"database": True, "migrations": head or "", "queue": True}
+    except Exception as exc:  # noqa: BLE001
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"database": False, "error": str(exc)[:200]}, status_code=503)
+    finally:
+        db.close()

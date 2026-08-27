@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from ..auth import require_operator
 from ..db import get_db
 from ..models import Workflow, WorkflowVersion, new_id
 from ..schemas import (
@@ -161,7 +162,8 @@ def validate_workflow(wf_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{wf_id}/publish", status_code=201)
-def publish_workflow(wf_id: str, note: str = "", db: Session = Depends(get_db)):
+def publish_workflow(wf_id: str, note: str = "", db: Session = Depends(get_db),
+                     user: dict = Depends(require_operator)):
     wf = db.get(Workflow, wf_id)
     if not wf:
         raise HTTPException(404, "workflow not found")
@@ -195,7 +197,7 @@ def publish_workflow(wf_id: str, note: str = "", db: Session = Depends(get_db)):
     for a in db.query(Agent).filter_by(workflow_id=wf_id).all():
         a.status = "published"
     from .admin import audit
-    audit(db, "质量管理员", "workflow.publish", "workflow", wf_id,
+    audit(db, user.get("username", "system"), "workflow.publish", "workflow", wf_id,
           {"versionNo": ver.version_no})
     db.commit()
     return {"versionId": ver.id, "versionNo": ver.version_no}

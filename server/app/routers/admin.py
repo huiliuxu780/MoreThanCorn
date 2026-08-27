@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
+from ..auth import require_admin, require_operator
 from ..db import get_db
 from ..models import (Connection, Model, ModelProvider, Run, Schedule, Tool,
                       ToolVersion)
@@ -30,7 +31,8 @@ def _encrypt(secret: str) -> str:
 # ---------- Connections ----------
 
 @router.post("/api/connections", status_code=201)
-def create_connection(payload: dict, db: Session = Depends(get_db)):
+def create_connection(payload: dict, db: Session = Depends(get_db),
+                        _user: dict = Depends(require_admin)):
     c = Connection(name=payload["name"], kind=payload.get("kind", "api_key"),
                    protocol=payload.get("protocol", "http-api"),
                    endpoint=payload.get("endpoint", {}),
@@ -42,7 +44,8 @@ def create_connection(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.put("/api/connections/{cid}")
-def update_connection(cid: str, payload: dict, db: Session = Depends(get_db)):
+def update_connection(cid: str, payload: dict, db: Session = Depends(get_db),
+                        _user: dict = Depends(require_admin)):
     """编辑连接：secret 留空=保留原密钥，填写=轮换（不回显明文）。"""
     c = db.get(Connection, cid)
     if not c:
@@ -123,7 +126,8 @@ def _probe_connection(c) -> tuple[bool, str]:
 
 
 @router.delete("/api/connections/{cid}")
-def delete_connection(cid: str, db: Session = Depends(get_db)):
+def delete_connection(cid: str, db: Session = Depends(get_db),
+                        _user: dict = Depends(require_admin)):
     from ..resource_registry import assert_deletable
     if not db.get(Connection, cid):
         raise HTTPException(404, "connection not found")
@@ -163,7 +167,8 @@ def list_providers(page: int = 1, pageSize: int = 20, db: Session = Depends(get_
 
 
 @router.post("/api/model-providers", status_code=201)
-def create_provider(payload: dict, db: Session = Depends(get_db)):
+def create_provider(payload: dict, db: Session = Depends(get_db),
+                        _user: dict = Depends(require_admin)):
     p = ModelProvider(name=payload["name"], base_url=payload.get("baseUrl", ""),
                       auth_connection_id=payload.get("connectionId"))
     db.add(p)
@@ -172,7 +177,8 @@ def create_provider(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/api/models", status_code=201)
-def create_model(payload: dict, db: Session = Depends(get_db)):
+def create_model(payload: dict, db: Session = Depends(get_db),
+                   _user: dict = Depends(require_admin)):
     m = Model(provider_id=payload["providerId"], model_key=payload["modelKey"],
               display_name=payload.get("displayName", payload["modelKey"]),
               capabilities=payload.get("capabilities", ["text"]))
@@ -196,7 +202,8 @@ def list_models(page: int = 1, pageSize: int = 20, db: Session = Depends(get_db)
 # ---------- Tools ----------
 
 @router.post("/api/tools", status_code=201)
-def create_tool(payload: dict, db: Session = Depends(get_db)):
+def create_tool(payload: dict, db: Session = Depends(get_db),
+                        _user: dict = Depends(require_admin)):
     t = Tool(name=payload["name"], kind=payload.get("kind", "builtin"),
              connection_id=payload.get("connectionId"),
              description=payload.get("description", ""))
@@ -228,7 +235,8 @@ def list_tools(page: int = 1, pageSize: int = 20, search: str = "", db: Session 
 
 
 @router.put("/api/tools/{tid}")
-def update_tool(tid: str, payload: dict, db: Session = Depends(get_db)):
+def update_tool(tid: str, payload: dict, db: Session = Depends(get_db),
+                        _user: dict = Depends(require_admin)):
     t = db.get(Tool, tid)
     if not t:
         raise HTTPException(404, "工具不存在")
@@ -242,7 +250,8 @@ def update_tool(tid: str, payload: dict, db: Session = Depends(get_db)):
 
 
 @router.delete("/api/tools/{tid}")
-def delete_tool(tid: str, db: Session = Depends(get_db)):
+def delete_tool(tid: str, db: Session = Depends(get_db),
+                        _user: dict = Depends(require_admin)):
     from ..models import Tool, ToolVersion, Workflow
     t = db.get(Tool, tid)
     if not t:
@@ -289,7 +298,8 @@ def test_tool(tid: str, payload: dict | None = None, db: Session = Depends(get_d
 # ---------- Schedules ----------
 
 @router.post("/api/schedules", status_code=201)
-def create_schedule(payload: dict, db: Session = Depends(get_db)):
+def create_schedule(payload: dict, db: Session = Depends(get_db),
+                        _user: dict = Depends(require_admin)):
     sch = Schedule(name=payload.get("name", "schedule"), workflow_id=payload["workflowId"],
                    cron_expr=payload["cron"], timezone=payload.get("timezone", "Asia/Shanghai"),
                    enabled=payload.get("enabled", False))
@@ -312,7 +322,8 @@ def list_schedules(workflowId: str = "", db: Session = Depends(get_db)):
 
 
 @router.post("/api/schedules/{sid}/enable")
-def enable_schedule(sid: str, db: Session = Depends(get_db)):
+def enable_schedule(sid: str, db: Session = Depends(get_db),
+                        _user: dict = Depends(require_operator)):
     s = db.get(Schedule, sid)
     if not s:
         raise HTTPException(404, "定时任务不存在")
@@ -323,7 +334,8 @@ def enable_schedule(sid: str, db: Session = Depends(get_db)):
 
 
 @router.post("/api/schedules/{sid}/disable")
-def disable_schedule(sid: str, db: Session = Depends(get_db)):
+def disable_schedule(sid: str, db: Session = Depends(get_db),
+                        _user: dict = Depends(require_operator)):
     s = db.get(Schedule, sid)
     if not s:
         raise HTTPException(404, "定时任务不存在")
@@ -333,7 +345,8 @@ def disable_schedule(sid: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/api/schedules/{sid}")
-def delete_schedule(sid: str, db: Session = Depends(get_db)):
+def delete_schedule(sid: str, db: Session = Depends(get_db),
+                        _user: dict = Depends(require_admin)):
     db.delete(db.get(Schedule, sid))
     db.commit()
     return {"ok": True}
@@ -468,7 +481,8 @@ def release_lock(rid: str, wsId: str = "", db: Session = Depends(get_db)):
 # ---------- 删除 ----------
 
 @router.delete("/api/agents/{aid}")
-def delete_agent(aid: str, db: Session = Depends(get_db)):
+def delete_agent(aid: str, db: Session = Depends(get_db),
+                        _user: dict = Depends(require_admin)):
     from ..models import Agent, AgentVersion, Release
     a = db.get(Agent, aid)
     if not a:
@@ -483,7 +497,8 @@ def delete_agent(aid: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/api/workflows/{wid}")
-def delete_workflow(wid: str, db: Session = Depends(get_db)):
+def delete_workflow(wid: str, db: Session = Depends(get_db),
+                        _user: dict = Depends(require_admin)):
     from ..models import Agent, Workflow
     refs = db.execute(select(Agent).where(Agent.workflow_id == wid)).scalars().all()
     if refs:
@@ -510,7 +525,8 @@ def delete_provider(pid: str, db: Session = Depends(get_db)):
 
 
 @router.post("/api/models", status_code=201)
-def create_model(payload: dict, db: Session = Depends(get_db)):
+def create_model(payload: dict, db: Session = Depends(get_db),
+                   _user: dict = Depends(require_admin)):
     m = Model(provider_id=payload["providerId"], model_key=payload["modelKey"],
               display_name=payload.get("displayName", payload["modelKey"]),
               capabilities=payload.get("capabilities", ["text"]))
@@ -520,7 +536,8 @@ def create_model(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.delete("/api/models/{mid}")
-def delete_model(mid: str, db: Session = Depends(get_db)):
+def delete_model(mid: str, db: Session = Depends(get_db),
+                        _user: dict = Depends(require_admin)):
     m = db.get(Model, mid)
     if not m:
         raise HTTPException(404, "模型不存在")
@@ -745,7 +762,8 @@ def list_eval_samples(workflowId: str = "", agentId: str = "", db: Session = Dep
 
 
 @router.post("/api/eval-samples", status_code=201)
-def create_eval_sample(payload: dict, db: Session = Depends(get_db)):
+def create_eval_sample(payload: dict, db: Session = Depends(get_db),
+                        _user: dict = Depends(require_operator)):
     from ..models import EvalSample
     if not payload.get("workflowId") and not payload.get("agentId"):
         raise HTTPException(422, "样本必须挂工作流或 Agent")
@@ -759,7 +777,8 @@ def create_eval_sample(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.delete("/api/eval-samples/{sid}")
-def delete_eval_sample(sid: str, db: Session = Depends(get_db)):
+def delete_eval_sample(sid: str, db: Session = Depends(get_db),
+                        _user: dict = Depends(require_admin)):
     from ..models import EvalSample
     s = db.get(EvalSample, sid)
     if not s:

@@ -7,6 +7,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from ..auth import require_admin, require_operator
 from ..db import get_db
 from ..models import (Connection, DataAsset, DataDefinition, Datasource, KnowledgeSource,
                       McpServer, Model, Tool, ToolVersion)
@@ -48,12 +49,14 @@ def list_data(coll: str, page: int = 1, pageSize: int = 12, search: str = "",
 
 
 @router.post("/api/ai-resources/{coll}", status_code=201)
-def create_ai(coll: str, payload: dict, db: Session = Depends(get_db)):
+def create_ai(coll: str, payload: dict, db: Session = Depends(get_db),
+              _user: dict = Depends(require_admin)):
     return _create(db, _rtype(coll), payload)
 
 
 @router.post("/api/data-resources/{coll}", status_code=201)
-def create_data(coll: str, payload: dict, db: Session = Depends(get_db)):
+def create_data(coll: str, payload: dict, db: Session = Depends(get_db),
+                _user: dict = Depends(require_admin)):
     return _create(db, _rtype(coll), payload)
 
 
@@ -166,7 +169,8 @@ def _config_of(db: Session, rtype: str, obj) -> dict:
 
 @router.put("/api/ai-resources/{coll}/{rid}")
 @router.put("/api/data-resources/{coll}/{rid}")
-def update_resource(coll: str, rid: str, payload: dict, db: Session = Depends(get_db)):
+def update_resource(coll: str, rid: str, payload: dict, db: Session = Depends(get_db),
+                    _user: dict = Depends(require_admin)):
     rtype = _rtype(coll)
     obj = _get_obj(db, rtype, rid)
     if rtype == "tool":
@@ -211,7 +215,8 @@ def update_resource(coll: str, rid: str, payload: dict, db: Session = Depends(ge
 
 @router.delete("/api/ai-resources/{coll}/{rid}")
 @router.delete("/api/data-resources/{coll}/{rid}")
-def delete_resource(coll: str, rid: str, db: Session = Depends(get_db)):
+def delete_resource(coll: str, rid: str, db: Session = Depends(get_db),
+                    _user: dict = Depends(require_admin)):
     rtype = _rtype(coll)
     _get_obj(db, rtype, rid)
     assert_deletable(db, rtype, rid)
@@ -231,14 +236,16 @@ def _cls(rtype: str):
 
 @router.post("/api/ai-resources/{coll}/{rid}/toggle")
 @router.post("/api/data-resources/{coll}/{rid}/toggle")
-def toggle_resource(coll: str, rid: str, payload: dict, db: Session = Depends(get_db)):
+def toggle_resource(coll: str, rid: str, payload: dict, db: Session = Depends(get_db),
+                    _user: dict = Depends(require_operator)):
     set_status(db, _rtype(coll), rid, bool(payload.get("enabled")))
     return {"id": rid, "enabled": bool(payload.get("enabled"))}
 
 
 @router.post("/api/ai-resources/{coll}/{rid}/test")
 @router.post("/api/data-resources/{coll}/{rid}/test")
-def test_resource(coll: str, rid: str, payload: dict | None = None, db: Session = Depends(get_db)):
+def test_resource(coll: str, rid: str, payload: dict | None = None, db: Session = Depends(get_db),
+                  _user: dict = Depends(require_operator)):
     return run_test(db, _rtype(coll), rid, payload or {})
 
 
@@ -259,7 +266,8 @@ def tool_versions(rid: str, db: Session = Depends(get_db)):
 
 
 @router.post("/api/ai-resources/tools/{rid}/versions", status_code=201)
-def tool_new_version(rid: str, db: Session = Depends(get_db)):
+def tool_new_version(rid: str, db: Session = Depends(get_db),
+                     _user: dict = Depends(require_admin)):
     _get_obj(db, "tool", rid)
     last = db.query(ToolVersion).filter_by(tool_id=rid).order_by(ToolVersion.version_no.desc()).first()
     tv = ToolVersion(tool_id=rid, version_no=(last.version_no if last else 0) + 1,
@@ -301,7 +309,8 @@ def _task_cls():
 
 
 @router.post("/api/data-definitions", status_code=201)
-def create_definition(payload: dict, db: Session = Depends(get_db)):
+def create_definition(payload: dict, db: Session = Depends(get_db),
+                      _user: dict = Depends(require_operator)):
     if not db.get(DataAsset, payload["assetId"]):
         raise HTTPException(404, "Data Asset 不存在")
     d = DataDefinition(name=payload["name"], data_asset_id=payload["assetId"],
@@ -326,7 +335,8 @@ def get_definition(did: str, db: Session = Depends(get_db)):
 
 
 @router.put("/api/data-definitions/{did}")
-def update_definition(did: str, payload: dict, db: Session = Depends(get_db)):
+def update_definition(did: str, payload: dict, db: Session = Depends(get_db),
+                      _user: dict = Depends(require_operator)):
     d = db.get(DataDefinition, did)
     if not d:
         raise HTTPException(404, "数据定义不存在")
@@ -339,7 +349,8 @@ def update_definition(did: str, payload: dict, db: Session = Depends(get_db)):
 
 
 @router.delete("/api/data-definitions/{did}")
-def delete_definition(did: str, db: Session = Depends(get_db)):
+def delete_definition(did: str, db: Session = Depends(get_db),
+                      _user: dict = Depends(require_admin)):
     d = db.get(DataDefinition, did)
     if not d:
         raise HTTPException(404, "数据定义不存在")
@@ -350,7 +361,8 @@ def delete_definition(did: str, db: Session = Depends(get_db)):
 
 
 @router.post("/api/data-definitions/{did}/publish")
-def publish_definition(did: str, db: Session = Depends(get_db)):
+def publish_definition(did: str, db: Session = Depends(get_db),
+                       _user: dict = Depends(require_operator)):
     """09 P0-B1：发布=冻结不可变 DataDefinitionVersion（供 TaskVersion/DataSnapshot 绑定）。"""
     from sqlalchemy import func
     from ..models import DataDefinitionVersion
@@ -391,7 +403,8 @@ def list_definition_versions(did: str, db: Session = Depends(get_db)):
 
 
 @router.post("/api/data-definitions/{did}/infer")
-def infer_definition(did: str, db: Session = Depends(get_db)):
+def infer_definition(did: str, db: Session = Depends(get_db),
+                     _user: dict = Depends(require_operator)):
     """从所属 Asset 抽样推断字段 schema（内联 rows 或 mock 样例）。"""
     d = db.get(DataDefinition, did)
     if not d:

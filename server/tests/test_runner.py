@@ -111,10 +111,21 @@ def test_workflow_exec_recursion_guard():
     d["graph"]["edges"].append({"id": "e_w", "source": d["graph"]["nodes"][0]["id"], "target": "n_we"})
     c.put(f"/api/workflows/{wf['id']}/draft", json={"definition": d, "baseRevision": d["workflow"]["draftRevision"]})
     r = c.post("/api/runs", json={"workflowId": wf["id"], "trigger": "test", "input": {}})  # via API enqueues; worker consumes
-    import time; time.sleep(2)
-    run = c.get(f"/api/runs/{r.json()['runId']}").json()
+    run = _poll_terminal(c, r.json()["runId"])
     assert run["status"] == "failed"
     assert "递归" in run["error"]["message"]
+
+
+def _poll_terminal(c, run_id: str, timeout: float = 20.0) -> dict:
+    """确定性等待终态（替代固定 sleep；全套件下 worker 负载会拉长执行）。"""
+    import time
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        run = c.get(f"/api/runs/{run_id}").json()
+        if run.get("status") in ("succeeded", "failed", "cancelled"):
+            return run
+        time.sleep(0.2)
+    raise AssertionError(f"run {run_id} 未在 {timeout}s 内到终态")
 
 
 def test_create_record_sink_persists_quality_result():
@@ -140,11 +151,17 @@ def test_create_record_sink_persists_quality_result():
                             {"id": "e2", "source": "n_cr", "target": end["id"]}]
     c.put(f"/api/workflows/{wf['id']}/draft", json={"definition": d, "baseRevision": d["workflow"]["draftRevision"]})
     r = c.post("/api/runs", json={"workflowId": wf["id"], "trigger": "test", "input": {"interactionId": "IX-1"}})
-    import time; time.sleep(2)
-    run = c.get(f"/api/runs/{r.json()['runId']}").json()
+    run = _poll_terminal(c, r.json()["runId"])
     assert run["status"] == "succeeded"
-    qrs = c.get("/api/quality-results").json()
-    row = next(q for q in qrs["items"] if q["runId"] == run["runId"])
+    # 按 run_id 精确取结果（共享测试库累积后列表首页假设不再成立）
+    from app.models import QualityResult
+    _db2 = SessionLocal()
+    try:
+        q = _db2.query(QualityResult).filter_by(run_id=run["runId"]).first()
+        assert q is not None
+        row = {"id": q.id, "runId": q.run_id, "score": q.score, "risk": q.risk}
+    finally:
+        _db2.close()
     assert row["score"] == 88 and row["risk"] == "High"
     det = c.get(f"/api/quality-results/{row['id']}").json()
     assert det["evidence"][0]["text"] == "我们一定会当天给您回电"

@@ -1,7 +1,13 @@
-"""Phase C（SDD 03）验收：事件通道/新节点执行器/记忆持久化/系统变量/节点单测。"""
+"""Phase C（SDD 03）验收：事件通道/新节点执行器/记忆持久化/系统变量/节点单测。
+
+09 P0-11 起 Code Node 默认禁用；本模块为节点执行器测试，显式开启
+（生产恒禁，见 test_p0_security::test_code_node_disabled_by_default）。"""
 import json
+import os
 import time
 import uuid
+
+os.environ.setdefault("WF_CODE_NODE", "on")
 
 from fastapi.testclient import TestClient
 

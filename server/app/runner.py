@@ -224,6 +224,10 @@ def _call_model(db: Session, model_id: str, prompt: str) -> tuple[str, dict]:
                         secret = _decrypt(conn.secret_ref)
                 break
     if not base or not base.startswith(("http://", "https://")):
+        from .config import is_production
+        if is_production():
+            # 09 §12 / M-02：生产缺真实 Provider 必须失败，不得假成功
+            raise RunError("MODEL_UNAVAILABLE：生产环境未配置真实模型 Provider（禁止 mock）")
         return f"[mock:{model_id}] 已处理：{prompt[:120]}", {
             "promptTokens": len(prompt) // 2, "completionTokens": 60}
     with httpx.Client(timeout=60) as client:
@@ -240,15 +244,20 @@ def _call_model(db: Session, model_id: str, prompt: str) -> tuple[str, dict]:
 
 
 def _decrypt(ref: str) -> str:
+    """09 P0-11：密钥解密。有 WF_SECRET_KEY 走 Fernet；
+    无密钥但密文形如 Fernet token → 失败关闭（不得回落明文）；
+    仅开发环境的历史明文原样返回。"""
     import os
-    try:
-        from cryptography.fernet import Fernet
-        key = os.environ.get("WF_SECRET_KEY")
-        if key:
+    key = os.environ.get("WF_SECRET_KEY")
+    if key:
+        try:
+            from cryptography.fernet import Fernet
             return Fernet(key.encode()).decrypt(ref.encode()).decode()
-    except Exception:  # noqa: BLE001
-        pass
-    return ref  # dev：明文
+        except Exception:  # noqa: BLE001
+            return ref  # 有密钥但非 Fernet：开发遗留明文
+    if ref.startswith("gAAAAA"):  # Fernet token 特征前缀
+        raise RuntimeError("WF_SECRET_KEY 缺失：无法解密 Secret（生产禁止明文模式）")
+    return ref  # dev：历史明文
 
 
 # ---------- schedule（P2） ----------
@@ -439,9 +448,13 @@ def exec_tool(node, ctx) -> dict:
     else:
         req = spec["request"]
         url = render_refs(req.get("url", ""), ctx.outputs, ctx.run_input)
-        if not url.startswith(("http://", "https://")) or re.search(r"//(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.|localhost)", url):
-            raise RunError("SSRF blocked")
-        with httpx.Client(timeout=10) as client:
+        # 09 P0-11：统一 Egress Policy（DNS/IPv6/元数据/私网全拦；禁自动重定向）
+        from .egress import EgressError, assert_safe_url
+        try:
+            assert_safe_url(url)
+        except EgressError as exc:
+            raise RunError(str(exc)) from exc
+        with httpx.Client(timeout=10, follow_redirects=False) as client:
             r = client.request(req.get("method", "GET"), url, json=inputs if req.get("method", "GET") != "GET" else None)
         out = {"status": r.status_code, "body": r.text[:2000]}
     ctx.call("tool", tv.tool_id, {"toolVersionId": tv_id, "inputs": inputs}, out, int((time.time() - t0) * 1000), {})
@@ -655,7 +668,10 @@ def _route_workflow(db: Session, flows: list, query: str, model: str = "qwen-plu
     except Exception:  # noqa: BLE001
         base = ""
     if not base or not base.startswith(("http://", "https://")):
-        return flows[0]  # mock：取首个候选
+        from .config import is_production
+        if is_production():
+            raise RunError("MODEL_UNAVAILABLE：生产环境工作流路由不可用（禁止 mock 首项）")
+        return flows[0]  # 非生产确定性回落：取首个候选
     listing = "\n".join(f"{i + 1}. {w.name}：{(w.description or '').strip()[:100]}" for i, w in enumerate(flows))
     try:
         answer, _t = _call_model(db, model,
@@ -715,7 +731,13 @@ def exec_workflow_fixed(node, ctx) -> dict:
 
 
 def exec_code_write(node, ctx) -> dict:
-    """代码编写：子进程沙箱执行 Python（超时 10s；args.params 传入；调研 11 §3.18）。"""
+    """代码编写：子进程沙箱执行 Python（超时 10s；args.params 传入；调研 11 §3.18）。
+
+    09 P0-11：Code Node 默认禁用（含生产）——真沙箱落地前仅显式
+    WF_CODE_NODE=on 可开启（开发/评测用途，验收报告登记）。"""
+    from .config import code_node_enabled
+    if not code_node_enabled():
+        raise RunError("CODE_NODE_DISABLED：Code Node 默认禁用（09-SDD P0-11）")
     import subprocess
     import tempfile
     cfg = node.get("config") or {}
@@ -790,7 +812,10 @@ def exec_decision_class(node, ctx) -> dict:
         except Exception:  # noqa: BLE001
             chosen_idx = None
     else:
-        chosen_idx = 0  # mock：第一类
+        from .config import is_production
+        if is_production():
+            raise RunError("MODEL_UNAVAILABLE：生产环境决策分类不可用（禁止固定第一类）")
+        chosen_idx = 0  # 非生产确定性回落：第一类
     if chosen_idx is None:
         return {"selected": "else", "classificationTitle": "其他", "classificationId": "other"}
     b = branches[chosen_idx]

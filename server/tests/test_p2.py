@@ -111,14 +111,21 @@ def test_models_registry_roundtrip():
 
 
 def test_auth_middleware_optional():
+    """09 P0-10：鉴权改为身份登录（静态 WF_API_TOKEN 契约已废止）。
+    WF_AUTH=on → 未登录 401、登录后 200；关闭后匿名可用。"""
     import os
     from fastapi.testclient import TestClient as TC
     from app.main import app
-    os.environ["WF_API_TOKEN"] = "sekret"
+    os.environ["WF_AUTH"] = "on"
+    os.environ["WF_SECRET_KEY"] = "p2-auth-key"
     c = TC(app)
     try:
         assert c.get("/api/workflows").status_code == 401
-        assert c.get("/api/workflows", headers={"Authorization": "Bearer sekret"}).status_code == 200
+        tok = c.post("/api/auth/login",
+                     json={"username": "admin", "password": "admin"}).json()["token"]
+        assert c.get("/api/workflows",
+                     headers={"Authorization": f"Bearer {tok}"}).status_code == 200
     finally:
-        del os.environ["WF_API_TOKEN"]
+        del os.environ["WF_AUTH"]
+        del os.environ["WF_SECRET_KEY"]
     assert c.get("/api/workflows").status_code == 200

@@ -67,6 +67,10 @@ def _chat_completion(db: Session, model_key: str, messages: list[dict], tools: l
     on_delta 提供时走流式（SDD B-08），逐块回调文本增量；mock 模式整段一次回调。"""
     base, secret = _resolve_base_secret(db, model_key)
     if not base or not base.startswith(("http://", "https://")):
+        from .config import is_production
+        if is_production():
+            # 09 §12 / M-03：生产缺模型必须失败，禁止 mock 对话/工具调用
+            raise RunError("MODEL_UNAVAILABLE：生产环境未配置真实模型 Provider（禁止 mock）")
         last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
         has_tool_result = any(m["role"] == "tool" for m in messages)
         if tools and not has_tool_result:
@@ -431,7 +435,10 @@ def _route(db: Session, candidates: list, query: str):
         return None, "none"
     base, _secret = _resolve_base_secret(db, "qwen-plus")
     if not base or not base.startswith(("http://", "https://")):
-        return candidates[0], "mock"  # mock：保持旧行为，标记可观测
+        from .config import is_production
+        if is_production():
+            raise RunError("MODEL_UNAVAILABLE：生产环境 Agent 路由不可用（禁止 mock 首项）")
+        return candidates[0], "mock"  # 非生产确定性回落，标记可观测
     listing = "\n".join(f"{i + 1}. {a.name}：{(a.description or '').strip()[:120]}"
                         for i, a in enumerate(candidates))
     messages = [

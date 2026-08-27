@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..auth import require_operator, require_reviewer
 from ..db import get_db
 from ..models import (AnalysisTask, AnalysisTaskVersion, DataAsset,
                       DataDefinitionVersion, QualityResult, ResultRuleSet,
@@ -146,7 +147,8 @@ def list_rule_versions(rid: str, db: Session = Depends(get_db)):
 
 
 @router.post("/api/result-rules/{rid}/publish")
-def publish_rules(rid: str, db: Session = Depends(get_db)):
+def publish_rules(rid: str, db: Session = Depends(get_db),
+                  user: dict = Depends(require_operator)):
     """09-P0-07：发布=冻结不可变 ResultRuleVersion。
     禁止全库重算（原 recalc_all 已废止）；存量结果保留各自冻结版本。"""
     from sqlalchemy import func
@@ -156,16 +158,17 @@ def publish_rules(rid: str, db: Session = Depends(get_db)):
     max_no = db.query(func.max(ResultRuleVersion.version_no))\
         .filter_by(rule_set_id=rid).scalar() or 0
     version_no = max_no + 1
+    actor = user.get("username", "system")
     rv = ResultRuleVersion(rule_set_id=rid, version_no=version_no,
                            rules=copy.deepcopy(r.rules or {}),
                            evaluation_priority=r.evaluation_priority,
-                           created_by="质量管理员")
+                           created_by=actor)
     db.add(rv)
     r.status = "published"
     r.version = version_no
     db.flush()
     from .admin import audit
-    audit(db, "质量管理员", "rules.publish", "result_rule_set", rid,
+    audit(db, actor, "rules.publish", "result_rule_set", rid,
           {"ruleVersionId": rv.id, "version": version_no})
     db.commit()
     return {"id": r.id, "version": version_no, "ruleVersionId": rv.id}
@@ -183,7 +186,8 @@ def _qr_by_any(db, rid: str):
 
 
 @router.post("/api/quality-results/{rid}/review")
-def review_result(rid: str, payload: dict, db: Session = Depends(get_db)):
+def review_result(rid: str, payload: dict, db: Session = Depends(get_db),
+                  user: dict = Depends(require_reviewer)):
     """09 §9.7/INV-08：复核只追加 ReviewRevision；ai_result 不可变。
     顶层 score/risk 为生效值（人工修订后更新），AI 原始值恒在 ai_result。"""
     qr = _qr_by_any(db, rid)
@@ -193,7 +197,7 @@ def review_result(rid: str, payload: dict, db: Session = Depends(get_db)):
     if action not in ("approve", "revise", "effective", "reopen"):
         raise HTTPException(422, "未知复核动作")
     note = payload.get("note", "")
-    reviewer = payload.get("reviewer", "reviewer")
+    reviewer = payload.get("reviewer") or user.get("username", "reviewer")
     before = {"status": qr.review_status, "score": qr.score, "risk": qr.risk}
     if action == "approve":
         qr.review_status = "REVIEWED"
@@ -418,7 +422,8 @@ def list_tasks(db: Session = Depends(get_db)):
 
 
 @router.post("/api/tasks", status_code=201)
-def create_task(payload: dict, db: Session = Depends(get_db)):
+def create_task(payload: dict, db: Session = Depends(get_db),
+                user: dict = Depends(require_operator)):
     """09 §10.1：创建即生成 TaskVersion v1；返回已解析快照（确认页必须用它渲染）。"""
     name = str(payload.get("name") or "").strip()
     if not name:
@@ -453,7 +458,8 @@ def create_task(payload: dict, db: Session = Depends(get_db)):
                      scope=_denorm_scope(scope),
                      sampling=_denorm_sampling(sampling),
                      data_window=_denorm_window(window),
-                     status=status, created_by="质量管理员", updated_by="质量管理员")
+                     status=status, created_by=user.get("username", "system"),
+                     updated_by=user.get("username", "system"))
     db.add(t)
     db.flush()
     v = AnalysisTaskVersion(task_id=t.id, version_no=1, workflow_id=workflow_id,
@@ -465,7 +471,7 @@ def create_task(payload: dict, db: Session = Depends(get_db)):
                             input_mapping=mapping, scope=scope, sampling=sampling,
                             data_window=window,
                             output_schema_version_id=osrow.id,
-                            created_by="质量管理员")
+                            created_by=user.get("username", "system"))
     db.add(v)
     db.flush()
     t.current_version_id = v.id
@@ -502,7 +508,8 @@ def _start_or_409(db: Session, tid: str, trigger: str,
 @router.post("/api/tasks/{tid}/runs", status_code=202)
 def start_task_run_api(tid: str, payload: dict | None = None,
                        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-                       db: Session = Depends(get_db)):
+                       db: Session = Depends(get_db),
+                       user: dict = Depends(require_operator)):
     """09 §10.2：启动批次。202 + 异步执行；Idempotency-Key 重复返回原 TaskRun。"""
     tr, resolved = _start_or_409(db, tid, "manual",
                                  idempotency_key=idempotency_key or (payload or {}).get("idempotencyKey"))
@@ -515,7 +522,8 @@ def start_task_run_api(tid: str, payload: dict | None = None,
 
 
 @router.post("/api/tasks/{tid}/batch-run", status_code=202)
-def batch_run(tid: str, payload: dict | None = None, db: Session = Depends(get_db)):
+def batch_run(tid: str, payload: dict | None = None, db: Session = Depends(get_db),
+              user: dict = Depends(require_operator)):
     """过渡入口（09-P0 前契约）：内部改走 TaskRun 新链路；B4 前端切到 /runs。"""
     tr, resolved = _start_or_409(db, tid, "manual",
                                  idempotency_key=(payload or {}).get("idempotencyKey"))
@@ -609,7 +617,8 @@ def list_task_versions(tid: str, db: Session = Depends(get_db)):
 
 
 @router.put("/api/tasks/{tid}")
-def update_task(tid: str, payload: dict, db: Session = Depends(get_db)):
+def update_task(tid: str, payload: dict, db: Session = Depends(get_db),
+                user: dict = Depends(require_operator)):
     """09 §9.2：编辑=生成新的不可变 TaskVersion（历史版本不受影响）。"""
     t = db.get(AnalysisTask, tid)
     if not t:
@@ -670,7 +679,8 @@ def update_task(tid: str, payload: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/api/tasks/{tid}/status")
-def set_task_status(tid: str, payload: dict, db: Session = Depends(get_db)):
+def set_task_status(tid: str, payload: dict, db: Session = Depends(get_db),
+                    user: dict = Depends(require_operator)):
     """09 §11.1：draft->active<->paused->archived。兼容旧大小写取值。"""
     t = db.get(AnalysisTask, tid)
     if not t:
