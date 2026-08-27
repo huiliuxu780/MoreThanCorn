@@ -1031,8 +1031,11 @@ class Ctx:
 
     def call(self, kind, target, req, resp, latency, tokens):
         from .models import CallRecord
+        from .pii import mask_structure
+        # 09 P2-07：CallRecord 的 request/response 按数据分类脱敏后再截断落库
         self.db.add(CallRecord(node_run_id=self.current_node_run_id, kind=kind, target_id=str(target),
-                               request={"summary": str(req)[:1000]}, response={"summary": str(resp)[:1000]},
+                               request={"summary": str(mask_structure(req))[:1000]},
+                               response={"summary": str(mask_structure(resp))[:1000]},
                                status="success", latency_ms=latency, token_usage=tokens or {}))
         self.db.commit()
 
