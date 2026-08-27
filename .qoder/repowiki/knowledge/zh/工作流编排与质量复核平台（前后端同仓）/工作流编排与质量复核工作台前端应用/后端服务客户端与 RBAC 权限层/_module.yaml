@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: frontend_app/services_and_mocks
-title: 后端服务客户端与 RBAC 权限层
-scope:
-    - src/services/
-    - src/mocks/
-source_files: []
-depends_on: []
-related_to: []

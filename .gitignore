@@ -10,3 +10,6 @@ dist-ssr
 .venv/
 __pycache__/
 *.pyc
+
+# 自动生成的 harness/repowiki 知识库（非源码，不入库）
+.qoder/
