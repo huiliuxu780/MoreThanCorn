@@ -1086,8 +1086,8 @@ P1/P2 还需增加：
 
 | 阶段 | 当前判断 | 关键原因 |
 | --- | --- | --- |
-| P0 | **自验通过（待用户验收）** | P0-01~14 全实现；164 pytest + lint 0/0 + 核心 E2E 38 断言 3 连绿；证据见 `acceptance/09-p0-acceptance.md` |
-| P1 | **代码自验通过（待真实 Staging）** | P1-01~12 全实现+门禁全绿+故障演练；§14.1 需真实环境项（7 天 Staging/真 Provider Smoke/业务签字）如实标注待补；见 `acceptance/09-p1-acceptance.md` |
+| P0 | **修复轮自验通过（重新申请用户验收）** | P0-01~14 + 独立审计 6 类反例修复（`7bc3014`）；206 pytest + lint 0/0 + 核心 E2E 38 断言 + 故障演练 + 负向安全 8 项；见 `acceptance/09-p0-acceptance.md` |
+| P1 | **代码在位，P0 修复轮后待重新验收** | P1-01~12 代码在位（P0 修复轮后测试仍全绿）；§14.1 需真实环境项（7 天 Staging/真 Provider Smoke/业务签字）待补；见 `acceptance/09-p1-acceptance.md` |
 | P2 | 未开始验收 | 缺 SSO/权限、HA/DR、合规、容量和正式交付体系；P2 前须用户冻结 10 项 SLO（§15.1） |
 | P3 | 局部原型 | Eval/Evolution/MCP/Knowledge 等有页面或基础实现，但不具备统一生产验收 |
 
