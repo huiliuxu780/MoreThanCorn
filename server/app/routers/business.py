@@ -96,7 +96,8 @@ def list_rules(db: Session = Depends(get_db)):
 
 
 @router.post("/api/result-rules", status_code=201)
-def create_rules(payload: dict, db: Session = Depends(get_db)):
+def create_rules(payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     r = ResultRuleSet(name=payload["name"], description=payload.get("description", ""),
                       agent_id=payload.get("agentId", ""), rules=payload.get("rules", {}))
     db.add(r)
@@ -119,7 +120,8 @@ def get_rules(rid: str, db: Session = Depends(get_db)):
 
 
 @router.put("/api/result-rules/{rid}")
-def update_rules(rid: str, payload: dict, db: Session = Depends(get_db)):
+def update_rules(rid: str, payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """草稿编辑：只改草稿内容；已发布版本不受影响（下次发布生成新版本）。"""
     r = db.get(ResultRuleSet, rid)
     if not r:
@@ -317,7 +319,8 @@ def assign_review(rid: str, payload: dict, db: Session = Depends(get_db),
 
 
 @router.post("/api/quality-results/{rid}/evidence", status_code=201)
-def add_manual_evidence(rid: str, payload: dict, db: Session = Depends(get_db)):
+def add_manual_evidence(rid: str, payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """R2：人工添加证据（此前前端只 toast 占位）。"""
     from ..models import Evidence
     qr = _qr_by_any(db, rid)
@@ -348,7 +351,8 @@ def list_assets(db: Session = Depends(get_db)):
 
 
 @router.post("/api/data-assets", status_code=201)
-def create_asset(payload: dict, db: Session = Depends(get_db)):
+def create_asset(payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     from ..models import Datasource
     ds_id = payload.get("datasourceId")
     if ds_id and not db.get(Datasource, ds_id):
@@ -373,7 +377,8 @@ def get_asset(aid: str, db: Session = Depends(get_db)):
 
 
 @router.post("/api/data-assets/{aid}/rows")
-def append_rows(aid: str, payload: dict, db: Session = Depends(get_db)):
+def append_rows(aid: str, payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     a = db.get(DataAsset, aid)
     if not a:
         raise HTTPException(404, "数据资产不存在")
@@ -455,6 +460,7 @@ def _task_version_dto(db: Session, v: AnalysisTaskVersion) -> dict:
             "dataAssetId": v.data_asset_id,
             "dataDefinitionVersionId": v.data_definition_version_id,
             "resultRuleVersionId": v.result_rule_version_id,
+            "rulePolicy": v.rule_policy,
             "inputMapping": v.input_mapping or {},
             "scope": v.scope or {},
             "sampling": v.sampling or {},
@@ -467,24 +473,58 @@ def _task_version_dto(db: Session, v: AnalysisTaskVersion) -> dict:
 
 def _validate_task_config(db: Session, workflow_id: str, policy: str,
                           pinned: str | None, asset_id: str | None,
-                          rule_version_id: str | None, definition_version_id: str | None):
+                          rule_version_id: str | None, definition_version_id: str | None,
+                          rule_policy: str = "pinned"):
+    """09 P0 修复轮（审计反例 3/6）：任务创建强制校验。
+
+    - dataDefinitionVersionId 必填（P0-08：追踪字段全部非空）。
+    - 规则绑定：pinned 必须给 resultRuleVersionId；follow_latest 必须显式声明，
+      且批次启动时解析（无已发布版本则启动失败）。
+    - 工作流必须包含 create-record 节点（能产出合规质检结果），
+      否则业务"成功"却 0 QualityResult（审计反例 3）。
+    """
     if not workflow_id:
         raise HTTPException(422, "workflowId 必填")
     wf = db.get(Workflow, workflow_id)
     if not wf:
         raise HTTPException(404, "工作流不存在")
+    # 解析将执行的工作流版本（pinned=钉住版本；latest=当前发布版本），校验其产出质检结果
     if policy == "pinned":
         if not pinned:
             raise HTTPException(422, "pinned 策略必须提供 pinnedWorkflowVersionId")
         wv = db.get(WorkflowVersion, pinned)
         if not wv or wv.workflow_id != workflow_id:
             raise HTTPException(422, "pinnedWorkflowVersionId 不存在或不属于该工作流")
+    else:
+        if not wf.current_version_id:
+            raise HTTPException(422, "工作流没有已发布版本（latest_published 策略需要先发布）")
+        wv = db.get(WorkflowVersion, wf.current_version_id)
+        if not wv:
+            raise HTTPException(422, "工作流发布版本不存在")
+    defn = (wv.definition or {}) if wv else {}
+    nodes = ((defn.get("graph") or {}).get("nodes")) or []
+    if not any(n.get("type") == "create-record" for n in nodes if isinstance(n, dict)):
+        raise HTTPException(422, "工作流必须包含「落质检结果（create-record）」节点才能绑定质检任务："
+                                "当前工作流不产出质检结果，执行将无法生成 QualityResult")
     if not asset_id or not db.get(DataAsset, asset_id):
         raise HTTPException(422, "dataAssetId 必填且必须存在")
-    if rule_version_id and not db.get(ResultRuleVersion, rule_version_id):
-        raise HTTPException(422, "resultRuleVersionId 不存在")
-    if definition_version_id and not db.get(DataDefinitionVersion, definition_version_id):
+    # 09 P0-08：定义版本必填（追踪字段非空）
+    if not definition_version_id:
+        raise HTTPException(422, "dataDefinitionVersionId 必填（P0-08 追踪字段非空）")
+    if not db.get(DataDefinitionVersion, definition_version_id):
         raise HTTPException(422, "dataDefinitionVersionId 不存在")
+    # 规则绑定：pinned 需显式版本；follow_latest 需显式声明
+    if rule_policy not in ("pinned", "follow_latest"):
+        raise HTTPException(422, "rulePolicy 必须是 pinned|follow_latest")
+    if rule_policy == "pinned":
+        if not rule_version_id:
+            raise HTTPException(422, "pinned 规则策略必须提供 resultRuleVersionId"
+                                    "（或显式 rulePolicy=follow_latest）")
+        if not db.get(ResultRuleVersion, rule_version_id):
+            raise HTTPException(422, "resultRuleVersionId 不存在")
+    else:
+        if rule_version_id:
+            raise HTTPException(422, "follow_latest 策略不应同时提供 resultRuleVersionId")
     return wf
 
 
@@ -497,8 +537,6 @@ def list_tasks(db: Session = Depends(get_db)):
         items.append({"id": t.id, "name": t.name, "description": t.description,
                       "workflowId": t.workflow_id,
                       "workflowVersionPolicy": (v.workflow_version_policy if v else t.version_policy),
-                      # 兼容别名：P0-B4 前端切换后移除（09 P0-02）
-                      "agentId": t.workflow_id, "agentVersionPolicy": t.version_policy,
                       "dataAssetId": t.data_asset_id,
                       "dataDefinitionId": t.data_definition_id,
                       "scope": v.scope if v else t.scope,
@@ -524,9 +562,11 @@ def create_task(payload: dict, db: Session = Depends(get_db),
     if policy not in ("pinned", "latest_published"):
         raise HTTPException(422, "workflowVersionPolicy 必须是 pinned|latest_published")
     pinned = payload.get("pinnedWorkflowVersionId")
+    rule_policy = payload.get("rulePolicy") or ("pinned" if payload.get("resultRuleVersionId") else "pinned")
     wf = _validate_task_config(db, workflow_id, policy, pinned, payload.get("dataAssetId"),
                                payload.get("resultRuleVersionId"),
-                               payload.get("dataDefinitionVersionId"))
+                               payload.get("dataDefinitionVersionId"),
+                               rule_policy=rule_policy)
     osrow = latest_quality_schema(db)
     if not osrow:
         raise HTTPException(500, "quality_evaluation 输出 Schema 未配置")
@@ -538,8 +578,6 @@ def create_task(payload: dict, db: Session = Depends(get_db),
         raise HTTPException(422, "inputMapping 必须是对象")
     # §11.1：配置校验通过且版本就绪才可 active
     status = "active"
-    if policy == "latest_published" and not wf.current_version_id:
-        status = "draft"
     t = AnalysisTask(name=name, description=payload.get("description", ""),
                      workflow_id=workflow_id, version_policy=policy,
                      data_asset_id=payload["dataAssetId"],
@@ -557,6 +595,7 @@ def create_task(payload: dict, db: Session = Depends(get_db),
                             data_asset_id=payload["dataAssetId"],
                             data_definition_version_id=payload.get("dataDefinitionVersionId"),
                             result_rule_version_id=payload.get("resultRuleVersionId"),
+                            rule_policy=rule_policy,
                             input_mapping=mapping, scope=scope, sampling=sampling,
                             data_window=window,
                             output_schema_version_id=osrow.id,
@@ -761,8 +800,6 @@ def get_task(tid: str, db: Session = Depends(get_db)):
     return {"id": t.id, "name": t.name, "description": t.description,
             "workflowId": t.workflow_id,
             "workflowVersionPolicy": (v.workflow_version_policy if v else t.version_policy),
-            # 兼容别名：P0-B4 前端切换后移除（09 P0-02）
-            "agentId": t.workflow_id, "agentVersionPolicy": t.version_policy,
             "dataAssetId": t.data_asset_id, "dataDefinitionId": t.data_definition_id,
             "scope": v.scope if v else t.scope,
             "sampling": v.sampling if v else t.sampling,
@@ -809,7 +846,10 @@ def update_task(tid: str, payload: dict, db: Session = Depends(get_db),
                        if "resultRuleVersionId" in payload else _cur("result_rule_version_id"))
     def_version_id = (payload.get("dataDefinitionVersionId")
                       if "dataDefinitionVersionId" in payload else _cur("data_definition_version_id"))
-    _validate_task_config(db, workflow_id, policy, pinned, asset_id, rule_version_id, def_version_id)
+    rule_policy = (payload.get("rulePolicy")
+                   if "rulePolicy" in payload else _cur("rule_policy", "pinned"))
+    _validate_task_config(db, workflow_id, policy, pinned, asset_id, rule_version_id,
+                          def_version_id, rule_policy=rule_policy)
     scope = _norm_scope(payload.get("scope")) if payload.get("scope") is not None else (_cur("scope") or {"op": "and", "conditions": []})
     sampling = _norm_sampling(payload.get("sampling")) if payload.get("sampling") is not None else (_cur("sampling") or {"mode": "all"})
     window = _norm_window(payload.get("dataWindow")) if payload.get("dataWindow") is not None else (_cur("data_window") or {"mode": "all"})
@@ -825,10 +865,11 @@ def update_task(tid: str, payload: dict, db: Session = Depends(get_db),
                             data_asset_id=asset_id,
                             data_definition_version_id=def_version_id,
                             result_rule_version_id=rule_version_id,
+                            rule_policy=rule_policy,
                             input_mapping=mapping, scope=scope, sampling=sampling,
                             data_window=window,
                             output_schema_version_id=_cur("output_schema_version_id") or (latest_quality_schema(db).id if latest_quality_schema(db) else None),
-                            note=payload.get("note", ""), created_by="质量管理员")
+                            note=payload.get("note", ""), created_by=user.get("username", "system"))
     db.add(v)
     db.flush()
     t.current_version_id = v.id
@@ -838,7 +879,7 @@ def update_task(tid: str, payload: dict, db: Session = Depends(get_db),
     t.scope = _denorm_scope(scope)
     t.sampling = _denorm_sampling(sampling)
     t.data_window = _denorm_window(window)
-    t.updated_by = "质量管理员"
+    t.updated_by = user.get("username", "system")
     db.commit()
     return {"id": t.id, "name": t.name, "status": t.status,
             "taskVersion": _task_version_dto(db, v)}
@@ -864,7 +905,8 @@ def set_task_status(tid: str, payload: dict, db: Session = Depends(get_db),
 
 
 @router.post("/api/tasks/{tid}/schedule")
-def task_schedule(tid: str, payload: dict, db: Session = Depends(get_db)):
+def task_schedule(tid: str, payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     from ..runner import compute_next
     t = db.get(AnalysisTask, tid)
     if not t:

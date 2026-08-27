@@ -230,6 +230,12 @@ def _call_model(db: Session, model_id: str, prompt: str) -> tuple[str, dict]:
             raise RunError("MODEL_UNAVAILABLE：生产环境未配置真实模型 Provider（禁止 mock）")
         return f"[mock:{model_id}] 已处理：{prompt[:120]}", {
             "promptTokens": len(prompt) // 2, "completionTokens": 60}
+    # 09 P0（审计反例 4）：模型调用出站统一过 Egress（生产拦截私网/元数据）
+    from .egress import EgressError, enforce_egress
+    try:
+        enforce_egress(base)
+    except EgressError as exc:
+        raise RunError(str(exc))
     with httpx.Client(timeout=60) as client:
         r = client.post(f"{base.rstrip('/')}/chat/completions",
                         headers={"Authorization": f"Bearer {secret}"} if secret else {},
@@ -244,20 +250,23 @@ def _call_model(db: Session, model_id: str, prompt: str) -> tuple[str, dict]:
 
 
 def _decrypt(ref: str) -> str:
-    """09 P0-11：密钥解密。有 WF_SECRET_KEY 走 Fernet；
-    无密钥但密文形如 Fernet token → 失败关闭（不得回落明文）；
-    仅开发环境的历史明文原样返回。"""
+    """09 P0-11：密钥解密（失败关闭，任何环境）。
+
+    - 形如 Fernet 密文：必须有合法 WF_SECRET_KEY 成功解密，否则抛错
+      （绝不回落明文/密文；无密钥或密钥非法都失败）。
+    - 非密文（历史明文）：生产理论上不应存在（_encrypt 恒加密）；原样返回仅为兼容遗留。
+    """
     import os
     key = os.environ.get("WF_SECRET_KEY")
-    if key:
+    if isinstance(ref, str) and ref.startswith("gAAAAA"):  # Fernet 密文特征前缀
+        if not key:
+            raise RuntimeError("WF_SECRET_KEY 缺失：无法解密 Secret（禁止明文模式）")
+        from cryptography.fernet import Fernet
         try:
-            from cryptography.fernet import Fernet
             return Fernet(key.encode()).decrypt(ref.encode()).decode()
-        except Exception:  # noqa: BLE001
-            return ref  # 有密钥但非 Fernet：开发遗留明文
-    if ref.startswith("gAAAAA"):  # Fernet token 特征前缀
-        raise RuntimeError("WF_SECRET_KEY 缺失：无法解密 Secret（生产禁止明文模式）")
-    return ref  # dev：历史明文
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(f"Secret 解密失败（密钥非法或密文损坏）：{exc}")
+    return ref  # 非密文：历史明文（生产由 _encrypt 恒加密保证不会出现）
 
 
 # ---------- schedule（P2） ----------
@@ -472,6 +481,11 @@ def exec_create_record(node, ctx) -> dict:
     # 09 P0-06/INV-06：任务主链的输出必须通过 QualityEvaluation Schema 本地校验；
     # 非法输出 → Run 失败，不得创建正式 QualityResult（repair 走节点重试策略）。
     if getattr(ctx.run, "task_run_id", None):
+        # 09 P0-08（修复轮）：任务主链结果追踪字段必须非空（失败关闭，纵深防御）
+        if not getattr(ctx.run, "rule_version_id", None):
+            raise RunError("MISSING_RULE_VERSION：任务主链 Run 缺少冻结规则版本")
+        if not getattr(ctx.run, "definition_version_id", None):
+            raise RunError("MISSING_DEFINITION_VERSION：任务主链 Run 缺少数据定义版本")
         from .output_schema import validate_evaluation
         from .models import QualityOutputSchema
         os_id = ctx.run_input.get("__outputSchemaVersionId")

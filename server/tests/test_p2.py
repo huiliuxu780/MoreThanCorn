@@ -79,8 +79,10 @@ def test_connection_referenced_delete_unbinds_then_deletes():
 
 
 def test_connection_free_delete_ok():
+    """09 P0：无可用 endpoint 的连接测试失败关闭；删除不受影响。"""
     c = client.post("/api/connections", json={"name": "free", "secret": "x"}).json()
-    assert client.post(f"/api/connections/{c['id']}/test").json()["ok"] is True
+    t = client.post(f"/api/connections/{c['id']}/test").json()
+    assert t["ok"] is False, "缺 endpoint 的连接测试应失败关闭"
     assert client.delete(f"/api/connections/{c['id']}").status_code == 200
 
 

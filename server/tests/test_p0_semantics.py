@@ -19,6 +19,8 @@ from app.main import app
 from app.models import (AnalysisTask, AnalysisTaskVersion, QualityResult, Run,
                         TaskRun)
 from app.runner import start_worker
+from tests._quality_setup import (make_definition_version, make_quality_workflow,
+                                  make_rule_version)
 
 client = TestClient(app)
 _worker = start_worker()  # 消费 job_queue，使 Run 能到终态
@@ -82,8 +84,9 @@ def _asset(name="p0-asset", rows=None) -> str:
 # ---------- P0-02 / P0-04：Task 创建返回已解析 TaskVersion（09 §10.1） ----------
 
 def test_task_create_returns_resolved_task_version():
-    wid, wvid = _published_wf()
+    wid, wvid = make_quality_workflow(client)
     asset_id = _asset("tv-create")
+    defv = make_definition_version(client, asset_id)
     rules = client.post("/api/result-rules", json={"name": "tv-rules", "rules": {}}).json()
     rpv = client.post(f"/api/result-rules/{rules['id']}/publish").json()["ruleVersionId"]
     body = {
@@ -92,6 +95,7 @@ def test_task_create_returns_resolved_task_version():
         "workflowVersionPolicy": "pinned",
         "pinnedWorkflowVersionId": wvid,
         "dataAssetId": asset_id,
+        "dataDefinitionVersionId": defv,
         "resultRuleVersionId": rpv,
         "inputMapping": {"interactionId": "id", "text": "content"},
         "scope": {"op": "and", "conditions": []},
@@ -144,10 +148,16 @@ def test_task_create_validation_rejects_bad_refs():
 
 def test_task_create_accepts_legacy_flat_fields_with_visible_snapshot():
     """旧前端扁平契约的确定性转换（不得静默丢弃；返回快照可审计，09 §5.2）。"""
-    wid, _ = _published_wf("p0-wf-legacy")
+    wid, wvid = make_quality_workflow(client, "p0-wf-legacy")
     asset_id = _asset("tv-legacy")
+    defv = make_definition_version(client, asset_id)
+    rpv = make_rule_version(client)
     r = client.post("/api/tasks", json={"name": "legacy", "workflowId": wid,
+                                        "workflowVersionPolicy": "pinned",
+                                        "pinnedWorkflowVersionId": wvid,
                                         "dataAssetId": asset_id,
+                                        "dataDefinitionVersionId": defv,
+                                        "resultRuleVersionId": rpv,
                                         "sampling": "first_5", "dataWindow": "last_7d",
                                         "scope": "all"})
     assert r.status_code == 201, r.text
@@ -158,24 +168,36 @@ def test_task_create_accepts_legacy_flat_fields_with_visible_snapshot():
 
 
 def test_task_list_exposes_workflow_naming():
-    wid, _ = _published_wf("p0-wf-list")
+    wid, wvid = make_quality_workflow(client, "p0-wf-list")
     asset_id = _asset("tv-list")
+    defv = make_definition_version(client, asset_id)
+    rpv = make_rule_version(client)
     t = client.post("/api/tasks", json={"name": "列表任务", "workflowId": wid,
-                                        "dataAssetId": asset_id}).json()
+                                        "workflowVersionPolicy": "pinned",
+                                        "pinnedWorkflowVersionId": wvid,
+                                        "dataAssetId": asset_id,
+                                        "dataDefinitionVersionId": defv,
+                                        "resultRuleVersionId": rpv}).json()
     items = client.get("/api/tasks").json()["items"]
     mine = next(x for x in items if x["id"] == t["id"])
     assert mine["workflowId"] == wid
     assert "workflowVersionPolicy" in mine
+    # 09 P0-02：公开契约不得再以 agentId 承载 workflowId
+    assert "agentId" not in mine
 
 
 # ---------- P0-04：TaskVersion 不可变历史 ----------
 
 def test_task_update_creates_new_immutable_version():
-    wid, _ = _published_wf("p0-wf-ver")
+    wid, _wvid = make_quality_workflow(client, "p0-wf-ver")
     asset_id = _asset("tv-ver")
+    defv = make_definition_version(client, asset_id)
+    rpv = make_rule_version(client)
     t = client.post("/api/tasks", json={"name": "版本任务", "workflowId": wid,
                                         "workflowVersionPolicy": "latest_published",
-                                        "dataAssetId": asset_id}).json()
+                                        "dataAssetId": asset_id,
+                                        "dataDefinitionVersionId": defv,
+                                        "resultRuleVersionId": rpv}).json()
     u = client.put(f"/api/tasks/{t['id']}",
                    json={"sampling": {"mode": "count", "count": 5}}).json()
     assert u["taskVersion"]["versionNo"] == 2

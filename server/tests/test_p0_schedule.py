@@ -15,6 +15,7 @@ from app.db import SessionLocal
 from app.main import app
 from app.models import Schedule, TaskRun
 from app.runner import schedule_tick, start_worker
+from tests._quality_setup import make_definition_version, make_rule_version
 
 client = TestClient(app)
 _worker = start_worker()
@@ -37,11 +38,16 @@ def _mk_active_task(wf_name="sch-wf") -> str:
                             {"id": "e2", "source": "n_cr", "target": e["id"]}]
     client.put(f"/api/workflows/{wf['id']}/draft",
                json={"definition": d, "baseRevision": d["workflow"]["draftRevision"]})
-    assert client.post(f"/api/workflows/{wf['id']}/publish").status_code == 201
+    pub = client.post(f"/api/workflows/{wf['id']}/publish").json()
+    assert pub
     asset = client.post("/api/data-assets", json={
         "name": "sch-asset", "rows": [{"interactionId": "S-1", "text": "t"}]}).json()
-    task = client.post("/api/tasks", json={"name": "sch-task", "workflowId": wf["id"],
-                                           "dataAssetId": asset["id"]}).json()
+    defv = make_definition_version(client, asset["id"])
+    rpv = make_rule_version(client)
+    task = client.post("/api/tasks", json={
+        "name": "sch-task", "workflowId": wf["id"], "workflowVersionPolicy": "pinned",
+        "pinnedWorkflowVersionId": pub["versionId"], "dataAssetId": asset["id"],
+        "dataDefinitionVersionId": defv, "resultRuleVersionId": rpv}).json()
     return task["id"]
 
 

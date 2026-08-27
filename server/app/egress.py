@@ -47,3 +47,13 @@ def assert_safe_url(url: str) -> None:
         ip = info[4][0].split("%")[0]
         if ip in _METADATA or _blocked_ip(ip):
             raise EgressError(f"EGRESS_BLOCKED：{host} 解析到受限地址 {ip}")
+
+
+def enforce_egress(url: str) -> None:
+    """09 P0（审计反例 4）：所有生产出站路径统一过 Egress。
+
+    生产环境强制拦截私网/元数据/受限地址；非生产放行（允许本地开发）。
+    用于模型调用 / Agent / Knowledge / MCP / 资源健康检查 / 连接探测等路径。"""
+    from .config import is_production
+    if is_production():
+        assert_safe_url(url)

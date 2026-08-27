@@ -565,6 +565,9 @@ class AnalysisTaskVersion(Base):
     data_asset_id: Mapped[str] = mapped_column(String(64))
     data_definition_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     result_rule_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # 09 P0 修复轮：规则绑定策略（pinned=绑定 result_rule_version_id；
+    # follow_latest=批次启动时解析最新发布版本并冻结）
+    rule_policy: Mapped[str] = mapped_column(String(16), default="pinned")
     input_mapping: Mapped[dict] = mapped_column(JSONB, default=dict)
     scope: Mapped[dict] = mapped_column(JSONB, default=dict)      # {op,and/or,conditions[]}
     sampling: Mapped[dict] = mapped_column(JSONB, default=dict)   # {mode: all|count|random, count, percent, seed}
@@ -646,6 +649,8 @@ class TaskRun(Base):
     task_id: Mapped[str] = mapped_column(ForeignKey("analysis_task.id", ondelete="CASCADE"), index=True)
     task_version_id: Mapped[str] = mapped_column(ForeignKey("analysis_task_version.id"), index=True)
     data_snapshot_id: Mapped[str | None] = mapped_column(ForeignKey("data_snapshot.id", ondelete="SET NULL"), nullable=True)
+    # 09 P0 修复轮：批次启动时解析并冻结的规则版本（Run/Result 的 rule_version_id 来源）
+    resolved_rule_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     trigger: Mapped[str] = mapped_column(String(16), default="manual")  # manual|schedule|backfill|api
     schedule_fire_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)

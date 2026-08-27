@@ -18,14 +18,25 @@ router = APIRouter(tags=["admin"])
 
 
 def _encrypt(secret: str) -> str:
-    try:
-        from cryptography.fernet import Fernet
-        key = os.environ.get("WF_SECRET_KEY")
-        if key:
+    """09 P0-11：Secret 强制加密。生产环境缺/非法 WF_SECRET_KEY 一律失败关闭，
+    绝不回落明文（修复审计反例：无效 Fernet Key 退回明文）。"""
+    from ..config import is_production
+    from cryptography.fernet import Fernet
+    key = os.environ.get("WF_SECRET_KEY")
+    if is_production():
+        if not key:
+            raise HTTPException(500, "生产环境未配置 WF_SECRET_KEY，无法加密 Secret")
+        try:
             return Fernet(key.encode()).encrypt(secret.encode()).decode()
-    except Exception:  # noqa: BLE001
-        pass
-    return secret  # dev 明文
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(500, f"WF_SECRET_KEY 非合法 Fernet 密钥，无法加密：{exc}")
+    # 非生产：尽力加密，失败回落明文（开发便利）
+    if key:
+        try:
+            return Fernet(key.encode()).encrypt(secret.encode()).decode()
+        except Exception:  # noqa: BLE001
+            pass
+    return secret
 
 
 # ---------- Connections ----------
@@ -86,8 +97,10 @@ def list_connections(page: int = 1, pageSize: int = 20, search: str = "", type: 
 
 
 @router.get("/api/connections/{cid}/reveal")
-def reveal_connection(cid: str, db: Session = Depends(get_db)):
-    """08-27 用户反馈：编辑页眼睛可回显密钥（dev 明文；有 WF_SECRET_KEY 时解密）。"""
+def reveal_connection(cid: str, db: Session = Depends(get_db),
+                      _user: dict = Depends(require_admin)):
+    """08-27 用户反馈：编辑页眼睛可回显密钥。09 P0：仅 admin 可读（修复审计反例：
+    viewer 可读密钥）。"""
     c = db.get(Connection, cid)
     if not c:
         raise HTTPException(404, "connection not found")
@@ -96,7 +109,8 @@ def reveal_connection(cid: str, db: Session = Depends(get_db)):
 
 
 @router.post("/api/connections/{cid}/test")
-def test_connection(cid: str, db: Session = Depends(get_db)):
+def test_connection(cid: str, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     c = db.get(Connection, cid)
     if not c:
         raise HTTPException(404, "connection not found")
@@ -108,21 +122,49 @@ def test_connection(cid: str, db: Session = Depends(get_db)):
 
 
 def _probe_connection(c) -> tuple[bool, str]:
-    """按 protocol 分发连通性探测；无真实 endpoint 时 mock 通过。"""
-    base = (c.endpoint or {}).get("base_url", "")
-    host = (c.endpoint or {}).get("host", "")
-    if c.protocol in ("mysql", "postgresql") and host:
-        return True, ""  # 驱动探测在 datasource 测试层；连接层校验配置完整
-    if base.startswith(("http://", "https://")):
+    """09 P0：连接探测必须真实验证；缺 endpoint / 无法连通一律失败关闭
+    （修复审计反例：空 endpoint 直接返回 True）。"""
+    ep = c.endpoint or {}
+    base = ep.get("base_url", "")
+    host = ep.get("host", "")
+    if c.protocol in ("mysql", "postgresql"):
+        if not host:
+            return False, "缺少 host 配置"
+        driver = {"mysql": "pymysql", "postgresql": "psycopg"}[c.protocol]
         try:
-            with httpx.Client(timeout=5) as client:
+            mod = __import__(driver)
+        except ImportError:
+            return False, f"驱动 {driver} 未安装，无法真实探测"
+        from ..runner import _decrypt
+        secret = _decrypt(c.secret_ref) if c.secret_ref else ""
+        try:
+            if driver == "pymysql":
+                conn = mod.connect(host=host, port=int(ep.get("port", 3306)),
+                                   user=ep.get("user", ""), password=secret,
+                                   database=ep.get("database", ""), connect_timeout=5)
+            else:
+                conn = mod.connect(host=host, port=int(ep.get("port", 5432)),
+                                   user=ep.get("user", ""), password=secret,
+                                   dbname=ep.get("database", ""))
+            conn.close()
+            return True, ""
+        except Exception as exc:  # noqa: BLE001
+            return False, f"连接失败：{exc}"
+    if base.startswith(("http://", "https://")):
+        from ..egress import EgressError, enforce_egress
+        try:
+            enforce_egress(base)
+        except EgressError as exc:
+            return False, str(exc)
+        try:
+            with httpx.Client(timeout=5, follow_redirects=False) as client:
                 r = client.get(base)
             if r.status_code >= 500:
                 return False, f"HTTP {r.status_code}"
             return True, ""
         except Exception as exc:  # noqa: BLE001
             return False, str(exc)
-    return True, ""
+    return False, "缺少可用 endpoint（无 host/base_url），无法探测"
 
 
 @router.delete("/api/connections/{cid}")
@@ -166,10 +208,19 @@ def list_providers(page: int = 1, pageSize: int = 20, db: Session = Depends(get_
             "total": total, "page": page, "pageSize": pageSize}
 
 
+def _assert_no_mock_base(base_url: str) -> None:
+    """09 P0-01：生产禁止注册/保留 mock:// Provider（审计反例）。"""
+    from ..config import is_production
+    if is_production() and str(base_url or "").startswith("mock://"):
+        raise HTTPException(422, "生产环境禁止注册 mock:// Provider")
+
+
 @router.post("/api/model-providers", status_code=201)
 def create_provider(payload: dict, db: Session = Depends(get_db),
                         _user: dict = Depends(require_admin)):
-    p = ModelProvider(name=payload["name"], base_url=payload.get("baseUrl", ""),
+    base_url = payload.get("baseUrl", "")
+    _assert_no_mock_base(base_url)
+    p = ModelProvider(name=payload["name"], base_url=base_url,
                       auth_connection_id=payload.get("connectionId"))
     db.add(p)
     db.commit()
@@ -271,7 +322,8 @@ def delete_tool(tid: str, db: Session = Depends(get_db),
 
 
 @router.post("/api/tools/{tid}/test")
-def test_tool(tid: str, payload: dict | None = None, db: Session = Depends(get_db)):
+def test_tool(tid: str, payload: dict | None = None, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     tv = db.query(ToolVersion).filter_by(tool_id=tid).order_by(ToolVersion.version_no.desc()).first()
     if not tv:
         raise HTTPException(404, "工具版本不存在")
@@ -366,7 +418,8 @@ def schedule_runs(sid: str, db: Session = Depends(get_db)):
 # ---------- Run retry / export / metrics ----------
 
 @router.post("/api/runs/{run_id}/retry", status_code=202)
-def retry_run(run_id: str, db: Session = Depends(get_db)):
+def retry_run(run_id: str, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     old = db.get(Run, run_id)
     if not old:
         raise HTTPException(404, "运行记录不存在")
@@ -413,7 +466,8 @@ def metrics(db: Session = Depends(get_db)):
 # ---------- 编辑锁（真实操作人） ----------
 
 @router.post("/api/locks")
-def acquire_lock(payload: dict, db: Session = Depends(get_db)):
+def acquire_lock(payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """D-4 租约语义：锁 10 分钟过期自动可接管；续租=重复 acquire。"""
     from ..models import ResourceLock
     rid = payload["resourceId"]
@@ -437,7 +491,8 @@ def acquire_lock(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.delete("/api/locks/{rid}/force")
-def force_release_lock(rid: str, db: Session = Depends(get_db)):
+def force_release_lock(rid: str, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_admin) ):
     """D-4：强制解锁（需 admin 角色；审计留痕）。"""
     from ..models import ResourceLock
     lock = db.get(ResourceLock, rid)
@@ -469,7 +524,8 @@ def list_audit(limit: int = 100, db: Session = Depends(get_db)):
 
 
 @router.delete("/api/locks/{rid}")
-def release_lock(rid: str, wsId: str = "", db: Session = Depends(get_db)):
+def release_lock(rid: str, wsId: str = "", db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     from ..models import ResourceLock
     lock = db.get(ResourceLock, rid)
     if lock and lock.ws_id == wsId:
@@ -805,7 +861,8 @@ def delete_eval_sample(sid: str, db: Session = Depends(get_db),
 
 
 @router.post("/api/workflows/{wid}/eval-run")
-def eval_run(wid: str, payload: dict | None = None, db: Session = Depends(get_db)):
+def eval_run(wid: str, payload: dict | None = None, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """工作流级评测：样本逐个真实运行（同步等待终态）+ rule/model Judge（对齐 Agent 级 D-1/D-3）。"""
     from ..models import EvalSample
     from ..runner import create_run, execute_run
@@ -845,7 +902,8 @@ def eval_run(wid: str, payload: dict | None = None, db: Session = Depends(get_db
 
 
 @router.post("/api/eval-samples/{sid}/human-score")
-def human_score_sample(sid: str, payload: dict, db: Session = Depends(get_db)):
+def human_score_sample(sid: str, payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """人评：手动给样本打分 0-5（覆盖/补充机器 Judge；工作流/Agent 样本通用）。"""
     from ..models import EvalSample
     s = db.get(EvalSample, sid)

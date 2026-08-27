@@ -113,16 +113,36 @@ def test_actor_from_identity_in_audit(auth_on):
 def test_task_ops_require_operator(auth_on):
     admin = _login("admin", "admin")["token"]
     rev = _login(_mk_user(admin, "viewer")["username"], "pass12345")["token"]
-    wf = client.post("/api/workflows", json={"name": "task-auth"},
-                     headers={"Authorization": f"Bearer {admin}"}).json()
+    H = {"Authorization": f"Bearer {admin}"}
+    # 全部构件用 admin 令牌创建（auth_on 下匿名请求会 401）
+    from tests._quality_setup import CREATE_RECORD_INPUTS, MAPPING
+    wf = client.post("/api/workflows", json={"name": "task-auth"}, headers=H).json()
+    d = client.get(f"/api/workflows/{wf['id']}", headers=H).json()
+    defn = d["definition"]
+    defn["graph"]["nodes"] = [
+        {"id": "n_start", "type": "input", "name": "开始", "config": {}, "inputs": []},
+        {"id": "n_rec", "type": "create-record", "name": "落质检",
+         "config": {"outputKey": "quality_result"}, "inputs": CREATE_RECORD_INPUTS},
+    ]
+    defn["graph"]["edges"] = [{"id": "e1", "source": "n_start", "target": "n_rec"}]
+    client.put(f"/api/workflows/{wf['id']}/draft",
+               json={"definition": defn, "baseRevision": d["draftRevision"]}, headers=H)
+    wv_id = client.post(f"/api/workflows/{wf['id']}/publish", json={}, headers=H).json()["versionId"]
     asset = client.post("/api/data-assets",
                         json={"name": "a-auth", "rows": [{"interactionId": "X1"}]},
-                        headers={"Authorization": f"Bearer {admin}"}).json()
-    body = {"name": "auth-task", "workflowId": wf["id"], "dataAssetId": asset["id"]}
+                        headers=H).json()
+    dd = client.post("/api/data-definitions", json={
+        "name": "a-def", "assetId": asset["id"],
+        "fieldSchema": [{"key": "interactionId", "type": "String", "required": True}]}, headers=H).json()
+    defv = client.post(f"/api/data-definitions/{dd['id']}/publish", json={}, headers=H).json()["versionId"]
+    rl = client.post("/api/result-rules", json={"name": "a-rule", "rules": {}}, headers=H).json()
+    rpv = client.post(f"/api/result-rules/{rl['id']}/publish", json={}, headers=H).json()["ruleVersionId"]
+    body = {"name": "auth-task", "workflowId": wf["id"], "workflowVersionPolicy": "pinned",
+            "pinnedWorkflowVersionId": wv_id, "dataAssetId": asset["id"],
+            "dataDefinitionVersionId": defv, "resultRuleVersionId": rpv}
     assert client.post("/api/tasks", json=body,
                        headers={"Authorization": f"Bearer {rev}"}).status_code == 403
-    r = client.post("/api/tasks", json=body,
-                    headers={"Authorization": f"Bearer {admin}"})
+    r = client.post("/api/tasks", json=body, headers=H)
     assert r.status_code == 201, r.text
 
 

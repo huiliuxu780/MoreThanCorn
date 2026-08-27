@@ -80,6 +80,12 @@ def _chat_completion(db: Session, model_key: str, messages: list[dict], tools: l
         if on_delta:
             on_delta(content)
         return {"content": content, "tool_calls": []}
+    # 09 P0（审计反例 4）：Agent 模型调用出站统一过 Egress
+    from .egress import EgressError, enforce_egress
+    try:
+        enforce_egress(base)
+    except EgressError as exc:
+        raise RunError(str(exc))
     body = {"model": model_key, "messages": messages, "temperature": temperature}
     if tools:
         body["tools"] = tools

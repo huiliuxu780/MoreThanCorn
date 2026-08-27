@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.runner import start_worker
+from tests._quality_setup import make_definition_version, make_rule_version
 
 client = TestClient(app)
 _worker = start_worker()
@@ -101,7 +102,12 @@ def test_batch_run_and_schedule():
     assert client.post(f"/api/workflows/{wf['id']}/publish").status_code == 201
     asset = client.post("/api/data-assets", json={"name": "资产A", "rows": [
         {"interactionId": "IX1", "userQuery": "a"}, {"interactionId": "IX2", "userQuery": "b"}]}).json()
-    task = client.post("/api/tasks", json={"name": "任务T", "workflowId": wf["id"], "dataAssetId": asset["id"]}).json()
+    defv = make_definition_version(client, asset["id"])
+    rpv = make_rule_version(client)
+    task = client.post("/api/tasks", json={
+        "name": "任务T", "workflowId": wf["id"], "workflowVersionPolicy": "latest_published",
+        "dataAssetId": asset["id"], "dataDefinitionVersionId": defv,
+        "resultRuleVersionId": rpv}).json()
     r = client.post(f"/api/tasks/{task['id']}/batch-run", json={})
     assert r.status_code == 202
     trid = r.json()["taskRunId"]
@@ -115,7 +121,13 @@ def test_batch_run_and_schedule():
 
 def test_quality_results_filters_real():
     """E-1.1：筛选参数真落地（此前前端筛选不进后端）。"""
-    # 词表端点：criteria 来自已发布规则
+    # 词表端点：criteria 来自活跃（最新发布）规则。共享库中其他测试会发布规则，
+    # 故此处先发布一条含已知 criterion 的规则，确保其为最新，词表可含该条目（自包含）。
+    r0 = client.post("/api/result-rules", json={"name": "vocab-rule", "rules": {
+        "scoreRules": [], "issueRules": [
+            {"id": "v1", "criterion": "承诺未兑现检查", "field": "promise",
+             "op": "contains", "value": "回电", "severity": "High"}]}}).json()
+    client.post(f"/api/result-rules/{r0['id']}/publish")
     vocab = client.get("/api/quality/vocab").json()
     assert any(c["criterion"] == "承诺未兑现检查" for c in vocab["criteria"])
     # criterion 筛选：命中行全部含该问题摘要；乱填 → 0 行

@@ -120,10 +120,11 @@ def require_role(*roles: str):
     return _dep
 
 
-# 常用门禁（端点签名引用）
+# 常用门禁（端点签名引用）。09 P0：viewer 为只读角色，复核是写操作需 operator+。
 require_admin = require_role("admin")
 require_operator = require_role("admin", "operator")
-require_reviewer = require_role("admin", "operator", "viewer")
+# 复核/证据等质量写操作：viewer 只读不可写（修复审计反例：viewer 可复核/读密钥）。
+require_reviewer = require_role("admin", "operator")
 
 
 def user_by_name(db: Session, username: str):

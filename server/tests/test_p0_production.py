@@ -68,12 +68,18 @@ def test_production_lifespan_skips_mock_provider_seed(prod):
 
 def test_production_requires_secret_key(monkeypatch):
     from app.main import check_production_ready
+    from cryptography.fernet import Fernet
     monkeypatch.setenv("WF_ENV", "production")
     monkeypatch.delenv("WF_SECRET_KEY", raising=False)
     with pytest.raises(RuntimeError, match="WF_SECRET_KEY"):
         check_production_ready()
-    monkeypatch.setenv("WF_SECRET_KEY", "x")
-    check_production_ready()  # 有密钥则通过
+    # 非空但非合法 Fernet 密钥也必须拒启（审计反例：非空≠安全）
+    monkeypatch.setenv("WF_SECRET_KEY", "not-a-valid-fernet-key")
+    with pytest.raises(RuntimeError, match="Fernet"):
+        check_production_ready()
+    # 合法 Fernet 密钥才通过
+    monkeypatch.setenv("WF_SECRET_KEY", Fernet.generate_key().decode())
+    check_production_ready()
 
 
 def test_production_resource_tests_fail_closed(prod):

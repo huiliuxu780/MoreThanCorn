@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.db import SessionLocal
 from app.main import app
 from app.runner import start_worker
+from tests._quality_setup import make_definition_version, make_rule_version
 
 client = TestClient(app)
 start_worker()  # 幂等单例：回填批次依赖 worker 消费（独立运行本文件时也需要）
@@ -54,9 +55,12 @@ def test_task_schedule_listing():
     wf_id, wv_id = _quality_wf()
     asset = client.post("/api/data-assets", json={"name": "P1T-sched", "rows": [
         {"interactionId": "S1", "score": 90, "risk": "Low", "issues": [], "summary": "ok"}]}).json()
+    defv = make_definition_version(client, asset["id"])
+    rpv = make_rule_version(client)
     task = client.post("/api/tasks", json={
         "name": "P1T-调度任务", "workflowId": wf_id, "workflowVersionPolicy": "pinned",
-        "pinnedWorkflowVersionId": wv_id, "dataAssetId": asset["id"], "inputMapping": MAPPING,
+        "pinnedWorkflowVersionId": wv_id, "dataAssetId": asset["id"],
+        "dataDefinitionVersionId": defv, "resultRuleVersionId": rpv, "inputMapping": MAPPING,
         "sampling": {"mode": "all"}, "dataWindow": {"mode": "all"}}).json()
     client.post(f"/api/tasks/{task['id']}/schedule", json={"cron": "0 9 * * *"})
     r = client.get(f"/api/tasks/{task['id']}/schedules")
@@ -75,9 +79,12 @@ def test_backfill_processes_window_subset():
     ]
     asset = client.post("/api/data-assets", json={
         "name": "P1T-回填", "rows": rows, "timeField": "interactionTime"}).json()
+    defv = make_definition_version(client, asset["id"])
+    rpv = make_rule_version(client)
     task = client.post("/api/tasks", json={
         "name": "P1T-回填任务", "workflowId": wf_id, "workflowVersionPolicy": "pinned",
-        "pinnedWorkflowVersionId": wv_id, "dataAssetId": asset["id"], "inputMapping": MAPPING,
+        "pinnedWorkflowVersionId": wv_id, "dataAssetId": asset["id"],
+        "dataDefinitionVersionId": defv, "resultRuleVersionId": rpv, "inputMapping": MAPPING,
         "sampling": {"mode": "all"}, "dataWindow": {"mode": "all"}}).json()
     r = client.post(f"/api/tasks/{task['id']}/backfill",
                     json={"window": {"start": "2026-08-01", "end": "2026-08-31"}})

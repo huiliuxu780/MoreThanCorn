@@ -1,5 +1,13 @@
 # 09-SDD P0 验收报告（正确性与安全止血）
 
+> ⚠️ **改判声明（2026-08-27，独立审计后）**：本报告原结论"自验通过"已被独立审计**推翻**。
+> 审计复现了多项 P0 安全与业务正确性反例：①viewer 可读连接密钥（reveal 无鉴权）；
+> ②49 处写路由未落服务端角色门禁；③成功 Run 未强制产生唯一 QualityResult（input→end 工作流 0 结果仍报成功）；
+> ④SSRF 仅覆盖 Tool 节点；⑤Code Node 生产可经 `WF_CODE_NODE=on` 开启宿主机执行；
+> ⑥公开返回 `agentId=workflowId`、追踪字段允许 NULL、重复/空 interactionRef 不建失败 Run、
+> 生产仍可注册 `mock://`、空 endpoint 连接测试返回 True。
+> **当前判定：P0 未通过，禁止上线。** 修复进度见下方"修复轮记录"。
+
 - 验收版本：`fdc0458`（B1 `f50d4d4` / B2 `116e868` / B3 `b942829` / B4 `fdc0458`）
 - 环境：后端 164 pytest（`wf_test` 隔离库）；核心 E2E 在全新 `wf_e2e` 库 Production Profile 下 3 连跑
 - 数据集版本：`scripts/e2e-production-core.mjs` 内置固定数据集（10 合法 + 故障注入）

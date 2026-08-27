@@ -35,7 +35,7 @@ async function setup() {
   serverProc = spawn(".venv/bin/uvicorn", ["app.main:app", "--host", "127.0.0.1", "--port", PORT], {
     cwd: `${ROOT}server`,
     env: { ...process.env, WF_DATABASE_URL: DB_URL, WF_ENV: "production",
-           WF_SECRET_KEY: "drill-secret", WF_ADMIN_PASSWORD: "admin", WF_PAR_RUN: "1" },
+           WF_SECRET_KEY: "DtpVdK_t2tGHMmUvPRSHcyOIMeflUpBDC-gF0e0yBbk=", WF_ADMIN_PASSWORD: "admin", WF_PAR_RUN: "1" },
     stdio: ["ignore", "pipe", "pipe"],
   })
   for (let i = 0; i < 60; i++) {
@@ -72,9 +72,18 @@ try {
   defn.graph.edges = [{ id: "e1", source: "n_start", target: "n_rec" }]
   await api(`/api/workflows/${wf.id}/draft`, { method: "PUT", body: JSON.stringify({ definition: defn, baseRevision: wfd.draftRevision }) })
   const pub = (await api(`/api/workflows/${wf.id}/publish`, { method: "POST", body: "{}" })).body
+  // 09 P0 修复轮：任务创建需定义版本 + 规则绑定
+  const dd = (await api("/api/data-definitions", { method: "POST", body: JSON.stringify({
+    name: "drill-def", assetId: asset.id,
+    fieldSchema: [{ key: "interactionId", type: "String", required: true }],
+  }) })).body
+  const defv = (await api(`/api/data-definitions/${dd.id}/publish`, { method: "POST", body: "{}" })).body.versionId
+  const rl = (await api("/api/result-rules", { method: "POST", body: JSON.stringify({ name: "drill-rule", rules: {} }) })).body
+  const rpv = (await api(`/api/result-rules/${rl.id}/publish`, { method: "POST", body: "{}" })).body.ruleVersionId
   const task = (await api("/api/tasks", { method: "POST", body: JSON.stringify({
     name: "drill-task", workflowId: wf.id, workflowVersionPolicy: "pinned",
     pinnedWorkflowVersionId: pub.versionId, dataAssetId: asset.id,
+    dataDefinitionVersionId: defv, resultRuleVersionId: rpv,
     sampling: { mode: "all" }, dataWindow: { mode: "all" },
   }) })).body
   const start = await api(`/api/tasks/${task.id}/runs`, { method: "POST", body: "{}" })

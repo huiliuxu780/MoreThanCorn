@@ -23,8 +23,9 @@ def test_connection_protocol_endpoint():
     hit = [c for c in items if c["id"] == cid][0]
     assert hit["protocol"] == "mysql" and hit["endpoint"]["host"] == "db.internal"
     assert hit["secretConfigured"] is True
+    # 09 P0：不可达主机（db.internal）/ 缺驱动的连接测试失败关闭
     t = client.post(f"/api/connections/{cid}/test")
-    assert t.json()["ok"] is True
+    assert t.json()["ok"] is False
 
 
 def test_wizard_gate_untested_disabled():

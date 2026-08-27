@@ -20,7 +20,7 @@ const ROOT = new URL("..", import.meta.url).pathname
 const PORT = process.env.WF_E2E_PORT ?? "8199"
 const DB = process.env.WF_E2E_DB ?? "wf_e2e"
 const DB_URL = `postgresql+psycopg://rivers@127.0.0.1:5432/${DB}`
-const SECRET = "e2e-secret-key-for-p0"
+const SECRET = "DtpVdK_t2tGHMmUvPRSHcyOIMeflUpBDC-gF0e0yBbk="
 
 let failures = 0
 let checks = 0
@@ -124,10 +124,25 @@ async function buildRules(name) {
   return { ruleSetId: r.id, ruleVersionId: pub.ruleVersionId }
 }
 
-async function buildTask(name, { workflowId, versionId, assetId, ruleVersionId, inputMapping }) {
+async function buildDefinition(name, assetId) {
+  const d = await api("/api/data-definitions", { method: "POST", body: JSON.stringify({
+    name, assetId, fieldSchema: [
+      { key: "interactionId", type: "String", required: true },
+      { key: "score", type: "Number", required: false },
+      { key: "risk", type: "String", required: false },
+      { key: "issues", type: "Array", required: false },
+      { key: "summary", type: "String", required: false },
+    ] }) })
+  const pub = await api(`/api/data-definitions/${d.id}/publish`, { method: "POST", body: JSON.stringify({}) })
+  return pub.versionId
+}
+
+async function buildTask(name, { workflowId, versionId, assetId, ruleVersionId, defVersionId, inputMapping }) {
   return api("/api/tasks", { method: "POST", body: JSON.stringify({
     name, workflowId, workflowVersionPolicy: "pinned", pinnedWorkflowVersionId: versionId,
-    dataAssetId: assetId, resultRuleVersionId: ruleVersionId, inputMapping,
+    dataAssetId: assetId, dataDefinitionVersionId: defVersionId,
+    resultRuleVersionId: ruleVersionId, rulePolicy: ruleVersionId ? "pinned" : "follow_latest",
+    inputMapping,
     scope: { op: "and", conditions: [] }, sampling: { mode: "all" }, dataWindow: { mode: "all" },
   }) })
 }
@@ -167,7 +182,8 @@ async function scenarioA_core() {
   const asset = await buildAsset("E2E-A-数据", rows)
   const { workflowId, versionId } = await buildWorkflow("E2E-A-质检流", asset.id)
   const { ruleVersionId } = await buildRules("E2E-A-规则")
-  const task = await buildTask("E2E-A-任务", { workflowId, versionId, assetId: asset.id, ruleVersionId, inputMapping: MAPPING })
+  const defVersionId = await buildDefinition("E2E-A-定义", asset.id)
+  const task = await buildTask("E2E-A-任务", { workflowId, versionId, assetId: asset.id, ruleVersionId, defVersionId, inputMapping: MAPPING })
 
   const { taskRun } = await runTaskAndWait(task.id)
   assert(taskRun.status === "succeeded", `批次状态=succeeded（INV-06 全合法应成功）`, taskRun.status)
@@ -208,7 +224,9 @@ async function scenarioB_fault() {
   ]
   const asset = await buildAsset("E2E-B-数据", rows)
   const { workflowId, versionId } = await buildWorkflow("E2E-B-质检流", asset.id)
-  const task = await buildTask("E2E-B-任务", { workflowId, versionId, assetId: asset.id, ruleVersionId: null, inputMapping: MAPPING })
+  const { ruleVersionId } = await buildRules("E2E-B-规则")
+  const defVersionId = await buildDefinition("E2E-B-定义", asset.id)
+  const task = await buildTask("E2E-B-任务", { workflowId, versionId, assetId: asset.id, ruleVersionId, defVersionId, inputMapping: MAPPING })
   const { taskRun } = await runTaskAndWait(task.id)
   // 5 行 = INT-B1 + INT-DUP×2 + 空ref + 非法risk。
   // 首个 INT-DUP 是合法首次出现（成功）；第二个重复、空 ref、非法 risk 各失败。

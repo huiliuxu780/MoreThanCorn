@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import AlertEvent, AlertRule, JobQueue, Run, Schedule
+from ..auth import require_admin, require_operator
 
 router = APIRouter(tags=["alerts"])
 
@@ -44,7 +45,8 @@ def list_rules(db: Session = Depends(get_db)):
 
 
 @router.post("/api/alerts/rules", status_code=201)
-def create_rule(payload: dict, db: Session = Depends(get_db)):
+def create_rule(payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_admin) ):
     metric = payload.get("metric")
     try:
         _metric_value(db, metric)
@@ -62,7 +64,8 @@ def create_rule(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/api/alerts/rules/{rid}")
-def update_rule(rid: str, payload: dict, db: Session = Depends(get_db)):
+def update_rule(rid: str, payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_admin) ):
     r = db.get(AlertRule, rid)
     if not r:
         raise HTTPException(404, "告警规则不存在")
@@ -78,7 +81,8 @@ def update_rule(rid: str, payload: dict, db: Session = Depends(get_db)):
 
 
 @router.delete("/api/alerts/rules/{rid}")
-def delete_rule(rid: str, db: Session = Depends(get_db)):
+def delete_rule(rid: str, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_admin) ):
     r = db.get(AlertRule, rid)
     if not r:
         raise HTTPException(404, "告警规则不存在")
@@ -88,7 +92,8 @@ def delete_rule(rid: str, db: Session = Depends(get_db)):
 
 
 @router.post("/api/alerts/evaluate")
-def evaluate_alerts(db: Session = Depends(get_db)):
+def evaluate_alerts(db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """评估所有启用规则，超阈值生成告警事件（留痕）。"""
     fired = 0
     for rule in db.query(AlertRule).filter(AlertRule.enabled).all():
@@ -118,7 +123,8 @@ def list_events(page: int = 1, pageSize: int = 50, db: Session = Depends(get_db)
 
 
 @router.post("/api/alerts/events/{eid}/acknowledge")
-def acknowledge_event(eid: str, db: Session = Depends(get_db)):
+def acknowledge_event(eid: str, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     e = db.get(AlertEvent, eid)
     if not e:
         raise HTTPException(404, "告警事件不存在")

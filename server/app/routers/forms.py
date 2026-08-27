@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import Form, FormRecord, FormVersion, Workflow
+from ..auth import require_operator
 
 router = APIRouter(prefix="/api/forms", tags=["forms"])
 
@@ -154,7 +155,8 @@ def list_forms(db: Session = Depends(get_db)):
 
 
 @router.post("", status_code=201)
-def create_form(payload: dict, db: Session = Depends(get_db)):
+def create_form(payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     name = str(payload.get("name") or "").strip()
     if not name:
         raise HTTPException(422, "name 必填")
@@ -179,7 +181,8 @@ def get_form(fid: str, db: Session = Depends(get_db)):
 
 
 @router.put("/{fid}")
-def update_form(fid: str, payload: dict, db: Session = Depends(get_db)):
+def update_form(fid: str, payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     f = db.get(Form, fid)
     if not f:
         raise HTTPException(404, "form not found")
@@ -206,7 +209,8 @@ def update_form(fid: str, payload: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/{fid}/publish", status_code=201)
-def publish_form(fid: str, payload: dict | None = None, db: Session = Depends(get_db)):
+def publish_form(fid: str, payload: dict | None = None, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     f = db.get(Form, fid)
     if not f:
         raise HTTPException(404, "form not found")
@@ -229,7 +233,8 @@ def list_versions(fid: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{fid}/disable")
-def disable_form(fid: str, db: Session = Depends(get_db)):
+def disable_form(fid: str, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     f = db.get(Form, fid)
     if not f:
         raise HTTPException(404, "form not found")
@@ -239,7 +244,8 @@ def disable_form(fid: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{fid}/duplicate", status_code=201)
-def duplicate_form(fid: str, db: Session = Depends(get_db)):
+def duplicate_form(fid: str, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     f = db.get(Form, fid)
     if not f:
         raise HTTPException(404, "form not found")
@@ -251,7 +257,8 @@ def duplicate_form(fid: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/{fid}")
-def delete_form(fid: str, db: Session = Depends(get_db)):
+def delete_form(fid: str, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     f = db.get(Form, fid)
     if not f:
         raise HTTPException(404, "form not found")
@@ -265,7 +272,8 @@ def delete_form(fid: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{fid}/records", status_code=201)
-def create_record(fid: str, payload: dict, db: Session = Depends(get_db)):
+def create_record(fid: str, payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     f = db.get(Form, fid)
     if not f:
         raise HTTPException(404, "form not found")

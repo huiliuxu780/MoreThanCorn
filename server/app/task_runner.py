@@ -12,6 +12,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .data_readers import ReaderError, get_reader
@@ -47,6 +48,27 @@ def _resolve_window_days(window: dict) -> int | None:
     if (window or {}).get("mode") != "relative":
         return None
     return {"last_24h": 1, "last_7d": 7, "last_30d": 30}.get(window.get("value"))
+
+
+def _resolve_rule_version(db: Session, tv: AnalysisTaskVersion) -> str:
+    """09 P0 修复轮（审计反例 3/6）：批次启动时解析并冻结规则版本。
+
+    - pinned：必须绑定存在的 result_rule_version_id。
+    - follow_latest：解析最新已发布规则版本；无则失败关闭（不得静默跳过规则）。
+    返回规则版本 ID（Run/Result 的 rule_version_id 来源，恒非空）。"""
+    from .models import ResultRuleVersion
+    if (tv.rule_policy or "pinned") == "pinned":
+        if not tv.result_rule_version_id:
+            raise TaskStartError("任务未绑定规则版本且未声明 follow_latest 策略", 422)
+        if not db.get(ResultRuleVersion, tv.result_rule_version_id):
+            raise TaskStartError(f"规则版本 {tv.result_rule_version_id} 不存在", 422)
+        return tv.result_rule_version_id
+    rv = db.execute(select(ResultRuleVersion)
+                    .order_by(ResultRuleVersion.created_at.desc(),
+                              ResultRuleVersion.id.desc())).scalars().first()
+    if not rv:
+        raise TaskStartError("follow_latest 策略下没有已发布的规则版本，批次无法启动（失败关闭）", 422)
+    return rv.id
 
 
 def _build_locator(asset: DataAsset, tv: AnalysisTaskVersion) -> dict:
@@ -92,6 +114,14 @@ def start_task_run(db: Session, task_id: str, trigger: str = "manual",
             return exist, {"reused": True}
 
     wv = _resolve_workflow_version(db, tv)
+    # 09 P0-08：追踪字段非空——定义版本必须存在（任务创建已校验，此处再防存量数据）
+    if not tv.data_definition_version_id:
+        raise TaskStartError("任务未绑定数据定义版本（P0-08 追踪字段非空），无法启动", 422)
+    from .models import DataDefinitionVersion
+    if not db.get(DataDefinitionVersion, tv.data_definition_version_id):
+        raise TaskStartError("数据定义版本不存在", 422)
+    # 09 P0：解析并冻结规则版本（失败关闭）
+    resolved_rule_version_id = _resolve_rule_version(db, tv)
     asset = db.get(DataAsset, tv.data_asset_id)
     if not asset:
         raise TaskStartError("数据资产不存在")
@@ -118,14 +148,15 @@ def start_task_run(db: Session, task_id: str, trigger: str = "manual",
     db.flush()
     tr = TaskRun(task_id=t.id, task_version_id=tv.id, data_snapshot_id=snap.id,
                  trigger=trigger, schedule_fire_key=schedule_fire_key,
-                 idempotency_key=idempotency_key, status="queued", total=expected)
+                 idempotency_key=idempotency_key, status="queued", total=expected,
+                 resolved_rule_version_id=resolved_rule_version_id)
     db.add(tr)
     db.flush()
     db.add(JobQueue(type="task-run", payload={"task_run_id": tr.id},
                     idempotency_key=schedule_fire_key or idempotency_key))
     db.commit()
     return tr, {"workflowVersionId": wv.id, "taskVersionId": tv.id,
-                "ruleVersionId": tv.result_rule_version_id,
+                "ruleVersionId": resolved_rule_version_id,
                 "outputSchemaVersionId": tv.output_schema_version_id,
                 "dataSnapshotId": snap.id}
 
@@ -249,12 +280,43 @@ def execute_task_run(task_run_id: str) -> None:
                     skipped += 1
                     continue
                 ref = str(row.get(id_field) or "").strip()
+                # 09 P0 修复轮（审计反例 3）：N 输入 = N Run——空 ID / 重复 ID 也创建
+                # 明确的 rejected/failed Run（不再只计数后 continue，保证逐条可追踪）。
+                rule_vid = tr.resolved_rule_version_id or tv.result_rule_version_id
                 if not ref:
+                    placeholder = f"__missing_{read_n}__"
+                    run = Run(workflow_id=tv.workflow_id, workflow_version_id=wv.id,
+                              trigger=tr.trigger or "batch", status="failed",
+                              input=_apply_mapping(row, tv.input_mapping or {}),
+                              definition_source="version", task_run_id=tr.id,
+                              task_id=tr.task_id, task_version_id=tv.id,
+                              interaction_ref=placeholder, attempt=1,
+                              definition_version_id=tv.data_definition_version_id,
+                              rule_version_id=rule_vid,
+                              data_snapshot_id=tr.data_snapshot_id,
+                              error={"message": "EMPTY_INTERACTION_REF：缺少 " + id_field})
+                    db.add(run)
+                    db.commit()
                     fail += 1
                     errors.append({"row": read_n,
                                    "error": "EMPTY_INTERACTION_REF：缺少 " + id_field})
                     continue
                 if ref in seen_refs:
+                    prior_attempt = db.execute(
+                        select(func.max(Run.attempt)).where(
+                            Run.task_run_id == tr.id, Run.interaction_ref == ref)).scalar() or 1
+                    run = Run(workflow_id=tv.workflow_id, workflow_version_id=wv.id,
+                              trigger=tr.trigger or "batch", status="failed",
+                              input=_apply_mapping(row, tv.input_mapping or {}),
+                              definition_source="version", task_run_id=tr.id,
+                              task_id=tr.task_id, task_version_id=tv.id,
+                              interaction_ref=ref, attempt=prior_attempt + 1,
+                              definition_version_id=tv.data_definition_version_id,
+                              rule_version_id=rule_vid,
+                              data_snapshot_id=tr.data_snapshot_id,
+                              error={"message": "DUPLICATE_INTERACTION_REF：重复输入"})
+                    db.add(run)
+                    db.commit()
                     fail += 1
                     errors.append({"interactionRef": ref,
                                    "error": "DUPLICATE_INTERACTION_REF：重复输入"})
@@ -276,14 +338,28 @@ def execute_task_run(task_run_id: str) -> None:
                           task_run_id=tr.id, task_id=tr.task_id,
                           task_version_id=tv.id, interaction_ref=ref, attempt=1,
                           definition_version_id=tv.data_definition_version_id,
-                          rule_version_id=tv.result_rule_version_id,
+                          rule_version_id=rule_vid,
                           data_snapshot_id=tr.data_snapshot_id)
                 db.add(run)
                 db.commit()
                 execute_run(run.id)
                 db.expire(run)
                 if run.status == "succeeded":
-                    ok += 1
+                    # 09 P0 修复轮（审计反例 3）：成功 Run 必须恰好产生一条生效
+                    # QualityResult，否则判为失败（业务不得"成功却无结果"）。
+                    from .models import QualityResult
+                    n_res = db.execute(select(func.count(QualityResult.id)).where(
+                        QualityResult.run_id == run.id,
+                        QualityResult.is_latest.is_(True))).scalar() or 0
+                    if n_res != 1:
+                        run.status = "failed"
+                        run.error = {"message": f"MISSING_QUALITY_RESULT：成功但结果数={n_res}（应=1）"}
+                        db.commit()
+                        fail += 1
+                        errors.append({"interactionRef": ref,
+                                       "error": run.error["message"]})
+                    else:
+                        ok += 1
                 else:
                     fail += 1
                     errors.append({"interactionRef": ref,

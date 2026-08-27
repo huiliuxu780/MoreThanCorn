@@ -56,7 +56,13 @@ export function buildTaskPayload(form: TaskFormState): CreateTaskPayload {
   }
   if (policy === "pinned") payload.pinnedWorkflowVersionId = form.fixedVersion
   if (form.definitionVersionId) payload.dataDefinitionVersionId = form.definitionVersionId
-  if (form.ruleVersionId) payload.resultRuleVersionId = form.ruleVersionId
+  // 09 P0：规则绑定——显式版本=pinned；未选=跟随最新发布（服务端解析时失败关闭）
+  if (form.ruleVersionId) {
+    payload.resultRuleVersionId = form.ruleVersionId
+    payload.rulePolicy = "pinned"
+  } else {
+    payload.rulePolicy = "follow_latest"
+  }
   return payload
 }
 

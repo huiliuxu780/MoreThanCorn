@@ -52,6 +52,11 @@ def _test_mcp(db: Session, obj: McpServer, _input: dict) -> dict:
     if obj.transport == "http":
         base = _conn_endpoint(db, obj.connection_id).get("base_url", "")
         if base.startswith(("http://", "https://")):
+            from .egress import EgressError, enforce_egress
+            try:
+                enforce_egress(base)
+            except EgressError as exc:
+                return {"ok": False, "error": str(exc)}
             try:
                 with httpx.Client(timeout=5) as client:
                     r = client.post(base, json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
@@ -84,6 +89,11 @@ def _test_knowledge(db: Session, obj: KnowledgeSource, payload: dict) -> dict:
     q = (payload or {}).get("query", "样例查询")
     url = (obj.source_config or {}).get("url", "")
     if url.startswith(("http://", "https://")):
+        from .egress import EgressError, enforce_egress
+        try:
+            enforce_egress(url)
+        except EgressError as exc:
+            return {"ok": False, "error": str(exc)}
         try:
             with httpx.Client(timeout=5) as client:
                 r = client.post(url, json={"query": q, "topK": 3})
@@ -143,6 +153,11 @@ def _test_datasource(db: Session, obj: Datasource, _input: dict) -> dict:
     # http
     base = ep.get("base_url", "")
     if base.startswith(("http://", "https://")):
+        from .egress import EgressError, enforce_egress
+        try:
+            enforce_egress(base)
+        except EgressError as exc:
+            return {"ok": False, "error": str(exc)}
         try:
             with httpx.Client(timeout=5) as client:
                 r = client.get(base)
@@ -201,6 +216,11 @@ def search_knowledge(db: Session, ks_id: str, query: str, top_k: int = 5, mode: 
         raise RunError(f"knowledge source {ks_id} not found")
     url = (obj.source_config or {}).get("url", "")
     if url.startswith(("http://", "https://")):
+        from .egress import EgressError, enforce_egress
+        try:
+            enforce_egress(url)
+        except EgressError as exc:
+            raise RunError(str(exc))
         try:
             with httpx.Client(timeout=5) as client:
                 r = client.post(url, json={"query": query, "topK": top_k, "mode": mode})
@@ -225,6 +245,11 @@ def mcp_call_tool(db: Session, server_id: str, tool_name: str, args: dict) -> di
     if obj.transport == "http":
         base = _conn_endpoint(db, obj.connection_id).get("base_url", "")
         if base.startswith(("http://", "https://")):
+            from .egress import EgressError, enforce_egress
+            try:
+                enforce_egress(base)
+            except EgressError as exc:
+                raise RunError(str(exc))
             try:
                 with httpx.Client(timeout=10) as client:
                     r = client.post(base, json={"jsonrpc": "2.0", "id": 1, "method": "tools/call",

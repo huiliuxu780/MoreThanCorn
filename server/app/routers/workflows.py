@@ -40,7 +40,8 @@ def _default_definition(name: str) -> WorkflowDefinition:
 
 
 @router.post("", status_code=201)
-def create_workflow(req: CreateWorkflowRequest, db: Session = Depends(get_db)):
+def create_workflow(req: CreateWorkflowRequest, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     wf = Workflow(id=new_id(), name=req.name, description=req.description)
     defn = _default_definition(req.name)
     defn.workflow.id = wf.id
@@ -84,7 +85,8 @@ def get_workflow(wf_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{wf_id}/migrate", status_code=200)
-def migrate_workflow(wf_id: str, db: Session = Depends(get_db)):
+def migrate_workflow(wf_id: str, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """07-SDD §5.3（08-26 修订）：agent 三键→workflow 三连为显式迁移工具。
 
     GET/保存保持透传（冻结 Agent 轨道的画布仍用旧键编辑与运行，兼容层可执行）；
@@ -104,7 +106,8 @@ def migrate_workflow(wf_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{wf_id}/polish")
-def polish_prompt(wf_id: str, payload: dict, db: Session = Depends(get_db)):
+def polish_prompt(wf_id: str, payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """07-SDD §4.3：提示词 AI 润色（替换/重试由前端交互层承担）。"""
     from ..runner import _call_model
     text = payload.get("text") or ""
@@ -120,7 +123,8 @@ def polish_prompt(wf_id: str, payload: dict, db: Session = Depends(get_db)):
 
 
 @router.put("/{wf_id}/meta")
-def update_workflow_meta(wf_id: str, payload: dict, db: Session = Depends(get_db)):
+def update_workflow_meta(wf_id: str, payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """08-26：工作流基础信息编辑（名称/简介/图标）。"""
     wf = db.get(Workflow, wf_id)
     if not wf:
@@ -136,7 +140,8 @@ def update_workflow_meta(wf_id: str, payload: dict, db: Session = Depends(get_db
 
 
 @router.put("/{wf_id}/draft")
-def save_draft(wf_id: str, req: SaveDraftRequest, db: Session = Depends(get_db)):
+def save_draft(wf_id: str, req: SaveDraftRequest, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     wf = db.get(Workflow, wf_id)
     if not wf:
         raise HTTPException(404, "workflow not found")
@@ -231,7 +236,8 @@ def list_versions(wf_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{wf_id}/node-test")
-def node_test(wf_id: str, payload: dict, db: Session = Depends(get_db)):
+def node_test(wf_id: str, payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """SDD C-6 节点单测：用给定输入执行单个节点执行器，不落 Run/事件（调研 07 §4）。"""
     import time as _time
 

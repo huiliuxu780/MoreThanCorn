@@ -18,8 +18,15 @@ def check_production_ready() -> None:
     import os
     if not is_production():
         return
-    if not os.environ.get("WF_SECRET_KEY"):
+    key = os.environ.get("WF_SECRET_KEY")
+    if not key:
         raise RuntimeError("WF_SECRET_KEY 未配置：生产环境禁止明文 Secret 模式，拒绝启动")
+    # 09 P0：非空 ≠ 安全——必须验证是合法 Fernet 密钥（修复审计反例）
+    from cryptography.fernet import Fernet
+    try:
+        Fernet(key.encode())
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"WF_SECRET_KEY 不是合法 Fernet 密钥，拒绝启动：{exc}")
 
 
 def bootstrap_models(db) -> str:

@@ -10,12 +10,14 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..models import CallRecord, JobQueue, NodeRun, Run, RunEvent
 from ..runner import RunError, create_run
+from ..auth import require_operator
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
 
 @router.post("", status_code=202)
-def start_run(payload: dict, db: Session = Depends(get_db)):
+def start_run(payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     try:
         run = create_run(db, payload["workflowId"], payload.get("trigger", "test"),
                          payload.get("input", {}), payload.get("idempotencyKey"),
@@ -26,7 +28,8 @@ def start_run(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/{run_id}/resume", status_code=202)
-def resume_run(run_id: str, payload: dict, db: Session = Depends(get_db)):
+def resume_run(run_id: str, payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """07-SDD §4.17：wait-review 续跑。幂等：waiting 行置 resumed 后二次调用 409。"""
     run = db.get(Run, run_id)
     if not run:
@@ -101,7 +104,8 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{run_id}/cancel")
-def cancel_run(run_id: str, db: Session = Depends(get_db)):
+def cancel_run(run_id: str, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     run = db.get(Run, run_id)
     if not run:
         raise HTTPException(404, "run not found")

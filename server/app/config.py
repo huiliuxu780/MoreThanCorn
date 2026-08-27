@@ -26,5 +26,9 @@ def auth_enforced() -> bool:
 
 
 def code_node_enabled() -> bool:
-    """09 P0-11：Code Node 默认禁用（含生产）；显式 WF_CODE_NODE=on 才放行。"""
+    """09 P0-11：Code Node 生产**永久禁用**（当前为宿主机子进程，非真沙箱；
+    真沙箱落地前生产不可经任何环境变量开启）。非生产默认禁用，可经 WF_CODE_NODE=on
+    显式开启（开发/评测用）。"""
+    if is_production():
+        return False
     return os.environ.get("WF_CODE_NODE") == "on"

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..models import Agent, AgentVersion, KnowledgeSource, Release, Run, RunEvent, Tool, Workflow
 from ..routers.workflows import _default_definition
+from ..auth import require_operator
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -22,7 +23,8 @@ def _check_name(name: str) -> None:
 
 
 @router.post("", status_code=201)
-def create_agent(payload: dict, db: Session = Depends(get_db)):
+def create_agent(payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     t = payload.get("type", "dialogue")
     if t not in TYPE_LABEL:
         raise HTTPException(422, "unknown agent type")
@@ -96,7 +98,8 @@ def get_agent(aid: str, db: Session = Depends(get_db)):
 
 
 @router.put("/{aid}")
-def update_agent(aid: str, payload: dict, db: Session = Depends(get_db)):
+def update_agent(aid: str, payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     a = db.get(Agent, aid)
     if not a:
         raise HTTPException(404, "agent not found")
@@ -126,7 +129,8 @@ def update_agent(aid: str, payload: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/{aid}/duplicate", status_code=201)
-def duplicate_agent(aid: str, db: Session = Depends(get_db)):
+def duplicate_agent(aid: str, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """E-2.1：复制 Agent（新 id、名称+「 副本」受 20 字上限约束、草稿复制；版本/部署不带）。"""
     src = db.get(Agent, aid)
     if not src:
@@ -174,7 +178,8 @@ def get_draft_definition(aid: str, db: Session = Depends(get_db)):
 # ---------- 运行层（05 设计） ----------
 
 @router.post("/{aid}/run", status_code=202)
-def run_agent_endpoint(aid: str, payload: dict | None = None, db: Session = Depends(get_db)):
+def run_agent_endpoint(aid: str, payload: dict | None = None, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """SDD A-03：顶层运行异步入队。SDD B-03：可指定 versionId；
     schedule/api 触发默认走沙箱已发布版本，无版本 422。"""
     a = db.get(Agent, aid)
@@ -240,7 +245,8 @@ def mounts_health(aid: str, db: Session = Depends(get_db)):
 # ---------- 版本与发布（SDD 02） ----------
 
 @router.post("/{aid}/versions", status_code=201)
-def create_agent_version(aid: str, payload: dict | None = None, db: Session = Depends(get_db)):
+def create_agent_version(aid: str, payload: dict | None = None, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """发布不可变版本：校验 → 同事务快照（配置+图+依赖冻结）→ artifactHash（02 §3）。"""
     from ..agent_release import (artifact_hash, build_common_config, build_definition,
                                  freeze_dependencies, next_version_no, validate_publish)
@@ -301,7 +307,8 @@ def get_agent_version(aid: str, vid: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{aid}/releases", status_code=201)
-def create_release(aid: str, payload: dict, db: Session = Depends(get_db)):
+def create_release(aid: str, payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """部署版本到环境（02 §3）：同环境旧 active → rolled_back；回滚=对旧版本再发一次。
     E-2.3 灰度：canaryPercent>0 时与稳定版并存（同环境至多一条灰度），不动稳定指针。"""
     a = db.get(Agent, aid)
@@ -346,7 +353,8 @@ def create_release(aid: str, payload: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/{aid}/releases/{rid}/stop-canary")
-def stop_canary(aid: str, rid: str, db: Session = Depends(get_db)):
+def stop_canary(aid: str, rid: str, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """E-2.3：停止灰度=该 release rolled_back（流量全部回到稳定版）。"""
     rel = db.get(Release, rid)
     if not rel or rel.agent_id != aid:
@@ -412,7 +420,8 @@ def agent_metrics(aid: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{aid}/eval-run", status_code=201)
-def agent_eval_run(aid: str, payload: dict | None = None, db: Session = Depends(get_db)):
+def agent_eval_run(aid: str, payload: dict | None = None, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """Agent 级评测：样本逐个真实运行（同步等待终态），返回结果（SDD D-1）。
     D-3：judge=rule（期望包含匹配）或 model（LLM 打分 1-5）；结果落 judge_result。"""
     from ..models import EvalSample
@@ -471,7 +480,8 @@ def _model_judge(db, question: str, expected: str, actual: str) -> dict:
 
 
 @router.post("/{aid}/eval-samples/{sid}/human-score")
-def human_score_sample(aid: str, sid: str, payload: dict, db: Session = Depends(get_db)):
+def human_score_sample(aid: str, sid: str, payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """D-3：人评——手动给样本打分（覆盖/补充机器 Judge）。"""
     from ..models import EvalSample
     s = db.get(EvalSample, sid)
@@ -488,7 +498,8 @@ def human_score_sample(aid: str, sid: str, payload: dict, db: Session = Depends(
 # ---------- 进化：失败归因 → 候选补丁 → 审批应用（SDD D-3） ----------
 
 @router.post("/{aid}/evolution/candidates", status_code=201)
-def create_evolution_candidate(aid: str, db: Session = Depends(get_db)):
+def create_evolution_candidate(aid: str, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """基于近期失败运行归因，LLM 生成 Prompt 候选补丁（真实生成；失败给明确错误）。"""
     from ..models import EvolutionPatch
     from ..runner import _call_model
@@ -528,7 +539,8 @@ def list_evolution(aid: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{aid}/evolution/{pid}/apply")
-def apply_evolution(aid: str, pid: str, db: Session = Depends(get_db)):
+def apply_evolution(aid: str, pid: str, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """应用候选补丁到草稿（可撤销=再次编辑；历史补丁保留记录）。"""
     from ..models import EvolutionPatch
     p = db.get(EvolutionPatch, pid)
@@ -547,7 +559,8 @@ def apply_evolution(aid: str, pid: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{aid}/evolution/{pid}/reject")
-def reject_evolution(aid: str, pid: str, db: Session = Depends(get_db)):
+def reject_evolution(aid: str, pid: str, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     from ..models import EvolutionPatch
     p = db.get(EvolutionPatch, pid)
     if not p or p.agent_id != aid:
@@ -566,7 +579,8 @@ def list_agent_eval_samples(aid: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{aid}/eval-samples", status_code=201)
-def create_agent_eval_sample(aid: str, payload: dict, db: Session = Depends(get_db)):
+def create_agent_eval_sample(aid: str, payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     from ..models import EvalSample
     if not db.get(Agent, aid):
         raise HTTPException(404, "agent not found")
@@ -578,7 +592,8 @@ def create_agent_eval_sample(aid: str, payload: dict, db: Session = Depends(get_
 
 
 @router.post("/generate-prompt", status_code=201)
-def generate_prompt(payload: dict, db: Session = Depends(get_db)):
+def generate_prompt(payload: dict, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_operator) ):
     """AI 生成 Prompt（SDD D-1）：真 LLM 生成，失败给出明确错误。"""
     from ..runner import _call_model
     name = (payload or {}).get("name") or "智能助手"
