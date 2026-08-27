@@ -199,7 +199,8 @@ def review_result(rid: str, payload: dict, db: Session = Depends(get_db),
     if action not in ("approve", "revise", "effective", "reopen"):
         raise HTTPException(422, "未知复核动作")
     note = payload.get("note", "")
-    reviewer = payload.get("reviewer") or user.get("username", "reviewer")
+    # 09 P0-10（审计：reviewer 可伪造）：复核人来自鉴权身份，忽略请求体
+    reviewer = user.get("username", "reviewer")
     before = {"status": qr.review_status, "score": qr.score, "risk": qr.risk}
     if action == "approve":
         qr.review_status = "REVIEWED"
@@ -275,15 +276,23 @@ def claim_review(rid: str, payload: dict, db: Session = Depends(get_db),
     qr = _qr_by_any(db, rid)
     if not qr:
         raise HTTPException(404, "质检结果不存在")
-    if qr.review_status not in _REVIEW_PENDING:
-        raise HTTPException(409, f"当前状态 {qr.review_status} 不可领取")
-    if qr.review_claimed_by and qr.review_claimed_by != (payload.get("reviewer") or user.get("username")):
-        raise HTTPException(409, f"已被 {qr.review_claimed_by} 领取")
-    reviewer = payload.get("reviewer") or user.get("username", "reviewer")
-    qr.review_status = "IN_REVIEW"
-    qr.review_claimed_by = reviewer
-    qr.review_claimed_at = datetime.now(timezone.utc)
+    # 09 P0-10：reviewer 来自身份，不得由请求体伪造
+    reviewer = user.get("username", "reviewer")
+    # 09 P1-02（审计：并发领取）：原子条件更新，防止两复核人同时领取
+    from sqlalchemy import update
+    res = db.execute(update(QualityResult).where(
+        QualityResult.id == qr.id,
+        QualityResult.review_status.in_(_REVIEW_PENDING),
+        QualityResult.review_claimed_by.is_(None)).values(
+        review_status="IN_REVIEW", review_claimed_by=reviewer,
+        review_claimed_at=datetime.now(timezone.utc)))
     db.commit()
+    if res.rowcount == 0:
+        db.refresh(qr)
+        if qr.review_claimed_by:
+            raise HTTPException(409, f"已被 {qr.review_claimed_by} 领取")
+        raise HTTPException(409, f"当前状态 {qr.review_status} 不可领取")
+    db.refresh(qr)
     return {"id": qr.id, "review": qr.review_status, "claimedBy": qr.review_claimed_by}
 
 
@@ -773,21 +782,16 @@ def retry_failed_interactions(tid: str, trid: str, db: Session = Depends(get_db)
     tr = db.get(TaskRun, trid)
     if not tr or tr.task_id != tid:
         raise HTTPException(404, "TaskRun 不存在")
-    failed = db.query(Run).filter(Run.task_run_id == trid, Run.status == "failed").all()
-    new_ids = []
-    for fr in failed:
-        nr = Run(workflow_id=fr.workflow_id, workflow_version_id=fr.workflow_version_id,
-                 trigger="batch", status="queued", input=fr.input,
-                 task_run_id=trid, task_id=tid, task_version_id=fr.task_version_id,
-                 interaction_ref=fr.interaction_ref, attempt=(fr.attempt or 1) + 1,
-                 origin_run_id=fr.id, definition_version_id=fr.definition_version_id,
-                 rule_version_id=fr.rule_version_id, data_snapshot_id=fr.data_snapshot_id)
-        db.add(nr)
-        db.flush()
-        db.add(JobQueue(type="workflow-execution", payload={"run_id": nr.id}))
-        new_ids.append(nr.id)
+    if tr.status not in ("partial", "failed"):
+        raise HTTPException(409, f"仅 partial/failed 批次可重试（当前 {tr.status}）")
+    n_failed = db.query(Run).filter(Run.task_run_id == trid, Run.status == "failed").count()
+    if n_failed == 0:
+        return {"retried": 0, "taskRunId": trid}  # 幂等：无失败项不入队
+    # 09 P1-06（审计：父批次永久 partial）：入队统一重试任务，
+    # 重跑失败交互后重汇父批次终态
+    db.add(JobQueue(type="task-run-retry", payload={"task_run_id": trid}))
     db.commit()
-    return {"retried": len(new_ids), "newRunIds": new_ids}
+    return {"retried": n_failed, "taskRunId": trid}
 
 
 @router.get("/api/tasks/{tid}")

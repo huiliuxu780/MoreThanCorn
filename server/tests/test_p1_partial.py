@@ -10,8 +10,10 @@ from app.db import SessionLocal
 from app.main import app
 from app.models import (AnalysisTask, AnalysisTaskVersion, DataSnapshot, Run,
                         TaskRun)
+from app.runner import start_worker
 
 client = TestClient(app)
+start_worker()  # 重试异步入队依赖 worker 消费
 
 
 def _mk_partial_batch():
@@ -79,19 +81,31 @@ def test_task_run_reflects_partial_with_row_errors():
 
 
 def test_retry_failed_creates_new_attempt():
+    """09 P1-06：重试建新 attempt（谱系），且异步入队后重汇父批次。"""
+    import time
     ids = _mk_partial_batch()
     try:
         r = client.post(f"/api/tasks/{ids['task_id']}/runs/{ids['task_run_id']}/retry-failed")
         assert r.status_code == 202, r.text
         body = r.json()
         assert body["retried"] == 1, "应只重试失败的那条交互"
-        new_run_id = body["newRunIds"][0]
+        assert body["taskRunId"] == ids["task_run_id"]
+        # 重试异步入队，等待 attempt=2 的 Run 出现
         db = SessionLocal()
         try:
-            nr = db.get(Run, new_run_id)
+            deadline = time.time() + 20
+            nr = None
+            while time.time() < deadline:
+                nr = db.query(Run).filter(
+                    Run.task_run_id == ids["task_run_id"],
+                    Run.interaction_ref == "P1P-BAD", Run.attempt == 2).first()
+                if nr:
+                    break
+                db.expire_all()
+                time.sleep(0.3)
+            assert nr is not None, "重试应创建 attempt=2 的 Run"
             assert nr.attempt == 2, "重试=新 attempt（INV-07 不覆盖原记录）"
             assert nr.origin_run_id == ids["bad_run_id"], "重试须指向原失败 Run（谱系）"
-            assert nr.interaction_ref == "P1P-BAD"
             # 原失败 Run 保留且状态不变
             old = db.get(Run, ids["bad_run_id"])
             assert old.status == "failed" and old.attempt == 1

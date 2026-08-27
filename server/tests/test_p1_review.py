@@ -52,19 +52,20 @@ def test_review_queue_lists_pending():
 
 
 def test_claim_transitions_to_in_review():
+    """09 P0-10（审计）：领取人来自鉴权身份（开发匿名=dev），忽略请求体。"""
     rid = _mk_result("AI")
     try:
-        r = client.post(f"/api/quality-results/{rid}/claim", json={"reviewer": "qa-1"})
+        r = client.post(f"/api/quality-results/{rid}/claim", json={"reviewer": "qa-1-forged"})
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["review"] == "IN_REVIEW"
-        assert body["claimedBy"] == "qa-1"
+        assert body["claimedBy"] == "dev"  # 身份为准，忽略伪造的 qa-1
         # 已被领取的不再出现在公共待复核队列
         q = client.get("/api/quality-results/review-queue", params={"pool": "pending", "pageSize": 500})
         assert rid not in [x["id"] for x in q.json()["items"]]
-        # 出现在"我的"队列
+        # 出现在"我的"队列（默认取当前身份=dev）
         mine = client.get("/api/quality-results/review-queue",
-                          params={"pool": "mine", "reviewer": "qa-1", "pageSize": 200})
+                          params={"pool": "mine", "pageSize": 200})
         assert rid in [x["id"] for x in mine.json()["items"]]
     finally:
         _cleanup(rid)

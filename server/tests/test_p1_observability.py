@@ -25,11 +25,12 @@ def test_run_stats_by_status_and_latency():
 
 
 def test_queue_backlog_metric():
-    # 制造一个 pending 任务，积压应 >= 1
+    # 制造一个 pending 任务（run_at 置未来，worker 不会认领），积压应 >= 1
+    from datetime import timedelta
     db = SessionLocal()
     try:
         j = JobQueue(type="obs-probe", payload={}, status="pending",
-                     run_at=datetime.now(timezone.utc))
+                     run_at=datetime.now(timezone.utc) + timedelta(hours=1))
         db.add(j)
         db.commit()
         jid = j.id

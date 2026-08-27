@@ -397,3 +397,87 @@ def execute_task_run(task_run_id: str) -> None:
             db.commit()
     finally:
         db.close()
+
+
+def reaggregate_task_run(db: Session, tr: TaskRun) -> None:
+    """09 P1-06（审计：父批次永久 partial）：按每 Interaction 的最新 attempt 重汇
+    TaskRun 的 succeeded/failed 与终态。"""
+    from .models import QualityResult
+    runs = db.query(Run).filter(Run.task_run_id == tr.id).all()
+    latest_by_ref: dict[str, Run] = {}
+    for r in runs:
+        cur = latest_by_ref.get(r.interaction_ref)
+        if cur is None or (r.attempt or 1) > (cur.attempt or 1):
+            latest_by_ref[r.interaction_ref] = r
+    ok = fail = 0
+    errors: list[dict] = []
+    for ref, r in latest_by_ref.items():
+        if r.status == "succeeded":
+            n_res = db.execute(select(func.count(QualityResult.id)).where(
+                QualityResult.run_id == r.id,
+                QualityResult.is_latest.is_(True))).scalar() or 0
+            if n_res == 1:
+                ok += 1
+            else:
+                fail += 1
+                errors.append({"interactionRef": ref, "error": "MISSING_QUALITY_RESULT"})
+        elif r.status in ("failed", "cancelled"):
+            fail += 1
+            errors.append({"interactionRef": ref,
+                           "error": (r.error or {}).get("message", r.status)})
+    tr.succeeded_count = ok
+    tr.failed_count = fail
+    if ok > 0 and fail == 0:
+        tr.status = "succeeded"
+    elif ok > 0:
+        tr.status = "partial"
+    else:
+        tr.status = "failed"
+    tr.error_summary = {"errors": errors[:20]} if errors else None
+    if tr.status in ("succeeded", "partial", "failed"):
+        tr.ended_at = datetime.now(timezone.utc)
+
+
+def retry_failed_in_taskrun(task_run_id: str) -> None:
+    """09 P1-06：重跑批次内失败交互（新 attempt + origin 谱系），完成后重汇父批次。"""
+    from .db import SessionLocal
+    from .runner import execute_run
+    db = SessionLocal()
+    try:
+        tr = db.get(TaskRun, task_run_id)
+        if not tr or tr.status not in ("partial", "failed"):
+            return
+        tr.status = "running"
+        db.commit()
+        failed = db.query(Run).filter(Run.task_run_id == task_run_id,
+                                      Run.status == "failed").all()
+        # 仅对"最新 attempt 仍失败"的交互重试，避免重复重试已成功项
+        latest: dict[str, Run] = {}
+        for r in db.query(Run).filter(Run.task_run_id == task_run_id).all():
+            cur = latest.get(r.interaction_ref)
+            if cur is None or (r.attempt or 1) > (cur.attempt or 1):
+                latest[r.interaction_ref] = r
+        to_retry = [r for r in latest.values() if r.status == "failed"]
+        for fr in to_retry:
+            nr = Run(workflow_id=fr.workflow_id, workflow_version_id=fr.workflow_version_id,
+                     trigger="batch", status="queued", input=fr.input,
+                     definition_source="version", task_run_id=task_run_id, task_id=tr.task_id,
+                     task_version_id=fr.task_version_id, interaction_ref=fr.interaction_ref,
+                     attempt=(fr.attempt or 1) + 1, origin_run_id=fr.id,
+                     definition_version_id=fr.definition_version_id,
+                     rule_version_id=fr.rule_version_id, data_snapshot_id=fr.data_snapshot_id)
+            db.add(nr)
+            db.commit()
+            execute_run(nr.id)
+            db.expire(nr)
+        reaggregate_task_run(db, tr)
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        tr = db.get(TaskRun, task_run_id)
+        if tr and tr.status == "running":
+            tr.status = "failed"
+            tr.error_summary = {"errors": [{"error": f"RETRY_ERROR: {exc}"}]}
+            db.commit()
+    finally:
+        db.close()

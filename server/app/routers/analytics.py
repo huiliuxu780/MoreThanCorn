@@ -3,7 +3,7 @@
 所有聚合在数据库侧完成（SQL GROUP BY / FILTER / regexp_split_to_table），
 不再"前端取 200 条自算"，也不把全表载入 Python。
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -88,13 +88,24 @@ _DIM_PATH = {
     "team": "structured_output->'org'->>'teamName'",
     "agent": "structured_output->'org'->>'agentName'",
     "department": "structured_output->'org'->>'departmentName'",
+    "serviceType": "structured_output->'businessContext'->>'serviceType'",
+    "brand": "structured_output->'businessContext'->>'brand'",
+    "productCategory": "structured_output->'businessContext'->>'productCategory'",
+    "issueTopic": "structured_output->'businessContext'->>'issueTopic'",
+    "requestType": "structured_output->>'requestType'",
 }
+
+# 09 P1（审计：SQL 注入）：维度仅允许白名单键，或严格标识符（防注入）。
+import re as _re
+_IDENT = _re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 @router.get("/api/quality/analytics/by-dimension")
 def quality_by_dimension(dim: str = "team", search: str = "", days: int | None = None,
                          db: Session = Depends(get_db)):
-    expr = _DIM_PATH.get(dim, f"structured_output->>'{dim}'")
+    if dim not in _DIM_PATH and not _IDENT.match(dim or ""):
+        raise HTTPException(422, f"非法维度名：{dim!r}")
+    expr = _DIM_PATH.get(dim) or f"structured_output->>'{dim}'"
     where, params = _where(search, days)
     rows = db.execute(text(f"""
         SELECT {expr} AS value,
@@ -150,11 +161,16 @@ def schedule_stats(db: Session = Depends(get_db)):
 
 @router.get("/api/observability/cost-stats")
 def cost_stats(db: Session = Depends(get_db)):
+    """09 P1（审计：成本恒 0）：从 CallRecord 模型调用聚合（真实调用源），
+    而非读从不写入的 Run.token_usage。"""
     row = db.execute(text("""
         SELECT coalesce(sum((token_usage->>'promptTokens')::int), 0) AS prompt,
-               coalesce(sum((token_usage->>'completionTokens')::int), 0) AS completion
-        FROM run WHERE token_usage IS NOT NULL
+               coalesce(sum((token_usage->>'completionTokens')::int), 0) AS completion,
+               count(*) AS calls
+        FROM call_record
+        WHERE kind = 'model' AND token_usage IS NOT NULL
     """)).mappings().one()
     return {"totalPromptTokens": int(row["prompt"] or 0),
             "totalCompletionTokens": int(row["completion"] or 0),
-            "totalTokens": int(row["prompt"] or 0) + int(row["completion"] or 0)}
+            "totalTokens": int(row["prompt"] or 0) + int(row["completion"] or 0),
+            "modelCalls": int(row["calls"] or 0)}

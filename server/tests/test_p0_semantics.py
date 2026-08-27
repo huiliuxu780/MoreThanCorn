@@ -275,9 +275,11 @@ def test_review_revision_append_only_and_ai_result_immutable():
     ai_score = base["aiResult"]["score"]
     assert ai_score is not None
     new_score = float(ai_score) - 30
+    # 09 P0-10（审计）：尝试用请求体伪造 reviewer，应被忽略（以鉴权身份为准；
+    # 开发匿名环境身份=dev）
     r1 = client.post(f"/api/quality-results/{qr['id']}/review",
                      json={"action": "revise", "score": new_score,
-                           "reviewer": "qa-alice", "note": "降级"}).json()
+                           "reviewer": "qa-alice-forged", "note": "降级"}).json()
     assert r1["review"] == "REVIEWED"
     det = client.get(f"/api/quality-results/{qr['id']}").json()
     assert det["score"] == new_score                # 生效值=人工修订
@@ -285,7 +287,7 @@ def test_review_revision_append_only_and_ai_result_immutable():
     revs = det["reviewRevisions"]
     assert len(revs) == 1
     assert revs[0]["action"] == "revise"
-    assert revs[0]["reviewer"] == "qa-alice"
+    assert revs[0]["reviewer"] == "dev"             # 来自身份，忽略伪造的 qa-alice
     assert revs[0]["before"]["score"] == ai_score
     assert revs[0]["after"]["score"] == new_score
     # 再次修订 → revision 追加，不覆盖第一条

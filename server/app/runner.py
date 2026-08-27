@@ -1443,9 +1443,26 @@ def migrate_definition(db: Session, defn: dict) -> tuple[dict, bool]:
 # ---------- worker ----------
 
 
-WORKER_ID = "w1"
+import uuid as _uuid
+# 09 P1-05（审计：Worker ID 固定 w1）：每进程唯一 Worker ID
+WORKER_ID = f"w-{_uuid.uuid4().hex[:8]}"
 LEASE_SECONDS_DEFAULT = 300          # 09 P1-05：认领租约（秒），超期视为 worker 崩溃
+HEARTBEAT_SECONDS = 60               # 09 P1-05：心跳续租间隔（< 租约，防长任务被误回收）
 BACKOFF_BASE_SECONDS = 2             # 重试退避基数（指数，封顶 300s）
+
+
+def _heartbeat(job_id: str, stop_evt: threading.Event) -> None:
+    """09 P1-05：长任务心跳——周期性续租 locked_at，防止被租约回收误判为崩溃。"""
+    while not stop_evt.wait(HEARTBEAT_SECONDS):
+        hb = SessionLocal()
+        try:
+            hb.execute(text("UPDATE job_queue SET locked_at=now() "
+                            "WHERE id=:i AND status='processing'"), {"i": job_id})
+            hb.commit()
+        except Exception:  # noqa: BLE001
+            hb.rollback()
+        finally:
+            hb.close()
 
 
 def claim_job(db: Session, include_future: bool = False):
@@ -1511,21 +1528,29 @@ def _dispatch_job(jtype: str, payload: dict) -> None:
     elif jtype == "task-run":  # 09 P0-B2：任务批次（per-interaction）
         from .task_runner import execute_task_run
         execute_task_run(payload["task_run_id"])
+    elif jtype == "task-run-retry":  # 09 P1-06：失败交互重试 + 重汇父批次
+        from .task_runner import retry_failed_in_taskrun
+        retry_failed_in_taskrun(payload["task_run_id"])
     else:
         execute_run(payload["run_id"], resume=payload.get("resume"))
 
 
 def claim_and_run(db: Session) -> bool:
-    """兼容入口：认领并执行一个到期任务（含重试/死信结算）。"""
+    """兼容入口：认领并执行一个到期任务（含重试/死信结算 + 心跳续租）。"""
     row = claim_job(db)
     if not row:
         return False
     payload = row.payload if isinstance(row.payload, dict) else json.loads(row.payload)
+    hb_stop = threading.Event()
+    hb = threading.Thread(target=_heartbeat, args=(row.id, hb_stop), daemon=True)
+    hb.start()
     try:
         _dispatch_job(row.type, payload)
         complete_job(db, row.id, success=True)
     except Exception as exc:  # noqa: BLE001
         complete_job(db, row.id, success=False, error=exc)
+    finally:
+        hb_stop.set()
     db.commit()
     return True
 

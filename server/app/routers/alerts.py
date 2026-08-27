@@ -1,13 +1,21 @@
-"""09-SDD P1-B4 / P1-08：告警——规则配置 + 阈值评估 + 事件留痕。"""
+"""09-SDD P1-B4 / P1-08：告警——规则配置 + 阈值评估 + 事件留痕 + 通知消费。
+
+09 P1（审计：告警只生成事件不通知）：评估超阈值时除留痕外，按规则 notify 配置
+分发通知（webhook 尽力投递 + 日志留痕）。指标覆盖队列/调度/运行错误率/数据源/模型。
+"""
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import AlertEvent, AlertRule, JobQueue, Run, Schedule
+from ..models import (AlertEvent, AlertRule, Datasource, JobQueue,
+                      ModelProvider, Run, Schedule)
 from ..auth import require_admin, require_operator
 
 router = APIRouter(tags=["alerts"])
+_logger = logging.getLogger("alerts")
 
 
 def _metric_value(db: Session, metric: str) -> float:
@@ -25,7 +33,38 @@ def _metric_value(db: Session, metric: str) -> float:
             return 0.0
         failed = db.query(func.count(Run.id)).filter(Run.status == "failed").scalar() or 0
         return round(failed / total * 100, 2)
+    if metric == "datasource_error":
+        return float(db.query(func.count(Datasource.id)).filter(
+            Datasource.health == "error").scalar() or 0)
+    if metric == "model_unavailable":
+        # base_url 非 http(s)（mock:// 或空）= 生产不可用的 Provider
+        rows = db.query(ModelProvider).all()
+        return float(sum(1 for p in rows
+                         if not str(p.base_url or "").startswith(("http://", "https://"))))
     raise HTTPException(422, f"未知指标 {metric}")
+
+
+def _dispatch_notification(rule: AlertRule, message: str, value: float) -> dict:
+    """09 P1-08（审计：消费 notify）：按规则 notify 配置分发通知。
+
+    支持 webhook（尽力投递，失败仅日志不阻塞）；无配置时仅日志留痕。
+    返回 {"dispatched": bool, "channel": str}。"""
+    notify = rule.notify or {}
+    webhook = notify.get("webhook")
+    if webhook:
+        try:
+            import httpx
+            with httpx.Client(timeout=5) as client:
+                client.post(webhook, json={"rule": rule.name, "metric": rule.metric,
+                                           "severity": rule.severity, "value": value,
+                                           "message": message})
+            _logger.info("告警已投递 webhook %s: %s", webhook, message)
+            return {"dispatched": True, "channel": "webhook"}
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("告警 webhook 投递失败 %s: %s", webhook, exc)
+            return {"dispatched": False, "channel": "webhook_failed"}
+    _logger.info("告警（无外部通道，仅留痕）: %s", message)
+    return {"dispatched": False, "channel": "log_only"}
 
 
 _OPS = {
@@ -94,8 +133,9 @@ def delete_rule(rid: str, db: Session = Depends(get_db),
 @router.post("/api/alerts/evaluate")
 def evaluate_alerts(db: Session = Depends(get_db),
                  _user: dict = Depends(require_operator) ):
-    """评估所有启用规则，超阈值生成告警事件（留痕）。"""
+    """评估所有启用规则，超阈值生成告警事件（留痕）并按 notify 分发通知。"""
     fired = 0
+    notified = 0
     for rule in db.query(AlertRule).filter(AlertRule.enabled).all():
         try:
             value = _metric_value(db, rule.metric)
@@ -103,12 +143,16 @@ def evaluate_alerts(db: Session = Depends(get_db),
             continue
         op = _OPS.get(rule.operator, _OPS["gt"])
         if op(value, rule.threshold):
+            message = f"{rule.name}: {rule.metric}={value} {rule.operator} {rule.threshold}"
             db.add(AlertEvent(rule_id=rule.id, metric=rule.metric, value=value,
                               threshold=rule.threshold, severity=rule.severity,
-                              message=f"{rule.name}: {rule.metric}={value} {rule.operator} {rule.threshold}"))
+                              message=message))
+            # 09 P1-08：消费 notify 分发（尽力，不阻塞评估）
+            if _dispatch_notification(rule, message, value)["dispatched"]:
+                notified += 1
             fired += 1
     db.commit()
-    return {"fired": fired}
+    return {"fired": fired, "notified": notified}
 
 
 @router.get("/api/alerts/events")

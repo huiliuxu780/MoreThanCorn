@@ -247,13 +247,14 @@ async function scenarioC_review(firstResultId) {
   console.log("\n[场景 C] 人工复核追加 revision，AI 原始结果不可变（INV-08）")
   const before = await api(`/api/quality-results/${firstResultId}`)
   const aiScore = before.aiResult?.score
+  // 09 P0-10（审计）：尝试用请求体伪造 reviewer，应被忽略（以鉴权身份为准）
   await api(`/api/quality-results/${firstResultId}/review`, { method: "POST",
-    body: JSON.stringify({ action: "revise", score: 10, reviewer: "e2e-reviewer", note: "复核降级" }) })
+    body: JSON.stringify({ action: "revise", score: 10, reviewer: "forged-reviewer", note: "复核降级" }) })
   const after = await api(`/api/quality-results/${firstResultId}`)
   assert(after.score === 10, "生效分=人工修订值", after.score)
   assert(after.aiResult?.score === aiScore, "aiResult 原始分不变（INV-08）", after.aiResult?.score)
   assert((after.reviewRevisions ?? []).length === 1, "追加 1 条 ReviewRevision", after.reviewRevisions?.length)
-  assert(after.reviewRevisions[0].reviewer === "e2e-reviewer", "reviewer 来自身份")
+  assert(after.reviewRevisions[0].reviewer === "admin", "reviewer 来自鉴权身份（忽略请求体伪造）", after.reviewRevisions[0].reviewer)
 }
 
 async function scenarioD_idempotency(ctx) {
