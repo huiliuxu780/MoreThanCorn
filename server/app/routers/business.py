@@ -204,13 +204,18 @@ def review_result(rid: str, payload: dict, db: Session = Depends(get_db),
     elif action == "effective":
         qr.review_status = "EFFECTIVE"
     elif action == "reopen":
-        qr.review_status = "AI"
+        # 09 §11.4：REOPENED 回到待复核池
+        qr.review_status = "REOPENED"
     elif action == "revise":
         qr.review_status = "REVIEWED"
         if payload.get("score") is not None:
             qr.score = float(payload["score"])
         if payload.get("risk"):
             qr.risk = payload["risk"]
+    # 终态（REVIEWED/EFFECTIVE）释放领取；REOPENED 清空领取人回池
+    if qr.review_status in ("REVIEWED", "EFFECTIVE", "REOPENED"):
+        qr.review_claimed_by = None
+        qr.review_claimed_at = None
     after = {"status": qr.review_status, "score": qr.score, "risk": qr.risk}
     rev_no = db.query(ReviewRevision).filter_by(quality_result_id=qr.id).count() + 1
     rev = ReviewRevision(quality_result_id=qr.id, revision_no=rev_no, action=action,
@@ -225,6 +230,90 @@ def review_result(rid: str, payload: dict, db: Session = Depends(get_db),
     db.commit()
     return {"id": qr.id, "review": qr.review_status, "history": qr.review_history,
             "revisionId": rev.id, "revisionNo": rev.revision_no}
+
+
+# ---------- 09 P1-02：复核工作流（待复核队列 / 领取 / 分配，§11.4） ----------
+
+_REVIEW_PENDING = ("AI", "REOPENED")
+
+
+def _review_item(qr) -> dict:
+    return {"id": qr.id, "interactionId": qr.interaction_ref,
+            "interactionTime": qr.interaction_time.isoformat() if qr.interaction_time else None,
+            "review": qr.review_status, "score": qr.score, "risk": qr.risk,
+            "claimedBy": qr.review_claimed_by,
+            "claimedAt": qr.review_claimed_at.isoformat() if qr.review_claimed_at else None,
+            "taskRunId": qr.task_run_id, "taskId": qr.task_id}
+
+
+@router.get("/api/quality-results/review-queue")
+def review_queue(pool: str = "pending", reviewer: str = "", page: int = 1,
+                 pageSize: int = 50, db: Session = Depends(get_db),
+                 _user: dict = Depends(require_reviewer)):
+    """pool=pending：待复核池（AI/REOPENED 且未被领取）；pool=mine：指定复核人已领取。"""
+    q = db.query(QualityResult)
+    if pool == "mine":
+        if not reviewer:
+            reviewer = _user.get("username", "")
+        q = q.filter(QualityResult.review_claimed_by == reviewer,
+                     QualityResult.review_status.in_(_REVIEW_PENDING + ("IN_REVIEW",)))
+    else:
+        q = q.filter(QualityResult.review_status.in_(_REVIEW_PENDING),
+                     QualityResult.review_claimed_by.is_(None))
+    total = q.count()
+    rows = q.order_by(QualityResult.interaction_time.desc())\
+        .offset((page - 1) * pageSize).limit(pageSize).all()
+    return {"items": [_review_item(r) for r in rows], "total": total,
+            "page": page, "pageSize": pageSize}
+
+
+@router.post("/api/quality-results/{rid}/claim")
+def claim_review(rid: str, payload: dict, db: Session = Depends(get_db),
+                 user: dict = Depends(require_reviewer)):
+    qr = _qr_by_any(db, rid)
+    if not qr:
+        raise HTTPException(404, "质检结果不存在")
+    if qr.review_status not in _REVIEW_PENDING:
+        raise HTTPException(409, f"当前状态 {qr.review_status} 不可领取")
+    if qr.review_claimed_by and qr.review_claimed_by != (payload.get("reviewer") or user.get("username")):
+        raise HTTPException(409, f"已被 {qr.review_claimed_by} 领取")
+    reviewer = payload.get("reviewer") or user.get("username", "reviewer")
+    qr.review_status = "IN_REVIEW"
+    qr.review_claimed_by = reviewer
+    qr.review_claimed_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"id": qr.id, "review": qr.review_status, "claimedBy": qr.review_claimed_by}
+
+
+@router.post("/api/quality-results/{rid}/release")
+def release_review(rid: str, db: Session = Depends(get_db),
+                   user: dict = Depends(require_reviewer)):
+    qr = _qr_by_any(db, rid)
+    if not qr:
+        raise HTTPException(404, "质检结果不存在")
+    if qr.review_status == "IN_REVIEW":
+        qr.review_status = "AI"
+    qr.review_claimed_by = None
+    qr.review_claimed_at = None
+    db.commit()
+    return {"id": qr.id, "review": qr.review_status, "claimedBy": None}
+
+
+@router.post("/api/quality-results/{rid}/assign")
+def assign_review(rid: str, payload: dict, db: Session = Depends(get_db),
+                  user: dict = Depends(require_operator)):
+    qr = _qr_by_any(db, rid)
+    if not qr:
+        raise HTTPException(404, "质检结果不存在")
+    reviewer = (payload or {}).get("reviewer")
+    if not reviewer:
+        raise HTTPException(422, "reviewer 必填")
+    qr.review_claimed_by = reviewer
+    qr.review_claimed_at = datetime.now(timezone.utc)
+    if qr.review_status in _REVIEW_PENDING:
+        qr.review_status = "IN_REVIEW"
+    db.commit()
+    return {"id": qr.id, "review": qr.review_status, "claimedBy": qr.review_claimed_by}
 
 
 @router.post("/api/quality-results/{rid}/evidence", status_code=201)
@@ -602,6 +691,32 @@ def list_task_run_results(trid: str, db: Session = Depends(get_db)):
                        "outputSchemaVersionId": q.output_schema_version_id,
                        "score": q.score, "risk": q.risk, "review": q.review_status,
                        "isLatest": q.is_latest} for q in rows]}
+
+
+@router.post("/api/tasks/{tid}/runs/{trid}/retry-failed", status_code=202)
+def retry_failed_interactions(tid: str, trid: str, db: Session = Depends(get_db),
+                              _user: dict = Depends(require_operator)):
+    """09 P1-06：失败交互行级重试——为每条失败 Run 建新 attempt（谱系=origin_run_id，
+    INV-07 不覆盖原记录），异步入队。无失败项时幂等返回 0。"""
+    from ..models import JobQueue, Run, TaskRun
+    tr = db.get(TaskRun, trid)
+    if not tr or tr.task_id != tid:
+        raise HTTPException(404, "TaskRun 不存在")
+    failed = db.query(Run).filter(Run.task_run_id == trid, Run.status == "failed").all()
+    new_ids = []
+    for fr in failed:
+        nr = Run(workflow_id=fr.workflow_id, workflow_version_id=fr.workflow_version_id,
+                 trigger="batch", status="queued", input=fr.input,
+                 task_run_id=trid, task_id=tid, task_version_id=fr.task_version_id,
+                 interaction_ref=fr.interaction_ref, attempt=(fr.attempt or 1) + 1,
+                 origin_run_id=fr.id, definition_version_id=fr.definition_version_id,
+                 rule_version_id=fr.rule_version_id, data_snapshot_id=fr.data_snapshot_id)
+        db.add(nr)
+        db.flush()
+        db.add(JobQueue(type="workflow-execution", payload={"run_id": nr.id}))
+        new_ids.append(nr.id)
+    db.commit()
+    return {"retried": len(new_ids), "newRunIds": new_ids}
 
 
 @router.get("/api/tasks/{tid}")

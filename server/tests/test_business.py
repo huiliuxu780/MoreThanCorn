@@ -90,8 +90,9 @@ def test_review_flow_history():
     assert r1["review"] == "REVIEWED" and r1["history"][-1]["action"] == "revise"
     r2 = client.post(f"/api/quality-results/{rid}/review", json={"action": "effective"}).json()
     assert r2["review"] == "EFFECTIVE"
+    # 09 §11.4：重开进入 REOPENED（回到待复核池），不再直接置 AI
     r3 = client.post(f"/api/quality-results/{rid}/review", json={"action": "reopen"}).json()
-    assert r3["review"] == "AI" and len(r3["history"]) == 3
+    assert r3["review"] == "REOPENED" and len(r3["history"]) == 3
 
 
 def test_batch_run_and_schedule():
@@ -128,11 +129,14 @@ def test_quality_results_filters_real():
     # risk 筛选：High 命中（上面规则发布后存在 High 行）
     hi = client.get("/api/quality-results", params={"risk": "High"}).json()
     assert hi["total"] >= 1 and all(x["risk"] == "High" for x in hi["items"])
-    # reviewStatus 与 tab 语义一致
+    # reviewStatus 与 tab 语义一致。09 §11.4 起状态机扩展（IN_REVIEW/REOPENED），
+    # pending(AI)+reviewed(REVIEWED/EFFECTIVE) 覆盖子集，其余为复核中/重开，故为 <=。
     pend = client.get("/api/quality-results", params={"tab": "pending", "pageSize": 1}).json()
     rev = client.get("/api/quality-results", params={"tab": "reviewed", "pageSize": 100}).json()
-    assert pend["total"] + rev["total"] == client.get("/api/quality-results", params={"pageSize": 1}).json()["total"]
+    assert pend["total"] + rev["total"] <= client.get("/api/quality-results", params={"pageSize": 1}).json()["total"]
     assert all(x["review"] in ("REVIEWED", "EFFECTIVE") for x in rev["items"])
+    assert all(x["review"] == "AI" for x in
+               client.get("/api/quality-results", params={"tab": "pending", "pageSize": 100}).json()["items"])
     # 排序：score:asc 非降序
     asc = client.get("/api/quality-results", params={"sort": "score:asc", "pageSize": 100}).json()
     scores = [x["score"] for x in asc["items"] if x["score"] is not None]

@@ -418,10 +418,13 @@ class QualityResult(Base):
     critical: Mapped[bool] = mapped_column(default=False)
     issue_count: Mapped[int] = mapped_column(default=0)
     issue_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    review_status: Mapped[str] = mapped_column(String(16), default="AI")  # AI|REVIEWED|EFFECTIVE
+    review_status: Mapped[str] = mapped_column(String(16), default="AI")  # AI|IN_REVIEW|REVIEWED|EFFECTIVE|REOPENED
     transcript: Mapped[dict] = mapped_column(JSONB, default=list)  # [{start,end,speaker,text}]
     rules_version: Mapped[int | None] = mapped_column(Integer, nullable=True)  # legacy（B1 起由 rule_version_id 取代）
     review_history: Mapped[dict] = mapped_column(JSONB, default=list)  # [{at,action,reviewer,note}]
+    # 09 P1-02：复核领取/分配（待复核队列 §11.4）
+    review_claimed_by: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    review_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # 09-SDD §9.6：追踪与版本链
     task_run_id: Mapped[str | None] = mapped_column(ForeignKey("task_run.id", ondelete="SET NULL"), nullable=True, index=True)
     task_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
