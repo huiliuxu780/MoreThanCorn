@@ -7,7 +7,7 @@ from sqlalchemy import text
 from .config import auth_enforced, is_production
 from .runner import start_worker
 from .routers import (admin, agents, alerts, analytics, auth_routes, business,
-                      forms, registry, resources, runs, workflows)
+                      forms, governance, registry, resources, runs, workflows)
 
 # 鉴权白名单：登录与探活不需要身份
 _PUBLIC_PATHS = ("/api/auth/login", "/healthz", "/readyz", "/openapi.json", "/docs")
@@ -106,6 +106,7 @@ app.include_router(workflows.router)
 app.include_router(registry.router)
 app.include_router(runs.router)
 app.include_router(business.router)
+app.include_router(governance.router)
 app.include_router(resources.router)
 app.include_router(admin.router)
 app.include_router(agents.router)

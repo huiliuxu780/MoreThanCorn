@@ -493,6 +493,34 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class ReleaseRequest(Base):
+    """发布治理（09-SDD P2-08）：统一的版本发布申请状态机。
+
+    覆盖 workflow|rule|definition|task 四类资源，治理"把哪个不可变版本提为
+    当前生效"。state 流转：pending → approved|rejected → released → rolled_back。
+    Canary 以 canary + canary_scope + canary_promoted 表达（先灰度后全量）。
+    """
+    __tablename__ = "release_request"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    resource_type: Mapped[str] = mapped_column(String(16))  # workflow|rule|definition|task
+    resource_id: Mapped[str] = mapped_column(String(32), index=True)
+    from_version_no: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 申请时的生效版本
+    to_version_no: Mapped[int] = mapped_column(Integer)
+    state: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    canary: Mapped[bool] = mapped_column(Boolean, default=False)
+    canary_scope: Mapped[dict] = mapped_column(JSONB, default=dict)
+    canary_promoted: Mapped[bool] = mapped_column(Boolean, default=False)
+    requested_by: Mapped[str] = mapped_column(String(64), default="")
+    approved_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejected_reason: Mapped[str] = mapped_column(Text, default="")
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rolled_back_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class ResultRuleSet(Base):
     """结果规则：版本化；对 structured_output 求值派生 score/risk/issueCount。"""
     __tablename__ = "result_rule_set"

@@ -79,8 +79,14 @@ def get_workflow(wf_id: str, db: Session = Depends(get_db)):
     wf = db.get(Workflow, wf_id)
     if not wf:
         raise HTTPException(404, "workflow not found")
+    # 09 P2-08：当前生效版本可见（发布治理依赖）
+    cur_no = None
+    if wf.current_version_id:
+        cur = db.get(WorkflowVersion, wf.current_version_id)
+        cur_no = cur.version_no if cur else None
     return {"id": wf.id, "name": wf.name, "status": wf.status,
             "draftRevision": wf.draft_revision, "definition": wf.draft_definition,
+            "currentVersionId": wf.current_version_id, "currentVersionNo": cur_no,
             "updatedAt": wf.updated_at.isoformat()}
 
 

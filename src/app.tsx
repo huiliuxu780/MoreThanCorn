@@ -21,6 +21,7 @@ const WfFormEditorPage = lazy(() => import("@/pages/wf-forms").then((m) => ({ de
 const WfWorkflowEditorPage = lazy(() => import("@/pages/wf-designer"))
 const WfConnectionsPage = lazy(() => import("@/pages/wf-connections"))
 const AuditLogPage = lazy(() => import("@/pages/audit-log"))
+const ReleaseGovernancePage = lazy(() => import("@/pages/release-governance"))
 const ResultRulesPage = lazy(() => import("@/pages/result-rules"))
 const ResultRuleEditorPage = lazy(() => import("@/pages/result-rule-editor"))
 // 资源管理一期（uiux/01–03）：AI Resources / Data Resources 统一资源域
@@ -112,6 +113,7 @@ export function App() {
           {/* 系统级设置 */}
           <Route path="/settings/connections" element={<WfConnectionsPage />} />
           <Route path="/settings/audit" element={<AuditLogPage />} />
+          <Route path="/settings/governance" element={<ReleaseGovernancePage />} />
           <Route path="/settings/models" element={<Navigate to="/config/ai-resources?tab=models" replace />} />
 
           <Route path="/403" element={<ForbiddenPage />} />
