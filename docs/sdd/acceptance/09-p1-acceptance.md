@@ -13,12 +13,19 @@
 > - 行级重试不重汇 → `task-run-retry` 统一重试 + `reaggregate_task_run` 重汇父批次；
 > - 队列无心跳/Worker ID 固定 → 唯一 Worker ID（w-uuid）+ 心跳续租（`test_worker_id_unique_not_fixed`）；
 > - 告警不消费 notify → 消费 webhook/日志 + 数据源/模型指标（`test_alert_evaluate_consumes_notify`）。
-> 后端 212 绿 + 前端全绿。**尚未闭环**：API/Worker/Scheduler 进程拆分、多列表真分页、
-> 治理水位/保留删除、前端组件测试/无障碍、真实故障注入演练，以及 §14.1 真实环境项。
-> **当前判定：P1 修复轮部分闭环，整体仍未通过（待上述项 + 真实运行证据）。**
+> 后续修复轮续补（2026-08-27）：
+> - 进程拆分（`5477f2c`）：run_worker.py/run_scheduler.py 独立入口；生产默认不内嵌
+>   （WF_EMBEDDED_WORKER=on 可开）；单进程 E2E 显式内嵌。
+> - 列表真分页（`05a4856`）：rules/assets/tasks/task_runs 服务端 offset/limit+total。
+> - 数据治理（`c29bb78`）：增量水位写入 DataSnapshot.checkpoint；retention-purge（admin/
+>   显式/留痕）；Eligibility 验收测试（`test_p1_governance.py` 4 项）。
+> 后端 214 绿 + 前端全绿。**尚未闭环**：前端组件测试/无障碍、真实故障注入演练
+> （模型超时/Worker 崩溃/Scheduler 重启/死信重放/回滚），以及 §14.1 真实环境项
+> （7 天 Staging/真 Provider Smoke/业务签字）。
+> **当前判定：P1 修复轮大部分代码项闭环，整体仍未通过（待真实故障演练 + 真实运行证据）。**
 
-- 验收版本：`87abcd4`（B1 `927dfb2` / B2 `eee5f64` / B3 `b1312be`+`142f78c` / B4 `3c35d74` / B5 `5dc7fea`+`c4adc13` / 审计修复 `87abcd4`）
-- 环境：后端 212 pytest（`wf_test` 隔离库）；核心 E2E 与故障演练在全新库 Production Profile 下
+- 验收版本：`c29bb78`（B1 `927dfb2` / B2 `eee5f64` / B3 `b1312be`+`142f78c` / B4 `3c35d74` / B5 `5dc7fea`+`c4adc13` / 审计修复 `87abcd4` / 进程拆分 `5477f2c` / 分页 `05a4856` / 治理 `c29bb78`）
+- 环境：后端 214 pytest（`wf_test` 隔离库）；核心 E2E 与故障演练在全新库 Production Profile 下
 - 验收日期：2026-08-27（修复轮）
 - 验收人：Agent 自验（**未经用户最终确认**）
 
