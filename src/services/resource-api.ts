@@ -89,6 +89,8 @@ export interface DefinitionDTO {
   id: string; name: string; assetId: string; assetName: string;
   lifecycle: "Draft" | "Ready" | "Deprecated"; revision: number;
   fieldCount: number; taskCount: number; updatedAt: string;
+  /** 09 P0-B4：最新已发布版本（任务绑定用） */
+  latestVersionId?: string | null; latestVersionNo?: number | null;
   fieldSchema?: { key: string; displayName: string; type: string; required: boolean; description?: string }[];
   eligibility?: string[];
   changeLog?: { action: string; actor: string; detail: Record<string, unknown>; at: string }[];
@@ -108,7 +110,7 @@ export const defApi = {
     req<{ id: string }>("/api/data-definitions", { method: "POST", body: JSON.stringify(body) }),
   update: (id: string, body: Record<string, unknown>) =>
     req<Record<string, unknown>>(`/api/data-definitions/${id}`, { method: "PUT", body: JSON.stringify(body) }),
-  publish: (id: string) => req<{ revision: number; lifecycle: string }>(`/api/data-definitions/${id}/publish`, { method: "POST" }),
+  publish: (id: string) => req<{ revision: number; lifecycle: string; versionId: string; versionNo: number }>(`/api/data-definitions/${id}/publish`, { method: "POST" }),
   infer: (id: string) => req<{ fieldSchema: DefinitionDTO["fieldSchema"] }>(`/api/data-definitions/${id}/infer`, { method: "POST" }),
   remove: (id: string) => req<{ ok: boolean }>(`/api/data-definitions/${id}`, { method: "DELETE" }),
 }

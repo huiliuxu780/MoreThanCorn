@@ -1,5 +1,5 @@
-import { ArrowLeft, History, ShieldCheck, Upload } from "lucide-react"
-import { useState } from "react"
+import { ArrowLeft, History, Plus, ShieldCheck, Trash2, Upload } from "lucide-react"
+import { useEffect, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -31,36 +31,108 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { FormField } from "@/components/app/form-field"
 import { PageContainer, PageHeader, SectionHeader } from "@/components/app/page"
-import { StatusBadge } from "@/components/app/status-badge"
 import { StatusIcon } from "@/components/app/status-indicator"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { bizApi } from "@/services/wf-api"
 import { rbac } from "@/services/rbac"
 
 /**
- * Result Rules Editor（Design Spec §27）：
- * 单页编辑；不做拖拽 Workflow / 多层 Wizard / 复杂 DSL。
+ * Result Rules Editor（09 P0-B4 契约对齐版）：
+ * 后端 DTO = {id,name,description,version,status,rules{scoreRules,issueRules},versions[]}。
+ * 规则结构即后端引擎求值结构（_match：field/op/value；op ∈ eq|neq|contains|gt|lt|exists）。
  */
+
+interface ScoreRuleRow { id: string; field: string; op: string; value: string; weight: number }
+interface IssueRuleRow { id: string; criterion: string; field: string; op: string; value: string; severity: string }
+
+const OPS = ["eq", "neq", "contains", "gt", "lt", "exists"] as const
+const SEVERITIES = ["Low", "Medium", "High", "Critical"] as const
+
+function normalizeRows(rules: Record<string, unknown> | undefined): { scoreRules: ScoreRuleRow[]; issueRules: IssueRuleRow[] } {
+  const scoreRules = ((rules?.scoreRules ?? []) as Partial<ScoreRuleRow>[]).map((r, i) => ({
+    id: r.id ?? `s${i}`, field: r.field ?? "", op: r.op ?? "eq",
+    value: String(r.value ?? ""), weight: Number(r.weight ?? 10),
+  }))
+  const issueRules = ((rules?.issueRules ?? []) as Partial<IssueRuleRow>[]).map((r, i) => ({
+    id: r.id ?? `i${i}`, criterion: r.criterion ?? "", field: r.field ?? "",
+    op: r.op ?? "contains", value: String(r.value ?? ""), severity: r.severity ?? "Medium",
+  }))
+  return { scoreRules, issueRules }
+}
+
+/** 真实校验（不再写死成功）：字段/权重/问题项完整性。 */
+function validateRules(scoreRules: ScoreRuleRow[], issueRules: IssueRuleRow[]) {
+  const checks: { label: string; ok: boolean }[] = []
+  checks.push({
+    label: "每条评分规则都有 field 与 op",
+    ok: scoreRules.every((r) => r.field.trim() !== "" && r.op.trim() !== ""),
+  })
+  checks.push({
+    label: "权重为 0–100 数字",
+    ok: scoreRules.every((r) => Number.isFinite(r.weight) && r.weight >= 0 && r.weight <= 100),
+  })
+  checks.push({
+    label: "每条问题规则有 criterion 与 severity",
+    ok: issueRules.every((r) => r.criterion.trim() !== "" && SEVERITIES.includes(r.severity as typeof SEVERITIES[number])),
+  })
+  checks.push({
+    label: "非 exists 运算都有比较值",
+    ok: [...scoreRules, ...issueRules].every((r) => r.op === "exists" || String(r.value).trim() !== ""),
+  })
+  return checks
+}
+
 export default function ResultRuleEditorPage() {
   const { ruleSetId = "" } = useParams()
   const navigate = useNavigate()
-  const { data: rule } = useAsyncData(() => bizApi.rule(ruleSetId).then((r) => ({
-    ...r, versionStatus: r.status === "published" ? "Published" : "Draft",
-    evaluationPriority: (r as { evaluationPriority?: string }).evaluationPriority ?? "Most Recent Completed",
-  }) as Record<string, any>), [ruleSetId])
+  const { data: rule, retry } = useAsyncData(() => bizApi.rule(ruleSetId), [ruleSetId])
+
+  const [name, setName] = useState("")
+  const [description, setDescription] = useState("")
+  const [scoreRules, setScoreRules] = useState<ScoreRuleRow[]>([])
+  const [issueRules, setIssueRules] = useState<IssueRuleRow[]>([])
+  const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   const [validateOpen, setValidateOpen] = useState(false)
   const [publishOpen, setPublishOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [versionNote, setVersionNote] = useState("")
-  const [priority, setPriority] = useState<string | null>(null)
   const [publishing, setPublishing] = useState(false)
 
+  useEffect(() => {
+    if (!rule) return
+    setName(rule.name)
+    setDescription(rule.description ?? "")
+    const rows = normalizeRows(rule.rules)
+    setScoreRules(rows.scoreRules)
+    setIssueRules(rows.issueRules)
+    setDirty(false)
+  }, [rule])
+
   const canManage = rbac.can("rules.manage")
-  const readOnly = rule?.versionStatus === "Published" || !canManage
+  const readOnly = !canManage
 
   if (!rule) {
     return <PageContainer className="max-w-4xl"><p className="text-sm text-muted-foreground">加载中...</p></PageContainer>
+  }
+
+  const checks = validateRules(scoreRules, issueRules)
+
+  const saveDraft = async () => {
+    setSaving(true)
+    try {
+      await bizApi.updateRule(ruleSetId, {
+        name: name.trim() || rule.name,
+        rules: { scoreRules, issueRules },
+      })
+      setDirty(false)
+      toast.success("草稿已保存")
+      retry()
+    } catch (e) {
+      toast.error(`保存失败：${(e as Error).message}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -74,29 +146,24 @@ export default function ResultRuleEditorPage() {
           title={rule.name}
           status={
             <>
-              <Badge variant={rule.versionStatus === "Published" ? "success" : "neutral"}>{rule.currentVersion}</Badge>
+              <Badge variant={rule.status === "published" ? "success" : "neutral"}>V{rule.version}</Badge>
+              <Badge variant={rule.status === "published" ? "success" : "neutral"}>
+                {rule.status === "published" ? "Published" : "Draft"}
+              </Badge>
               {readOnly ? <Badge variant="info">只读</Badge> : null}
             </>
           }
-          description="管理 Effective Result 如何被解释与计算为 Derived Result"
+          description="发布生成不可变规则版本；存量结果保留各自冻结版本（09 P0-07，不再全库重算）"
           actions={
             <>
               <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)}><History className="size-3.5" /> 版本历史</Button>
               <Button variant="outline" size="sm" onClick={() => setValidateOpen(true)}><ShieldCheck className="size-3.5" /> 验证</Button>
               {!readOnly ? (
-                <Button size="sm" onClick={() => setPublishOpen(true)}><Upload className="size-3.5" /> 发布</Button>
-              ) : (
-                <Button size="sm" variant="outline" onClick={async () => {
-                  // R2 修复：真创建 Draft（复制为新规则集；此前只 toast）
-                  try {
-                    const r = await bizApi.createRule({ name: `${rule.name} (Draft)`, description: rule.description ?? "", rules: (rule as unknown as { rules?: Record<string, unknown> }).rules ?? {} })
-                    toast.success("已基于当前版本创建 Draft")
-                    navigate(`/config/result-rules/${r.id}`)
-                  } catch (e) {
-                    toast.error(`创建失败：${(e as Error).message}`)
-                  }
-                }}>基于当前版本创建 Draft</Button>
-              )}
+                <>
+                  <Button variant="outline" size="sm" disabled={!dirty || saving} onClick={saveDraft}>保存草稿</Button>
+                  <Button size="sm" onClick={() => setPublishOpen(true)}><Upload className="size-3.5" /> 发布</Button>
+                </>
+              ) : null}
             </>
           }
         />
@@ -105,58 +172,52 @@ export default function ResultRuleEditorPage() {
       <fieldset disabled={readOnly} className="space-y-5">
         <section className="space-y-3 rounded-lg border bg-card p-4">
           <SectionHeader title="基本信息" />
-          <div className="grid grid-cols-2 gap-4">
-            <FormField label="名称" required><Input defaultValue={rule.name} /></FormField>
-            <FormField label="Agent" description="Selection Filter 的评价来源；Result Rules ≠ Agent">
-              <Select defaultValue={rule.agentId}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={rule.agentId}>{rule.agentName}</SelectItem>
-                </SelectContent>
-              </Select>
-            </FormField>
-          </div>
-          <FormField label="描述"><Textarea className="min-h-16" defaultValue={rule.description} /></FormField>
+          <FormField label="名称" required>
+            <Input value={name} onChange={(e) => { setName(e.target.value); setDirty(true) }} />
+          </FormField>
+          <FormField label="描述">
+            <Textarea className="min-h-16" value={description} onChange={(e) => { setDescription(e.target.value); setDirty(true) }} />
+          </FormField>
         </section>
 
         <section className="space-y-3 rounded-lg border bg-card p-4">
-          <SectionHeader title="Evaluation Selection" description="先 Filter，再 Priority；V1 默认 Most Recent Completed" />
-          <div className="grid grid-cols-2 gap-4">
-            <FormField label="候选状态">
-              <Input value="Completed" disabled />
-            </FormField>
-            <FormField label="Priority">
-              <Select value={priority ?? rule.evaluationPriority} onValueChange={setPriority}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Most Recent Completed">最新完成的评价（Most Recent Completed）</SelectItem>
-                  <SelectItem value="Initial Completed">首次完成的评价（Initial Completed）</SelectItem>
-                </SelectContent>
-              </Select>
-            </FormField>
-          </div>
-          <p className="text-xs text-muted-foreground">Human Review 属于具体 Evaluation，不进入 Selection Priority。</p>
-        </section>
-
-        <section className="space-y-3 rounded-lg border bg-card p-4">
-          <SectionHeader title="Score / Weight" description="规则源来自 Effective Result 中可用于业务解释的 Criterion / Field" />
+          <SectionHeader
+            title="评分规则（Score Rules）"
+            description="条件不满足时扣减对应权重；起始分 100"
+            actions={
+              <Button variant="outline" size="sm" onClick={() => { setScoreRules([...scoreRules, { id: `s${Date.now()}`, field: "", op: "eq", value: "", weight: 10 }]); setDirty(true) }}>
+                <Plus className="size-3.5" /> 添加
+              </Button>
+            }
+          />
           <div className="overflow-hidden rounded-lg border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>评价项 / 字段</TableHead>
-                  <TableHead>结果类型</TableHead>
-                  <TableHead>评分规则</TableHead>
-                  <TableHead className="text-right">权重</TableHead>
+                  <TableHead>字段</TableHead>
+                  <TableHead>运算</TableHead>
+                  <TableHead>比较值</TableHead>
+                  <TableHead className="text-right">扣分权重</TableHead>
+                  <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rule.scoreRules.map((row: any) => (
+                {scoreRules.length === 0 ? (
+                  <TableRow><TableCell colSpan={5} className="py-4 text-center text-xs text-muted-foreground">暂无评分规则</TableCell></TableRow>
+                ) : scoreRules.map((row, idx) => (
                   <TableRow key={row.id}>
-                    <TableCell className="text-sm">{row.criterion}</TableCell>
-                    <TableCell className="text-xs">{row.resultType}</TableCell>
-                    <TableCell className="font-mono text-xs">{row.scoringRule}</TableCell>
-                    <TableCell className="text-right tabular-nums">{row.weight}</TableCell>
+                    <TableCell><Input className="h-8" value={row.field} onChange={(e) => { setScoreRules(scoreRules.map((r, i) => i === idx ? { ...r, field: e.target.value } : r)); setDirty(true) }} /></TableCell>
+                    <TableCell>
+                      <Select value={row.op} onValueChange={(v) => { setScoreRules(scoreRules.map((r, i) => i === idx ? { ...r, op: v } : r)); setDirty(true) }}>
+                        <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
+                        <SelectContent>{OPS.map((op) => <SelectItem key={op} value={op}>{op}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell><Input className="h-8" value={row.value} disabled={row.op === "exists"} onChange={(e) => { setScoreRules(scoreRules.map((r, i) => i === idx ? { ...r, value: e.target.value } : r)); setDirty(true) }} /></TableCell>
+                    <TableCell><Input type="number" className="h-8 w-20 text-right" value={row.weight} onChange={(e) => { setScoreRules(scoreRules.map((r, i) => i === idx ? { ...r, weight: Number(e.target.value) } : r)); setDirty(true) }} /></TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" className="size-8" onClick={() => { setScoreRules(scoreRules.filter((_, i) => i !== idx)); setDirty(true) }}><Trash2 className="size-4" /></Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -165,79 +226,67 @@ export default function ResultRuleEditorPage() {
         </section>
 
         <section className="space-y-3 rounded-lg border bg-card p-4">
-          <SectionHeader title="Overall / Critical" description="Critical 是业务派生规则，不回写 AI Structured Result" />
-          <FormField label="Overall Rule">
-            <Input defaultValue={rule.overall.rule} />
-          </FormField>
-          <div className="space-y-1.5">
-            {rule.criticalRules.map((row: any) => (
-              <div key={row.id} className="flex items-center justify-between rounded-md border border-red-200 bg-red-50/60 px-3 py-2 text-xs dark:border-red-500/20 dark:bg-red-500/10">
-                <span className="font-mono">{row.condition}</span>
-                <span className="text-muted-foreground">→ {row.effect}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="space-y-4 rounded-lg border bg-card p-4">
-          <SectionHeader title="Risk / Level / Derived Labels" />
-          <div>
-            <div className="mb-1.5 text-xs font-medium text-muted-foreground">Risk Mapping</div>
-            <div className="space-y-1.5">
-              {rule.riskMapping.map((row: any) => (
-                <div key={row.id} className="flex items-center justify-between rounded-md border px-3 py-1.5 text-xs">
-                  <span>{row.condition}</span>
-                  <StatusBadge status={row.risk === "Critical" ? "FAILED" : row.risk === "High" ? "PARTIAL_SUCCESS" : "SUCCESS"} label={row.risk} />
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <div className="mb-1.5 text-xs font-medium text-muted-foreground">Level</div>
-              <div className="space-y-1.5">
-                {rule.levels.map((row: any) => (
-                  <div key={row.id} className="flex items-center justify-between rounded-md border px-3 py-1.5 text-xs">
-                    <span className="tabular-nums">{row.range}</span>
-                    <span className="font-medium">{row.level}</span>
-                  </div>
+          <SectionHeader
+            title="问题规则（Issue Rules）"
+            description="条件命中时记录问题并派生风险等级"
+            actions={
+              <Button variant="outline" size="sm" onClick={() => { setIssueRules([...issueRules, { id: `i${Date.now()}`, criterion: "", field: "", op: "contains", value: "", severity: "Medium" }]); setDirty(true) }}>
+                <Plus className="size-3.5" /> 添加
+              </Button>
+            }
+          />
+          <div className="overflow-hidden rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>问题描述</TableHead>
+                  <TableHead>字段</TableHead>
+                  <TableHead>运算</TableHead>
+                  <TableHead>比较值</TableHead>
+                  <TableHead>严重度</TableHead>
+                  <TableHead className="w-10" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {issueRules.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} className="py-4 text-center text-xs text-muted-foreground">暂无问题规则</TableCell></TableRow>
+                ) : issueRules.map((row, idx) => (
+                  <TableRow key={row.id}>
+                    <TableCell><Input className="h-8" value={row.criterion} onChange={(e) => { setIssueRules(issueRules.map((r, i) => i === idx ? { ...r, criterion: e.target.value } : r)); setDirty(true) }} /></TableCell>
+                    <TableCell><Input className="h-8" value={row.field} onChange={(e) => { setIssueRules(issueRules.map((r, i) => i === idx ? { ...r, field: e.target.value } : r)); setDirty(true) }} /></TableCell>
+                    <TableCell>
+                      <Select value={row.op} onValueChange={(v) => { setIssueRules(issueRules.map((r, i) => i === idx ? { ...r, op: v } : r)); setDirty(true) }}>
+                        <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
+                        <SelectContent>{OPS.map((op) => <SelectItem key={op} value={op}>{op}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell><Input className="h-8" value={row.value} disabled={row.op === "exists"} onChange={(e) => { setIssueRules(issueRules.map((r, i) => i === idx ? { ...r, value: e.target.value } : r)); setDirty(true) }} /></TableCell>
+                    <TableCell>
+                      <Select value={row.severity} onValueChange={(v) => { setIssueRules(issueRules.map((r, i) => i === idx ? { ...r, severity: v } : r)); setDirty(true) }}>
+                        <SelectTrigger className="h-8 w-24"><SelectValue /></SelectTrigger>
+                        <SelectContent>{SEVERITIES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" className="size-8" onClick={() => { setIssueRules(issueRules.filter((_, i) => i !== idx)); setDirty(true) }}><Trash2 className="size-4" /></Button>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </div>
-            </div>
-            <div>
-              <div className="mb-1.5 text-xs font-medium text-muted-foreground">Derived Labels</div>
-              <div className="space-y-1.5">
-                {rule.derivedLabels.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">暂无派生标签</p>
-                ) : (
-                  rule.derivedLabels.map((row: any) => (
-                    <div key={row.id} className="flex items-center justify-between rounded-md border px-3 py-1.5 text-xs">
-                      <span>{row.condition}</span>
-                      <Badge variant="outline">{row.label}</Badge>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
+              </TableBody>
+            </Table>
           </div>
         </section>
       </fieldset>
 
-      {/* Validate Sheet */}
+      {/* Validate Sheet：真实校验（不再写死成功） */}
       <Sheet open={validateOpen} onOpenChange={setValidateOpen}>
         <SheetContent className="w-[400px]">
           <SheetHeader>
             <SheetTitle>验证</SheetTitle>
-            <SheetDescription>只做规则完整性与可执行性检查，不运行生产 Analysis Task</SheetDescription>
+            <SheetDescription>规则完整性检查（后端引擎按 field/op/value 求值）</SheetDescription>
           </SheetHeader>
           <div className="mt-4 space-y-2">
-            {[
-              { label: "Evaluation Selection 完整", ok: true },
-              { label: "规则引用有效（Criterion 来自正式 Schema）", ok: true },
-              { label: "必填配置完整（权重合计 = 100）", ok: rule.scoreRules.reduce((a: number, r: any) => a + r.weight, 0) === 100 },
-              { label: "Mapping 可执行", ok: true },
-              { label: "不存在明显冲突 / 无效规则", ok: true },
-            ].map((check) => (
+            {checks.map((check) => (
               <div key={check.label} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
                 <StatusIcon tone={check.ok ? "success" : "danger"} />
                 {check.label}
@@ -247,30 +296,31 @@ export default function ResultRuleEditorPage() {
         </SheetContent>
       </Sheet>
 
-      {/* Publish Dialog */}
+      {/* Publish Dialog：09 P0-07 发布=冻结不可变版本 */}
       <Dialog open={publishOpen} onOpenChange={setPublishOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>发布 Result Rules</DialogTitle>
-            <DialogDescription>新 Rules Version 不覆盖历史 Run / Derived Result</DialogDescription>
+            <DialogDescription>
+              发布将当前草稿冻结为新的不可变版本；存量结果保留各自绑定版本，不触发重算。
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 text-sm">
+          <div className="space-y-2 text-sm">
             <div className="rounded-md bg-muted/60 px-3 py-2 text-xs">
-              <div>Agent：{rule.agentName}</div>
-              <div>Priority：{priority ?? rule.evaluationPriority}</div>
-              <div>变更摘要：权重 / Critical / Risk Mapping 调整</div>
+              <div>评分规则：{scoreRules.length} 条 · 问题规则：{issueRules.length} 条</div>
+              {checks.some((c) => !c.ok) ? <div className="mt-1 text-amber-600">存在未通过的校验项，建议先修复</div> : null}
             </div>
-            <Textarea placeholder="Version Note（必填）" className="min-h-16 text-xs" value={versionNote} onChange={(e) => setVersionNote(e.target.value)} />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPublishOpen(false)}>取消</Button>
-            <Button disabled={!versionNote.trim() || publishing} onClick={async () => {
-              // R2 修复：真发布（此前只 toast）
+            <Button disabled={publishing} onClick={async () => {
               setPublishing(true)
               try {
+                if (dirty) await saveDraft()
                 const r = await bizApi.publishRule(ruleSetId)
                 setPublishOpen(false)
-                toast.success(`Rules 已发布 V${r.version}，重算 ${r.recalculated} 条结果`)
+                toast.success(`已发布 V${r.version}（版本 ${r.ruleVersionId.slice(0, 8)}），不触发历史重算`)
+                retry()
               } catch (e) {
                 toast.error(`发布失败：${(e as Error).message}`)
               } finally {
@@ -281,22 +331,26 @@ export default function ResultRuleEditorPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Version History Sheet */}
+      {/* Version History Sheet：真实版本列表 */}
       <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
-        <SheetContent className="w-[380px]">
+        <SheetContent className="w-[420px]">
           <SheetHeader>
             <SheetTitle>版本历史</SheetTitle>
-            <SheetDescription>历史 Published Version 只读，可基于此版本创建 Draft</SheetDescription>
+            <SheetDescription>不可变版本快照；任务可绑定任一版本</SheetDescription>
           </SheetHeader>
           <div className="mt-4 space-y-2">
-            {rule.versions.map((v: any) => (
-              <div key={v.version} className="rounded-md border px-3 py-2 text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{v.version}</span>
-                  <StatusBadge status={v.status} />
+            {(rule.versions ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">尚未发布过版本</p>
+            ) : (rule.versions ?? []).map((v) => (
+              <div key={v.id} className="rounded-md border px-3 py-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">V{v.versionNo}</span>
+                  <span className="text-xs text-muted-foreground">{v.id.slice(0, 8)}</span>
                 </div>
-                {v.versionNote ? <div className="mt-1 text-xs text-muted-foreground">{v.versionNote}</div> : null}
-                {v.publishedBy ? <div className="mt-0.5 text-[11px] text-muted-foreground">{v.publishedBy}</div> : null}
+                <div className="mt-1 text-xs text-muted-foreground">
+                  评分 {((v.rules?.scoreRules as unknown[] | undefined) ?? []).length} 条 ·
+                  问题 {((v.rules?.issueRules as unknown[] | undefined) ?? []).length} 条 · {v.createdAt}
+                </div>
               </div>
             ))}
           </div>

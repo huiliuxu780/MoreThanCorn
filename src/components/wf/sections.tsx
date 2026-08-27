@@ -11,6 +11,10 @@ import { resApi } from "@/services/resource-api"
 import { formsApi, wfApi, type NodeDefinition, type WfEdge, type WfNode } from "@/services/wf-api"
 
 import { C, PromptArea, ResourceSelect, Section, VarButton, parseIoOutputs } from "./controls"
+/** 09 §5.7 已登记豁免：节点配置为注册表 schema 驱动的自由 JSONB，设计器按松散对象处理（统一别名，可审计）。 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type NodeCfgLoose = Record<string, any>
+
 
 /* ---------- 健壮性分区（07-SDD §3.2 execution 块） ---------- */
 export function RobustnessSection({ node, onChange }: { node: WfNode; onChange: (n: WfNode) => void }) {
@@ -118,7 +122,7 @@ export function OutputSchemaEditor({ value, onChange }: {
 /* ---------- 输入变量映射表（07-SDD §4.13，workflow-fixed 吸收原 agent 节点） ---------- */
 const STD_VARS = ["userQuery", "chatHistory", "userId", "conversationId", "chatId", "reference"]
 export function InputMappingTable({ cfg, set, nodes, edges, selfId, defs }: {
-  cfg: Record<string, any>; set: (k: string, v: unknown) => void
+  cfg: NodeCfgLoose; set: (k: string, v: unknown) => void
   nodes: WfNode[]; edges: WfEdge[]; selfId: string; defs: NodeDefinition[]
 }) {
   // 07-SDD form：行=子工作流开始 form 字段（契约驱动），fallback legacy 六件套
@@ -167,15 +171,15 @@ export function InputMappingTable({ cfg, set, nodes, edges, selfId, defs }: {
 
 /* ---------- 工具参数双模式（07-SDD §4.9） ---------- */
 export function ToolParamsSection({ cfg, set, nodes, edges, selfId, defs }: {
-  cfg: Record<string, any>; set: (k: string, v: unknown) => void
+  cfg: NodeCfgLoose; set: (k: string, v: unknown) => void
   nodes: WfNode[]; edges: WfEdge[]; selfId: string; defs: NodeDefinition[]
 }) {
-  const [params, setParams] = useState<Record<string, any>>({})
+  const [params, setParams] = useState<NodeCfgLoose>({})
   useEffect(() => {
     if (!cfg.toolId) { setParams({}); return }
     resApi.toolVersions(cfg.toolId).then((vs) => {
-      const spec = (vs[0]?.spec ?? {}) as Record<string, any>
-      setParams(((spec.params ?? {}) as Record<string, any>).properties ?? {})
+      const spec = (vs[0]?.spec ?? {}) as NodeCfgLoose
+      setParams(((spec.params ?? {}) as NodeCfgLoose).properties ?? {})
     }).catch(() => setParams({}))
   }, [cfg.toolId])
   const vals = (cfg.toolParams ?? {}) as Record<string, { mode?: string; value?: string }>
@@ -214,7 +218,7 @@ export function ToolParamsSection({ cfg, set, nodes, edges, selfId, defs }: {
 
 /* ---------- loop 抽屉（07-SDD §4.16） ---------- */
 export function LoopSection({ cfg, set, nodes, edges, selfId, defs }: {
-  cfg: Record<string, any>; set: (k: string, v: unknown) => void
+  cfg: NodeCfgLoose; set: (k: string, v: unknown) => void
   nodes: WfNode[]; edges: WfEdge[]; selfId: string; defs: NodeDefinition[]
 }) {
   return (
@@ -261,7 +265,7 @@ export function LoopSection({ cfg, set, nodes, edges, selfId, defs }: {
 
 /* ---------- wait-review 抽屉（07-SDD §4.17） ---------- */
 export function WaitReviewSection({ cfg, set, nodes, edges, selfId, defs }: {
-  cfg: Record<string, any>; set: (k: string, v: unknown) => void
+  cfg: NodeCfgLoose; set: (k: string, v: unknown) => void
   nodes: WfNode[]; edges: WfEdge[]; selfId: string; defs: NodeDefinition[]
 }) {
   const mode = (cfg.resumeMode as string) || "human"
@@ -322,7 +326,7 @@ export function WaitReviewSection({ cfg, set, nodes, edges, selfId, defs }: {
 }
 
 /* ---------- data-read 抽屉（07-SDD §4.18） ---------- */
-export function DataReadSection({ cfg, set }: { cfg: Record<string, any>; set: (k: string, v: unknown) => void }) {
+export function DataReadSection({ cfg, set }: { cfg: NodeCfgLoose; set: (k: string, v: unknown) => void }) {
   return (
     <>
       <Section title="数据资产">
@@ -358,7 +362,7 @@ export function DataReadSection({ cfg, set }: { cfg: Record<string, any>; set: (
 }
 
 /* ---------- workflow-select 候选多选（07-SDD §4.14） ---------- */
-export function CandidatesMulti({ cfg, set }: { cfg: Record<string, any>; set: (k: string, v: unknown) => void }) {
+export function CandidatesMulti({ cfg, set }: { cfg: NodeCfgLoose; set: (k: string, v: unknown) => void }) {
   const [list, setList] = useState<{ id: string; name: string }[]>([])
   useEffect(() => { wfApi.list({ pageSize: 100 }).then((r) => setList(r.items as { id: string; name: string }[])).catch(() => undefined) }, [])
   const sel = Array.isArray(cfg.candidates) ? (cfg.candidates as string[]) : []

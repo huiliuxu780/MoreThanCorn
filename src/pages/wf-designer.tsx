@@ -125,7 +125,11 @@ const LEGACY_SIX_CLIENT = [
   { key: "chatId", type: "text", dataType: "string", label: "对话 ID" },
   { key: "reference", type: "text", dataType: "string", label: "引用内容" },
 ]
-function StartFormSection({ cfg, set }: { cfg: Record<string, any>; set: (k: string, v: unknown) => void }) {
+/** 09 §5.7 已登记豁免：节点配置/注册表 schema 为自由 JSONB，设计器按松散对象处理。
+ * 统一别名（仅此一处声明，可审计）；API 边界契约类型见 services/api-types.ts。 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type NodeCfgLoose = Record<string, any>
+function StartFormSection({ cfg, set }: { cfg: NodeCfgLoose; set: (k: string, v: unknown) => void }) {
   const [forms, setForms] = useState<FormDef[]>([])
   const [cur, setCur] = useState<FormDef | null>(null)
   const navigate = useNavigate()
@@ -391,7 +395,7 @@ function SummaryRows({ n }: { n: WfNode }) {
 
 /* 条件节点摘要行：每分支一行，右侧各挂一个 source handle（调研 11 §3.14：分支=出边 handle） */
 function ConditionRows({ n, onQuickAdd, palette }: { n: WfNode; onQuickAdd?: (h: string | null, t: string) => void; palette?: [string, NodeDefinition[]][] }) {
-  const bs = normCondBranches((n.config as Record<string, any>)?.branches)
+  const bs = normCondBranches((n.config as NodeCfgLoose)?.branches)
   const rows = [
     ...bs.map((b, i) => ({
       handle: b.handle,
@@ -582,8 +586,7 @@ function ConfigDrawer(props: {
   const { node, defs, nodes, edges, agentId, issues = [], onClose, onChange, onRemoveBranchEdges } = props
   const [varTarget, setVarTarget] = useState<"prompt" | string | null>(null)
   const [dragBr, setDragBr] = useState<number | null>(null)
-  if (!node) return null
-  const def = defs.find((d) => d.type_key === node.type)
+  // 09 P0-B4：所有 hooks 必须在早退之前调用（rules-of-hooks）
   const [models, setModels] = useState<{ id: string; caps: string[] }[]>([])
   useEffect(() => {
     resApi.registry("model").then((r) => setModels(r.items.map((m) => ({
@@ -591,24 +594,27 @@ function ConfigDrawer(props: {
       caps: (m.metadata.capabilities as string[]) ?? [],
     })))).catch(() => setModels([]))
   }, [])
+  const mcpServerId = (node?.config as Record<string, unknown> | undefined)?.mcpServerId as string | undefined
   const [mcpTools, setMcpTools] = useState<string[]>([])
   useEffect(() => {
-    const sid = (node.config as Record<string, any>)?.mcpServerId
-    if (!sid) { setMcpTools([]); return }
-    resApi.get("mcp", sid).then((d) => setMcpTools(((d.config?.discoveredTools as { name?: string }[] | undefined) ?? []).map((t) => t.name ?? ""))).catch(() => undefined)
-  }, [(node.config as Record<string, any>)?.mcpServerId])
+    if (!mcpServerId) { setMcpTools([]); return }
+    resApi.get("mcp", mcpServerId).then((d) => setMcpTools(((d.config?.discoveredTools as { name?: string }[] | undefined) ?? []).map((t) => t.name ?? ""))).catch(() => undefined)
+  }, [mcpServerId])
   /* SDD D-1：成员池联动——agent-select/agent/agent-exec 的候选来自 Agent 成员配置 */
+  const nodeType = node?.type ?? ""
   const [memberPool, setMemberPool] = useState<{ id: string; name: string }[]>([])
   useEffect(() => {
-    if (!agentId || !["agent-select", "agent", "agent-exec"].includes(node?.type ?? "")) return
+    if (!agentId || !["agent-select", "agent", "agent-exec"].includes(nodeType)) return
     agentApi.get(agentId).then((a) => {
       const ids = ((a.config?.members ?? []) as string[])
       agentApi.list({ pageSize: 100 }).then((r) => {
         setMemberPool(ids.map((id) => ({ id, name: r.items.find((x) => x.id === id)?.name ?? id })))
       }).catch(() => setMemberPool(ids.map((id) => ({ id, name: id }))))
     }).catch(() => undefined)
-  }, [agentId, node?.type])  // eslint-disable-line react-hooks/exhaustive-deps
-  const cfg = node.config as Record<string, any>
+  }, [agentId, nodeType])
+  if (!node) return null
+  const def = defs.find((d) => d.type_key === node.type)
+  const cfg = node.config as NodeCfgLoose
   const set = (k: string, v: unknown) => onChange({ ...node, config: { ...cfg, [k]: v } })
   /* 规则构建器：branches 写入即同步节点声明 handle（含 else 兜底），校验器 R7 依赖 */
   const condBranches = normCondBranches(cfg.branches)
@@ -1230,10 +1236,10 @@ const FIELD_LABEL: Record<string, string> = {
 
 /** 注册表 schema 驱动的通用节点配置（SDD C-3；06-master-spec §2.1 x-control 映射表）。 */
 function GenericSchemaForm({ def, cfg, set, node, onChange, nodes, edges, defs }: {
-  def: NodeDefinition | undefined; cfg: Record<string, any>; set: (k: string, v: unknown) => void;
+  def: NodeDefinition | undefined; cfg: NodeCfgLoose; set: (k: string, v: unknown) => void;
   node: WfNode; onChange: (n: WfNode) => void; nodes: WfNode[]; edges: WfEdge[]; defs: NodeDefinition[]
 }) {
-  const props = ((def?.schema as Record<string, any>)?.properties ?? {}) as Record<string, any>
+  const props = ((def?.schema as NodeCfgLoose)?.properties ?? {}) as NodeCfgLoose
   const keys = Object.keys(props)
   const [mcpTools, setMcpTools] = useState<string[]>([])
   useEffect(() => {
@@ -1591,7 +1597,7 @@ function MemberPoolPicker({ ids, onChange, selfId }: { ids: string[]; onChange: 
 function AgentConfigDrawer({ agentId, inline, avatar, onAvatar, onClose }: { agentId: string; onClose?: () => void; inline?: boolean; avatar?: string; onAvatar?: (v: string) => void }) {
   const [avatarOpen, setAvatarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
-  const [agent, setAgent] = useState<{ name: string; description: string; config: Record<string, any>; workflowId?: string | null; configRevision: number; avatar?: string | null; type?: string } | null>(null)
+  const [agent, setAgent] = useState<{ name: string; description: string; config: NodeCfgLoose; workflowId?: string | null; configRevision: number; avatar?: string | null; type?: string } | null>(null)
   useEffect(() => {
     agentApi.get(agentId).then(setAgent)
   }, [agentId])
@@ -1930,14 +1936,14 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
       const defn = d.definition as WfDefinition
       defn.graph.nodes = defn.graph.nodes.map((n) => {
         if (n.type !== "condition") return n
-        const bs = normCondBranches((n.config as Record<string, any>)?.branches)
-        return { ...n, config: { ...(n.config as Record<string, any>), branches: bs }, branches: [...bs.map((b) => b.handle), "else"] }
+        const bs = normCondBranches((n.config as NodeCfgLoose)?.branches)
+        return { ...n, config: { ...(n.config as NodeCfgLoose), branches: bs }, branches: [...bs.map((b) => b.handle), "else"] }
       })
       defn.graph.edges = defn.graph.edges.map((e) => {
         if (e.sourceHandle) return e
         const src = defn.graph.nodes.find((n) => n.id === e.source)
         if (src?.type !== "condition") return e
-        const first = (src.config as Record<string, any>).branches?.[0]?.handle
+        const first = (src.config as NodeCfgLoose).branches?.[0]?.handle
         return first ? { ...e, sourceHandle: first } : e  // 旧图单出边视为第一分支
       })
       historyRef.current = [JSON.parse(JSON.stringify(defn))]
@@ -2020,6 +2026,29 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
     for (const d of visible) m.set(d.family, [...(m.get(d.family) ?? []), d])
     return [...m.entries()]
   }, [defs, agentMeta])
+  // 08-26 用户反馈：节点尾部+快捷添加（自动连线；分支节点按分支 handle 连）
+  // 09 P0-B4：上移至 nodes memo 之前并 useCallback 化，消除 rules-of-hooks/exhaustive-deps
+  const quickAdd = useCallback((sourceId: string, handle: string | null, typeKey: string) => {
+    const d = defRef.current!
+    const defn = defs.find((x) => x.type_key === typeKey)
+    const id = `n_${typeKey}_${Date.now() % 100000}`
+    const srcPos = d.ui.positions[sourceId] ?? { x: 260, y: 160 }
+    const node: WfNode = {
+      id, type: typeKey, name: defn?.label ?? typeKey,
+      config: typeKey === "condition" ? { branches: [{ handle: "b1", logic: "AND", conditions: [] }] } : {},
+      inputs: [], branches: typeKey === "condition" ? ["b1", "else"] : undefined,
+    }
+    const edges2 = d.graph.edges.filter((e) =>
+      !(handle && e.source === sourceId && e.sourceHandle === handle))
+    edges2.push({ id: `e_${Date.now() % 100000}`, source: sourceId, target: id, sourceHandle: handle ?? undefined })
+    mutate({
+      ...d,
+      ui: { ...d.ui, positions: { ...d.ui.positions, [id]: { x: srcPos.x + 380, y: srcPos.y + (handle ? 60 : 0) } } },
+      graph: { ...d.graph, nodes: [...d.graph.nodes, node], edges: edges2 },
+    })
+    setSelectedId(id); setDrawer("config")
+  }, [defs, mutate])
+
   const nodes: Node[] = useMemo(() => (def?.graph.nodes ?? []).map((n) => ({
     id: n.id, type: "wf",
     position: def!.ui.positions[n.id] ?? { x: 120, y: 160 },
@@ -2044,7 +2073,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
         setSelectedId(null)
       },
     } satisfies WfNodeData,
-  })), [def, defs, issues, runState, mutate, nodeDims])
+  })), [def, defs, issues, runState, mutate, nodeDims, families, quickAdd, workflowId])
 
   const edges: Edge[] = useMemo(() => (def?.graph.edges ?? []).map((e) => {
     // 条件分支出边标注分支名（不持久化，渲染期从源节点推导）
@@ -2052,7 +2081,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
     if (e.sourceHandle) {
       const src = def?.graph.nodes.find((n) => n.id === e.source)
       if (src?.type === "condition") {
-        const bs = normCondBranches((src.config as Record<string, any>)?.branches)
+        const bs = normCondBranches((src.config as NodeCfgLoose)?.branches)
         const idx = bs.findIndex((b) => b.handle === e.sourceHandle)
         label = e.sourceHandle === "else" ? "否则" : idx >= 0 ? (idx === 0 ? "如果" : `否则如果 ${idx}`) : e.sourceHandle
       }
@@ -2143,27 +2172,6 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
     setSelectedId(id); setDrawer("config")
   }
 
-  // 08-26 用户反馈：节点尾部+快捷添加（自动连线；分支节点按分支 handle 连）
-  const quickAdd = (sourceId: string, handle: string | null, typeKey: string) => {
-    const d = defRef.current!
-    const defn = defs.find((x) => x.type_key === typeKey)
-    const id = `n_${typeKey}_${Date.now() % 100000}`
-    const srcPos = d.ui.positions[sourceId] ?? { x: 260, y: 160 }
-    const node: WfNode = {
-      id, type: typeKey, name: defn?.label ?? typeKey,
-      config: typeKey === "condition" ? { branches: [{ handle: "b1", logic: "AND", conditions: [] }] } : {},
-      inputs: [], branches: typeKey === "condition" ? ["b1", "else"] : undefined,
-    }
-    const edges2 = d.graph.edges.filter((e) =>
-      !(handle && e.source === sourceId && e.sourceHandle === handle))
-    edges2.push({ id: `e_${Date.now() % 100000}`, source: sourceId, target: id, sourceHandle: handle ?? undefined })
-    mutate({
-      ...d,
-      ui: { ...d.ui, positions: { ...d.ui.positions, [id]: { x: srcPos.x + 380, y: srcPos.y + (handle ? 60 : 0) } } },
-      graph: { ...d.graph, nodes: [...d.graph.nodes, node], edges: edges2 },
-    })
-    setSelectedId(id); setDrawer("config")
-  }
   // 08-26 用户反馈：已连连线可拖动改接其他节点
   const onReconnect = (oldEdge: Edge, conn: { source: string | null; target: string | null; sourceHandle?: string | null }) => {
     if (!conn.source || !conn.target) return
@@ -2685,18 +2693,18 @@ interface EvalRunRow {
 }
 function EvalPanel({ workflowId, onClose }: { workflowId: string; onClose: () => void }) {
   const [samples, setSamples] = useState<{ id: string; name: string; input: Record<string, unknown>; expected?: { text?: string } | null }[]>([])
-  const [summary, setSummary] = useState<Record<string, any> | null>(null)
+  const [summary, setSummary] = useState<{ total?: number; succeeded?: number; failed?: number; successRate?: number } | null>(null)
   const [results, setResults] = useState<EvalRunRow[] | null>(null)
   const [name, setName] = useState("")
   const [inputJson, setInputJson] = useState('{ "userQuery": "你好" }')
   const [expectedText, setExpectedText] = useState("")
   const [judge, setJudge] = useState<"none" | "rule" | "model">("rule")
   const [running, setRunning] = useState(false)
-  const load = () => {
+  const load = useCallback(() => {
     evalApi.samples(workflowId).then((r) => setSamples(r.items)).catch(() => undefined)
     evalApi.summary(workflowId).then(setSummary).catch(() => undefined)
-  }
-  useEffect(() => { load() }, [workflowId])
+  }, [workflowId])
+  useEffect(() => { load() }, [load])
   const humanScore = async (sampleId: string, score: number) => {
     try {
       const r = await evalApi.humanScore(sampleId, score)
@@ -2788,7 +2796,10 @@ function EvalPanel({ workflowId, onClose }: { workflowId: string; onClose: () =>
 
 /* ============ 版本指标面板（SDD A-12：原“进化”名实不符，真进化见 Phase D） ============ */
 function EvoPanel({ workflowId, onClose }: { workflowId: string; onClose: () => void }) {
-  const [data, setData] = useState<{ versions: any[]; failedCases: any[] } | null>(null)
+  const [data, setData] = useState<{
+    versions: { versionNo: number; runs: number; successRate: number }[]
+    failedCases: { runId: string; error: string }[]
+  } | null>(null)
   useEffect(() => {
     evalApi.versionMetrics(workflowId).then(setData).catch(() => undefined)
   }, [workflowId])
@@ -2801,7 +2812,7 @@ function EvoPanel({ workflowId, onClose }: { workflowId: string; onClose: () => 
       <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4">
         <div className="space-y-1">
           <div className="text-[13px] font-medium" style={{ color: C.ink }}>| 版本指标</div>
-          {data?.versions.length ? data.versions.map((v: any) => (
+          {data?.versions.length ? data.versions.map((v) => (
             <div key={v.versionNo} className="flex items-center gap-2 rounded border px-2 py-1 text-xs" style={{ borderColor: C.cardBorder }}>
               <span className="w-12 font-medium" style={{ color: C.ink }}>V{v.versionNo}</span>
               <span style={{ color: C.ink3 }}>{v.runs} 次运行</span>
@@ -2811,7 +2822,7 @@ function EvoPanel({ workflowId, onClose }: { workflowId: string; onClose: () => 
         </div>
         <div className="space-y-1">
           <div className="text-[13px] font-medium" style={{ color: C.ink }}>| 进化建议（失败案例）</div>
-          {data?.failedCases.length ? data.failedCases.map((f: any) => (
+          {data?.failedCases.length ? data.failedCases.map((f) => (
             <div key={f.runId} className="rounded border px-2 py-1 text-xs" style={{ borderColor: C.cardBorder }}>
               <div className="font-mono" style={{ color: C.ink3 }}>{f.runId.slice(0, 8)}</div>
               <div style={{ color: C.danger }}>{f.error || "-"}</div>

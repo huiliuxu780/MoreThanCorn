@@ -43,9 +43,15 @@ export function MemorySchemaForm({ memories, onChange }: { memories: MemoryVar[]
   )
 }
 
-export function ConversationPanel({ cfg, setCfg }: { cfg: Record<string, any>; setCfg: (v: Record<string, any>) => void }) {
-  const conv = cfg.conversation ?? {}
-  const setConv = (patch: Record<string, any>) => setCfg({ ...cfg, conversation: { ...conv, ...patch } })
+interface ConversationConfig {
+  autoFollowUp?: { enabled?: boolean; count?: number }
+  chitchatFallback?: { enabled?: boolean; prompt?: string }
+  greeting?: string
+}
+
+export function ConversationPanel({ cfg, setCfg }: { cfg: Record<string, unknown>; setCfg: (v: Record<string, unknown>) => void }) {
+  const conv = (cfg.conversation ?? {}) as ConversationConfig
+  const setConv = (patch: Partial<ConversationConfig>) => setCfg({ ...cfg, conversation: { ...conv, ...patch } })
   const fu = conv.autoFollowUp ?? { enabled: false, count: 3 }
   const ch = conv.chitchatFallback ?? { enabled: false, prompt: "" }
   return (

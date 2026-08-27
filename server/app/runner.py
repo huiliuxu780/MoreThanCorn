@@ -1460,12 +1460,24 @@ def worker_loop(stop: threading.Event) -> None:
             stop.wait(0.5)
 
 
+_WORKER_STOP: threading.Event | None = None
+
+
 def start_worker() -> threading.Event:
+    """幂等单例（09 P0-B4）：全进程仅一组 worker+scheduler 线程。
+
+    多个测试模块各自调用时若重复起线程，会出现多 scheduler 互相触发
+    对方调度、多 worker 争抢同一 job_queue 的串扰（全量套件偶发超时）。
+    若先前已停止（如进程内重启），则重新拉起。"""
+    global _WORKER_STOP
+    if _WORKER_STOP is not None and not _WORKER_STOP.is_set():
+        return _WORKER_STOP
     stop = threading.Event()
     t = threading.Thread(target=worker_loop, args=(stop,), daemon=True, name="wf-worker")
     t.start()
     s = threading.Thread(target=scheduler_loop, args=(stop,), daemon=True, name="wf-scheduler")
     s.start()
+    _WORKER_STOP = stop
     return stop
 
 

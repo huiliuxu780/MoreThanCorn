@@ -1,5 +1,5 @@
 /** Agents 列表 — quickservice 复刻版（16 §8）。真 API（server/:8100）。 */
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useListQuery } from "@/hooks/use-list-query"
 import { Pagination } from "@/components/app/pagination"
 import { agentApi, pagedApi } from "@/services/wf-api"
@@ -96,13 +96,13 @@ export default function WfAgentsListPage() {
     }
   }
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true)
     pagedApi.agents({ page: params.page, pageSize: params.pageSize, search, archived: archivedFilter || undefined }).then((r) => {
       setRows(r.items as AgentRow[]); setTotal(r.total); setLoading(false)
     }).catch(() => setLoading(false))
-  }
-  useEffect(() => { load() }, [params.page, params.pageSize, search, archivedFilter])
+  }, [params.page, params.pageSize, search, archivedFilter])
+  useEffect(() => { load() }, [load])
 
   const onCreate = async () => {
     if (!name.trim()) return

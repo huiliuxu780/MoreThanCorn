@@ -1,11 +1,18 @@
-import { useState } from "react"
-import { PanelLeft, ShieldCheck } from "lucide-react"
+import { useEffect, useState } from "react"
+import { LogOut, PanelLeft, ShieldCheck } from "lucide-react"
 import { Outlet, useLocation } from "react-router-dom"
+import { toast } from "sonner"
 import { UI_TERMS } from "@/config/ui-terms"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Toaster } from "@/components/ui/sonner"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { NAV_GROUPS } from "@/components/app/app-sidebar"
-import { rbac, ROLES, currentRole, setRole, type Role } from "@/services/rbac"
+import {
+  currentRole, currentUsername, initAuth, isAuthenticated, isAuthRequired,
+  login, logout, rbac, ROLES, setRole, type Role,
+} from "@/services/rbac"
 import { NavLink } from "react-router-dom"
 import { Breadcrumbs, type BreadcrumbEntry } from "@/components/app/page"
 
@@ -171,7 +178,39 @@ export function AppShell() {
   const workspace = isWorkspaceRoute(pathname)
   const breadcrumbs = useRouteBreadcrumbs()
   const [role, setRoleState] = useState<Role>(currentRole())
+  // 09 P0-B4：服务端身份（登录态）优先于本地角色切换
+  const [authed, setAuthed] = useState(isAuthenticated())
+  const [needLogin, setNeedLogin] = useState(false)
+  const [loginOpen, setLoginOpen] = useState(false)
+  const [username, setUsername] = useState("")
+  const [password, setPassword] = useState("")
+  const [loggingIn, setLoggingIn] = useState(false)
+
+  useEffect(() => {
+    initAuth().then(() => {
+      setAuthed(isAuthenticated())
+      setNeedLogin(isAuthRequired())
+      setRoleState(currentRole())
+    }).catch(() => undefined)
+  }, [])
+
   const setRoleAndReload = (r: Role) => { setRole(r); setRoleState(r) }
+
+  const doLogin = async () => {
+    setLoggingIn(true)
+    try {
+      const r = await login(username.trim(), password)
+      toast.success(`已登录：${currentUsername()}（${r}）`)
+      setLoginOpen(false)
+      setAuthed(true)
+      setNeedLogin(false)
+      setRoleState(currentRole())
+    } catch (e) {
+      toast.error(`登录失败：${(e as Error).message}`)
+    } finally {
+      setLoggingIn(false)
+    }
+  }
 
   return (
     <div className="flex min-h-svh w-full">
@@ -180,18 +219,34 @@ export function AppShell() {
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75">
           {!workspace && <Breadcrumbs items={breadcrumbs} />}
           <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-            {/* D-4：角色切换（原型阶段权限来源；真鉴权矩阵见 rbac.ts） */}
-            <div className="flex items-center gap-1">
-              <ShieldCheck className="size-3.5" aria-hidden />
-              <Select value={role} onValueChange={(v) => setRoleAndReload(v as Role)}>
-                <SelectTrigger className="h-7 w-[150px] text-xs" title="当前角色（RBAC）">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROLES.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+            {authed ? (
+              /* 已登录：显示身份与登出（09 P0-10） */
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1">
+                  <ShieldCheck className="size-3.5" aria-hidden />
+                  {currentUsername()} · {currentRole()}
+                </span>
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => { logout(); setAuthed(false); setRoleState(currentRole()); toast.success("已登出") }}>
+                  <LogOut className="size-3.5" /> 登出
+                </Button>
+              </div>
+            ) : needLogin ? (
+              /* 服务端强制登录但未登录：引导登录 */
+              <Button size="sm" className="h-7 text-xs" onClick={() => setLoginOpen(true)}>登录</Button>
+            ) : (
+              /* 开发匿名态：本地角色切换（原型调试） */
+              <div className="flex items-center gap-1">
+                <ShieldCheck className="size-3.5" aria-hidden />
+                <Select value={role} onValueChange={(v) => setRoleAndReload(v as Role)}>
+                  <SelectTrigger className="h-7 w-[150px] text-xs" title="当前角色（RBAC）">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ROLES.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <PanelLeft className="hidden size-4" aria-hidden />
           </div>
         </header>
@@ -200,6 +255,25 @@ export function AppShell() {
         </div>
         <Toaster position="bottom-right" richColors />
       </div>
+
+      {/* 登录对话框（09 P0-10） */}
+      <Dialog open={loginOpen || (needLogin && !authed)} onOpenChange={(o) => setLoginOpen(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>登录</DialogTitle>
+            <DialogDescription>服务端已启用身份鉴权，请使用账号登录后继续。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input placeholder="用户名" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
+            <Input type="password" placeholder="密码" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+          </div>
+          <DialogFooter>
+            <Button disabled={loggingIn || !username.trim() || !password} onClick={doLogin}>
+              {loggingIn ? "登录中…" : "登录"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

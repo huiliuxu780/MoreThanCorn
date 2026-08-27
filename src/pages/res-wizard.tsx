@@ -42,7 +42,7 @@ export default function ResWizardPage({ scope }: { scope: "ai" | "data" }) {
   const navigate = useNavigate()
   const [step, setStep] = useState(0)
   const [type, setType] = useState<string>(scope === "ai" ? "model" : "datasource")
-  const [form, setForm] = useState<Record<string, any>>({ ...emptyForm })
+  const [form, setForm] = useState<typeof emptyForm>({ ...emptyForm })
   const [createdId, setCreatedId] = useState("")
   const [tested, setTested] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -52,7 +52,7 @@ export default function ResWizardPage({ scope }: { scope: "ai" | "data" }) {
   const [datasources, setDatasources] = useState<{ id: string; name: string }[]>([])
 
   useEffect(() => {
-    pagedApi.providers({}).then((r) => setProviders(r.items.map((p: any) => ({ id: p.id, name: p.name })))).catch(() => undefined)
+    pagedApi.providers({}).then((r) => setProviders(r.items.map((p) => ({ id: p.id, name: p.name })))).catch(() => undefined)
     resApi.registry("model").then((r) => setModels(r.items.map((m) => ({ id: m.id, name: m.metadata.modelKey as string ?? m.name })))).catch(() => undefined)
     resApi.list("datasource", { pageSize: 50 }).then((r) => setDatasources(r.items.map((d) => ({ id: d.id, name: d.name })))).catch(() => undefined)
   }, [])

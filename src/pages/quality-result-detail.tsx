@@ -56,11 +56,54 @@ import { ReviewBadge, RiskBadge, StatusBadge } from "@/components/app/status-bad
 import { useAsyncData } from "@/hooks/use-async-data"
 import { formatDateTime, formatSeconds } from "@/lib/time"
 import { bizApi, realQualityDetail, realQualityResults } from "@/services/wf-api"
-import type { CriterionResult } from "@/domain/types"
 import { cn } from "@/lib/utils"
 
 function scrollToId(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" })
+}
+
+/** 09 P0-B4：详情页 ViewModel（realQualityDetail 的显式返回契约，替代 any）。 */
+interface QualityDetailViewModel {
+  id: string
+  interactionId: string
+  interactionTime: string
+  runId?: string | null
+  taskRunId?: string | null
+  taskId?: string | null
+  taskVersionId?: string | null
+  workflowVersionId?: string | null
+  ruleVersionId?: string | null
+  outputSchemaVersionId?: string | null
+  aiResult?: Record<string, unknown> | null
+  derivedResult?: Record<string, unknown> | null
+  structuredOutput?: Record<string, unknown>
+  score?: number
+  risk?: string
+  critical?: boolean
+  issueCount?: number
+  issueSummary?: string | null
+  durationSeconds?: number
+  hasAudio?: boolean
+  org: { agentName?: string; teamName?: string; departmentName?: string }
+  businessContext: { serviceType?: string; productCategory?: string; issueTopic?: string }
+  requestType?: string
+  requestSummary?: string
+  review: { status: "NONE" | "PENDING" | "IN_REVIEW" | "COMPLETED" | "REOPENED"; reviewer?: string }
+  transcript: { id: string; speaker: string; speakerLabel: string; startSeconds: number; text: string; criterionRefs?: string[] }[]
+  sections: {
+    section: string
+    criteria: {
+      id: string; criterion: string; result: string; severity?: string; reason?: string
+      human?: { result?: string; comment?: string }
+      confidence?: number
+      evidenceSegmentIds?: string[]
+      businessEvidenceIds?: string[]
+    }[]
+  }[]
+  reviewHistory: { revisionNo: number; action: string; reviewer: string; reason: string; before: Record<string, unknown>; after: Record<string, unknown>; createdAt: string }[]
+  evidence?: { id: string; kind: string; text: string; sourceRef?: string }[]
+  businessFacts: { id: string; title: string; label: string; fields: { label: string; value: string }[]; usedByCriterionIds?: string[] }[]
+  execution: { runId: string; taskId: string; status: string; agentVersion: string }
 }
 
 export default function QualityResultDetailPage() {
@@ -70,7 +113,7 @@ export default function QualityResultDetailPage() {
   const fromQuery = searchParams.get("from") ?? ""
 
   const { data: detail, loading, error, retry } = useAsyncData(
-    () => realQualityDetail(interactionId) as Promise<any>,
+    () => realQualityDetail(interactionId) as unknown as Promise<QualityDetailViewModel>,
     [interactionId],
   )
   const { data: siblingList } = useAsyncData(
@@ -113,7 +156,7 @@ export default function QualityResultDetailPage() {
   const prev = currentIndex > 0 ? siblings[currentIndex - 1] : null
   const next = currentIndex >= 0 && currentIndex < siblings.length - 1 ? siblings[currentIndex + 1] : null
 
-  const isCriterionOpen = (c: CriterionResult) =>
+  const isCriterionOpen = (c: { id: string; result: string; severity?: string }) =>
     openCriteria[c.id] ?? (c.result === "FAIL" || c.severity === "Critical")
 
   const editedCount = Object.keys(humanEdits).filter((id) => humanEdits[id].result || humanEdits[id].comment).length
@@ -243,7 +286,7 @@ export default function QualityResultDetailPage() {
                     </div>
                   ) : null}
                   <div className="space-y-1.5">
-                    {detail.transcript.map((seg: any) => {
+                    {detail.transcript.map((seg) => {
                       const referenced = (seg.criterionRefs ?? []).length > 0
                       return (
                         <div
@@ -265,8 +308,8 @@ export default function QualityResultDetailPage() {
                           <div className="mt-0.5 leading-6">{seg.text}</div>
                           {referenced ? (
                             <div className="mt-1 flex flex-wrap gap-1">
-                              {seg.criterionRefs!.map((ref: any) => {
-                                const crit = detail.sections.flatMap((s: any) => s.criteria).find((c: any) => c.id === ref)
+                              {seg.criterionRefs!.map((ref: string) => {
+                                const crit = detail.sections.flatMap((s) => s.criteria).find((c) => c.id === ref)
                                 return crit ? (
                                   <Badge key={ref} variant={crit.result === "FAIL" ? "danger" : "neutral"} className="text-[10px]">
                                     {crit.criterion}
@@ -301,10 +344,10 @@ export default function QualityResultDetailPage() {
                     </div>
                   </div>
 
-                  {detail.sections.map((section: any) => (
+                  {detail.sections.map((section) => (
                     <div key={section.section} className="space-y-1.5">
                       <div className="text-xs font-medium text-muted-foreground">{section.section}</div>
-                      {section.criteria.map((criterion: any) => {
+                      {section.criteria.map((criterion) => {
                         const human = humanEdits[criterion.id] ?? criterion.human
                         const open = isCriterionOpen(criterion) || reviewMode || activeCriterion === criterion.id
                         return (
@@ -342,8 +385,8 @@ export default function QualityResultDetailPage() {
                                 {(criterion.evidenceSegmentIds ?? []).length > 0 ? (
                                   <div className="space-y-1">
                                     <div className="text-xs text-muted-foreground">Conversation 证据</div>
-                                    {(criterion.evidenceSegmentIds ?? []).map((segId: any) => {
-                                      const seg = detail.transcript.find((s: any) => s.id === segId)
+                                    {(criterion.evidenceSegmentIds ?? []).map((segId: string) => {
+                                      const seg = detail.transcript.find((s) => s.id === segId)
                                       return seg ? (
                                         <button
                                           key={segId}
@@ -361,8 +404,8 @@ export default function QualityResultDetailPage() {
                                 {(criterion.businessEvidenceIds ?? []).length > 0 ? (
                                   <div className="space-y-1">
                                     <div className="text-xs text-muted-foreground">Business Evidence</div>
-                                    {(criterion.businessEvidenceIds ?? []).map((factId: any) => {
-                                      const fact = detail.businessFacts.find((f: any) => f.id === factId)
+                                    {(criterion.businessEvidenceIds ?? []).map((factId: string) => {
+                                      const fact = detail.businessFacts.find((f) => f.id === factId)
                                       return fact ? (
                                         <button
                                           key={factId}
@@ -447,7 +490,7 @@ export default function QualityResultDetailPage() {
                   {detail.businessFacts.length === 0 ? (
                     <p className="py-6 text-center text-xs text-muted-foreground">暂无关联业务记录</p>
                   ) : (
-                    detail.businessFacts.map((fact: any) => (
+                    detail.businessFacts.map((fact) => (
                       <div
                         key={fact.id}
                         id={`fact-${fact.id}`}
@@ -455,7 +498,7 @@ export default function QualityResultDetailPage() {
                       >
                         <div className="text-sm font-medium">{fact.title}</div>
                         <div className="mt-1.5 space-y-1">
-                          {fact.fields.map((f: any) => (
+                          {fact.fields.map((f) => (
                             <div key={f.label} className="grid grid-cols-[72px_1fr] gap-2 text-xs">
                               <span className="text-muted-foreground">{f.label}</span>
                               <span>{f.value}</span>
@@ -512,42 +555,81 @@ export default function QualityResultDetailPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Technical Trace Sheet */}
+      {/* Technical Trace Sheet：09 P0-08 真实追踪链（无假数据） */}
       <Sheet open={traceOpen} onOpenChange={setTraceOpen}>
-        <SheetContent className="w-[440px] overflow-y-auto">
+        <SheetContent className="w-[460px] overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>运行详情</SheetTitle>
-            <SheetDescription>高级排查入口：Execution / Agent Version / Tool Calls / Structured Output</SheetDescription>
+            <SheetTitle>运行详情与追踪链</SheetTitle>
+            <SheetDescription>结果 → Run → TaskRun → TaskVersion / WorkflowVersion / RuleVersion / DataSnapshot</SheetDescription>
           </SheetHeader>
           {detail ? (
             <div className="mt-4 space-y-4 text-sm">
               <div className="space-y-1.5">
                 <div className="text-xs font-medium text-muted-foreground">Execution</div>
                 <div className="rounded-md border px-3 py-2 text-xs">
-                  <div>Run {detail.execution.runId} · Task {detail.execution.taskId}</div>
+                  <div>Run {detail.execution.runId || "—"} · Task {detail.execution.taskId || "—"}</div>
+                  {detail.taskRunId ? <div className="mt-1">TaskRun（批次）{detail.taskRunId}</div> : null}
                   <div className="mt-1 flex items-center gap-2">
                     <StatusBadge status={detail.execution.status} />
-                    <span className="text-muted-foreground">Agent Version {detail.execution.agentVersion}</span>
                   </div>
                 </div>
               </div>
               <div className="space-y-1.5">
-                <div className="text-xs font-medium text-muted-foreground">Tool Calls</div>
+                <div className="text-xs font-medium text-muted-foreground">版本链（冻结快照）</div>
                 <div className="rounded-md border px-3 py-2 text-xs">
-                  <div className="flex justify-between py-1"><span>查询服务请求 V2</span><StatusBadge status="SUCCESS" /></div>
-                  <div className="flex justify-between py-1"><span>搜索知识 V4</span><StatusBadge status="SUCCESS" /></div>
+                  {([
+                    ["Workflow 版本", detail.workflowVersionId],
+                    ["规则版本", detail.ruleVersionId],
+                    ["输出 Schema 版本", detail.outputSchemaVersionId],
+                    ["TaskVersion", detail.taskVersionId],
+                  ] as [string, string | null | undefined][]).map(([label, v]) => (
+                    <div key={label} className="flex justify-between py-1">
+                      <span className="text-muted-foreground">{label}</span>
+                      <span className="font-mono">{v ? v.slice(0, 12) : "—"}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
+              {detail.aiResult ? (
+                <div className="space-y-1.5">
+                  <div className="text-xs font-medium text-muted-foreground">AI 原始结果（不可变）</div>
+                  <pre className="overflow-x-auto rounded-md bg-muted/60 p-3 text-[11px] leading-5">
+{JSON.stringify(detail.aiResult, null, 2)}
+                  </pre>
+                </div>
+              ) : null}
+              {(detail.reviewHistory ?? []).length > 0 ? (
+                <div className="space-y-1.5">
+                  <div className="text-xs font-medium text-muted-foreground">复核修订（只追加）</div>
+                  <div className="space-y-1">
+                    {detail.reviewHistory.map((r) => (
+                      <div key={r.revisionNo} className="rounded-md border px-3 py-2 text-xs">
+                        <div className="flex justify-between">
+                          <span>#{r.revisionNo} {r.action} · {r.reviewer}</span>
+                          <span className="text-muted-foreground">{r.createdAt}</span>
+                        </div>
+                        {r.reason ? <div className="mt-1 text-muted-foreground">{r.reason}</div> : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div className="space-y-1.5">
                 <div className="text-xs font-medium text-muted-foreground">Structured Output</div>
                 <pre className="overflow-x-auto rounded-md bg-muted/60 p-3 text-[11px] leading-5">
-{JSON.stringify(detail.sections.map((s: any) => ({ section: s.section, criteria: s.criteria.map((c: any) => ({ criterion: c.criterion, result: c.result })) })), null, 2)}
+{JSON.stringify(detail.sections.map((s) => ({ section: s.section, criteria: s.criteria.map((c) => ({ criterion: c.criterion, result: c.result })) })), null, 2)}
                 </pre>
               </div>
               <p className="text-xs text-muted-foreground">
-                <Link className="underline underline-offset-4" to={`/config/tasks/${detail.execution.taskId}/runs/${detail.execution.runId}`}>
-                  查看 Run Detail
-                </Link>
+                {detail.taskRunId && detail.taskId ? (
+                  <Link className="underline underline-offset-4" to={`/config/tasks/${detail.taskId}`}>
+                    查看任务与批次
+                  </Link>
+                ) : (
+                  <Link className="underline underline-offset-4" to={`/config/runs`}>
+                    查看 Run Detail
+                  </Link>
+                )}
               </p>
             </div>
           ) : null}

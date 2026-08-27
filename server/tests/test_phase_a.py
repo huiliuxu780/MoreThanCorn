@@ -26,6 +26,18 @@ def wait_terminal(agent_id: str, run_id: str, timeout: float = 30.0) -> dict:
     raise AssertionError(f"run {run_id} 未在 {timeout}s 内到达终态：{d.get('status')}")
 
 
+def poll_wf_run_terminal(run_id: str, timeout: float = 30.0) -> dict:
+    """轮询工作流 Run 到终态（依赖唯一 worker，避免测试与 worker 并发双跑）。"""
+    deadline = time.time() + timeout
+    d = {}
+    while time.time() < deadline:
+        d = client.get(f"/api/runs/{run_id}").json()
+        if d["status"] in ("succeeded", "failed", "cancelled"):
+            return d
+        time.sleep(0.2)
+    raise AssertionError(f"run {run_id} 未在 {timeout}s 内到达终态：{d.get('status')}")
+
+
 def u(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:6]}"
 
@@ -134,9 +146,9 @@ def test_a01_runs_api_accepts_version_id():
                                        "versionId": pub["versionId"], "input": {}})
     assert r.status_code == 202, r.text
     run_id = r.json()["runId"]
-    from app.runner import execute_run
-    execute_run(run_id)
-    d = client.get(f"/api/runs/{run_id}").json()
+    # 09 P0-B4：POST /api/runs 已入队，由唯一 worker 执行；此前"再手动 execute_run"
+    # 与 worker 并发双跑同一 Run，触发 node_run 唯一约束竞态（全量套件偶发失败）。
+    d = poll_wf_run_terminal(run_id)
     assert d["status"] == "succeeded" and d["output"]["output"] == "API-SNAP"
     # 未知版本 → 409
     r2 = client.post("/api/runs", json={"workflowId": wid, "versionId": "nope", "input": {}})

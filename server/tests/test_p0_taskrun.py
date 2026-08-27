@@ -170,6 +170,23 @@ def test_taskrun_freezes_versions_and_snapshot():
     assert all(x["workflowVersionId"] == wvid for x in runs2)
 
 
+def test_taskrun_random_sampling_deterministic():
+    """09 §9.2 sampling=random/percent：确定性哈希抽样（非全量伪装），未抽中计 skipped。"""
+    wid, wvid = _quality_wf("p0-b2-wf-sample")
+    rows = [{"interactionId": f"SMP-{i:03d}", "text": f"t{i}"} for i in range(20)]
+    asset = client.post("/api/data-assets", json={"name": "sample-asset", "rows": rows}).json()
+    task = client.post("/api/tasks", json={
+        "name": "抽样任务", "workflowId": wid, "workflowVersionPolicy": "pinned",
+        "pinnedWorkflowVersionId": wvid, "dataAssetId": asset["id"],
+        "sampling": {"mode": "random", "percent": 50}}).json()
+    r = client.post(f"/api/tasks/{task['id']}/runs", json={}).json()
+    tr = _wait_task_run(r["taskRunId"])
+    assert tr["total"] == 20
+    assert 0 < tr["succeeded"] < 20        # 真抽样：不是全量
+    assert tr["succeeded"] + tr["skipped"] == 20
+    assert tr["failed"] == 0
+
+
 # ---------- 幂等与状态门（INV-10/INV-11） ----------
 
 def test_taskrun_idempotency_key_returns_same_run():

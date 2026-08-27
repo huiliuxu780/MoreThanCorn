@@ -1,5 +1,5 @@
 import { Plus } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 
@@ -30,14 +30,14 @@ export default function DataDefinitionsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [form, setForm] = useState({ name: "", assetId: "" })
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true)
     defApi.list({ assetId: assetFilter, search, page, pageSize: 20 })
       .then((r) => { setItems(r.items); setTotal(r.total) })
       .catch(() => setItems([]))
       .finally(() => setLoading(false))
-  }
-  useEffect(() => { load() }, [assetFilter, search, page])
+  }, [assetFilter, search, page])
+  useEffect(() => { load() }, [load])
   useEffect(() => { setPage(1) }, [search, assetFilter])
   useEffect(() => {
     resApi.list("asset", { pageSize: 50 }).then((r) => setAssets(r.items.map((a) => ({ id: a.id, name: a.name })))).catch(() => undefined)

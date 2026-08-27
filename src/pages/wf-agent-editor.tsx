@@ -7,7 +7,7 @@ import { useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
 import { AgentEvalPanel, AgentEvolutionPanel, AgentRunsPanel, AgentVersionsPanel } from "@/components/agent-ops-panels"
-import { ConversationPanel, MemorySchemaForm } from "@/components/agent-common-config"
+import { ConversationPanel, MemorySchemaForm, type MemoryVar } from "@/components/agent-common-config"
 import { AgentPublishDialog, useAgentVersionState } from "@/components/agent-publish-dialog"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -129,9 +129,24 @@ function KnowledgeAdvanced({ value, onChange }: {
 /* ---------- 流式预览消息 ---------- */
 interface ChatMsg { role: "user" | "ai"; text: string; steps: string[]; followUps?: string[]; fallback?: string; done: boolean }
 
+/** Agent 草稿配置（JSONB）的已知字段视图；09 P0-B4：边界类型化替代 any。 */
+interface AgentDraftConfig {
+  rolePrompt?: string
+  modelRef?: { modelId?: string; diversity?: string; historyTurns?: number; toolCallModelId?: string }
+  skills?: string[]
+  tools?: string[]
+  workflows?: string[]
+  knowledges?: string[]
+  memoriesSchema?: MemoryVar[]
+  conversation?: { greeting?: string }
+  knowledgeAdvanced?: Record<string, { topK?: number; scoreThreshold?: number; mode?: string }>
+  fallbackAgent?: string
+  [key: string]: unknown
+}
+
 /* ---------- 自主规划搭建页 ---------- */
 function AutonomousBuilder({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: AgentInfo) => void }) {
-  const [cfg, setCfg] = useState(agent.config ?? {})
+  const [cfg, setCfg] = useState<AgentDraftConfig>((agent.config ?? {}) as AgentDraftConfig)
   const [name, setName] = useState(agent.name)
   const [description, setDescription] = useState(agent.description ?? "")
   const [avatar, setAvatar] = useState(agent.avatar ?? null)
@@ -183,7 +198,7 @@ function AutonomousBuilder({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
     } catch (e) {
       if (String((e as Error).message).startsWith("409")) {
         toast.error("配置已被更新，请刷新后重试")
-        agentApi.get(agent.id).then((a) => { setCfg(a.config); setRevision(a.configRevision); setName(a.name); setDescription(a.description ?? ""); onSaved(a) })
+        agentApi.get(agent.id).then((a) => { setCfg((a.config ?? {}) as AgentDraftConfig); setRevision(a.configRevision); setName(a.name); setDescription(a.description ?? ""); onSaved(a) })
       } else toast.error((e as Error).message)
     }
   }
@@ -213,13 +228,14 @@ function AutonomousBuilder({ agent, onSaved }: { agent: AgentInfo; onSaved: (a: 
         ...(overrideModel ? { __modelOverride: overrideModel } : {}),
       })
       await streamRunEvents(runId, (ev) => {
-        if (ev.type === "llm_delta") patch((m) => ({ text: m.text + (ev.payload.delta ?? "") }))
-        if (ev.type === "tool_call") patch((m) => ({ steps: [...m.steps, `🔧 调用 ${ev.payload.name}`] }))
-        if (ev.type === "tool_result") patch((m) => ({ steps: [...m.steps, `↩ ${String(ev.payload.result ?? "").slice(0, 120)}`] }))
-        if (ev.type === "agent_mounts_resolved" && (ev.payload.missing ?? []).length > 0)
-          patch((m) => ({ steps: [...m.steps, `⚠ 失效挂载：${ev.payload.missing.map((x: any) => x.name).join("、")}`] }))
-        if (ev.type === "agent_completed") patch({ done: true, followUps: ev.payload.followUps, fallback: ev.payload.fallback })
-        if (ev.type === "agent_failed") patch((m) => ({ done: true, text: m.text || `❌ ${ev.payload.error ?? "运行失败"}` }))
+        const p = ev.payload
+        if (ev.type === "llm_delta") patch((m) => ({ text: m.text + String(p.delta ?? "") }))
+        if (ev.type === "tool_call") patch((m) => ({ steps: [...m.steps, `🔧 调用 ${String(p.name ?? "")}`] }))
+        if (ev.type === "tool_result") patch((m) => ({ steps: [...m.steps, `↩ ${String(p.result ?? "").slice(0, 120)}`] }))
+        if (ev.type === "agent_mounts_resolved" && Array.isArray(p.missing) && p.missing.length > 0)
+          patch((m) => ({ steps: [...m.steps, `⚠ 失效挂载：${(p.missing as { name?: string }[]).map((x) => x.name ?? "?").join("、")}`] }))
+        if (ev.type === "agent_completed") patch({ done: true, followUps: Array.isArray(p.followUps) ? (p.followUps as string[]) : undefined, fallback: p.fallback != null ? String(p.fallback) : undefined })
+        if (ev.type === "agent_failed") patch((m) => ({ done: true, text: m.text || `❌ ${String(p.error ?? "运行失败")}` }))
       })
       patch(() => ({ done: true }))
     }

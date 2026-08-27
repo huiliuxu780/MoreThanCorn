@@ -89,8 +89,14 @@ def test_run_retry_creates_origin_link():
     r1 = client.post("/api/runs", json={"workflowId": wid, "trigger": "test", "input": {}})
     assert r1.status_code == 202
     run1 = r1.json()["runId"]
-    from app.runner import execute_run
-    execute_run(run1)
+    # 09 P0-B4：POST /api/runs 已入队（唯一 worker 执行）；不再手动 execute_run 造成并发双跑。
+    import time as _t
+    deadline = _t.time() + 30
+    while _t.time() < deadline:
+        st = client.get(f"/api/runs/{run1}").json()["status"]
+        if st in ("succeeded", "failed", "cancelled"):
+            break
+        _t.sleep(0.2)
     r2 = client.post(f"/api/runs/{run1}/retry")
     assert r2.status_code == 202
     assert r2.json()["originRunId"] == run1

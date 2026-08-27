@@ -1,28 +1,18 @@
-import { ArrowLeft, MoreHorizontal } from "lucide-react"
+import { ArrowLeft, MoreHorizontal, Play } from "lucide-react"
 import { useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
 import {
   Sheet,
   SheetContent,
   SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
@@ -33,30 +23,30 @@ import { StatusBadge } from "@/components/app/status-badge"
 import { TableFrame } from "@/components/app/table-frame"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { formatCompactDateTime } from "@/lib/time"
-import { bizApi, runApi } from "@/services/wf-api"
+import { taskVersionSummary } from "@/domain/task-mapper"
+import { bizApi } from "@/services/wf-api"
 import { rbac } from "@/services/rbac"
 
 export default function TaskDetailPage() {
   const { taskId = "" } = useParams()
   const navigate = useNavigate()
   const { data: task, loading, error, retry } = useAsyncData(() => bizApi.task(taskId), [taskId])
-  // D-5：任务运行列表改真数据（该任务绑定工作流的 runs）
-  const { data: runs } = useAsyncData(async () => {
-    if (!task?.agentId) return []
-    return runApi.list(task.agentId).catch(() => [])
-  }, [taskId, task?.agentId])
+  // 09 P0-B4：运行历史=该任务的 TaskRun 批次（不再借工作流 Run 冒充）
+  const { data: taskRuns, retry: retryRuns } = useAsyncData(
+    () => bizApi.taskRuns(taskId).catch(() => []),
+    [taskId],
+  )
 
-  const [enabled, setEnabled] = useState<boolean | null>(null)
-  const [backfillOpen, setBackfillOpen] = useState(false)
-  const [backfillStart, setBackfillStart] = useState("2026-08-01")
-  const [backfillEnd, setBackfillEnd] = useState("2026-08-07")
-  const [rerunId, setRerunId] = useState<string | null>(null)
+  const [runsOpen, setRunsOpen] = useState<string | null>(null)
 
   const canManage = rbac.can("task.manage")
-  const isActive = enabled ?? task?.status === "Active"
+  const isActive = task?.status === "active"
 
   if (error) return <PageContainer><ErrorState title="任务加载失败" onRetry={retry} /></PageContainer>
   if (loading || !task) return <PageContainer><TableSkeleton rows={6} columns={6} /></PageContainer>
+
+  const version = task.taskVersion
+  const latestRun = taskRuns?.[0]
 
   return (
     <PageContainer wide className="space-y-5">
@@ -73,23 +63,38 @@ export default function TaskDetailPage() {
             canManage ? (
               <>
                 <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!isActive}
+                  onClick={async () => {
+                    // 09 §10.2：启动批次（异步；服务端返回解析后的版本）
+                    try {
+                      const r = await bizApi.startTaskRun(task.id)
+                      toast.success(`批次已启动（${r.taskRunId.slice(0, 8)}）：Workflow 版本 ${r.resolvedVersions.workflowVersionId?.slice(0, 8) ?? "latest"}`)
+                      retryRuns()
+                    } catch (e) {
+                      toast.error(`启动失败：${(e as Error).message}`)
+                    }
+                  }}
+                >
+                  <Play className="size-3.5" /> 立即执行
+                </Button>
+                <Button
                   variant={isActive ? "outline" : "default"}
                   size="sm"
                   onClick={async () => {
-                    // R2 修复：真启停（此前只 toast）
                     try {
-                      const r = await bizApi.setTaskStatus(task.id, !isActive ? "Active" : "Paused")
-                      setEnabled(r.status === "Active")
-                      toast.success(r.status === "Active" ? "任务已启用" : "任务已停用：不再创建新的 Scheduled Run，已创建 / 已运行 Run 不受影响")
+                      const r = await bizApi.setTaskStatus(task.id, isActive ? "paused" : "active")
+                      toast.success(r.status === "active" ? "任务已启用" : "任务已暂停：不再创建新的批次（INV-10），已运行批次不受影响")
+                      retry()
                     } catch (e) {
                       toast.error(`操作失败：${(e as Error).message}`)
                     }
                   }}
                 >
-                  {isActive ? "停用" : "启用"}
+                  {isActive ? "暂停" : "启用"}
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => navigate(`/config/tasks/${task.id}/edit`)}>编辑</Button>
-                <Button variant="outline" size="sm" onClick={() => setBackfillOpen(true)}>回填数据</Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button>
@@ -104,60 +109,52 @@ export default function TaskDetailPage() {
         />
       </div>
 
-      {/* 任务配置（紧凑信息卡：4×2 网格，压缩高度） */}
+      {/* 当前配置版本快照（服务端返回，不用本地态冒充） */}
       <div className="grid grid-cols-2 gap-x-6 gap-y-2.5 rounded-lg border bg-card px-4 py-3 md:grid-cols-4">
-        {([
-          ["Agent", task.agentName || "—"],
-          ["版本策略", task.agentVersionPolicy === "Latest Published" ? "Latest Published" : `Fixed ${task.fixedAgentVersion ?? ""}`],
-          ["Data Asset", task.dataAssetName || "—"],
-          ["Data Scope", task.scope || "—"],
-          ["Sampling", task.sampling || "—"],
-          ["Schedule", task.schedule || "—"],
-          ["Data Window", task.dataWindow || "—"],
-          ["下次运行", isActive ? (task.nextRunAt ?? "—") : "—"],
-        ] as [string, string][]).map(([label, value]) => (
+        {version ? taskVersionSummary(version).map(({ label, value }) => (
           <div key={label} className="min-w-0">
             <div className="pb-0.5 text-[11px] text-muted-foreground">{label}</div>
             <div className="truncate text-sm" title={value}>{value}</div>
           </div>
-        ))}
+        )) : (
+          <div className="col-span-4 text-sm text-muted-foreground">该任务没有配置版本（旧数据待迁移）</div>
+        )}
       </div>
 
-      {/* Run History */}
+      {/* TaskRun 批次历史（09 §9.4：状态由子 Run 统计确定） */}
       <div className="space-y-2">
-        <SectionHeader title="运行记录" description="同一个 Task 的不同 Run 可能冻结不同 Agent Version / Data Asset Revision" />
+        <SectionHeader title="批次运行（TaskRun）" description="每个批次冻结一个 TaskVersion + DataSnapshot；partial=部分成功" />
         <TableFrame>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>运行时间</TableHead>
-                <TableHead>数据窗口</TableHead>
-                <TableHead>Agent Version</TableHead>
-                <TableHead>Asset Revision</TableHead>
-                <TableHead className="text-right">输入数量</TableHead>
+                <TableHead>启动时间</TableHead>
+                <TableHead>触发</TableHead>
+                <TableHead className="text-right">输入</TableHead>
+                <TableHead className="text-right">成功</TableHead>
+                <TableHead className="text-right">失败</TableHead>
                 <TableHead>状态</TableHead>
-                <TableHead className="text-right">耗时</TableHead>
                 <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(runs ?? []).map((run) => (
-                <TableRow key={run.runId} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/config/tasks/${task.id}/runs/${run.runId}`)}>
-                  <TableCell className="text-sm tabular-nums">{run.startedAt ? formatCompactDateTime(run.startedAt) : "—"}</TableCell>
-                  <TableCell className="text-sm">{run.trigger ?? "—"}</TableCell>
-                  <TableCell className="text-sm">—</TableCell>
-                  <TableCell className="text-sm">—</TableCell>
-                  <TableCell className="text-right tabular-nums">—</TableCell>
-                  <TableCell><StatusBadge status={run.status ?? "PENDING"} context="run" /></TableCell>
-                  <TableCell className="text-right text-sm tabular-nums">{run.durationMs != null ? `${run.durationMs}ms` : "—"}</TableCell>
+              {(taskRuns ?? []).length === 0 ? (
+                <TableRow><TableCell colSpan={7} className="py-6 text-center text-sm text-muted-foreground">尚未执行过批次</TableCell></TableRow>
+              ) : (taskRuns ?? []).map((tr) => (
+                <TableRow key={tr.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setRunsOpen(tr.id)}>
+                  <TableCell className="text-sm tabular-nums">{tr.startedAt ? formatCompactDateTime(tr.startedAt) : formatCompactDateTime(tr.createdAt)}</TableCell>
+                  <TableCell className="text-sm">{tr.trigger}</TableCell>
+                  <TableCell className="text-right tabular-nums">{tr.total}</TableCell>
+                  <TableCell className="text-right tabular-nums">{tr.succeeded}</TableCell>
+                  <TableCell className="text-right tabular-nums">{tr.failed}</TableCell>
+                  <TableCell><StatusBadge status={tr.status} context="run" /></TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="size-7"><MoreHorizontal className="size-4" /></Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => navigate(`/config/tasks/${task.id}/runs/${run.runId}`)}>查看详情</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setRerunId(run.runId)}>重新运行</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setRunsOpen(tr.id)}>查看 Interaction Runs</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -166,82 +163,72 @@ export default function TaskDetailPage() {
             </TableBody>
           </Table>
         </TableFrame>
+        {latestRun?.errorSummary?.errors?.length ? (
+          <div className="rounded-md border border-amber-300/60 bg-amber-50/40 px-3 py-2 text-xs dark:bg-amber-950/20">
+            最近批次失败原因示例：{latestRun.errorSummary.errors.slice(0, 3).map((e) => e.error).join("；")}
+          </div>
+        ) : null}
       </div>
 
-      {/* Backfill Sheet */}
-      <Sheet open={backfillOpen} onOpenChange={setBackfillOpen}>
-        <SheetContent className="w-[420px]">
+      {/* TaskRun 明细 Sheet：Interaction Runs + 结果数 */}
+      <Sheet open={runsOpen !== null} onOpenChange={(open) => !open && setRunsOpen(null)}>
+        <SheetContent className="w-[560px]">
           <SheetHeader>
-            <SheetTitle>回填历史数据</SheetTitle>
-            <SheetDescription>为历史缺失窗口补建新的 Run，不覆盖历史 Run</SheetDescription>
+            <SheetTitle>批次 Interaction Runs</SheetTitle>
+            <SheetDescription>一条 Interaction 一个 Run；失败样本有可解释原因（09 §13.1）</SheetDescription>
           </SheetHeader>
-          <div className="mt-4 space-y-4">
-            <div className="space-y-1.5">
-              <div className="text-sm font-medium">时间范围</div>
-              <div className="flex items-center gap-2">
-                <Input type="date" value={backfillStart} onChange={(e) => setBackfillStart(e.target.value)} />
-                <span className="text-xs text-muted-foreground">→</span>
-                <Input type="date" value={backfillEnd} onChange={(e) => setBackfillEnd(e.target.value)} />
-              </div>
-            </div>
-            <div className="rounded-md bg-muted/60 px-3 py-2 text-xs">
-              <div className="font-medium">当前 Task 配置</div>
-              <div className="mt-1 text-muted-foreground">
-                Agent：{task.agentName} · Data Asset：{task.dataAssetName} · Sampling：{task.sampling}
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">回填将创建新的 Run，不覆盖历史 Run。</p>
-          </div>
-          <SheetFooter className="mt-6">
-            <Button variant="outline" onClick={() => setBackfillOpen(false)}>取消</Button>
-            <Button
-              onClick={async () => {
-                // R2 修复：真回填（批量运行，此前只 toast）；复核修复：日期窗真下发
-                setBackfillOpen(false)
-                try {
-                  const r = await bizApi.batchRun(task.id, undefined, { start: backfillStart, end: backfillEnd })
-                  toast.success(`已创建回填 Run ${r.runIds.length} 条（${backfillStart} → ${backfillEnd}，窗口内 ${r.runIds.length} 行）`)
-                  retry()
-                } catch (e) {
-                  toast.error(`回填失败：${(e as Error).message}`)
-                }
-              }}
-            >
-              开始回填
-            </Button>
-          </SheetFooter>
+          {runsOpen ? <TaskRunDetail trid={runsOpen} onOpenResult={(rid) => navigate(`/quality/results/${rid}`)} /> : null}
         </SheetContent>
       </Sheet>
-
-      {/* Rerun Dialog */}
-      <Dialog open={rerunId !== null} onOpenChange={(open) => !open && setRerunId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>确认重新运行？</DialogTitle>
-            <DialogDescription>
-              将基于该 Run（{rerunId}）的数据窗口重新创建一个新的 Run。历史 Run 和结果不会被覆盖。
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRerunId(null)}>取消</Button>
-            <Button
-              onClick={async () => {
-                // R2 修复：真重新运行（创建 1 条新 Run，此前只 toast）
-                setRerunId(null)
-                try {
-                  const r = await bizApi.batchRun(task.id, 1)
-                  toast.success(`已创建新的 Run（${r.runIds[0]?.slice(0, 8) ?? ""}）`)
-                  retry()
-                } catch (e) {
-                  toast.error(`重新运行失败：${(e as Error).message}`)
-                }
-              }}
-            >
-              重新运行
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </PageContainer>
+  )
+}
+
+function TaskRunDetail({ trid, onOpenResult }: { trid: string; onOpenResult: (resultId: string) => void }) {
+  const { data, loading } = useAsyncData(async () => {
+    const [runs, results, tr] = await Promise.all([
+      bizApi.taskRunRuns(trid), bizApi.taskRunResults(trid), bizApi.taskRun(trid),
+    ])
+    return { runs, results, tr }
+  }, [trid])
+  if (loading || !data) return <div className="mt-4"><TableSkeleton rows={4} columns={4} /></div>
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="text-xs text-muted-foreground">
+        批次 {data.tr.id.slice(0, 8)} · 状态 {data.tr.status} · 成功 {data.tr.succeeded} / 失败 {data.tr.failed} / 跳过 {data.tr.skipped}
+        {data.tr.dataSnapshotId ? ` · DataSnapshot ${data.tr.dataSnapshotId.slice(0, 8)}` : ""}
+      </div>
+      <TableFrame>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Interaction</TableHead>
+              <TableHead>状态</TableHead>
+              <TableHead>耗时</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.runs.map((r) => (
+              <TableRow key={r.id}>
+                <TableCell className="font-mono text-xs">{r.interactionRef || "（空）"}</TableCell>
+                <TableCell><StatusBadge status={r.status} context="run" /></TableCell>
+                <TableCell className="text-xs tabular-nums">{r.durationMs != null ? `${r.durationMs}ms` : "—"}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableFrame>
+      {data.results.length > 0 ? (
+        <div className="space-y-1">
+          <div className="text-sm font-medium">质检结果（{data.results.length}）</div>
+          {data.results.map((q) => (
+            <button key={q.id} type="button" className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm hover:bg-muted/50" onClick={() => onOpenResult(q.id)}>
+              <span className="font-mono text-xs">{q.interactionRef}</span>
+              <span className="text-xs text-muted-foreground">score {q.score ?? "—"} · {q.risk ?? "—"}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   )
 }

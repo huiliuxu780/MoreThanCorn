@@ -282,6 +282,13 @@ def tool_new_version(rid: str, db: Session = Depends(get_db),
 
 # ---------- Data Definitions ----------
 
+def _latest_definition_version(db: Session, did: str):
+    """09 P0-B4：定义最新已发布版本（供 TaskVersion 绑定 dataDefinitionVersionId）。"""
+    from ..models import DataDefinitionVersion
+    return db.query(DataDefinitionVersion).filter_by(definition_id=did)\
+        .order_by(DataDefinitionVersion.version_no.desc()).first()
+
+
 @router.get("/api/data-definitions")
 def list_definitions(assetId: str = "", search: str = "", page: int = 1, pageSize: int = 20,
                      db: Session = Depends(get_db)):
@@ -296,10 +303,13 @@ def list_definitions(assetId: str = "", search: str = "", page: int = 1, pageSiz
     for d in rows:
         asset = db.get(DataAsset, d.data_asset_id)
         task_n = sum(1 for t in db.query(_task_cls()).filter_by(data_definition_id=d.id))
+        lv = _latest_definition_version(db, d.id)
         items.append({"id": d.id, "name": d.name, "assetId": d.data_asset_id,
                       "assetName": asset.name if asset else "", "lifecycle": d.lifecycle,
                       "revision": d.revision, "fieldCount": len(d.field_schema or []),
-                      "taskCount": task_n, "updatedAt": d.updated_at.isoformat()})
+                      "taskCount": task_n, "updatedAt": d.updated_at.isoformat(),
+                      "latestVersionId": lv.id if lv else None,
+                      "latestVersionNo": lv.version_no if lv else None})
     return {"items": items, "total": total, "page": page, "pageSize": pageSize}
 
 
@@ -328,9 +338,12 @@ def get_definition(did: str, db: Session = Depends(get_db)):
     if not d:
         raise HTTPException(404, "数据定义不存在")
     asset = db.get(DataAsset, d.data_asset_id)
+    lv = _latest_definition_version(db, did)
     return {"id": d.id, "name": d.name, "assetId": d.data_asset_id,
             "assetName": asset.name if asset else "", "fieldSchema": d.field_schema,
             "eligibility": d.eligibility, "lifecycle": d.lifecycle, "revision": d.revision,
+            "latestVersionId": lv.id if lv else None,
+            "latestVersionNo": lv.version_no if lv else None,
             "changeLog": change_log(db, "definition", did)}
 
 

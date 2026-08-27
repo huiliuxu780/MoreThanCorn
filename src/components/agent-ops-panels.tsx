@@ -16,7 +16,7 @@ export function AgentRunsPanel({ agentId }: { agentId: string }) {
   const [metrics, setMetrics] = useState<{ total: number; succeeded: number; failed: number; successRate: number; avgDurationMs: number; maxDurationMs: number; totalTokens?: number; firstToken?: { avgMs: number | null; p50Ms: number | null; samples: number } } | null>(null)
   const [runs, setRuns] = useState<{ runId: string; status: string; trigger: string; startedAt: string | null; durationMs: number | null; error?: { message?: string } | null }[]>([])
   const [selected, setSelected] = useState<string | null>(null)
-  const [events, setEvents] = useState<{ type: string; payload: Record<string, any>; at: string }[]>([])
+  const [events, setEvents] = useState<{ type: string; payload: Record<string, unknown>; at: string }[]>([])
   const load = () => {
     agentApi.metrics(agentId).then(setMetrics).catch(() => undefined)
     agentApi.runs(agentId).then((r) => setRuns(r.items)).catch(() => undefined)

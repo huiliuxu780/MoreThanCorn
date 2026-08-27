@@ -12,13 +12,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { SearchField } from "@/components/app/filters"
@@ -30,18 +23,13 @@ import { FormField } from "@/components/app/form-field"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { useListQuery } from "@/hooks/use-list-query"
 import { formatDateTime } from "@/lib/time"
-import { agentApi, bizApi } from "@/services/wf-api"
+import { bizApi } from "@/services/wf-api"
 import { rbac } from "@/services/rbac"
 
 export default function ResultRulesPage() {
   const navigate = useNavigate()
   const { params, update } = useListQuery(20)
   const { data, loading, error, retry } = useAsyncData(() => bizApi.rules().then((items) => ({ items, total: items.length, page: 1, pageSize: 50 })), [params.search, params.page, params.pageSize])
-  // D-5：Agent 选项改真数据（此前来自 mocks/data）
-  const [agents, setAgents] = useState<{ id: string; name: string }[]>([])
-  useEffect(() => {
-    agentApi.list({ page: 1, pageSize: 100 }).then((r) => setAgents(r.items ?? [])).catch(() => undefined)
-  }, [])
 
   const [searchInput, setSearchInput] = useState(params.search ?? "")
   useEffect(() => {
@@ -55,7 +43,6 @@ export default function ResultRulesPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
-  const [agentId, setAgentId] = useState("")
   const [creating, setCreating] = useState(false)
 
   const canManage = rbac.can("rules.manage")
@@ -91,8 +78,8 @@ export default function ResultRulesPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>名称</TableHead>
-                  <TableHead>Agent</TableHead>
                   <TableHead>当前版本</TableHead>
+                  <TableHead>版本状态</TableHead>
                   <TableHead>Evaluation Priority</TableHead>
                   <TableHead>最近更新</TableHead>
                 </TableRow>
@@ -104,8 +91,8 @@ export default function ResultRulesPage() {
                       <div className="text-sm font-medium">{rule.name}</div>
                       <div className="line-clamp-1 max-w-md text-xs text-muted-foreground">{rule.description}</div>
                     </TableCell>
-                    <TableCell className="text-sm">{rule.agentName}</TableCell>
                     <TableCell className="text-sm">{rule.currentVersion}</TableCell>
+                    <TableCell className="text-xs">{rule.versionStatus}</TableCell>
                     <TableCell className="text-xs">{rule.evaluationPriority === "Most Recent Completed" ? "最新完成的评价" : "首次完成的评价"}</TableCell>
                     <TableCell className="text-sm tabular-nums">{formatDateTime(rule.updatedAt)}</TableCell>
                   </TableRow>
@@ -131,18 +118,10 @@ export default function ResultRulesPage() {
             <FormField label="描述">
               <Textarea className="min-h-16" value={description} onChange={(e) => setDescription(e.target.value)} />
             </FormField>
-            <FormField label="Agent" description="作为 Evaluation Selection 的评价来源" required>
-              <Select value={agentId || undefined} onValueChange={setAgentId}>
-                <SelectTrigger><SelectValue placeholder="选择 Agent" /></SelectTrigger>
-                <SelectContent>
-                  {agents.map((a) => (<SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </FormField>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
-            <Button disabled={!name.trim() || !agentId || creating} onClick={async () => {
+            <Button disabled={!name.trim() || creating} onClick={async () => {
               // R2 修复：真创建规则（此前只 toast + 硬编码 RR-01）
               setCreating(true)
               try {

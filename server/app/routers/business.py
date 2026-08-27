@@ -569,6 +569,25 @@ def list_task_run_runs(trid: str, db: Session = Depends(get_db)):
     return {"items": [_run_dto(r) for r in rows]}
 
 
+@router.get("/api/task-runs/{trid}/snapshot")
+def get_task_run_snapshot(trid: str, db: Session = Depends(get_db)):
+    """09 §9.3：批次数据快照（源/窗口/范围/抽样/水位/行数/指纹）。"""
+    from ..models import DataSnapshot, TaskRun
+    tr = db.get(TaskRun, trid)
+    if not tr:
+        raise HTTPException(404, "TaskRun 不存在")
+    snap = db.get(DataSnapshot, tr.data_snapshot_id) if tr.data_snapshot_id else None
+    return {"taskRunId": tr.id, "taskId": tr.task_id,
+            "dataSnapshot": None if not snap else {
+                "id": snap.id, "assetId": snap.asset_id, "assetRevision": snap.asset_revision,
+                "definitionVersionId": snap.definition_version_id,
+                "locator": snap.locator, "resolvedWindow": snap.resolved_window,
+                "resolvedScope": snap.resolved_scope, "resolvedSampling": snap.resolved_sampling,
+                "checkpoint": snap.checkpoint, "expectedCount": snap.expected_count,
+                "readCount": snap.read_count, "checksum": snap.checksum,
+                "createdAt": snap.created_at.isoformat()}}
+
+
 @router.get("/api/task-runs/{trid}/results")
 def list_task_run_results(trid: str, db: Session = Depends(get_db)):
     from ..models import QualityResult, TaskRun

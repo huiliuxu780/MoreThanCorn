@@ -2,7 +2,7 @@
  * 用户报告修复：补编辑入口（PUT），创建/编辑表单支持多种鉴权（API Key/Bearer/Basic Auth）、
  * 协议与端点；统一走 connApi 服务层（SDD D-3）。 */
 import { Eye, EyeOff, KeyRound, Plus, Trash2 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useListQuery } from "@/hooks/use-list-query"
 import { Pagination } from "@/components/app/pagination"
 import { pagedApi } from "@/services/wf-api"
@@ -77,13 +77,13 @@ export default function WfConnectionsPage() {
 
   const { params, update } = useListQuery(12)
   const [total, setTotal] = useState(0)
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true)
     pagedApi.connections({ page: params.page, pageSize: params.pageSize, search: params.search ?? "" }).then((r) => {
       setRows(r.items as unknown as ConnRow[]); setTotal(r.total); setLoading(false)
     }).catch(() => setLoading(false))
-  }
-  useEffect(() => { load() }, [params.page, params.pageSize, params.search])
+  }, [params.page, params.pageSize, params.search])
+  useEffect(() => { load() }, [load])
 
   const openCreate = () => { setForm(EMPTY_FORM); setShowSecret(false); setOpen(true) }
   const openEdit = (c: ConnRow) => {
@@ -126,7 +126,8 @@ export default function WfConnectionsPage() {
     setSearching(id)
     try {
       const r = await connApi.test(id)
-      r.ok ? toast.success("连接测试通过") : toast.error(`测试失败：${r.error ?? "未知错误"}`)
+      if (r.ok) toast.success("连接测试通过")
+      else toast.error(`测试失败：${r.error ?? "未知错误"}`)
       // 静默刷新该行状态，不触发整列表 loading 闪烁（修复"点测试列表会变"）
       pagedApi.connections({ page: params.page, pageSize: params.pageSize, search: params.search ?? "" })
         .then((r2) => { setRows(r2.items as unknown as ConnRow[]); setTotal(r2.total) })

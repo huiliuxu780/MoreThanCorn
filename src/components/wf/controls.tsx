@@ -8,6 +8,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 
+/** 09 §5.7 已登记豁免：节点配置为注册表 schema 驱动的自由 JSONB，归一化函数按松散对象处理（统一别名，可审计）。 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type NodeCfgLoose = Record<string, any>
+
 export const C = {
   canvas: "#EEF1F6",
   dot: "#D9DEE7",
@@ -158,9 +162,9 @@ export const NO_VALUE_OPS = new Set(["empty", "not_empty"])
 export function normCondBranches(raw: unknown): CondBranch[] {
   const bs = Array.isArray(raw) ? raw : []
   return bs.map((b, i) => {
-    const x = b as Record<string, any>
+    const x = b as NodeCfgLoose
     const conds: CondCondition[] = Array.isArray(x?.conditions)
-      ? x.conditions.map((c: any) => ({
+      ? x.conditions.map((c: NodeCfgLoose) => ({
           variable: c?.variable ?? "", variableType: c?.variableType || "string",
           operator: c?.operator || "eq",
           valueMode: c?.valueMode === "VARIABLE" ? "VARIABLE" as const : "LITERAL" as const,
@@ -176,7 +180,7 @@ export function normCondBranches(raw: unknown): CondBranch[] {
 
 /** 条件节点出边 handle 集 = 各分支 handle + else 兜底 */
 export function condHandlesOf(n: WfNode): string[] {
-  return [...normCondBranches((n.config as Record<string, any>)?.branches).map((b) => b.handle), "else"]
+  return [...normCondBranches((n.config as NodeCfgLoose)?.branches).map((b) => b.handle), "else"]
 }
 
 /** {{nodeId.outputs.x}} → “节点名.x”，抽屉与卡片展示真实变量路径 */

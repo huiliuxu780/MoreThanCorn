@@ -5,7 +5,8 @@ import globals from "globals"
 import tseslint from "typescript-eslint"
 
 export default tseslint.config(
-  { ignores: ["dist", "node_modules"] },
+  // dist/node_modules 为构建产物；.qoder 为 IDE 工具生成的临时工件（非项目源码）
+  { ignores: ["dist", "node_modules", ".qoder"] },
   {
     files: ["**/*.{ts,tsx}"],
     extends: [

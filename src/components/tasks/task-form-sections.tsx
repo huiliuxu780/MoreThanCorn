@@ -16,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { FormField } from "@/components/app/form-field"
 import { SectionHeader } from "@/components/app/page"
 import { defApi, type DefinitionDTO } from "@/services/resource-api"
-import { formsApi, listDataAssets, wfApi } from "@/services/wf-api"
+import { bizApi, formsApi, listDataAssets, wfApi } from "@/services/wf-api"
 import type { AgentDetail, DataAsset, DataAssetField } from "@/domain/types"
 import { cn } from "@/lib/utils"
 
@@ -32,6 +32,7 @@ function loadCatalog() {
   if (catalogLoaded) return
   catalogLoaded = true
   // 08-27 用户链路：任务挂 workflow 主干——catalog 源换成工作流，inputSchema 取自开始节点 form
+  // 09 P0-B4：同时加载已发布版本列表（Fixed 策略需要真实 versionId）
   wfApi.list({ pageSize: 100 }).then(async (r) => {
     const out: AgentDetail[] = []
     for (const w of (r.items ?? []) as { id: string; name: string; status?: string }[]) {
@@ -46,7 +47,12 @@ function loadCatalog() {
           if (f) schema = (f.fields ?? []).map((fd) => ({ key: fd.key, type: fd.dataType, label: fd.label })) as unknown as DataAssetField[]
         }
       } catch { /* 回退缺省 */ }
-      out.push({ id: w.id, name: w.name, status: w.status === "published" ? "Published" : "Draft", inputSchema: schema } as unknown as AgentDetail)
+      const versions = await wfApi.versions(w.id).catch(() => [])
+      out.push({
+        id: w.id, name: w.name, status: w.status === "published" ? "Published" : "Draft",
+        inputSchema: schema,
+        versions: versions.map((v) => ({ version: `v${v.versionNo}`, status: "Published" as const, versionId: v.versionId, publishedAt: v.publishedAt })),
+      } as unknown as AgentDetail)
     }
     agents = out
     for (const a of agents) agentDetails[a.id] = a
@@ -78,11 +84,17 @@ export interface ScopeCondition {
 export interface TaskFormState {
   name: string
   description: string
+  /** 09 P0-02：任务直接绑定 Workflow（历史命名沿用字段名，语义=工作流） */
   agentId: string
   versionPolicy: "Latest Published" | "Fixed"
+  /** Fixed 策略选中的工作流版本 ID（pinnedWorkflowVersionId） */
   fixedVersion: string
   assetId: string
   definitionId: string
+  /** 09 §9.2：数据定义已发布版本 ID（dataDefinitionVersionId） */
+  definitionVersionId: string
+  /** 09 §9.2：冻结的规则版本 ID（resultRuleVersionId；空=执行时取最新发布版本） */
+  ruleVersionId: string
   mapping: Record<string, string>
   scope: ScopeCondition[]
   samplingType: "全量" | "随机抽样" | "固定数量"
@@ -103,6 +115,8 @@ export const emptyTaskForm: TaskFormState = {
   fixedVersion: "",
   assetId: "",
   definitionId: "",
+  definitionVersionId: "",
+  ruleVersionId: "",
   mapping: {},
   scope: [],
   samplingType: "全量",
@@ -220,7 +234,7 @@ export function BasicTaskFields({
                   <SelectTrigger className="h-8 w-32"><SelectValue placeholder="固定版本" /></SelectTrigger>
                   <SelectContent>
                     {(agentOf(form)?.versions ?? []).filter((v) => v.status === "Published").map((v) => (
-                      <SelectItem key={v.version} value={v.version}>{v.version}</SelectItem>
+                      <SelectItem key={v.versionId ?? v.version} value={v.versionId ?? v.version}>{v.version}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -274,7 +288,7 @@ export function DataTaskFields({
           value={form.definitionId || undefined}
           onValueChange={(definitionId) => {
             const d = defs.find((x) => x.id === definitionId) ?? null
-            onChange({ ...form, definitionId, assetId: d?.assetId ?? "", mapping: autoMapping(agent, shellFromDef(d)), scope: [] })
+            onChange({ ...form, definitionId, assetId: d?.assetId ?? "", definitionVersionId: d?.latestVersionId ?? "", mapping: autoMapping(agent, shellFromDef(d)), scope: [] })
           }}
         >
           <SelectTrigger><SelectValue placeholder="选择 Data Definition" /></SelectTrigger>
@@ -417,8 +431,31 @@ export function StrategyTaskFields({
   onChange: (next: TaskFormState) => void
 }) {
   const set = (patch: Partial<TaskFormState>) => onChange({ ...form, ...patch })
+  // 09 §9.2：任务绑定冻结规则版本（缺省=执行时取最新发布版本）
+  const [ruleOptions, setRuleOptions] = useState<{ id: string; label: string }[]>([])
+  useEffect(() => {
+    bizApi.rules().then(async (sets) => {
+      const opts: { id: string; label: string }[] = []
+      for (const s of sets) {
+        const vs = await bizApi.ruleVersions(s.id).catch(() => [])
+        for (const v of vs) opts.push({ id: v.id, label: `${s.name} · V${v.versionNo}` })
+      }
+      setRuleOptions(opts)
+    }).catch(() => undefined)
+  }, [])
   return (
     <div className="space-y-5">
+      <FormField label="质检规则版本" description="绑定后该任务所有批次使用同一冻结版本；缺省跟随最新发布版本。">
+        <Select value={form.ruleVersionId || "latest"} onValueChange={(v) => set({ ruleVersionId: v === "latest" ? "" : v })}>
+          <SelectTrigger className="h-8 w-64"><SelectValue placeholder="跟随最新发布版本" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="latest">跟随最新发布版本</SelectItem>
+            {ruleOptions.map((o) => (
+              <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </FormField>
       <div className="space-y-2">
         <Label className="text-sm font-medium">Sampling</Label>
         <RadioGroup value={form.samplingType} onValueChange={(v) => set({ samplingType: v as TaskFormState["samplingType"] })} className="gap-2">

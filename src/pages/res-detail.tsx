@@ -41,7 +41,7 @@ export default function ResDetailPage() {
   const [editOpen, setEditOpen] = useState(sp.get("edit") === "1")
   const [delOpen, setDelOpen] = useState(false)
   const [blocked, setBlocked] = useState<{ refs: RefInfo[] } | null>(null)
-  const [editForm, setEditForm] = useState<Record<string, any>>({})
+  const [editForm, setEditForm] = useState<{ name?: string; description?: string }>({})
 
   const domain = ["model", "tool", "mcp", "knowledge"].includes(type) ? "ai" : "data"
   const listPath = `/config/${domain}-resources`

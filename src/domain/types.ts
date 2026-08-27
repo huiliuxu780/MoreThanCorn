@@ -138,6 +138,8 @@ export interface AgentVersionInfo {
   publishedAt?: string
   publishedBy?: string
   versionNote?: string
+  /** 09 P0-B4：工作流版本真实 ID（任务 pinned 策略绑定用） */
+  versionId?: string
 }
 
 /** 通用 Node 家族（Master §8.3）：Node Type 通用化，Node Instance 业务化。 */

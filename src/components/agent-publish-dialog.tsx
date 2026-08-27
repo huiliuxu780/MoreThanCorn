@@ -54,8 +54,8 @@ export function AgentPublishDialog({ agentId, open, onClose, onPublished }: {
   const makeVersion = async () => {
     setBusy(true); setIssues([])
     try {
-      const r = await agentApi.createVersion(agentId, note) as any
-      if (r?.detail) {  // 409：校验失败
+      const r = await agentApi.createVersion(agentId, note)
+      if ("detail" in r) {  // 409：校验失败
         setIssues(r.detail.issues ?? [{ code: r.detail.code ?? "FAILED", message: r.detail.message ?? "发布校验未通过" }])
         return
       }

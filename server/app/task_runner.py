@@ -175,6 +175,9 @@ def execute_task_run(task_run_id: str) -> None:
 
         sampling = tv.sampling or {}
         max_items = int(sampling.get("count") or 0) if sampling.get("mode") == "count" else 0
+        # 随机抽样（percent）：按 ref 哈希确定性选择（同快照可复现，INV-12）
+        random_percent = (float(sampling.get("percent") or 0)
+                          if sampling.get("mode") == "random" else 0.0)
         scope = tv.scope or {}
         id_field = asset.record_id_field or "interactionId"
 
@@ -215,6 +218,11 @@ def execute_task_run(task_run_id: str) -> None:
                     continue
                 seen_refs.add(ref)
                 checksum.update(ref.encode())
+                if random_percent > 0:
+                    bucket = int(hashlib.sha256(ref.encode()).hexdigest()[:8], 16) % 10000
+                    if bucket >= int(random_percent * 100):
+                        skipped += 1  # 未抽中（确定性抽样，非失败）
+                        continue
                 input_payload = _apply_mapping(row, tv.input_mapping or {})
                 input_payload["__rawRow"] = row  # 输入快照：重放与证据（INV-12）
                 if tv.output_schema_version_id:

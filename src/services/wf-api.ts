@@ -92,15 +92,25 @@ export interface NodeDefinition {
   editor_kinds?: ("FLOW" | "GROUP" | "WORKFLOW")[]  // SDD C-2：节点可出现的编排器
 }
 
+export class ApiError extends Error {
+  status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const tok = typeof wfApiToken === "function" ? wfApiToken() : ""
-  const res = await fetch(`${WF_BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...(tok ? { Authorization: `Bearer ${tok}` } : {}) },
-    ...init,
-  })
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
+  }
+  if (init?.headers) Object.assign(headers, init.headers)
+  const res = await fetch(`${WF_BASE}${path}`, { ...init, headers })
   if (!res.ok) {
     const body = await res.json().catch(() => null)
-    throw new Error(`${res.status}: ${JSON.stringify(body?.detail ?? body)}`)
+    throw new ApiError(res.status, `${res.status}: ${JSON.stringify(body?.detail ?? body)}`)
   }
   return res.json() as Promise<T>
 }
@@ -229,32 +239,81 @@ const RUN_STATUS: Record<string, RunStatus> = {
 }
 const EX_STATUS: Record<string, ExecutionStatus> = { success: "SUCCESS", failed: "ERROR", skipped: "SKIPPED", running: "SKIPPED", pending: "SKIPPED" }
 
+interface RunDetailRaw {
+  runId: string
+  status: string
+  trigger?: string
+  startedAt: string | null
+  endedAt: string | null
+  durationMs: number | null
+  originRunId?: string | null
+  retryChildren?: { runId: string; status: string; createdAt: string }[]
+  definitionSource?: "draft" | "version" | null
+  versionNo?: number | null
+  workflowVersionId?: string | null
+  taskRunId?: string | null
+  taskId?: string | null
+  taskVersionId?: string | null
+  interactionRef?: string
+  nodeRuns?: {
+    nodeRunId: string; nodeId: string; nodeType: string; status: string
+    durationMs: number | null; attempt?: number; error?: { message?: string } | null
+  }[]
+}
+
 export async function realRunDetail(runId: string): Promise<{ run: Run; executions: { items: InteractionExecution[]; total: number; page: number; pageSize: number } }> {
-  const d = await req<Record<string, any>>(`/api/runs/${runId}`)
+  const d = await req<RunDetailRaw>(`/api/runs/${runId}`)
+  const nodeRuns = d.nodeRuns ?? []
+  // 09 P0-08：任务主链 Run 用真实 TaskRun/DataSnapshot 填充，不再占位
+  let windowLabel = "-"
+  let scopeLabel = "-"
+  let samplingLabel = "-"
+  let assetLabel = "-"
+  let assetRevision = 0
+  if (d.taskRunId) {
+    const snap = await req<{
+      taskId: string
+      dataSnapshot: null | { assetId: string; assetRevision: number; resolvedWindow: { mode?: string; value?: string; start?: string; end?: string }; resolvedScope: { conditions?: unknown[] }; resolvedSampling: { mode?: string; count?: number; percent?: number } }
+    }>(`/api/task-runs/${d.taskRunId}/snapshot`).catch(() => null)
+    if (snap?.dataSnapshot) {
+      const ds = snap.dataSnapshot
+      const w = ds.resolvedWindow ?? {}
+      windowLabel = w.mode === "relative" ? `相对窗口 ${w.value ?? ""}`
+        : w.mode === "fixed" ? `${w.start ?? ""} → ${w.end ?? ""}`
+        : w.mode === "all" ? "全量" : "-"
+      scopeLabel = (ds.resolvedScope?.conditions ?? []).length ? `${ds.resolvedScope?.conditions?.length} 个条件` : "全部"
+      const sp = ds.resolvedSampling ?? {}
+      samplingLabel = sp.mode === "count" ? `固定 ${sp.count ?? 0} 条`
+        : sp.mode === "random" ? `随机 ${sp.percent ?? 0}%`
+        : sp.mode === "all" ? "全量" : "-"
+      assetLabel = ds.assetId.slice(0, 8)
+      assetRevision = ds.assetRevision
+    }
+  }
   const run: Run = {
-    id: d.runId, taskId: "-", taskName: "Workflow Run",
+    id: d.runId, taskId: d.taskId ?? "-", taskName: "Workflow Run",
     status: RUN_STATUS[d.status] ?? "PENDING",
     startedAt: d.startedAt ?? new Date().toISOString(),
     finishedAt: d.endedAt ?? undefined,
     duration: d.durationMs != null ? `${d.durationMs}ms` : undefined,
     originRunId: d.originRunId ?? undefined,          // E-3.2 重试谱系
     retryChildren: d.retryChildren ?? [],
-    dataWindow: { start: "-", end: "-", label: "-" },
+    dataWindow: { start: "-", end: "-", label: windowLabel },
     snapshot: {
       agentName: "workflow",
       // SDD A-01 验收：可见本次执行的是草稿还是哪个版本
       agentVersion: d.definitionSource === "version" ? `版本 v${d.versionNo ?? "?"}` : d.definitionSource === "draft" ? "草稿" : "-",
-      dataAssetName: "-", dataAssetRevision: 0,
-      scope: "-", sampling: "-", runtime: "fastapi-kernel", toolVersions: [], inputMapping: [],
+      dataAssetName: assetLabel, dataAssetRevision: assetRevision,
+      scope: scopeLabel, sampling: samplingLabel, runtime: "fastapi-kernel", toolVersions: [], inputMapping: [],
     },
     summary: {
-      input: (d.nodeRuns ?? []).length,
-      success: (d.nodeRuns ?? []).filter((n: any) => n.status === "success").length,
-      skipped: (d.nodeRuns ?? []).filter((n: any) => n.status === "skipped").length,
-      error: (d.nodeRuns ?? []).filter((n: any) => n.status === "failed").length,
+      input: nodeRuns.length,
+      success: nodeRuns.filter((n) => n.status === "success").length,
+      skipped: nodeRuns.filter((n) => n.status === "skipped").length,
+      error: nodeRuns.filter((n) => n.status === "failed").length,
     },
   }
-  const executions: InteractionExecution[] = (d.nodeRuns ?? []).map((n: any) => ({
+  const executions: InteractionExecution[] = nodeRuns.map((n) => ({
     id: n.nodeRunId, runId, interactionId: n.nodeId, agentName: n.nodeType, teamName: "-",
     businessContext: BC_Q, status: EX_STATUS[n.status] ?? "SKIPPED",
     duration: n.durationMs != null ? `${n.durationMs}ms` : undefined,
@@ -264,35 +323,69 @@ export async function realRunDetail(runId: string): Promise<{ run: Run; executio
 }
 
 export interface Paged<T> { items: T[]; total: number; page: number; pageSize: number }
-export const pagedApi = {
-  agents: (p: { page?: number; pageSize?: number; search?: string; archived?: "" | "true" | "all" }) =>
-    req<Paged<Record<string, any>>>(`/api/agents?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}&search=${encodeURIComponent(p.search ?? "")}${p.archived ? `&archived=${p.archived}` : ""}`),
-  tools: (p: { page?: number; pageSize?: number; search?: string }) =>
-    req<Paged<Record<string, any>>>(`/api/tools?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}&search=${encodeURIComponent(p.search ?? "")}`),
-  connections: (p: { page?: number; pageSize?: number; search?: string }) =>
-    req<Paged<Record<string, any>>>(`/api/connections?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}&search=${encodeURIComponent(p.search ?? "")}`),
-  reveal: (cid: string) => req<{ secret: string }>(`/api/connections/${cid}/reveal`),
-  models: (p: { page?: number; pageSize?: number }) =>
-    req<Paged<Record<string, any>>>(`/api/registry/models?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}`),
-  providers: (p: { page?: number; pageSize?: number }) =>
-    req<Paged<Record<string, any>>>(`/api/model-providers?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}`),
+
+export interface AgentListItem {
+  id: string; name: string; type: string; typeLabel?: string; status: string
+  archived?: boolean; avatar?: string | null; workflowId?: string | null; updatedAt?: string
+}
+export interface ToolListItem {
+  id: string; name: string; kind: string; status: string; connectionId?: string | null
+  description?: string; updatedAt?: string; versions?: { version: number; status: string }[]
+}
+export interface ConnectionListItem {
+  id: string; name: string; kind: string; protocol: string
+  endpoint: Record<string, unknown>; status: string; secretConfigured: boolean
+  providerHint?: string; updatedAt?: string
+}
+export interface ModelListItem {
+  id?: string; modelKey: string; displayName?: string; providerId?: string
+  providerName?: string; capabilities?: string[]; enabled?: boolean; version?: number
+}
+export interface ProviderListItem {
+  id: string; name: string; baseUrl?: string; status?: string; modelCount?: number
 }
 
-export const wfApiToken = () =>
+export const pagedApi = {
+  agents: (p: { page?: number; pageSize?: number; search?: string; archived?: "" | "true" | "all" }) =>
+    req<Paged<AgentListItem>>(`/api/agents?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}&search=${encodeURIComponent(p.search ?? "")}${p.archived ? `&archived=${p.archived}` : ""}`),
+  tools: (p: { page?: number; pageSize?: number; search?: string }) =>
+    req<Paged<ToolListItem>>(`/api/tools?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}&search=${encodeURIComponent(p.search ?? "")}`),
+  connections: (p: { page?: number; pageSize?: number; search?: string }) =>
+    req<Paged<ConnectionListItem>>(`/api/connections?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}&search=${encodeURIComponent(p.search ?? "")}`),
+  reveal: (cid: string) => req<{ secret: string }>(`/api/connections/${cid}/reveal`),
+  models: (p: { page?: number; pageSize?: number }) =>
+    req<Paged<ModelListItem>>(`/api/registry/models?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}`),
+  providers: (p: { page?: number; pageSize?: number }) =>
+    req<Paged<ProviderListItem>>(`/api/model-providers?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}`),
+}
+
+export const wfApiToken = (): string =>
   (typeof localStorage !== "undefined" && localStorage.getItem("wf_api_token")) ||
-  (import.meta as any).env?.VITE_WF_API_TOKEN || ""
+  (import.meta.env.VITE_WF_API_TOKEN as string | undefined) || ""
+
+export const setWfApiToken = (token: string) => {
+  if (typeof localStorage !== "undefined") localStorage.setItem("wf_api_token", token)
+}
+
+/* ---------- 身份（09 P0-10） ---------- */
+export const authApi = {
+  login: (username: string, password: string) =>
+    req<{ token: string; user: { id: string; username: string; role: string; displayName: string } }>(
+      "/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
+  me: () => req<{ id?: string; username: string; role: string; displayName?: string }>("/api/auth/me"),
+}
 
 /* ---------- Phase A（SDD A-16/D-3）：Agent 层统一客户端，页面禁止裸 fetch ---------- */
 export interface AgentInfo {
   id: string; name: string; type: string; typeLabel: string; status: string;
-  workflowId: string | null; config: Record<string, any>; configRevision: number;
+  workflowId: string | null; config: Record<string, unknown>; configRevision: number;
   description: string; avatar?: string | null
 }
 
 export interface AgentVersionInfo {
   versionId: string; versionNo: number; note: string; artifactHash: string; createdAt: string
 }
-export interface AgentRunEvent { type: string; payload: Record<string, any>; at: string }
+export interface AgentRunEvent { type: string; payload: Record<string, unknown>; at: string }
 export interface AgentRunDetail {
   runId: string; status: string; trigger: string; input: Record<string, unknown>;
   output?: { content?: string } | null; error?: { message?: string } | null;
@@ -313,7 +406,7 @@ export const agentApi = {
       method: "POST", body: JSON.stringify(body) }),
   /** SDD A-08：携带 expectedRevision，冲突时抛出 409（REVISION_CONFLICT） */
   update: (id: string, body: Record<string, unknown>, expectedRevision?: number) =>
-    req<{ id: string; config: Record<string, any>; configRevision: number }>(`/api/agents/${id}`, {
+    req<{ id: string; config: Record<string, unknown>; configRevision: number }>(`/api/agents/${id}`, {
       method: "PUT", body: JSON.stringify({ ...body, ...(expectedRevision != null ? { expectedRevision } : {}) }) }),
   run: (id: string, input: Record<string, unknown>, trigger = "test") =>
     req<{ runId: string }>(`/api/agents/${id}/run`, {
@@ -341,10 +434,10 @@ export const agentApi = {
     req<{ versionId: string; versionNo: number; artifactHash: string } | { detail: { code: string; issues?: { code: string; message: string }[]; message?: string } }>(
       `/api/agents/${id}/versions`, { method: "POST", body: JSON.stringify({ note }) }),
   versionDetail: (id: string, versionId: string) =>
-    req<Record<string, any>>(`/api/agents/${id}/versions/${versionId}`),
+    req<Record<string, unknown>>(`/api/agents/${id}/versions/${versionId}`),
   /* E-2.2：草稿 definition 预览（版本对比用） */
   draftDefinition: (id: string) =>
-    req<{ definition: Record<string, any> }>(`/api/agents/${id}/definition-draft`),
+    req<{ definition: Record<string, unknown> }>(`/api/agents/${id}/definition-draft`),
   release: (id: string, versionId: string, environment: "sandbox" | "prod", canaryPercent = 0) =>
     req<{ releaseId: string; environment: string; versionNo: number; status: string; canaryPercent: number }>(
       `/api/agents/${id}/releases`, { method: "POST", body: JSON.stringify({ versionId, environment, canaryPercent }) }),
@@ -392,31 +485,70 @@ export const agentApi = {
     req<{ prompt: string }>("/api/agents/generate-prompt", { method: "POST", body: JSON.stringify({ name, hint }) }),
 }
 
-/** SSE 事件流消费（SDD B-08）：fetch + ReadableStream 解析，终态事件后返回。 */
-export async function streamRunEvents(runId: string, onEvent: (ev: { type: string; payload: Record<string, any> }) => void,
+/** SSE 事件流消费（SDD B-08 / 09 P0-13）：fetch + ReadableStream 解析。
+ * - 携带 Authorization（鉴权开启后事件流不再被 401 截断）；
+ * - 断线按 Last-Event-ID 重连（服务端支持 sequence 续传）；
+ * - 401/403 为明确终态（不无限重试）。 */
+export interface RunStreamEvent { type: string; payload: Record<string, unknown>; sequence?: number }
+
+export async function streamRunEvents(runId: string, onEvent: (ev: RunStreamEvent) => void,
                                       timeoutMs = 120000): Promise<void> {
   const TERMINAL = ["workflow_completed", "workflow_failed", "agent_completed", "agent_failed"]
-  const resp = await fetch(`${WF_BASE}/api/runs/${runId}/events`)
-  if (!resp.ok || !resp.body) throw new Error(`事件流连接失败：${resp.status}`)
-  const reader = resp.body.getReader()
-  const dec = new TextDecoder()
-  let buf = ""
   const t0 = Date.now()
+  let lastSeq = 0
+  let reconnects = 0
   for (; ;) {
     if (Date.now() - t0 > timeoutMs) throw new Error("事件流超时")
-    const { done, value } = await reader.read()
-    if (done) return
-    buf += dec.decode(value, { stream: true })
-    let sep: number
-    while ((sep = buf.indexOf("\n\n")) >= 0) {
-      const block = buf.slice(0, sep)
-      buf = buf.slice(sep + 2)
-      const dataLine = block.split("\n").find((l) => l.startsWith("data:"))
-      if (!dataLine) continue
-      let ev: { type: string; payload: Record<string, any> }
-      try { ev = JSON.parse(dataLine.slice(5).trim()) } catch { continue }
-      onEvent(ev)
-      if (TERMINAL.includes(ev.type)) return
+    const tok = wfApiToken()
+    const headers: Record<string, string> = { ...(tok ? { Authorization: `Bearer ${tok}` } : {}) }
+    if (lastSeq > 0) headers["Last-Event-ID"] = String(lastSeq)  // 断线续传（服务端按 sequence 补拉）
+    const resp = await fetch(`${WF_BASE}/api/runs/${runId}/events`, { headers })
+    if (resp.status === 401 || resp.status === 403) {
+      throw new ApiError(resp.status, `事件流未授权（${resp.status}）：请登录或刷新凭证`)
+    }
+    if (!resp.ok || !resp.body) {
+      if (++reconnects > 3) throw new Error(`事件流连接失败：${resp.status}`)
+      await new Promise((r) => setTimeout(r, 500 * reconnects))
+      continue
+    }
+    reconnects = 0
+    const reader = resp.body.getReader()
+    const dec = new TextDecoder()
+    let buf = ""
+    let streamAlive = true
+    try {
+      for (; ;) {
+        if (Date.now() - t0 > timeoutMs) throw new Error("事件流超时")
+        const { done, value } = await reader.read()
+        if (done) { streamAlive = false; break }
+        buf += dec.decode(value, { stream: true })
+        let sep: number
+        while ((sep = buf.indexOf("\n\n")) >= 0) {
+          const block = buf.slice(0, sep)
+          buf = buf.slice(sep + 2)
+          const lines = block.split("\n")
+          const dataLine = lines.find((l) => l.startsWith("data:"))
+          const idLine = lines.find((l) => l.startsWith("id:"))
+          if (!dataLine) continue
+          if (idLine) {
+            const n = Number(idLine.slice(3).trim())
+            if (Number.isFinite(n)) lastSeq = Math.max(lastSeq, n)
+          }
+          let ev: RunStreamEvent
+          try { ev = JSON.parse(dataLine.slice(5).trim()) } catch { continue }
+          onEvent(ev)
+          if (TERMINAL.includes(ev.type)) return
+        }
+      }
+    } catch (e) {
+      // 网络中断 → 重连；业务错误（超时/未授权）直接抛出
+      if (e instanceof ApiError || (e instanceof Error && e.message.includes("超时"))) throw e
+      streamAlive = false
+    }
+    if (!streamAlive) {
+      // 流结束但未见终态事件：重连补拉（Last-Event-ID 语义）
+      if (++reconnects > 3) return
+      await new Promise((r) => setTimeout(r, 500 * reconnects))
     }
   }
 }
@@ -441,7 +573,9 @@ export const evalApi = {
   run: (workflowId: string, judge: "none" | "rule" | "model" = "rule") =>
     req<{ total: number; succeeded: number; results: { sampleId: string; name: string; runId?: string; status: string; durationMs?: number | null; output?: string; error?: string | null; judge?: { kind: string; score: number } | null }[] }>(
       `/api/workflows/${workflowId}/eval-run`, { method: "POST", body: JSON.stringify({ judge }) }),
-  summary: (workflowId: string) => req<Record<string, any>>(`/api/workflows/${workflowId}/eval-summary`),
+  summary: (workflowId: string) =>
+    req<{ total?: number; succeeded?: number; failed?: number; successRate?: number }>(
+      `/api/workflows/${workflowId}/eval-summary`),
   versionMetrics: (workflowId: string) =>
     req<{ versions: { versionNo: number; runs: number; successRate: number }[]; failedCases: { runId: string; error: string }[] }>(
       `/api/workflows/${workflowId}/version-metrics`),
@@ -476,26 +610,47 @@ export async function realQualityResults(params: {
   for (const [k, v] of Object.entries(parseListFilters(params.filters ?? ""))) {
     if (v && v !== "__all__") q.set(k, v)
   }
-  const r = await req<Paged<Record<string, any>>>(`/api/quality-results?${q.toString()}`)
+  const r = await req<Paged<QualityResultListRaw>>(`/api/quality-results?${q.toString()}`)
   return {
     items: r.items.map((q) => ({
-      id: q.id, interactionId: q.interactionId || q.id, interactionTime: q.interactionTime,
+      id: q.id, interactionId: q.interactionId || q.id, interactionTime: q.interactionTime ?? new Date().toISOString(),
       org: { ...ORG, agentName: q.agentName ?? "-", teamName: "-", departmentName: "-" },
       businessContext: { ...BC_Q, serviceType: q.serviceType ?? "-" },
       requestType: "-", requestSummary: q.requestSummary ?? q.issueSummary ?? "-",
-      score: q.score ?? undefined, risk: q.risk ?? undefined, critical: !!q.critical,
+      score: q.score ?? undefined, risk: (q.risk as QualityResult["risk"]) ?? undefined, critical: !!q.critical,
       issueCount: q.issueCount ?? 0, issueSummary: q.issueSummary ?? undefined,
-      review: { status: REVIEW_MAP[q.review] ?? "PENDING" }, hasAudio: false,
-      execution: { runId: q.execution?.runId ?? "-", taskId: "-", status: q.execution?.status ?? "SUCCESS", agentVersion: "-" },
+      review: { status: REVIEW_MAP[q.review ?? ""] ?? "PENDING" }, hasAudio: false,
+      execution: {
+        runId: q.execution?.runId ?? q.runId ?? "-", taskId: "-",
+        status: (q.execution?.status ?? "SUCCESS") as QualityResult["execution"]["status"], agentVersion: "-",
+      },
     })),
     total: r.total, page: r.page, pageSize: params.pageSize ?? 20,
   }
 }
 
-export async function realQualityResultDetail(id: string): Promise<Record<string, any>> {
-  const q = await req<Record<string, any>>(`/api/quality-results/${id}`)
+/** 质检结果列表行原始 DTO（/api/quality-results items）。 */
+export interface QualityResultListRaw {
+  id: string
+  runId?: string | null
+  interactionId?: string
+  interactionTime?: string
+  agentName?: string
+  serviceType?: string
+  requestSummary?: string
+  score?: number | null
+  risk?: string | null
+  critical?: boolean
+  issueCount?: number
+  issueSummary?: string | null
+  review?: string
+  execution?: { runId?: string; status?: string } | null
+}
+
+export async function realQualityResultDetail(id: string): Promise<Record<string, unknown>> {
+  const q = await req<QualityResultDetailDTO>(`/api/quality-results/${id}`)
   // 真实数据映射为页面结构（复核审计修复：此前 transcript/sections 未定义导致空白页）
-  const so = (q.structuredOutput ?? {}) as Record<string, unknown>
+  const so = q.structuredOutput ?? {}
   const soEntries = Object.entries(so).filter(([k]) => !["transcript", "evidence"].includes(k))
   const sections = soEntries.length > 0 ? [{
     section: "结构化质检输出",
@@ -503,13 +658,12 @@ export async function realQualityResultDetail(id: string): Promise<Record<string
       id: k, criterion: k, result: typeof v === "object" ? JSON.stringify(v) : String(v ?? "—"),
     })),
   }] : []
-  const evidence = (q.evidence ?? []) as { id: string; kind: string; text: string }[]
   return {
     ...q,
     transcript: [],           // 真实运行不保存对话原文（诚实空态）
     sections,
-    businessFacts: evidence.map((e) => ({ id: e.id, label: e.kind, fields: [{ label: e.kind, value: e.text }] })),
-    reviewHistory: [],
+    businessFacts: q.evidence.map((e) => ({ id: e.id, title: e.kind, label: e.kind, fields: [{ label: e.kind, value: e.text }] })),
+    reviewHistory: q.reviewRevisions,
   }
 }
 
@@ -531,7 +685,12 @@ export interface AgentAnalysisData {
   attentionAgents: { agent: string; reason: string; criterion: string }[]
   problems: { criterion: string; rate: string; affected: number }[]
   scenes: { name: string; avgScore: number; count: number }[]
-  related: Record<string, any>[]
+  /** 关联质检结果（后端聚合提供前为真实空数组） */
+  related: {
+    interactionId: string; interactionTime: string; requestSummary: string
+    score?: number; risk?: string; durationSeconds?: number
+    businessContext: { serviceType: string; productCategory: string; issueTopic: string }
+  }[]
 }
 
 /** Tab 计数真数据（此前恒来自 mock）。 */
@@ -543,10 +702,10 @@ export async function realQualityResultCounts(): Promise<{ all: number; pending:
 
 /** 质量总览真数据：KPI 由真实质检结果计算；无数据的板块返回空（页面显示空态，不造假数）。 */
 export async function realQualityOverview(): Promise<OverviewData> {
-  const r = await req<{ items: Record<string, any>[]; counts?: { all: number; ai: number; reviewed: number } }>(
+  const r = await req<{ items: QualityResultListRaw[]; counts?: { all: number; ai: number; reviewed: number } }>(
     "/api/quality-results?pageSize=200")
   const items = r.items ?? []
-  const scored = items.filter((x) => typeof x.score === "number")
+  const scored = items.filter((x): x is QualityResultListRaw & { score: number } => typeof x.score === "number")
   const avg = scored.length ? scored.reduce((a, x) => a + x.score, 0) / scored.length : 0
   const issue = items.filter((x) => (x.issueCount ?? 0) > 0).length
   const critical = items.filter((x) => x.critical).length
@@ -569,12 +728,12 @@ export async function realQualityOverview(): Promise<OverviewData> {
 /** 坐席分析真数据：Agent 维度由真实 agents+runs 汇总；细分板块真实空态。 */
 export async function realAgentAnalysis(): Promise<AgentAnalysisData> {
   const [agents, results, runs] = await Promise.all([
-    req<{ items: Record<string, any>[] }>("/api/agents?pageSize=100"),
-    req<{ items: Record<string, any>[] }>("/api/quality-results?pageSize=200"),
+    req<{ items: AgentListItem[] }>("/api/agents?pageSize=100"),
+    req<{ items: QualityResultListRaw[] }>("/api/quality-results?pageSize=200"),
     req<{ runId: string; status: string }[]>("/api/runs"),
   ])
   const items = results.items ?? []
-  const scored = items.filter((x) => typeof x.score === "number")
+  const scored = items.filter((x): x is QualityResultListRaw & { score: number } => typeof x.score === "number")
   const avg = scored.length ? scored.reduce((a, x) => a + x.score, 0) / scored.length : 0
   const runCount = Array.isArray(runs) ? runs.length : 0
   const succ = Array.isArray(runs) ? runs.filter((x) => x.status === "succeeded").length : 0
@@ -600,46 +759,109 @@ export async function realAgentAnalysis(): Promise<AgentAnalysisData> {
   }
 }
 
-/* ---------- 业务深化适配器 ---------- */
-import type { AnalysisTask, DataAsset, ResultRuleSet } from "@/domain/types"
+/* ---------- 业务深化适配器（09 P0-B4：显式 DTO，去 agentId 承载语义） ---------- */
+import type {
+  AnalysisTaskDTO, QualityResultDetailDTO, ResultRuleDetailDTO, ResultRuleSetDTO,
+  ResultRuleVersionDTO, TaskRunDTO, TaskRunResultDTO, TaskRunRunDTO, TaskVersionDTO,
+} from "@/services/api-types"
+import type { DataAsset } from "@/domain/types"
+
+export interface CreateTaskPayload {
+  name: string
+  description?: string
+  workflowId: string
+  workflowVersionPolicy: "pinned" | "latest_published"
+  pinnedWorkflowVersionId?: string
+  dataAssetId: string
+  dataDefinitionVersionId?: string
+  resultRuleVersionId?: string
+  inputMapping?: Record<string, string>
+  scope?: { op: "and" | "or"; conditions: { field: string; op: string; value: unknown }[] }
+  sampling?: { mode: "all" | "count" | "random"; count?: number; percent?: number }
+  dataWindow?: { mode: "all" | "relative" | "fixed"; value?: string; timezone?: string; start?: string; end?: string }
+}
+
+export interface StartTaskRunResponse {
+  taskRunId: string
+  status: string
+  resolvedVersions: {
+    taskVersionId: string | null
+    workflowVersionId: string | null
+    ruleVersionId: string | null
+    outputSchemaVersionId: string | null
+  }
+  dataSnapshotId: string | null
+}
 
 export const bizApi = {
-  rules: () => req<Paged<Record<string, any>>>("/api/result-rules").then((r) => r.items as ResultRuleSet[]),
-  rule: (id: string) => req<Record<string, any>>(`/api/result-rules/${id}`),
+  rules: () => req<{ items: ResultRuleSetDTO[] }>("/api/result-rules").then((r) => r.items),
+  rule: (id: string) => req<ResultRuleDetailDTO>(`/api/result-rules/${id}`),
+  ruleVersions: (id: string) =>
+    req<{ items: ResultRuleVersionDTO[] }>(`/api/result-rules/${id}/versions`).then((r) => r.items),
   createRule: (body: { name: string; description?: string; rules?: Record<string, unknown> }) =>
-    req<{ id: string }>("/api/result-rules", { method: "POST", body: JSON.stringify(body) }),
-  updateRule: (id: string, body: Record<string, unknown>) =>
-    req<Record<string, any>>(`/api/result-rules/${id}`, { method: "PUT", body: JSON.stringify(body) }),
-  publishRule: (id: string) => req<{ version: number; recalculated: number }>(`/api/result-rules/${id}/publish`, { method: "POST" }),
-  review: (id: string, body: Record<string, unknown>) =>
-    req<Record<string, any>>(`/api/quality-results/${id}/review`, { method: "POST", body: JSON.stringify(body) }),
-  qualityDetail: (id: string) => req<Record<string, any>>(`/api/quality-results/${id}`),
-  assets: () => req<Paged<Record<string, any>>>("/api/data-assets").then((r) => r.items as DataAsset[]),
+    req<{ id: string; version: number }>("/api/result-rules", { method: "POST", body: JSON.stringify(body) }),
+  updateRule: (id: string, body: { name?: string; rules?: Record<string, unknown> }) =>
+    req<{ id: string; version: number; status: string }>(`/api/result-rules/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  /** 09 P0-07：发布=冻结不可变版本；不再全库重算 */
+  publishRule: (id: string) =>
+    req<{ id: string; version: number; ruleVersionId: string }>(`/api/result-rules/${id}/publish`, { method: "POST" }),
+  review: (id: string, body: { action: string; score?: number; risk?: string; note?: string; reviewer?: string }) =>
+    req<{ id: string; review: string; history: unknown[]; revisionId: string; revisionNo: number }>(
+      `/api/quality-results/${id}/review`, { method: "POST", body: JSON.stringify(body) }),
+  qualityDetail: (id: string) => req<QualityResultDetailDTO>(`/api/quality-results/${id}`),
+  assets: () => req<{ items: Pick<DataAsset, "id" | "name">[] & Record<string, unknown>[] }>("/api/data-assets").then((r) => r.items),
   createAsset: (body: { name: string; rows?: unknown[] }) =>
-    req<{ id: string }>("/api/data-assets", { method: "POST", body: JSON.stringify(body) }),
-  asset: (id: string) => req<Record<string, any>>(`/api/data-assets/${id}`),
+    req<{ id: string; name: string }>("/api/data-assets", { method: "POST", body: JSON.stringify(body) }),
+  asset: (id: string) => req<{ id: string; name: string; rows: unknown[]; revision: number }>(`/api/data-assets/${id}`),
   appendRows: (id: string, rows: unknown[]) =>
-    req<Record<string, any>>(`/api/data-assets/${id}/rows`, { method: "POST", body: JSON.stringify({ rows }) }),
-  tasks: () => req<Paged<Record<string, any>>>("/api/tasks").then((r) => r.items as AnalysisTask[]),
-  task: (id: string) => req<Record<string, any>>(`/api/tasks/${id}`),
-  createTask: (body: Record<string, unknown>) => req<{ id: string; name: string }>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
-  updateTask: (id: string, body: Record<string, unknown>) =>
-    req<{ id: string; name: string; status: string }>(`/api/tasks/${id}`, { method: "PUT", body: JSON.stringify(body) }),
-  setTaskStatus: (id: string, status: "Active" | "Paused") =>
+    req<{ id: string; rows: number; revision: number }>(`/api/data-assets/${id}/rows`, { method: "POST", body: JSON.stringify({ rows }) }),
+  /* ---------- 任务：09 §10.1 创建即返回已解析 TaskVersion ---------- */
+  tasks: () => req<{ items: AnalysisTaskDTO[] }>("/api/tasks").then((r) => r.items),
+  task: (id: string) => req<AnalysisTaskDTO>(`/api/tasks/${id}`),
+  taskVersions: (id: string) => req<{ items: TaskVersionDTO[] }>(`/api/tasks/${id}/versions`).then((r) => r.items),
+  createTask: (body: CreateTaskPayload) =>
+    req<{ id: string; name: string; workflowId: string; status: string; taskVersion: TaskVersionDTO }>(
+      "/api/tasks", { method: "POST", body: JSON.stringify(body) }),
+  updateTask: (id: string, body: Partial<CreateTaskPayload> & { note?: string }) =>
+    req<{ id: string; name: string; status: string; taskVersion: TaskVersionDTO }>(
+      `/api/tasks/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  setTaskStatus: (id: string, status: "active" | "paused" | "draft" | "archived") =>
     req<{ id: string; status: string }>(`/api/tasks/${id}/status`, { method: "POST", body: JSON.stringify({ status }) }),
   addEvidence: (resultId: string, body: { kind?: string; text: string; sourceRef?: string }) =>
     req<{ id: string; kind: string }>(`/api/quality-results/${resultId}/evidence`, { method: "POST", body: JSON.stringify(body) }),
-  batchRun: (id: string, limit?: number, window?: { start?: string; end?: string }) =>
-    req<{ runIds: string[] }>(`/api/tasks/${id}/batch-run`, { method: "POST", body: JSON.stringify({ limit, window }) }),
+  /** 09 §10.2：启动批次（202 异步；Idempotency-Key 重复返回原 TaskRun） */
+  startTaskRun: (id: string, idempotencyKey?: string) =>
+    req<StartTaskRunResponse>(`/api/tasks/${id}/runs`, {
+      method: "POST", body: "{}",
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {},
+    }),
+  taskRuns: (id: string) => req<{ items: TaskRunDTO[] }>(`/api/tasks/${id}/runs`).then((r) => r.items),
+  taskRun: (trid: string) => req<TaskRunDTO>(`/api/task-runs/${trid}`),
+  taskRunSnapshot: (trid: string) =>
+    req<{
+      taskRunId: string; taskId: string
+      dataSnapshot: null | {
+        id: string; assetId: string; assetRevision: number; definitionVersionId: string | null
+        locator: Record<string, unknown>; resolvedWindow: Record<string, unknown>
+        resolvedScope: Record<string, unknown>; resolvedSampling: Record<string, unknown>
+        checkpoint: string | null; expectedCount: number; readCount: number
+        checksum: string; createdAt: string
+      }
+    }>(`/api/task-runs/${trid}/snapshot`),
+  taskRunRuns: (trid: string) => req<{ items: TaskRunRunDTO[] }>(`/api/task-runs/${trid}/runs`).then((r) => r.items),
+  taskRunResults: (trid: string) => req<{ items: TaskRunResultDTO[] }>(`/api/task-runs/${trid}/results`).then((r) => r.items),
   taskSchedule: (id: string, cron: string, timezone = "Asia/Shanghai") =>
     req<{ id: string; nextRunAt: string }>(`/api/tasks/${id}/schedule`, { method: "POST", body: JSON.stringify({ cron, timezone }) }),
 }
 
-export async function realQualityDetail(id: string): Promise<Record<string, any>> {
-  const q = await req<Record<string, any>>(`/api/quality-results/${id}`)
-  const hist = q.reviewHistory ?? q.review_history ?? []
+export async function realQualityDetail(id: string): Promise<Record<string, unknown>> {
+  const q = await req<QualityResultDetailDTO>(`/api/quality-results/${id}`)
+  const hist = q.reviewRevisions ?? []
   const last = hist[hist.length - 1]
+  const transcript = (q.structuredOutput?.transcript ?? []) as
+    { speaker?: string; start?: number; end?: number; text?: string }[]
   return {
+    ...q,
     interactionId: q.interactionId || q.id,
     interactionTime: q.interactionTime ?? new Date().toISOString(),
     org: ORG, businessContext: BC_Q, requestType: "-", requestSummary: q.issueSummary ?? "-",
@@ -647,8 +869,8 @@ export async function realQualityDetail(id: string): Promise<Record<string, any>
     issueCount: q.issueCount ?? 0, issueSummary: q.issueSummary ?? undefined,
     review: { status: REVIEW_MAP[q.review] ?? "PENDING", reviewer: last?.reviewer },
     hasAudio: false,
-    execution: { runId: q.runId ?? "-", taskId: "-", status: "SUCCESS", agentVersion: "-" },
-    transcript: (q.transcript ?? []).map((t: any, i: number) => ({
+    execution: { runId: q.runId ?? "-", taskId: q.taskId ?? "-", status: "SUCCESS", agentVersion: "-" },
+    transcript: transcript.map((t, i) => ({
       id: `seg${i}`, speaker: t.speaker ?? "agent", speakerLabel: t.speaker ?? "agent",
       startSeconds: t.start ?? 0, text: t.text ?? "", criterionRefs: [],
     })),
