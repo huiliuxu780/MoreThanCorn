@@ -254,6 +254,7 @@ def execute_task_run(task_run_id: str) -> None:
         errors: list[dict] = []
         seen_refs: set[str] = set()
         checksum = hashlib.sha256()
+        watermark: str | None = None  # 09 P1-04：增量水位（读取到的最大交互时间）
         cursor = None
         while True:
             try:
@@ -264,6 +265,8 @@ def execute_task_run(task_run_id: str) -> None:
                 tr.ended_at = datetime.now(timezone.utc)
                 if snap:
                     snap.read_count = read_n
+                    if watermark:
+                        snap.checkpoint = watermark
                 db.commit()
                 return
             for row in page.rows:
@@ -273,6 +276,10 @@ def execute_task_run(task_run_id: str) -> None:
                 if not _eligibility_hit(row, eligibility_conds):
                     continue
                 read_n += 1
+                # 09 P1-04：增量水位——记录读取到的最大交互时间
+                ts = str(row.get(time_field) or row.get("interactionTime") or "")
+                if ts and (watermark is None or ts > watermark):
+                    watermark = ts
                 if max_items and (ok + fail) >= max_items:
                     skipped += 1
                     continue
@@ -386,6 +393,8 @@ def execute_task_run(task_run_id: str) -> None:
         if snap:
             snap.read_count = read_n
             snap.checksum = checksum.hexdigest()
+            if watermark:
+                snap.checkpoint = watermark  # 09 P1-04：增量水位
         db.commit()
     except Exception as exc:  # noqa: BLE001
         db.rollback()

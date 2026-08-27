@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import require_operator, require_reviewer
+from ..auth import require_admin, require_operator, require_reviewer
 from ..db import get_db
 from ..models import (AnalysisTask, AnalysisTaskVersion, DataAsset,
                       DataDefinitionVersion, QualityResult, ResultRuleSet,
@@ -543,6 +543,29 @@ def _validate_task_config(db: Session, workflow_id: str, policy: str,
         if rule_version_id:
             raise HTTPException(422, "follow_latest 策略不应同时提供 resultRuleVersionId")
     return wf
+
+
+@router.post("/api/quality-results/retention-purge", status_code=200)
+def retention_purge(payload: dict, db: Session = Depends(get_db),
+                    _user: dict = Depends(require_admin)):
+    """09 P1-04：数据保留/删除策略——删除超过保留期的质检结果（admin、显式、留痕）。
+
+    需显式传 retentionDays（不做隐式删除）；返回删除条数。属破坏性操作，
+    生产使用须经审批；此处仅提供受控能力。"""
+    from datetime import timedelta
+    from .admin import audit
+    retention_days = (payload or {}).get("retentionDays")
+    if not retention_days or int(retention_days) <= 0:
+        raise HTTPException(422, "必须显式提供正整数 retentionDays（禁止隐式删除）")
+    cutoff = datetime.now(timezone.utc) - timedelta(days=int(retention_days))
+    from ..models import QualityResult
+    q = db.query(QualityResult).filter(QualityResult.created_at < cutoff)
+    n = q.count()
+    q.delete(synchronize_session=False)
+    audit(db, "admin", "retention.purge", "quality_result", "-",
+          {"deleted": n, "retentionDays": int(retention_days)})
+    db.commit()
+    return {"deleted": n, "retentionDays": int(retention_days)}
 
 
 @router.get("/api/tasks")
