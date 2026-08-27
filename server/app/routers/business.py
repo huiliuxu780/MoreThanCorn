@@ -86,13 +86,17 @@ def apply_rules_to_result(db: Session, qr: QualityResult,
 
 
 @router.get("/api/result-rules")
-def list_rules(db: Session = Depends(get_db)):
-    rows = db.query(ResultRuleSet).order_by(ResultRuleSet.updated_at.desc()).all()
+def list_rules(page: int = 1, pageSize: int = 50, db: Session = Depends(get_db)):
+    """09 P1-10：真分页（服务端 offset/limit + total），不再全量载入。"""
+    q = db.query(ResultRuleSet).order_by(ResultRuleSet.updated_at.desc())
+    total = q.count()
+    rows = q.offset((page - 1) * pageSize).limit(pageSize).all()
     return {"items": [{"id": r.id, "name": r.name, "description": r.description,
                        "agentId": r.agent_id, "currentVersion": f"V{r.version}",
                        "versionStatus": "Published" if r.status == "published" else "Draft",
                        "evaluationPriority": r.evaluation_priority,
-                       "updatedAt": r.updated_at.isoformat()} for r in rows]}
+                       "updatedAt": r.updated_at.isoformat()} for r in rows],
+            "total": total, "page": page, "pageSize": pageSize}
 
 
 @router.post("/api/result-rules", status_code=201)
@@ -349,14 +353,18 @@ def add_manual_evidence(rid: str, payload: dict, db: Session = Depends(get_db),
 # ---------- Data Asset ----------
 
 @router.get("/api/data-assets")
-def list_assets(db: Session = Depends(get_db)):
-    rows = db.query(DataAsset).all()
+def list_assets(page: int = 1, pageSize: int = 50, db: Session = Depends(get_db)):
+    """09 P1-10：真分页。"""
+    q = db.query(DataAsset).order_by(DataAsset.updated_at.desc())
+    total = q.count()
+    rows = q.offset((page - 1) * pageSize).limit(pageSize).all()
     return {"items": [{"id": a.id, "name": a.name, "description": a.description,
                        "source": a.source, "recordMeaning": a.record_meaning,
                        "recordIdField": a.record_id_field, "timeField": a.time_field,
                        "timeFieldLabel": a.time_field, "lifecycle": a.lifecycle,
                        "health": a.health, "currentRevision": a.revision,
-                       "updatedAt": a.updated_at.isoformat()} for a in rows]}
+                       "updatedAt": a.updated_at.isoformat()} for a in rows],
+            "total": total, "page": page, "pageSize": pageSize}
 
 
 @router.post("/api/data-assets", status_code=201)
@@ -538,8 +546,11 @@ def _validate_task_config(db: Session, workflow_id: str, policy: str,
 
 
 @router.get("/api/tasks")
-def list_tasks(db: Session = Depends(get_db)):
-    rows = db.query(AnalysisTask).all()
+def list_tasks(page: int = 1, pageSize: int = 50, db: Session = Depends(get_db)):
+    """09 P1-10：真分页。"""
+    q = db.query(AnalysisTask).order_by(AnalysisTask.created_at.desc())
+    total = q.count()
+    rows = q.offset((page - 1) * pageSize).limit(pageSize).all()
     items = []
     for t in rows:
         v = db.get(AnalysisTaskVersion, t.current_version_id) if t.current_version_id else None
@@ -554,7 +565,7 @@ def list_tasks(db: Session = Depends(get_db)):
                       "dataWindow": v.data_window if v else t.data_window,
                       "status": t.status,
                       "currentVersionNo": v.version_no if v else None})
-    return {"items": items}
+    return {"items": items, "total": total, "page": page, "pageSize": pageSize}
 
 
 @router.post("/api/tasks", status_code=201)
@@ -700,14 +711,17 @@ def list_task_schedules(tid: str, db: Session = Depends(get_db)):
 
 
 @router.get("/api/tasks/{tid}/runs")
-def list_task_runs(tid: str, db: Session = Depends(get_db)):
+def list_task_runs(tid: str, page: int = 1, pageSize: int = 50, db: Session = Depends(get_db)):
+    """09 P1-10：真分页。"""
     from ..models import TaskRun
     t = db.get(AnalysisTask, tid)
     if not t:
         raise HTTPException(404, "任务不存在")
-    rows = db.query(TaskRun).filter_by(task_id=tid)\
-        .order_by(TaskRun.created_at.desc()).all()
-    return {"items": [_task_run_dto(x) for x in rows]}
+    q = db.query(TaskRun).filter_by(task_id=tid).order_by(TaskRun.created_at.desc())
+    total = q.count()
+    rows = q.offset((page - 1) * pageSize).limit(pageSize).all()
+    return {"items": [_task_run_dto(x) for x in rows],
+            "total": total, "page": page, "pageSize": pageSize}
 
 
 @router.get("/api/task-runs/{trid}")
