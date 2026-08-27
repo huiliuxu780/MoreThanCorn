@@ -11,7 +11,7 @@ import json
 import re
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -1234,6 +1234,13 @@ def execute_run(run_id: str, call_chain: list[str] | None = None, resume: dict |
                 db2.close()
 
         while True:
+            # 09 P1-05：协作取消——每批执行前检查 DB 取消标志，命中即终态退出
+            cur_status = db.execute(select(Run.status).where(Run.id == run_id)).scalar()
+            if cur_status == "cancelled":
+                run.ended_at = datetime.now(timezone.utc)
+                db.commit()
+                emit(db, run_id, "run_cancelled", payload={"run_id": run_id})
+                return
             with _lock:
                 if failed or _paused["v"] or not ready:
                     break
@@ -1422,42 +1429,111 @@ def migrate_definition(db: Session, defn: dict) -> tuple[dict, bool]:
 # ---------- worker ----------
 
 
-def claim_and_run(db: Session) -> bool:
+WORKER_ID = "w1"
+LEASE_SECONDS_DEFAULT = 300          # 09 P1-05：认领租约（秒），超期视为 worker 崩溃
+BACKOFF_BASE_SECONDS = 2             # 重试退避基数（指数，封顶 300s）
+
+
+def claim_job(db: Session, include_future: bool = False):
+    """09 P1-05：认领下一个到期 pending 任务（SKIP LOCKED，多 worker 安全）。
+
+    include_future=True 时忽略 run_at（供测试/补偿立即取回退避中的任务）。"""
+    due = "" if include_future else " AND run_at <= now() "
     row = db.execute(text(
-        "UPDATE job_queue SET status='processing', locked_at=now(), locked_by='w1' "
-        "WHERE id=(SELECT id FROM job_queue WHERE status='pending' ORDER BY run_at LIMIT 1 FOR UPDATE SKIP LOCKED) "
-        "RETURNING id, type, payload")).fetchone()
+        "UPDATE job_queue SET status='processing', locked_at=now(), locked_by=:w "
+        f"WHERE id=(SELECT id FROM job_queue WHERE status='pending' {due} "
+        "ORDER BY run_at LIMIT 1 FOR UPDATE SKIP LOCKED) "
+        "RETURNING id, type, payload, attempts, max_attempts"), {"w": WORKER_ID}).fetchone()
     db.commit()
+    return row
+
+
+def complete_job(db: Session, job_id: str, success: bool, error: Exception | str | None = None) -> None:
+    """09 P1-05：完成/失败结算。成功→done；失败→按 attempts 重试退避或入死信。"""
+    j = db.get(JobQueue, job_id)
+    if not j:
+        return
+    # claim 用原生 SQL 改状态（绕过 ORM），此处先 refresh 同步，避免变更不被检测
+    db.refresh(j)
+    j.attempts = (j.attempts or 0) + 1
+    if success:
+        j.status = "done"
+        j.error = None
+    else:
+        j.error = {"message": str(error) if error else "job failed"}
+        if j.attempts >= (j.max_attempts or 3):
+            j.status = "dead"  # 死信：重试用尽，运维可见/可重放
+        else:
+            j.status = "pending"
+            backoff = min(BACKOFF_BASE_SECONDS * (2 ** (j.attempts - 1)), 300)
+            j.run_at = datetime.now(timezone.utc) + timedelta(seconds=backoff)
+
+
+def recover_stale_jobs(db: Session, lease_seconds: int = LEASE_SECONDS_DEFAULT) -> int:
+    """09 P1-05：租约回收——locked_at 超期仍 processing 的任务视为 worker 崩溃，
+    有剩余重试次数→回 pending；重试用尽→死信。返回处理条数。"""
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=lease_seconds)
+    stale = db.execute(select(JobQueue).where(
+        JobQueue.status == "processing",
+        JobQueue.locked_at.isnot(None),
+        JobQueue.locked_at < cutoff)).scalars().all()
+    for j in stale:
+        if (j.attempts or 0) >= (j.max_attempts or 3):
+            j.status = "dead"
+            j.error = {**(j.error or {}), "message": (j.error or {}).get("message", "lease expired (worker crashed)")}
+        else:
+            j.status = "pending"
+            j.locked_by = None
+            j.locked_at = None
+    if stale:
+        db.commit()
+    return len(stale)
+
+
+def _dispatch_job(jtype: str, payload: dict) -> None:
+    if jtype == "agent-execution":  # SDD A-03：Agent 顶层运行
+        from .agent_runtime import execute_agent_job
+        execute_agent_job(payload["run_id"])
+    elif jtype == "task-run":  # 09 P0-B2：任务批次（per-interaction）
+        from .task_runner import execute_task_run
+        execute_task_run(payload["task_run_id"])
+    else:
+        execute_run(payload["run_id"], resume=payload.get("resume"))
+
+
+def claim_and_run(db: Session) -> bool:
+    """兼容入口：认领并执行一个到期任务（含重试/死信结算）。"""
+    row = claim_job(db)
     if not row:
         return False
     payload = row.payload if isinstance(row.payload, dict) else json.loads(row.payload)
     try:
-        if row.type == "agent-execution":  # SDD A-03：Agent 顶层运行
-            from .agent_runtime import execute_agent_job
-            execute_agent_job(payload["run_id"])
-        elif row.type == "task-run":  # 09 P0-B2：任务批次（per-interaction）
-            from .task_runner import execute_task_run
-            execute_task_run(payload["task_run_id"])
-        else:
-            execute_run(payload["run_id"], resume=payload.get("resume"))
-        st = "done"
+        _dispatch_job(row.type, payload)
+        complete_job(db, row.id, success=True)
     except Exception as exc:  # noqa: BLE001
-        st = "failed"
-        payload["error"] = str(exc)
-    db.execute(text("UPDATE job_queue SET status=:s WHERE id=:i"), {"s": st, "i": row.id})
+        complete_job(db, row.id, success=False, error=exc)
     db.commit()
     return True
 
 
 def worker_loop(stop: threading.Event) -> None:
+    tick = 0
     while not stop.is_set():
         db = SessionLocal()
+        busy = False
         try:
+            # 09 P1-05：周期性租约回收（约每 10s），崩溃 worker 的任务重新可认领
+            if tick % 20 == 0:
+                try:
+                    recover_stale_jobs(db)
+                except Exception:  # noqa: BLE001
+                    db.rollback()
             busy = claim_and_run(db)
         finally:
             db.close()
         if not busy:
             stop.wait(0.5)
+        tick += 1
 
 
 _WORKER_STOP: threading.Event | None = None

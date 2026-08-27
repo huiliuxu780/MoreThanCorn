@@ -551,6 +551,24 @@ def delete_model(mid: str, db: Session = Depends(get_db),
 _DIM_KEYS = ["department", "team", "brand", "productCategory", "issue", "requestType", "serviceType"]
 
 
+def _dim_sql(key: str):
+    """09 P1-10：业务维度的 SQL 表达式（与 _quality_dims 的取值优先级一致）。
+
+    取值优先级：run.input → structured_output → businessContext → org；"-" 视为空。
+    供列表筛选在数据库侧完成，不再全表载入 Python。"""
+    from sqlalchemy import func as _f
+    from ..models import QualityResult, Run
+    so = QualityResult.structured_output
+    org_field = "teamName" if key == "team" else ("agentName" if key == "agent" else key)
+    if key == "agent":  # 坐席名：org.agentName → agentName → agent
+        cands = [so[("org", "agentName")].astext, so["agentName"].astext, so["agent"].astext,
+                 Run.input["agentName"].astext]
+    else:
+        cands = [Run.input[key].astext, so[key].astext,
+                 so[("businessContext", key)].astext, so[("org", org_field)].astext]
+    return _f.coalesce(*[_f.nullif(c, "-") for c in cands], "")
+
+
 def _quality_dims(r, run) -> dict:
     """E-1.1：质量结果的业务维度真实来源（词表聚合与列表筛选共用）：
     run.input → structured_output → businessContext 依次合并，另取 org 块与坐席名。"""
@@ -609,17 +627,15 @@ def list_quality_results(page: int = 1, pageSize: int = 20, review: str = "",
         q = q.filter(QualityResult.interaction_time >= datetime.now(timezone.utc) - timedelta(days=7))
     elif time == "近30日":
         q = q.filter(QualityResult.interaction_time >= datetime.now(timezone.utc) - timedelta(days=30))
-    # 业务维度筛选：按 _quality_dims 扫描真实数据（原型规模），命中 id 集合后回表
+    # 09 P1-10：业务维度筛选下推 SQL（JSONB 提取 + outerjoin Run），不再全表进 Python
     dim_filters = {"serviceType": serviceType, "team": team, "department": department,
                    "agent": agent, "brand": brand, "productCategory": productCategory,
                    "issue": issue, "requestType": requestType}
     dim_filters = {k: v for k, v in dim_filters.items() if v and v != "__all__"}
     if dim_filters:
-        all_rows = db.query(QualityResult).all()
-        runs = {r.id: r for r in db.query(Run).filter(Run.id.in_([x.run_id for x in all_rows if x.run_id] or ["-"]))}
-        matched = [x.id for x in all_rows
-                   if all(_quality_dims(x, runs.get(x.run_id or "")).get(k, "") == v for k, v in dim_filters.items())]
-        q = q.filter(QualityResult.id.in_(matched or ["-"]))
+        q = q.outerjoin(Run, QualityResult.run_id == Run.id)
+        for k, v in dim_filters.items():
+            q = q.filter(_dim_sql(k) == v)
     total = q.count()
     if sort == "time:asc":
         q = q.order_by(QualityResult.interaction_time.asc())
