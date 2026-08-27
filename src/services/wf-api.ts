@@ -935,6 +935,12 @@ export async function realQualityDetail(id: string): Promise<Record<string, unkn
       }],
     }],
     reviewHistory: hist,
+    // 09 闭环验收修复：详情页消费 businessFacts/evidence，缺失时给默认值防白屏
+    evidence: q.evidence ?? [],
+    businessFacts: (q.evidence ?? []).map((e) => ({
+      id: e.id, title: e.kind, label: e.kind,
+      fields: [{ label: e.kind, value: e.text }], usedByCriterionIds: [],
+    })),
   }
 }
 

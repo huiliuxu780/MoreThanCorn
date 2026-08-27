@@ -64,7 +64,8 @@ class PostgresReader:
 
     def read_page(self, locator: dict, cursor: str | None, limit: int) -> DataPage:
         table = safe_ident(locator.get("table", ""))
-        idf = safe_ident(locator.get("idField") or "id")
+        idf_raw = locator.get("idField") or "id"
+        idf = safe_ident(idf_raw)  # SQL 用引号名；行 dict 键用裸名
         where_w, params = self._where_window(locator)
         where_c = f" WHERE {idf} > %s" if cursor else ""
         if where_w and where_c:
@@ -82,5 +83,5 @@ class PostgresReader:
                 cols = [d.name for d in cur.description]
                 for raw in cur.fetchall():
                     rows_out.append(dict(zip(cols, raw)))
-        next_cursor = str(rows_out[-1][idf]) if len(rows_out) == limit else None
+        next_cursor = str(rows_out[-1][idf_raw]) if len(rows_out) == limit else None
         return DataPage(rows=rows_out, next_cursor=next_cursor)

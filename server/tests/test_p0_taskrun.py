@@ -13,7 +13,8 @@ from app.db import SessionLocal
 from app.main import app
 from app.runner import start_worker
 from tests._quality_setup import (MAPPING, make_asset, make_definition_version,
-                                  make_quality_workflow, make_rule_version)
+                                  make_quality_workflow, make_rule_set_with_version,
+                                  make_rule_version)
 
 client = TestClient(app)
 _worker = start_worker()
@@ -139,18 +140,36 @@ def test_follow_latest_rule_policy():
     asset_id = make_asset(client, rows)
     wf_id, wv_id = make_quality_workflow(client)
     defv = make_definition_version(client, asset_id)
-    make_rule_version(client)  # 存在已发布规则
+    set_id, ver_id = make_rule_set_with_version(client)  # 本任务跟随的规则集
     body = {"name": "follow", "workflowId": wf_id, "workflowVersionPolicy": "pinned",
+            "pinnedWorkflowVersionId": wv_id, "dataAssetId": asset_id,
+            "dataDefinitionVersionId": defv, "rulePolicy": "follow_latest",
+            "resultRuleSetId": set_id,
+            "inputMapping": MAPPING, "sampling": {"mode": "all"}, "dataWindow": {"mode": "all"}}
+    r = client.post("/api/tasks", json=body)
+    assert r.status_code == 201, r.text
+    # 09 闭环修复（P1-3）：发布另一个规则集不应串用——解析仍应落在本集版本
+    make_rule_version(client, name="other-set")
+    start = client.post(f"/api/tasks/{r.json()['id']}/runs", json={})
+    assert start.status_code == 202, start.text
+    assert start.json()["resolvedVersions"]["ruleVersionId"] == ver_id, \
+        "follow_latest 应解析本规则集最新版本，不串用他集"
+    tr = _wait_task_run(start.json()["taskRunId"])
+    assert tr["succeeded"] == 1
+
+
+def test_follow_latest_requires_rule_set_scope():
+    """09 闭环修复（P1-3）：follow_latest 未声明 RuleSet 作用域 → 422。"""
+    rows = _rows_score_risk(1)
+    asset_id = make_asset(client, rows)
+    wf_id, wv_id = make_quality_workflow(client)
+    defv = make_definition_version(client, asset_id)
+    body = {"name": "follow-noscope", "workflowId": wf_id, "workflowVersionPolicy": "pinned",
             "pinnedWorkflowVersionId": wv_id, "dataAssetId": asset_id,
             "dataDefinitionVersionId": defv, "rulePolicy": "follow_latest",
             "inputMapping": MAPPING, "sampling": {"mode": "all"}, "dataWindow": {"mode": "all"}}
     r = client.post("/api/tasks", json=body)
-    assert r.status_code == 201, r.text
-    start = client.post(f"/api/tasks/{r.json()['id']}/runs", json={})
-    assert start.status_code == 202, start.text
-    assert start.json()["resolvedVersions"]["ruleVersionId"], "follow_latest 应解析出规则版本"
-    tr = _wait_task_run(start.json()["taskRunId"])
-    assert tr["succeeded"] == 1
+    assert r.status_code == 422, "follow_latest 缺 resultRuleSetId 必须 422"
 
 
 def test_idempotency_key_returns_same_run():

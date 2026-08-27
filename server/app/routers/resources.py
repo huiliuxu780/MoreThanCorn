@@ -107,6 +107,7 @@ def _create(db: Session, rtype: str, p: dict) -> dict:
                         datasource_id=p.get("datasourceId"), location=p.get("location", ""),
                         record_meaning=p.get("recordMeaning", "一条业务记录"),
                         time_field=p.get("timeField", ""),
+                        record_id_field=p.get("recordIdField", "interactionId"),
                         lifecycle="Ready" if tested else "Draft",
                         rows=p.get("rows", []))
     else:
@@ -164,6 +165,7 @@ def _config_of(db: Session, rtype: str, obj) -> dict:
                 "endpoint": conn.endpoint if conn else {}, "secretConfigured": bool(conn and conn.secret_ref)}
     return {"datasourceId": obj.datasource_id, "location": obj.location,
             "recordMeaning": obj.record_meaning, "timeField": obj.time_field,
+            "recordIdField": obj.record_id_field,
             "rowCount": len(obj.rows or []), "lifecycle": obj.lifecycle, "revision": obj.revision}
 
 
@@ -203,7 +205,8 @@ def update_resource(coll: str, rid: str, payload: dict, db: Session = Depends(ge
                        ("connectionId", "connection_id"), ("location", "location"), ("config", "config")],
         "asset": [("name", "name"), ("description", "description"), ("datasourceId", "datasource_id"),
                   ("location", "location"), ("recordMeaning", "record_meaning"),
-                  ("timeField", "time_field"), ("lifecycle", "lifecycle")],
+                  ("timeField", "time_field"), ("recordIdField", "record_id_field"),
+                  ("lifecycle", "lifecycle")],
     }[rtype]
     for k, attr in simple:
         if payload.get(k) is not None:

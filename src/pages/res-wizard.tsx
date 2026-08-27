@@ -35,7 +35,7 @@ const emptyForm = {
   name: "", description: "", providerId: "", modelKey: "", capabilities: ["text"],
   kind: "http", spec: '{ "kind": "echo" }', connectionId: "", transport: "stdio", command: "",
   ksKind: "vector", embeddingModelId: "", sourceUrl: "", dsType: "mysql", location: "",
-  datasourceId: "", recordMeaning: "", timeField: "",
+  datasourceId: "", recordMeaning: "", timeField: "", recordIdField: "",
 }
 
 export default function ResWizardPage({ scope }: { scope: "ai" | "data" }) {

@@ -478,6 +478,7 @@ def _task_version_dto(db: Session, v: AnalysisTaskVersion) -> dict:
             "dataDefinitionVersionId": v.data_definition_version_id,
             "resultRuleVersionId": v.result_rule_version_id,
             "rulePolicy": v.rule_policy,
+            "resultRuleSetId": v.result_rule_set_id,
             "inputMapping": v.input_mapping or {},
             "scope": v.scope or {},
             "sampling": v.sampling or {},
@@ -491,7 +492,7 @@ def _task_version_dto(db: Session, v: AnalysisTaskVersion) -> dict:
 def _validate_task_config(db: Session, workflow_id: str, policy: str,
                           pinned: str | None, asset_id: str | None,
                           rule_version_id: str | None, definition_version_id: str | None,
-                          rule_policy: str = "pinned"):
+                          rule_policy: str = "pinned", rule_set_id: str | None = None):
     """09 P0 修复轮（审计反例 3/6）：任务创建强制校验。
 
     - dataDefinitionVersionId 必填（P0-08：追踪字段全部非空）。
@@ -542,6 +543,11 @@ def _validate_task_config(db: Session, workflow_id: str, policy: str,
     else:
         if rule_version_id:
             raise HTTPException(422, "follow_latest 策略不应同时提供 resultRuleVersionId")
+        # 09 闭环验收修复（P1-3）：follow_latest 必须显式声明 RuleSet 作用域
+        if not rule_set_id:
+            raise HTTPException(422, "follow_latest 策略必须提供 resultRuleSetId（RuleSet 作用域）")
+        if not db.get(ResultRuleSet, rule_set_id):
+            raise HTTPException(422, "resultRuleSetId 不存在")
     return wf
 
 
@@ -609,7 +615,8 @@ def create_task(payload: dict, db: Session = Depends(get_db),
     wf = _validate_task_config(db, workflow_id, policy, pinned, payload.get("dataAssetId"),
                                payload.get("resultRuleVersionId"),
                                payload.get("dataDefinitionVersionId"),
-                               rule_policy=rule_policy)
+                               rule_policy=rule_policy,
+                               rule_set_id=payload.get("resultRuleSetId"))
     osrow = latest_quality_schema(db)
     if not osrow:
         raise HTTPException(500, "quality_evaluation 输出 Schema 未配置")
@@ -639,6 +646,7 @@ def create_task(payload: dict, db: Session = Depends(get_db),
                             data_definition_version_id=payload.get("dataDefinitionVersionId"),
                             result_rule_version_id=payload.get("resultRuleVersionId"),
                             rule_policy=rule_policy,
+                            result_rule_set_id=payload.get("resultRuleSetId"),
                             input_mapping=mapping, scope=scope, sampling=sampling,
                             data_window=window,
                             output_schema_version_id=osrow.id,
@@ -889,8 +897,10 @@ def update_task(tid: str, payload: dict, db: Session = Depends(get_db),
                       if "dataDefinitionVersionId" in payload else _cur("data_definition_version_id"))
     rule_policy = (payload.get("rulePolicy")
                    if "rulePolicy" in payload else _cur("rule_policy", "pinned"))
+    rule_set_id = (payload.get("resultRuleSetId")
+                   if "resultRuleSetId" in payload else _cur("result_rule_set_id"))
     _validate_task_config(db, workflow_id, policy, pinned, asset_id, rule_version_id,
-                          def_version_id, rule_policy=rule_policy)
+                          def_version_id, rule_policy=rule_policy, rule_set_id=rule_set_id)
     scope = _norm_scope(payload.get("scope")) if payload.get("scope") is not None else (_cur("scope") or {"op": "and", "conditions": []})
     sampling = _norm_sampling(payload.get("sampling")) if payload.get("sampling") is not None else (_cur("sampling") or {"mode": "all"})
     window = _norm_window(payload.get("dataWindow")) if payload.get("dataWindow") is not None else (_cur("data_window") or {"mode": "all"})
@@ -907,6 +917,7 @@ def update_task(tid: str, payload: dict, db: Session = Depends(get_db),
                             data_definition_version_id=def_version_id,
                             result_rule_version_id=rule_version_id,
                             rule_policy=rule_policy,
+                            result_rule_set_id=rule_set_id,
                             input_mapping=mapping, scope=scope, sampling=sampling,
                             data_window=window,
                             output_schema_version_id=_cur("output_schema_version_id") or (latest_quality_schema(db).id if latest_quality_schema(db) else None),

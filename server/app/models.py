@@ -596,6 +596,8 @@ class AnalysisTaskVersion(Base):
     # 09 P0 修复轮：规则绑定策略（pinned=绑定 result_rule_version_id；
     # follow_latest=批次启动时解析最新发布版本并冻结）
     rule_policy: Mapped[str] = mapped_column(String(16), default="pinned")
+    # 09 闭环验收修复：follow_latest 的 RuleSet 作用域（避免全库取最新串用他集）
+    result_rule_set_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     input_mapping: Mapped[dict] = mapped_column(JSONB, default=dict)
     scope: Mapped[dict] = mapped_column(JSONB, default=dict)      # {op,and/or,conditions[]}
     sampling: Mapped[dict] = mapped_column(JSONB, default=dict)   # {mode: all|count|random, count, percent, seed}

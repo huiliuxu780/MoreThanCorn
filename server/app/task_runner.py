@@ -63,11 +63,18 @@ def _resolve_rule_version(db: Session, tv: AnalysisTaskVersion) -> str:
         if not db.get(ResultRuleVersion, tv.result_rule_version_id):
             raise TaskStartError(f"规则版本 {tv.result_rule_version_id} 不存在", 422)
         return tv.result_rule_version_id
+    # 09 闭环验收修复（P1-3）：follow_latest 限定在任务声明的 RuleSet 内取最新
+    # 已发布版本；未声明作用域则失败关闭，禁止全库取最新（防串用他集）。
+    if not tv.result_rule_set_id:
+        raise TaskStartError("follow_latest 策略必须声明 resultRuleSetId（RuleSet 作用域），"
+                             "禁止全库取最新版本", 422)
     rv = db.execute(select(ResultRuleVersion)
-                    .order_by(ResultRuleVersion.created_at.desc(),
-                              ResultRuleVersion.id.desc())).scalars().first()
+                    .where(ResultRuleVersion.rule_set_id == tv.result_rule_set_id)
+                    .order_by(ResultRuleVersion.version_no.desc(),
+                              ResultRuleVersion.created_at.desc())).scalars().first()
     if not rv:
-        raise TaskStartError("follow_latest 策略下没有已发布的规则版本，批次无法启动（失败关闭）", 422)
+        raise TaskStartError(f"follow_latest：规则集 {tv.result_rule_set_id} 没有已发布版本"
+                             "（失败关闭）", 422)
     return rv.id
 
 

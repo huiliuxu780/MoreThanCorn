@@ -53,14 +53,19 @@ def make_definition_version(client, asset_id: str, name=None) -> str:
     return pub.json()["versionId"]
 
 
-def make_rule_version(client, name=None) -> str:
-    """创建并发布一个规则版本，返回 rule_version_id。"""
+def make_rule_set_with_version(client, name=None) -> tuple[str, str]:
+    """创建并发布一个规则集，返回 (rule_set_id, rule_version_id)。"""
     name = name or f"P0R-{uuid.uuid4().hex[:6]}"
     r = client.post("/api/result-rules", json={
         "name": name, "rules": {"scoreRules": [], "issueRules": []}}).json()
     pub = client.post(f"/api/result-rules/{r['id']}/publish", json={})
     assert pub.status_code == 200, pub.text
-    return pub.json()["ruleVersionId"]
+    return r["id"], pub.json()["ruleVersionId"]
+
+
+def make_rule_version(client, name=None) -> str:
+    """创建并发布一个规则版本，返回 rule_version_id。"""
+    return make_rule_set_with_version(client, name)[1]
 
 
 def make_asset(client, rows, name=None) -> str:
@@ -93,8 +98,9 @@ def make_quality_task(client, rows=None, wf=None, defv=None, rulev=None,
     }
     if rule_policy == "follow_latest":
         body["rulePolicy"] = "follow_latest"
-        if rulev is None:
-            make_rule_version(client)  # 保证存在已发布规则
+        # 09 闭环修复：follow_latest 需显式 RuleSet 作用域
+        set_id, _v = make_rule_set_with_version(client)
+        body["resultRuleSetId"] = set_id
     else:
         body["resultRuleVersionId"] = rulev or make_rule_version(client)
     if extra:

@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: scripts_and_e2e/check_scripts
-title: 前端可视化回归检查脚本
-scope:
-    - scripts/check-history.mjs
-    - scripts/check-minimap.mjs
-source_files: []
-depends_on: []
-related_to: []

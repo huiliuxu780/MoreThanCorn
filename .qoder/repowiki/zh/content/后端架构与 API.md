@@ -13,6 +13,13 @@
 - [server/app/runner.py](file://server/app/runner.py)
 - [server/app/agent_release.py](file://server/app/agent_release.py)
 - [server/app/agent_runtime.py](file://server/app/agent_runtime.py)
+- [server/app/auth.py](file://server/app/auth.py)
+- [server/app/routers/auth_routes.py](file://server/app/routers/auth_routes.py)
+- [server/app/routers/governance.py](file://server/app/routers/governance.py)
+- [server/app/routers/forms.py](file://server/app/routers/forms.py)
+- [server/app/pii.py](file://server/app/pii.py)
+- [server/app/routers/analytics.py](file://server/app/routers/analytics.py)
+- [server/app/routers/alerts.py](file://server/app/routers/alerts.py)
 - [server/app/routers/workflows.py](file://server/app/routers/workflows.py)
 - [server/app/routers/registry.py](file://server/app/routers/registry.py)
 - [server/app/routers/runs.py](file://server/app/routers/runs.py)
@@ -34,10 +41,12 @@
 
 ## 更新摘要
 **变更内容**
-- 新增 `/api/workflows/{wf_id}/polish` AI提示词优化端点，支持通过LLM对提示词进行智能润色
-- 增强运行管理的PAUSED状态支持和resume功能，实现wait-review节点的暂停-恢复机制
-- 改进工作流执行的错误处理和动态代码解析能力，支持动态工作流执行模式
-- 完善运行追踪系统的可观测性能力，标准化span类型映射和token使用结构
+- 新增完整的认证和RBAC系统，支持用户管理、角色权限控制和令牌认证
+- 新增发布治理系统，提供版本Diff、审批流程、Canary发布和回滚机制
+- 新增表单管理系统，支持表单定义、版本控制、数据记录和运行时校验
+- 新增PII保护功能，对敏感信息进行自动脱敏处理
+- 新增分析和可观测性API，提供质量分析、运行统计和成本监控
+- 新增告警系统，支持规则配置、阈值评估和通知分发
 
 ## 产品概述
 本项目为 AI 驱动的企业智能质量评价平台，V1 聚焦智能质检（坐席质检）。后端基于 FastAPI + SQLAlchemy + Alembic，提供工作流编排、资源管理、运行执行、业务规则与评测、Agent 编排等能力；前端 Vite + React + TypeScript。导航结构已冻结，路由与状态语义以实现文档为准。
@@ -51,53 +60,53 @@
 - **运行追踪与观测**：通过 trace 端点获取完整的 span 树结构，支持 token 使用统计和模型调用计数分析。
 - 资源管理：统一管理 AI Resources（模型、工具、MCP、知识库）与 Data Resources（数据源、数据资产、数据定义），提供测试、启用/停用、删除防护与变更审计。
 - 定时任务：为分析任务配置 Cron 调度，计算下次触发时间并关联运行来源。
+- **认证与授权**：基于角色的访问控制（RBAC），支持用户管理、令牌认证和权限验证。
+- **发布治理**：版本差异对比、审批流程、灰度发布和回滚机制。
+- **表单管理**：集中式表单定义、版本控制和运行时数据校验。
+- **PII保护**：自动识别和脱敏敏感信息（手机号、邮箱、身份证、银行卡）。
+- **分析与监控**：质量指标分析、运行统计、成本监控和告警系统。
 
 ```mermaid
 sequenceDiagram
 participant FE as "前端"
 participant API as "FastAPI 应用"
-participant R as "Router"
+participant Auth as "认证系统"
+participant Gov as "治理系统"
+participant Form as "表单系统"
+participant PII as "PII保护"
+participant Obs as "可观测性"
 participant DB as "数据库"
-participant W as "Runner/Worker"
-FE->>API : POST /api/workflows (创建)
-API->>DB : 写入 Workflow + 默认草稿
-API-->>FE : {id, name, status}
-FE->>API : PUT /api/workflows/{id}/draft (保存草稿)
-API->>DB : 校验 baseRevision 并更新草稿
-API-->>FE : {workflowCode, draftVersion}
-FE->>API : POST /api/workflows/{id}/publish (发布)
-API->>DB : 校验 + 写入 WorkflowVersion + 更新当前版本
-API->>DB : 记录审计日志
-API-->>FE : {versionId, versionNo}
-FE->>API : POST /api/workflows/{wid}/eval-run (工作流评测)
-API->>DB : 查询样本并逐个执行
-API->>W : create_run(...) + execute_run(...)
-W-->>API : runId + 执行结果
-API->>DB : 存储 judge_result (rule/model/human)
-API-->>FE : {total, succeeded, results}
-FE->>API : POST /api/workflows/{wid}/polish (提示词优化)
-API->>W : _call_model(...) 调用LLM优化提示词
-W-->>API : 返回优化后的提示词
+FE->>Auth : POST /api/auth/login (登录)
+Auth->>DB : 验证用户凭据
+Auth-->>FE : {token, user}
+FE->>API : GET /api/auth/me (获取当前用户)
+API->>Auth : 验证令牌
+Auth-->>API : {user}
+API-->>FE : {username, role, displayName}
+FE->>Gov : POST /api/governance/release-requests (创建发布申请)
+Gov->>DB : 存储发布请求
+Gov-->>FE : {id, state : pending}
+FE->>Form : POST /api/forms (创建表单)
+Form->>DB : 验证字段并存储
+Form-->>FE : {id, key}
+FE->>API : POST /api/workflows/{wf_id}/polish (提示词优化)
+API->>PII : mask_pii(text)
+PII-->>API : 脱敏后的文本
 API-->>FE : {text : 优化后的提示词}
-FE->>API : POST /api/runs/{runId}/resume (续跑暂停的运行)
-API->>DB : 检查paused状态并插入resume队列
-API-->>FE : {status : resuming, nodeId}
-FE->>API : GET /api/runs/{runId}/trace (运行追踪)
-API->>DB : 查询 Run/NodeRun/CallRecord
-API-->>FE : {root : SpanNode, totalTokens, modelCalls}
-FE->>API : GET /api/runs/{runId}/events-list?nodeRunId=xxx (事件过滤)
-API->>DB : 按 nodeRunId 过滤事件
-API-->>FE : {items : Event[]}
-FE->>API : GET /api/agents/{aid}/metrics (Agent指标)
-API->>DB : 计算总token使用量
-API-->>FE : {totalTokens, ...其他指标}
+FE->>Obs : GET /api/quality/analytics/kpi (质量KPI)
+Obs->>DB : 聚合统计数据
+Obs-->>FE : {total, avgScore, issueRate}
+FE->>API : GET /api/observability/run-stats (运行统计)
+Obs->>DB : 查询运行状态
+Obs-->>FE : {total, byStatus, avgDurationMs}
 ```
 
 **图表来源**
+- [server/app/routers/auth_routes.py:12-21](file://server/app/routers/auth_routes.py#L12-L21)
+- [server/app/routers/governance.py:217-243](file://server/app/routers/governance.py#L217-L243)
+- [server/app/routers/forms.py:157-172](file://server/app/routers/forms.py#L157-L172)
 - [server/app/routers/workflows.py:104-117](file://server/app/routers/workflows.py#L104-L117)
-- [server/app/routers/runs.py:28-50](file://server/app/routers/runs.py#L28-L50)
-- [server/app/routers/agents.py:289-304](file://server/app/routers/agents.py#L289-L304)
-- [server/app/routers/runs.py:133-184](file://server/app/routers/runs.py#L133-L184)
+- [server/app/routers/analytics.py:31-50](file://server/app/routers/analytics.py#L31-L50)
 
 **章节来源**
 - [server/app/routers/workflows.py:20-162](file://server/app/routers/workflows.py#L20-L162)
@@ -106,6 +115,7 @@ API-->>FE : {totalTokens, ...其他指标}
 - [server/app/routers/admin.py:618-670](file://server/app/routers/admin.py#L618-L670)
 
 ## 功能模块清单
+- **认证与授权**：用户管理、角色权限控制、令牌认证、RBAC权限验证。
 - workflows：工作流 CRUD、草稿保存与乐观锁、校验、发布生成版本、版本列表、**AI提示词优化**。
 - registry：节点定义注册表查询，供设计器发现可用节点家族与元信息。
 - runs：运行实例的创建、列表、详情、取消、事件流（SSE）、事件列表、**运行追踪（trace）**、**暂停运行续跑**。
@@ -113,8 +123,19 @@ API-->>FE : {totalTokens, ...其他指标}
 - resources：AI/Data 资源统一 CRUD、测试、启用/停用、删除防护、变更日志、Data Definitions 管理、Picker 供给。
 - admin：Connections、Models/Providers、Tools、Schedules、运行重试/导出、指标、编辑锁、**评测样本管理、工作流评估、人评打分**。
 - agents：Agent 三型管理、默认配置、运行入口、运行列表与详情、挂载健康检查、**版本管理与发布部署、Agent级评测与人评、Agent指标统计**。
+- **发布治理**：版本差异对比、审批流程、Canary发布、回滚机制、变更审计。
+- **表单管理**：表单定义CRUD、版本控制、数据记录、运行时校验、引用检测。
+- **PII保护**：敏感信息识别、自动脱敏、递归处理数据结构。
+- **分析与监控**：质量KPI、趋势分析、维度分析、运行统计、队列统计、成本统计。
+- **告警系统**：规则配置、阈值评估、事件留痕、通知分发（Webhook）。
 
 **章节来源**
+- [server/app/routers/auth_routes.py:1-101](file://server/app/routers/auth_routes.py#L1-L101)
+- [server/app/routers/governance.py:1-359](file://server/app/routers/governance.py#L1-L359)
+- [server/app/routers/forms.py:1-335](file://server/app/routers/forms.py#L1-L335)
+- [server/app/pii.py:1-41](file://server/app/pii.py#L1-L41)
+- [server/app/routers/analytics.py:1-177](file://server/app/routers/analytics.py#L1-L177)
+- [server/app/routers/alerts.py:1-178](file://server/app/routers/alerts.py#L1-L178)
 - [server/app/routers/workflows.py:17-162](file://server/app/routers/workflows.py#L17-L162)
 - [server/app/routers/registry.py:1-11](file://server/app/routers/registry.py#L1-L11)
 - [server/app/routers/runs.py:12-105](file://server/app/routers/runs.py#L12-L105)
@@ -124,7 +145,7 @@ API-->>FE : {totalTokens, ...其他指标}
 - [server/app/routers/agents.py:24-483](file://server/app/routers/agents.py#L24-L483)
 
 ## 数据与状态
-- 核心实体：Workflow、WorkflowVersion、NodeDefinition、Connection、Tool/ToolVersion、Schedule、JobQueue、Run、NodeRun、RunEvent、CallRecord、Agent、ResourceLock、QualityResult、Evidence、**EvalSample**、ResultRuleSet、DataAsset、AnalysisTask、Datasource、McpServer、KnowledgeSource、DataDefinition、ResourceChangeLog、**AuditLog、AgentVersion、Release、MemoryRecord**。
+- 核心实体：Workflow、WorkflowVersion、NodeDefinition、Connection、Tool/ToolVersion、Schedule、JobQueue、Run、NodeRun、RunEvent、CallRecord、Agent、ResourceLock、QualityResult、Evidence、**EvalSample**、ResultRuleSet、DataAsset、AnalysisTask、Datasource、McpServer、KnowledgeSource、DataDefinition、ResourceChangeLog、**AuditLog、AgentVersion、Release、MemoryRecord**、**AppUser、AlertRule、AlertEvent、Form、FormVersion、FormRecord、ReleaseRequest**。
 - 关键状态流转：
   - 工作流：draft → testing/published/deprecated；发布时生成不可变版本快照并收集引用。
   - **Agent 版本**：draft → published；发布时构建 definition 快照、common_config、dependency_snapshot 并计算 artifact_hash；部署到 sandbox/prod 环境。
@@ -135,12 +156,9 @@ API-->>FE : {totalTokens, ...其他指标}
   - **评测样本**：支持 rule/model/human 三种评判模式，judge_result 存储最近一次评判结果。
   - **分析任务**：Active/Paused 状态控制任务执行开关。
   - **质检结果**：AI → REVIEWED → EFFECTIVE 审核流程，支持人工修正。
-- 数据所有权边界：
-  - 运行与事件属于执行层，由 runner 写入；业务层仅消费结构化输出与结果。
-  - 资源与连接属于基础设施层，被工作流/工具/数据源等多处引用，需通过 resource_registry 进行一致性保护。
-  - 业务对象（QualityResult/Evidence/ResultRuleSet）与数据资产/定义解耦，便于独立演进。
-  - **Agent 版本快照包含完整定义、公共配置和依赖冻结快照，确保运行时一致性**。
-  - **评测样本与工作流/Agent关联，支持跨维度评测与结果对比**。
+  - **用户状态**：active/disabled；禁用用户无法登录且现有令牌立即失效。
+  - **发布申请**：pending → approved/rejected → released → promoted/rolled_back。
+  - **表单状态**：draft/published/disabled；发布后生成不可变版本快照。
 
 ```mermaid
 erDiagram
@@ -148,6 +166,7 @@ WORKFLOW ||--o{ WORKFLOW_VERSION : "发布生成"
 WORKFLOW ||--o{ AGENT : "绑定"
 WORKFLOW ||--o{ RUN : "触发"
 WORKFLOW ||--o{ EVAL_SAMPLE : "评测样本"
+WORKFLOW ||--o{ FORM : "输入表单"
 WORKFLOW_VERSION ||--o{ RUN : "不可变版本"
 AGENT ||--o{ AGENT_VERSION : "发布版本"
 AGENT ||--o{ RELEASE : "环境部署"
@@ -171,6 +190,14 @@ MEMORY_RECORD ||..|| AGENT : "按 scope 隔离"
 ANALYSIS_TASK ||--o{ SCHEDULE : "定时调度"
 AUDIT_LOG ||..|| ALL : "审计追踪"
 RESOURCE_LOCK ||..|| RESOURCES : "编辑锁"
+APP_USER ||..|| AUTH : "用户认证"
+RELEASE_REQUEST ||..|| WORKFLOW : "发布治理"
+RELEASE_REQUEST ||..|| RESULT_RULE_SET : "发布治理"
+RELEASE_REQUEST ||..|| DATA_DEFINITION : "发布治理"
+RELEASE_REQUEST ||..|| ANALYSIS_TASK : "发布治理"
+FORM ||--o{ FORM_VERSION : "版本快照"
+FORM ||--o{ FORM_RECORD : "数据记录"
+ALERT_RULE ||..| ALERT_EVENT : "告警事件"
 ```
 
 **图表来源**
@@ -185,7 +212,7 @@ RESOURCE_LOCK ||..|| RESOURCES : "编辑锁"
   - 全局 HTTP 中间件实现可选 RBAC：当环境变量 WF_API_TOKEN 存在时，所有 /api/* 请求必须携带 Bearer token，否则返回 401。
 - 数据库与迁移：
   - 数据库 URL 通过环境变量 WF_DATABASE_URL 覆盖；Alembic env 注入 app.models 与 Base.metadata，支持在线/离线迁移。
-  - 迁移目录包含初始 schema 及后续演进（模型版本、运行/事件级联、资源锁、评测样本、**Agent 版本管理、事件通道与追踪、记忆持久化、质检结果与证据表、审计日志与资源锁租约**）。
+  - 迁移目录包含初始 schema 及后续演进（模型版本、运行/事件级联、资源锁、评测样本、**Agent 版本管理、事件通道与追踪、记忆持久化、质检结果与证据表、审计日志与资源锁租约、用户认证、发布治理、表单管理、告警系统**）。
 - 外部依赖与集成：
   - 资源测试与连通性探测通过 resource_tests 与 httpx 完成；连接层对 HTTP/DB 协议做基础探测。
   - 工作流 DSL 校验基于 Pydantic schemas，并与 JSON Schema 契约对齐。
@@ -193,6 +220,8 @@ RESOURCE_LOCK ||..|| RESOURCES : "编辑锁"
   - 运行事件采用 SSE 流式推送，减少轮询开销；队列与锁字段支持并发安全。
   - 敏感凭证通过加密存储（Fernet）或 Secret Store 引用，不在响应中回显明文。
   - **Runner 增强追踪支持：run_event 表新增 channel、trace_id、span_id、parent_span_id、duration_ms、tokens 字段，支持双通道（CONTROL/CONTENT）和分布式追踪**。
+  - **PII保护：生产环境强制启用敏感信息脱敏，防止数据泄露**。
+  - **认证系统：WF_SECRET_KEY 必需，令牌12小时过期，支持用户状态管理**。
 
 ```mermaid
 flowchart TD
@@ -202,20 +231,186 @@ CheckToken --> |已设置| PathCheck{"路径是否 /api/* ?"}
 PathCheck --> |否| Allow
 PathCheck --> |是| AuthCheck{"Authorization == Bearer token ?"}
 AuthCheck --> |否| Deny["401 未授权"]
-AuthCheck --> |是| Allow
+AuthCheck --> |是| RoleCheck{"角色权限验证"}
+RoleCheck --> |无权限| Forbidden["403 禁止访问"]
+RoleCheck --> |有权限| Allow
 Allow --> Next["继续处理请求"]
+Next --> PII["PII脱敏处理"]
+PII --> Response["返回响应"]
 ```
 
 **图表来源**
 - [server/app/main.py:33-43](file://server/app/main.py#L33-L43)
+- [server/app/auth.py:124-137](file://server/app/auth.py#L124-L137)
+- [server/app/pii.py:21-29](file://server/app/pii.py#L21-L29)
 
 **章节来源**
 - [server/app/main.py:10-64](file://server/app/main.py#L10-L64)
 - [server/app/config.py:1-10](file://server/app/config.py#L1-L10)
 - [server/app/db.py:1-20](file://server/app/db.py#L1-L20)
-- [server/alembic/env.py:20-89](file://server/alembic/env.py#L20-L89)
+- [server/alembic/env.py:20-89](file://server/alembic/env.py#L20-89)
 
 ## 新增功能详解
+
+### 认证与RBAC系统
+**新增** 完整的身份认证和基于角色的访问控制系统，支持用户管理、令牌认证和细粒度权限控制。
+
+#### 核心功能
+- **用户管理**：创建、查询、修改用户状态和密码
+- **令牌认证**：基于HMAC-SHA256的JWT风格令牌，12小时过期
+- **角色权限**：admin（管理员）、operator（操作员）、viewer（只读）三级权限
+- **安全特性**：PBKDF2密码哈希、用户状态管理、禁用用户令牌立即失效
+
+#### 主要端点
+- **POST /api/auth/login**：用户登录，返回访问令牌
+- **GET /api/auth/me**：获取当前用户信息
+- **POST /api/auth/users**：创建新用户（需admin权限）
+- **GET /api/auth/users**：列出所有用户（需admin权限）
+- **POST /api/auth/users/{uid}/status**：修改用户状态（启用/禁用）
+- **POST /api/auth/users/{uid}/password**：重置用户密码（需admin权限）
+
+#### 权限控制
+- `require_admin`：需要admin角色
+- `require_operator`：需要admin或operator角色  
+- `require_reviewer`：需要admin或operator角色（用于写操作）
+- 开发模式默认授予dev用户admin权限
+
+**章节来源**
+- [server/app/auth.py:1-158](file://server/app/auth.py#L1-L158)
+- [server/app/routers/auth_routes.py:1-101](file://server/app/routers/auth_routes.py#L1-L101)
+
+### 发布治理系统
+**新增** 完整的发布治理流程，支持版本差异对比、审批工作流、灰度发布和回滚机制。
+
+#### 治理流程
+- **版本差异对比**：深度比较两个版本的配置差异，支持workflow、rule、definition、task四种资源类型
+- **发布申请**：创建发布请求，指定目标版本和Canary标记
+- **审批流程**：管理员审批，支持职责分离（申请人不能审批自己的申请）
+- **发布执行**：切换资源当前生效版本指针
+- **Canary发布**：先灰度发布，验证后转全量
+- **回滚机制**：恢复到申请时的生效版本
+
+#### 主要端点
+- **GET /api/governance/diff**：版本差异对比
+- **POST /api/governance/release-requests**：创建发布申请
+- **GET /api/governance/release-requests**：查询发布申请列表
+- **POST /api/governance/release-requests/{rid}/approve**：审批发布申请
+- **POST /api/governance/release-requests/{rid}/reject**：拒绝发布申请
+- **POST /api/governance/release-requests/{rid}/release**：执行发布
+- **POST /api/governance/release-requests/{rid}/promote**：Canary转全量
+- **POST /api/governance/release-requests/{rid}/rollback**：回滚到之前版本
+
+#### 状态机
+pending → approved | rejected → released（可 canary）→ promoted / rolled_back
+
+**章节来源**
+- [server/app/routers/governance.py:1-359](file://server/app/routers/governance.py#L1-L359)
+
+### 表单管理系统
+**新增** 集中式表单管理系统，支持表单定义、版本控制、数据记录和运行时校验。
+
+#### 核心功能
+- **表单定义**：创建和管理表单字段，支持多种UI类型和数据类型
+- **版本控制**：发布表单生成不可变版本快照
+- **数据记录**：存储表单提交的数据，支持唯一性约束
+- **运行时校验**：必填验证、长度限制、数值范围、正则匹配、选择数量限制
+- **引用检测**：防止删除被工作流使用的表单
+
+#### 支持的UI类型
+text、textarea、number、select、multi-select、radio、checkbox-group、switch、date、datetime、file、heading、description、divider、section
+
+#### 主要端点
+- **GET /api/forms**：列出所有表单
+- **POST /api/forms**：创建表单
+- **GET /api/forms/{fid}**：获取表单详情
+- **PUT /api/forms/{fid}**：更新表单
+- **POST /api/forms/{fid}/publish**：发布表单
+- **GET /api/forms/{fid}/versions**：查看表单版本
+- **POST /api/forms/{fid}/records**：创建表单记录
+- **GET /api/forms/{fid}/records**：查询表单记录
+- **DELETE /api/forms/{fid}**：删除表单（需满足条件）
+
+**章节来源**
+- [server/app/routers/forms.py:1-335](file://server/app/routers/forms.py#L1-L335)
+
+### PII保护系统
+**新增** 个人身份信息（PII）自动识别和脱敏功能，保护敏感数据安全。
+
+#### 支持的PII类型
+- **手机号码**：中国大陆11位手机号（1开头）
+- **邮箱地址**：标准邮箱格式
+- **身份证号**：18位身份证号（末位可为X）
+- **银行卡号**：16-19位银行卡号
+
+#### 脱敏策略
+- 保留首尾少量字符便于排障
+- 中间字符用*号覆盖
+- 支持递归处理字典和列表结构
+
+#### 使用场景
+- CallRecord的请求和响应数据脱敏
+- 日志中的敏感信息过滤
+- API响应的安全输出
+
+**章节来源**
+- [server/app/pii.py:1-41](file://server/app/pii.py#L1-L41)
+
+### 分析与可观测性API
+**新增** 完整的质量分析和系统可观测性接口，提供实时监控和数据分析能力。
+
+#### 质量分析
+- **KPI统计**：总数量、平均分数、问题率、严重问题数、审核状态分布
+- **趋势分析**：按日期统计质量指标变化趋势
+- **问题排行**：Top问题及其影响数量
+- **维度分析**：按团队、Agent、部门等业务维度分析质量指标
+
+#### 系统可观测性
+- **运行统计**：运行状态分布、平均耗时、各状态耗时
+- **队列统计**：待处理、处理中、死信、已完成任务数量
+- **调度统计**：启用的调度任务数、超时任务数
+- **成本统计**：Token使用量、模型调用次数、总成本估算
+
+#### 主要端点
+- **GET /api/quality/analytics/kpi**：质量KPI统计
+- **GET /api/quality/analytics/trend**：质量趋势分析
+- **GET /api/quality/analytics/top-issues**：Top问题排行
+- **GET /api/quality/analytics/by-dimension**：维度分析
+- **GET /api/observability/run-stats**：运行统计
+- **GET /api/observability/queue-stats**：队列统计
+- **GET /api/observability/schedule-stats**：调度统计
+- **GET /api/observability/cost-stats**：成本统计
+
+**章节来源**
+- [server/app/routers/analytics.py:1-177](file://server/app/routers/analytics.py#L1-L177)
+
+### 告警系统
+**新增** 智能告警系统，支持规则配置、阈值评估、事件留痕和通知分发。
+
+#### 监控指标
+- **队列积压**：待处理任务数量
+- **死信队列**：失败任务数量
+- **调度超时**：超时的调度任务数
+- **运行错误率**：失败运行占比
+- **数据源错误**：异常数据源数量
+- **模型不可用**：配置异常的模型提供商数量
+
+#### 告警规则
+- **阈值比较**：大于、大于等于、小于、小于等于
+- **严重程度**：warning、critical等
+- **通知配置**：Webhook通知、仅日志留痕
+- **规则管理**：创建、更新、删除、启用/禁用
+
+#### 主要端点
+- **GET /api/alerts/rules**：列出告警规则
+- **POST /api/alerts/rules**：创建告警规则
+- **POST /api/alerts/rules/{rid}**：更新告警规则
+- **DELETE /api/alerts/rules/{rid}**：删除告警规则
+- **POST /api/alerts/evaluate**：评估所有规则
+- **GET /api/alerts/events**：查询告警事件
+- **POST /api/alerts/events/{eid}/acknowledge**：确认告警事件
+
+**章节来源**
+- [server/app/routers/alerts.py:1-178](file://server/app/routers/alerts.py#L1-L178)
 
 ### AI提示词优化端点
 **新增** 提供AI驱动的提示词优化功能，通过LLM对输入提示词进行智能润色和改进。
@@ -521,6 +716,13 @@ Allow --> Next["继续处理请求"]
 - **run_event 扩展**：新增 channel、trace_id、span_id、parent_span_id、duration_ms、tokens 字段
 - **eval_sample 扩展**：新增 agent_id、judge_result 字段支持多维度评测
 - **call_record**：调用记录表，支持追踪工具调用和模型调用的详细信息
+- **app_user**：用户表，支持认证和RBAC
+- **alert_rule**：告警规则表
+- **alert_event**：告警事件表
+- **form**：表单定义表
+- **form_version**：表单版本表
+- **form_record**：表单记录表
+- **release_request**：发布申请表
 
 **迁移版本**：
 - `b026phaseb0001_agent_version_release.py`：Agent 版本管理表 + Agent 环境版本指针
@@ -530,6 +732,10 @@ Allow --> Next["继续处理请求"]
 - `d028phased1001_eval_sample_agent.py`：**评测样本支持Agent维度**
 - `d029phased1002_eval_sample_workflow_nullable.py`：**评测样本workflow_id支持空值**
 - `d029phased3001_judge_evolution.py`：**评测样本judge_result字段 + 进化候选补丁**
+- `g033p0auth0001_app_user.py`：**用户认证表**
+- `g036p1alert0001_alert_tables.py`：**告警系统表**
+- `f0rm20260826_form_table.py`：**表单管理表**
+- `g038p2gov00001_release_request.py`：**发布治理表**
 
 **章节来源**
 - [server/alembic/versions/b026phaseb0001_agent_version_release.py:1-65](file://server/alembic/versions/b026phaseb0001_agent_version_release.py#L1-L65)
@@ -556,6 +762,8 @@ Allow --> Next["继续处理请求"]
 - Agent 删除：`DELETE /api/agents/{aid}`
 - 工作流删除：`DELETE /api/workflows/{wid}`
 - 强制解锁：`DELETE /api/locks/{rid}/force`
+- 发布申请：`POST /api/governance/release-requests`
+- 用户管理：用户创建、状态修改、密码重置
 
 #### 审计日志查询
 - **GET /api/audit**：获取最近 500 条审计记录
@@ -566,6 +774,7 @@ Allow --> Next["继续处理请求"]
 - [server/app/models.py:400-411](file://server/app/models.py#L400-L411)
 - [server/app/routers/admin.py:361-416](file://server/app/routers/admin.py#L361-L416)
 - [server/app/routers/workflows.py:110-137](file://server/app/routers/workflows.py#L110-L137)
+- [server/app/routers/governance.py:240-243](file://server/app/routers/governance.py#L240-L243)
 
 ### 增强的资源锁管理
 **更新** 资源锁系统升级为租约语义，支持过期自动接管机制。
@@ -612,10 +821,10 @@ Allow --> Next["继续处理请求"]
 ### 总结
 本次更新主要围绕五个核心方面进行了重大改进：
 
-1. **AI提示词优化**：新增了 `/api/workflows/{wf_id}/polish` 端点，通过LLM智能优化提示词，提升用户体验
-2. **运行暂停与续跑**：实现了PAUSED状态支持和resume功能，支持wait-review节点的交互式审批流程
-3. **增强的运行追踪系统**：实现了标准化的 span 类型映射（LLM/TOOL/KNOWLEDGE）、规范化的 token 使用结构和改进的错误处理机制
-4. **动态工作流执行**：改进了工作流执行的错误处理和动态代码解析能力，支持从输入绑定中动态选择工作流
-5. **Agent 指标统计增强**：新增了 totalTokens 计算功能，提供更全面的性能监控能力
+1. **认证与RBAC系统**：新增了完整的用户管理、角色权限控制和令牌认证功能，确保系统安全性
+2. **发布治理系统**：实现了版本差异对比、审批流程、灰度发布和回滚机制，提升发布质量
+3. **表单管理系统**：提供了集中式的表单定义、版本控制和运行时校验功能
+4. **PII保护**：实现了敏感信息的自动识别和脱敏，保护用户隐私
+5. **分析与可观测性**：新增了质量分析、运行统计、成本监控和告警系统，提升系统可观测性
 
-这些改进显著提升了系统的交互能力和可观测性，为用户提供了更加灵活和强大的工作流执行环境。**特别是新增的提示词优化功能和运行暂停续跑机制，使得工作流执行过程更加智能化和人机协作友好**。
+这些改进显著提升了系统的生产就绪能力，为企业级应用提供了完整的安全、治理、监控和分析功能。**特别是新增的认证系统和发布治理功能，使得系统具备了企业级应用所需的核心能力**。
