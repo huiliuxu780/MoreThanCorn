@@ -52,16 +52,18 @@ const isOss = (p: string) => p === "oss"
 
 interface FormState {
   id: string | null; name: string; kind: string; protocol: string;
-  baseUrl: string; host: string; port: string; bucket: string; region: string;
+  baseUrl: string; host: string; port: string; user: string; database: string;
+  bucket: string; region: string;
   providerHint: string; secret: string
 }
 const EMPTY_FORM: FormState = {
   id: null, name: "", kind: "api_key", protocol: "http-api",
-  baseUrl: "", host: "", port: "", bucket: "", region: "", providerHint: "", secret: "",
+  baseUrl: "", host: "", port: "", user: "", database: "", bucket: "", region: "", providerHint: "", secret: "",
 }
 
 function endpointOf(f: FormState): Record<string, string> {
-  if (isDb(f.protocol)) return { host: f.host, port: f.port }
+  // 09 闭环修复：DB 连接需提交用户名/库名，浏览器创建方可真实探测与读取
+  if (isDb(f.protocol)) return { host: f.host, port: f.port, user: f.user, database: f.database }
   if (isOss(f.protocol)) return { bucket: f.bucket, region: f.region }
   return { base_url: f.baseUrl }
 }
@@ -91,6 +93,7 @@ export default function WfConnectionsPage() {
       id: c.id, name: c.name, kind: KIND_LABEL[c.kind] ? c.kind : "api_key",
       protocol: c.protocol || "http-api",
       baseUrl: c.endpoint?.base_url ?? "", host: c.endpoint?.host ?? "", port: c.endpoint?.port ?? "",
+      user: c.endpoint?.user ?? "", database: c.endpoint?.database ?? "",
       bucket: c.endpoint?.bucket ?? "", region: c.endpoint?.region ?? "",
       providerHint: c.providerHint ?? "", secret: "",
     })
@@ -233,9 +236,15 @@ export default function WfConnectionsPage() {
               </div>
             </div>
             {isDb(form.protocol) ? (
-              <div className="grid grid-cols-[1fr_100px] gap-3">
-                <div><Label className="text-xs">Host</Label><Input value={form.host} onChange={(e) => set({ host: e.target.value })} placeholder="db.internal" /></div>
-                <div><Label className="text-xs">Port</Label><Input value={form.port} onChange={(e) => set({ port: e.target.value })} placeholder={form.protocol === "mysql" ? "3306" : "5432"} /></div>
+              <div className="space-y-3">
+                <div className="grid grid-cols-[1fr_100px] gap-3">
+                  <div><Label className="text-xs">Host</Label><Input value={form.host} onChange={(e) => set({ host: e.target.value })} placeholder="db.internal" /></div>
+                  <div><Label className="text-xs">Port</Label><Input value={form.port} onChange={(e) => set({ port: e.target.value })} placeholder={form.protocol === "mysql" ? "3306" : "5432"} /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><Label className="text-xs">用户名</Label><Input value={form.user} onChange={(e) => set({ user: e.target.value })} placeholder="rivers" /></div>
+                  <div><Label className="text-xs">数据库</Label><Input value={form.database} onChange={(e) => set({ database: e.target.value })} placeholder="wf_accept" /></div>
+                </div>
               </div>
             ) : isOss(form.protocol) ? (
               <div className="grid grid-cols-2 gap-3">

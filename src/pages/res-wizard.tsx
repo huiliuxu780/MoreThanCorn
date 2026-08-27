@@ -83,7 +83,7 @@ export default function ResWizardPage({ scope }: { scope: "ai" | "data" }) {
       if (type === "mcp") Object.assign(body, { name: form.name, transport: form.transport, command: form.command, connectionId: form.connectionId || null, description: form.description })
       if (type === "knowledge") Object.assign(body, { name: form.name, kind: form.ksKind, embeddingModelId: form.embeddingModelId || null, sourceConfig: { url: form.sourceUrl }, description: form.description })
       if (type === "datasource") Object.assign(body, { name: form.name, type: form.dsType, connectionId: form.connectionId, location: form.location, description: form.description })
-      if (type === "asset") Object.assign(body, { name: form.name, datasourceId: form.datasourceId, location: form.location, recordMeaning: form.recordMeaning, timeField: form.timeField, description: form.description })
+      if (type === "asset") Object.assign(body, { name: form.name, datasourceId: form.datasourceId, location: form.location, recordMeaning: form.recordMeaning, timeField: form.timeField, recordIdField: form.recordIdField || "interactionId", description: form.description })
       if (id) await resApi.update(type, id, body)
       else {
         const r = await resApi.create(type, body)
@@ -247,9 +247,10 @@ export default function ResWizardPage({ scope }: { scope: "ai" | "data" }) {
                 <Input className="font-mono text-xs" value={form.location} onChange={(e) => set("location", e.target.value)} placeholder={type === "datasource" ? "db_cc" : "t_call_session"} /></div>
             )}
             {type === "asset" && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div><Label className="text-xs">一条数据代表什么</Label><Input value={form.recordMeaning} onChange={(e) => set("recordMeaning", e.target.value)} placeholder="一通客服对话" /></div>
-                <div><Label className="text-xs">时间字段</Label><Input className="font-mono text-xs" value={form.timeField} onChange={(e) => set("timeField", e.target.value)} placeholder="call_start_at" /></div>
+                <div><Label className="text-xs">时间字段</Label><Input className="font-mono text-xs" value={form.timeField} onChange={(e) => set("timeField", e.target.value)} placeholder="interactionTime" /></div>
+                <div><Label className="text-xs">记录 ID 字段</Label><Input className="font-mono text-xs" value={form.recordIdField} onChange={(e) => set("recordIdField", e.target.value)} placeholder="interactionId" /></div>
               </div>
             )}
             <div><Label className="text-xs">描述</Label><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} /></div>

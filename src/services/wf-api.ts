@@ -814,6 +814,8 @@ export interface CreateTaskPayload {
   resultRuleVersionId?: string
   /** 09 P0：pinned=绑定 resultRuleVersionId；follow_latest=批次启动解析最新发布版本 */
   rulePolicy?: "pinned" | "follow_latest"
+  /** 09 闭环修复：follow_latest 的 RuleSet 作用域 */
+  resultRuleSetId?: string
   inputMapping?: Record<string, string>
   scope?: { op: "and" | "or"; conditions: { field: string; op: string; value: unknown }[] }
   sampling?: { mode: "all" | "count" | "random"; count?: number; percent?: number }

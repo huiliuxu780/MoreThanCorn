@@ -95,6 +95,8 @@ export interface TaskFormState {
   definitionVersionId: string
   /** 09 §9.2：冻结的规则版本 ID（resultRuleVersionId；空=执行时取最新发布版本） */
   ruleVersionId: string
+  /** 09 闭环修复：follow_latest 的 RuleSet 作用域（resultRuleSetId） */
+  ruleSetId: string
   mapping: Record<string, string>
   scope: ScopeCondition[]
   samplingType: "全量" | "随机抽样" | "固定数量"
@@ -117,6 +119,7 @@ export const emptyTaskForm: TaskFormState = {
   definitionId: "",
   definitionVersionId: "",
   ruleVersionId: "",
+  ruleSetId: "",
   mapping: {},
   scope: [],
   samplingType: "全量",
@@ -433,8 +436,11 @@ export function StrategyTaskFields({
   const set = (patch: Partial<TaskFormState>) => onChange({ ...form, ...patch })
   // 09 §9.2：任务绑定冻结规则版本（缺省=执行时取最新发布版本）
   const [ruleOptions, setRuleOptions] = useState<{ id: string; label: string }[]>([])
+  // 09 闭环修复：follow_latest 需显式 RuleSet 作用域
+  const [ruleSets, setRuleSets] = useState<{ id: string; name: string }[]>([])
   useEffect(() => {
     bizApi.rules().then(async (sets) => {
+      setRuleSets(sets.map((s) => ({ id: s.id, name: s.name })))
       const opts: { id: string; label: string }[] = []
       for (const s of sets) {
         const vs = await bizApi.ruleVersions(s.id).catch(() => [])
@@ -456,6 +462,18 @@ export function StrategyTaskFields({
           </SelectContent>
         </Select>
       </FormField>
+      {!form.ruleVersionId && (
+        <FormField label="跟随的规则集（RuleSet 作用域）" description="跟随最新发布时必须限定规则集，避免串用其他规则集版本。">
+          <Select value={form.ruleSetId || undefined} onValueChange={(v) => set({ ruleSetId: v })}>
+            <SelectTrigger className="h-8 w-64"><SelectValue placeholder="选择规则集" /></SelectTrigger>
+            <SelectContent>
+              {ruleSets.map((s) => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormField>
+      )}
       <div className="space-y-2">
         <Label className="text-sm font-medium">Sampling</Label>
         <RadioGroup value={form.samplingType} onValueChange={(v) => set({ samplingType: v as TaskFormState["samplingType"] })} className="gap-2">

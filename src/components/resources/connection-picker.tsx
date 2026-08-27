@@ -23,7 +23,7 @@ export function ConnectionPicker({ value, onChange, protocols }: {
 }) {
   const [items, setItems] = useState<ConnectionDTO[]>([])
   const [open, setOpen] = useState(false)
-  const [form, setForm] = useState({ name: "", protocol: "http-api", kind: "API Key", base_url: "", host: "", port: "", secret: "" })
+  const [form, setForm] = useState({ name: "", protocol: "http-api", kind: "API Key", base_url: "", host: "", port: "", user: "", database: "", secret: "" })
 
   const load = () => connApi.list({}).then((r) => setItems(r.items)).catch(() => undefined)
   useEffect(() => { load() }, [])
@@ -33,7 +33,8 @@ export function ConnectionPicker({ value, onChange, protocols }: {
   const create = async () => {
     const endpoint: Record<string, unknown> = form.protocol === "http-api" || form.protocol === "llm" || form.protocol === "mcp-http"
       ? { base_url: form.base_url }
-      : form.protocol === "oss" ? { bucket: form.base_url } : { host: form.host, port: Number(form.port || 3306) }
+      : form.protocol === "oss" ? { bucket: form.base_url }
+      : { host: form.host, port: Number(form.port || (form.protocol === "postgresql" ? 5432 : 3306)), user: form.user, database: form.database }
     try {
       const r = await connApi.create({ name: form.name, protocol: form.protocol, endpoint, kind: form.kind, secret: form.secret })
       toast.success("Connection 已创建")
@@ -78,9 +79,15 @@ export function ConnectionPicker({ value, onChange, protocols }: {
               <div><Label className="text-xs">Bucket</Label><Input className="font-mono text-xs" value={form.base_url} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="oss://…" /></div>
             )}
             {(form.protocol === "mysql" || form.protocol === "postgresql") && (
-              <div className="grid grid-cols-[1fr_100px] gap-2">
-                <div><Label className="text-xs">Host</Label><Input className="font-mono text-xs" value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} /></div>
-                <div><Label className="text-xs">Port</Label><Input className="font-mono text-xs" value={form.port} onChange={(e) => setForm({ ...form, port: e.target.value })} /></div>
+              <div className="space-y-2">
+                <div className="grid grid-cols-[1fr_100px] gap-2">
+                  <div><Label className="text-xs">Host</Label><Input className="font-mono text-xs" value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} /></div>
+                  <div><Label className="text-xs">Port</Label><Input className="font-mono text-xs" value={form.port} onChange={(e) => setForm({ ...form, port: e.target.value })} placeholder={form.protocol === "postgresql" ? "5432" : "3306"} /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div><Label className="text-xs">用户名</Label><Input className="font-mono text-xs" value={form.user} onChange={(e) => setForm({ ...form, user: e.target.value })} placeholder="rivers" /></div>
+                  <div><Label className="text-xs">数据库</Label><Input className="font-mono text-xs" value={form.database} onChange={(e) => setForm({ ...form, database: e.target.value })} placeholder="wf_accept" /></div>
+                </div>
               </div>
             )}
             <div><Label className="text-xs">认证方式</Label>

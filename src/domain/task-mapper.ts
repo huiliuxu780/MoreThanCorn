@@ -61,7 +61,9 @@ export function buildTaskPayload(form: TaskFormState): CreateTaskPayload {
     payload.resultRuleVersionId = form.ruleVersionId
     payload.rulePolicy = "pinned"
   } else {
+    // 09 闭环修复：follow_latest 必须带 RuleSet 作用域，否则后端 422
     payload.rulePolicy = "follow_latest"
+    if (form.ruleSetId) payload.resultRuleSetId = form.ruleSetId
   }
   return payload
 }
