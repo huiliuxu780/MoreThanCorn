@@ -4,7 +4,10 @@
 > 环境：HEAD `6b5e29a`；隔离库 `wf_accept`（完整迁移至 g038）；后端 `:8120`（WF_AUTH=on）；前端 `:5173`（VITE_WF_API_BASE=:8120）；Worker/Scheduler 同库。
 > 真实 LLM API key：**无**（`WF_LLM_API_KEY`/`auth_connection_id` 均空）。主闭环采用「input→create-record」无 LLM 工作流，结果由真实输入行派生，非 mock。
 
-## 一、总结结论：**FAIL（部分通过）**
+> **复验更新（2026-08-28，见 §七）**：三个 P1 缺陷已修复（`b3a6c2e`/`7ab3c50`）并复验通过，
+> 本地业务闭环（含真实 PostgreSQL 数据源、详情复核、重启持久化）现为 **PASS**。下文一至六为首次验收记录。
+
+## 一、总结结论：首次 **FAIL** → 复验 **PASS**（见 §七）
 
 核心闭环（创建→发布→执行→3=3=3→结果列表→刷新/重启持久化→错误路径真实失败）在**内联数据**下真实跑通；
 连接测试真实通过；错误路径无伪成功。但存在 3 个 P1 缺陷阻断"完整"闭环：
@@ -61,3 +64,25 @@
 - 脚本：`scripts/accept-browser-1.mjs`（登录/启动/观察）、`-2`（结果/复核/刷新）、`-3`（重启持久化/连接页）。
 
 > 说明：验收数据保留在 `wf_accept`；本次启动进程（8120/worker/scheduler/5173 验收前端）将于验收后停止。
+
+## 七、复验（2026-08-28，修复后）——**PASS**
+
+修复提交：`b3a6c2e`（详情页默认值 / follow_latest 作用域 / recordIdField / safe_ident 引号）、
+`7ab3c50`（PG reader 行值 JSON 安全化）。环境同首次（wf_accept 重建、8120+5173+worker+scheduler）。
+
+| 项 | 结果 | 证据 |
+|----|------|------|
+| 浏览器创建连接+真实测试 | PASS | conn_test ok:true；r2-pg |
+| 创建 PostgreSQL 数据源+资产（recordIdField=interactionId，camelCase 引号列） | PASS | asset.record_id_field=interactionId |
+| 创建规则+任务并执行 3 条 DB 记录 | PASS | runs A-001/2/3 succeeded；taskrun 3/3/0 |
+| 3=3=3（真实 PG 数据） | PASS | quality_result=3 |
+| 打开详情（不白屏，Business Facts 空态优雅） | PASS | 04-result-detail.png；pageerrors 无 |
+| 领取/完成复核 | PASS | review_revision=1；A-003 effective_review_revision_id 置位 |
+| 刷新后仍在 | PASS | 08-after-refresh.png |
+| 重启后端后仍在 | PASS | 重启后结果行数=3 |
+| follow_latest 不串规则集 / 无作用域 422 | PASS | test_p0_taskrun.py 两条新断言 |
+
+回归：后端 240 passed；前端 33 vitest + tsc/eslint 0；首次发现的 P1-1/P1-2/P1-3 均已消除。
+残留（不阻断本地闭环，建议后续处理）：P2-1 Agent 闲聊兜底模型失败返回硬编码并标 succeeded（agent_runtime.py:256-261,330）。
+
+判定：**本地业务闭环通过（PASS）**。
