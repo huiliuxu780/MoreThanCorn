@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: scripts_and_e2e/ui_quality_gates
+title: UI 质量标准与视觉回归门禁脚本
+scope:
+    - scripts/check-ui-standard.mjs
+    - scripts/check-visual-regression.mjs
+    - scripts/ui-allowlist.json
+    - scripts/visual-baseline/
+source_files: []
+depends_on: []
+related_to:
+    - path: frontend_app/app_shell_and_ui

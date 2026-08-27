@@ -27,6 +27,11 @@
 - [server/app/routers/resources.py](file://server/app/routers/resources.py)
 - [server/app/routers/admin.py](file://server/app/routers/admin.py)
 - [server/app/routers/agents.py](file://server/app/routers/agents.py)
+- [server/app/data_readers/base.py](file://server/app/data_readers/base.py)
+- [server/app/data_readers/postgres.py](file://server/app/data_readers/postgres.py)
+- [server/app/data_readers/inline.py](file://server/app/data_readers/inline.py)
+- [server/app/data_readers/__init__.py](file://server/app/data_readers/__init__.py)
+- [server/tests/test_p0_data_reader.py](file://server/tests/test_p0_data_reader.py)
 - [src/services/rbac.ts](file://src/services/rbac.ts)
 - [src/pages/audit-log.tsx](file://src/pages/audit-log.tsx)
 - [src/components/run/trace-view.tsx](file://src/components/run/trace-view.tsx)
@@ -47,6 +52,7 @@
 - 新增PII保护功能，对敏感信息进行自动脱敏处理
 - 新增分析和可观测性API，提供质量分析、运行统计和成本监控
 - 新增告警系统，支持规则配置、阈值评估和通知分发
+- **增强 PostgreSQL 数据读取器**：改进了标识符引用和 camelCase 字段名支持，提供更好的 PostgreSQL 兼容性
 
 ## 产品概述
 本项目为 AI 驱动的企业智能质量评价平台，V1 聚焦智能质检（坐席质检）。后端基于 FastAPI + SQLAlchemy + Alembic，提供工作流编排、资源管理、运行执行、业务规则与评测、Agent 编排等能力；前端 Vite + React + TypeScript。导航结构已冻结，路由与状态语义以实现文档为准。
@@ -128,6 +134,7 @@ Obs-->>FE : {total, byStatus, avgDurationMs}
 - **PII保护**：敏感信息识别、自动脱敏、递归处理数据结构。
 - **分析与监控**：质量KPI、趋势分析、维度分析、运行统计、队列统计、成本统计。
 - **告警系统**：规则配置、阈值评估、事件留痕、通知分发（Webhook）。
+- **数据读取器**：PostgreSQL 数据适配器、内联数据资产读取、安全标识符处理。
 
 **章节来源**
 - [server/app/routers/auth_routes.py:1-101](file://server/app/routers/auth_routes.py#L1-L101)
@@ -567,7 +574,7 @@ text、textarea、number、select、multi-select、radio、checkbox-group、swit
 ```
 
 **章节来源**
-- [server/app/routers/admin.py:618-655](file://server/app/routers/admin.py#L618-L655)
+- [server/app/routers/admin.py:618-655](file://server/app/routers/admin.py#L618-655)
 
 ### 人评打分系统
 **新增** 人工评分功能，支持对评测样本进行人工打分（0-5分）。
@@ -703,6 +710,55 @@ text、textarea、number、select、multi-select、radio、checkbox-group、swit
 **章节来源**
 - [server/app/runner.py:435-465](file://server/app/runner.py#L435-L465)
 
+### 增强的 PostgreSQL 数据读取器
+**更新** PostgreSQL 数据读取器现已支持正确的标识符引用和 camelCase 字段名支持，提供更好的 PostgreSQL 兼容性。
+
+#### 标识符安全处理
+- **safe_ident 函数**：提供 SQL 标识符白名单校验和双引号引用
+- **防注入保护**：严格验证标识符格式，防止 SQL 注入攻击
+- **大小写保留**：使用双引号包裹标识符，保留 camelCase 字段名的大小写
+
+#### camelCase 字段支持
+- **PostgreSQL 兼容性**：解决 PostgreSQL 未加引号标识符折叠为小写的问题
+- **字段名匹配**：确保 interactionId 等 camelCase 字段能正确匹配
+- **测试覆盖**：通过真实 PostgreSQL 测试验证字段名处理
+
+#### 数据读取器架构
+- **PostgresReader**：PostgreSQL 数据源适配器，支持分页、时间窗过滤
+- **InlineAssetReader**：内联数据资产读取器，支持内存数据分页
+- **Base 协议**：统一的 DataPage 接口和 ReaderError 异常处理
+
+#### 核心功能
+- **键集游标分页**：基于 idField 的升序分页，避免全表扫描
+- **时间窗过滤**：支持 timeField >= now() - N days 的时间范围查询
+- **连接验证**：真实的最小权限探测（SELECT 1）
+- **错误处理**：外部源不可用时抛出 ReaderError，任务链失败关闭
+
+#### 使用示例
+```python
+# 创建 PostgresReader
+reader = PostgresReader(db, datasource)
+
+# 验证连接
+result = reader.validate()  # {"ok": True, "detail": "select 1"}
+
+# 分页读取数据
+locator = {
+    "table": "p0_reader_probe",
+    "idField": "interaction_id",
+    "timeField": "interaction_time",
+    "window_days": 7
+}
+page = reader.read_page(locator, None, limit=10)
+```
+
+**章节来源**
+- [server/app/data_readers/base.py:16-25](file://server/app/data_readers/base.py#L16-L25)
+- [server/app/data_readers/postgres.py:12-88](file://server/app/data_readers/postgres.py#L12-L88)
+- [server/app/data_readers/inline.py:7-34](file://server/app/data_readers/inline.py#L7-L34)
+- [server/app/data_readers/__init__.py:12-25](file://server/app/data_readers/__init__.py#L12-L25)
+- [server/tests/test_p0_data_reader.py:50-96](file://server/tests/test_p0_data_reader.py#L50-L96)
+
 ### 数据库架构演进
 **新增** 多个数据库表以支持新功能：
 
@@ -826,5 +882,6 @@ text、textarea、number、select、multi-select、radio、checkbox-group、swit
 3. **表单管理系统**：提供了集中式的表单定义、版本控制和运行时校验功能
 4. **PII保护**：实现了敏感信息的自动识别和脱敏，保护用户隐私
 5. **分析与可观测性**：新增了质量分析、运行统计、成本监控和告警系统，提升系统可观测性
+6. **增强的数据读取器**：改进了 PostgreSQL 数据读取器的标识符处理和 camelCase 字段支持，提供更好的数据库兼容性
 
-这些改进显著提升了系统的生产就绪能力，为企业级应用提供了完整的安全、治理、监控和分析功能。**特别是新增的认证系统和发布治理功能，使得系统具备了企业级应用所需的核心能力**。
+这些改进显著提升了系统的生产就绪能力，为企业级应用提供了完整的安全、治理、监控和分析功能。**特别是新增的认证系统和发布治理功能，使得系统具备了企业级应用所需的核心能力**。**同时，增强的 PostgreSQL 数据读取器确保了在处理复杂字段名时的稳定性和可靠性**。

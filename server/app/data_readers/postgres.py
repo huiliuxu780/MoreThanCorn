@@ -62,6 +62,19 @@ class PostgresReader:
                 cur.execute(f"SELECT count(*) FROM {table}{where}", params)
                 return int(cur.fetchone()[0])
 
+    @staticmethod
+    def _jsonable(v):
+        """09 闭环验收修复：PG 原始值转 JSON 安全（datetime/Decimal/bytes 等）。"""
+        from datetime import date, datetime, time
+        from decimal import Decimal
+        if isinstance(v, (datetime, date, time)):
+            return v.isoformat()
+        if isinstance(v, Decimal):
+            return float(v)
+        if isinstance(v, (bytes, bytearray)):
+            return v.decode("utf-8", "replace")
+        return v
+
     def read_page(self, locator: dict, cursor: str | None, limit: int) -> DataPage:
         table = safe_ident(locator.get("table", ""))
         idf_raw = locator.get("idField") or "id"
@@ -82,6 +95,6 @@ class PostgresReader:
                 cur.execute(sql, [*params, cursor_val, limit] if cursor else [*params, limit])
                 cols = [d.name for d in cur.description]
                 for raw in cur.fetchall():
-                    rows_out.append(dict(zip(cols, raw)))
+                    rows_out.append({k: self._jsonable(v) for k, v in zip(cols, raw)})
         next_cursor = str(rows_out[-1][idf_raw]) if len(rows_out) == limit else None
         return DataPage(rows=rows_out, next_cursor=next_cursor)

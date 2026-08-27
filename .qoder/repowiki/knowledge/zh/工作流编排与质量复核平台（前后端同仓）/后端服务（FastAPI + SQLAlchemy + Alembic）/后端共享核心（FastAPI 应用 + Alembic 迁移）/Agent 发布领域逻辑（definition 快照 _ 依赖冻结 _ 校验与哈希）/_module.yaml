@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: backend_service/shared_core/agent_release_domain
+title: Agent 发布领域逻辑（definition 快照 / 依赖冻结 / 校验与哈希）
+scope:
+    - server/app/agent_release.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend_service/workflows_routers
