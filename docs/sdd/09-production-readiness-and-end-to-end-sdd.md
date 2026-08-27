@@ -1098,3 +1098,5 @@ P1/P2 还需增加：
 | v0.1 | 2026-08-27 | 根据生产上线复审，建立审计基线、目标架构、端到端不变量、P0–P3 与分级通过标准 | 待评审 |
 | v0.1-frozen | 2026-08-27 | 用户指令冻结本文（按 P0→P3 严格执行）；登记冻结决策：D09-1 Task 直接绑定 Workflow；D09-2 per-interaction 执行模式；D09-3 固定 QualityEvaluation Schema v1；D09-4 ResultRuleVersion 不可变版本且发布不全库重算；D09-5 ReviewRevision 只追加、AI 原始结果不可变；D09-6 存量数据只标记 is_latest=false 不删除。实施批次见 `09-p0-implementation-plan.md` | 已冻结（P0 执行中） |
 | v0.2-p2-tenancy | 2026-08-27 | P2-03 租户模型用户拍板：**单租户隔离**（部署/合同层面隔离，核心表不加 tenant 列）。P2 数据权限按组织/团队维度在单租户内实现。余下 P2 决策（10 项 SLO、SSO/OIDC、HA、DR/RPO-RTO、KMS）仍待用户提供 | 已确认（单租户） |
+| v0.3-p2-identity | 2026-08-27 | P2-01 用户拍板以**本地账号+角色增强**替代 SSO：用户生命周期（启用/停用/重置密码/停用即失效令牌）已实现（`960e2d1`）；SSO/OIDC 若后续需要由用户提供 IdP | 已确认（本地账号） |
+| v0.4-p2-governance | 2026-08-27 | P2-08 发布治理实现（`ffab23c`）：统一 ReleaseRequest 状态机（审批门禁/职责分离/Canary/发布切指针/回滚）+ 版本深度 Diff + 变更审计；迁移 g038；前端发布治理页 | 自验通过（待用户验收） |
