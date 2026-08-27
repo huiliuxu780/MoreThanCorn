@@ -86,3 +86,21 @@
 残留（不阻断本地闭环，建议后续处理）：P2-1 Agent 闲聊兜底模型失败返回硬编码并标 succeeded（agent_runtime.py:256-261,330）。
 
 判定：**本地业务闭环通过（PASS）**。
+
+## 八、第二轮复验（2026-08-28）：前端契约补齐 + 浏览器数据层验证
+
+结论修正：**本地执行引擎闭环 PASS；纯浏览器端到端闭环仍未完全 PASS。**
+> API 辅助装配下，本地真实 PostgreSQL 业务闭环通过；从空环境完全依靠浏览器创建并运行，尚未一次干净跑通。
+
+修复提交：`6d800d3`（recordIdField 入 payload+渲染 / 任务表单 RuleSet 作用域 / PG 连接用户名+库名）；
+提交卫生：`36e92ce` untrack `.qoder` 并 gitignore（确认非本人工作，未推送）。
+
+| 项 | 方式 | 结果 |
+|----|------|------|
+| PostgreSQL Connection 浏览器创建（含用户名/库名，真实探测 active） | 浏览器 | PASS |
+| Datasource 浏览器创建（type=postgresql，绑定连接） | 浏览器 | PASS |
+| Asset 浏览器创建（recordIdField=interactionId，测试 Ready） | 浏览器 | PASS |
+| recordIdField 入 payload+渲染 / RuleSet 选择+resultRuleSetId / 连接 user+database | 代码+type/lint/vitest | PASS |
+| Rule/Task/执行/复核/重启 全浏览器一次跑通 | — | **未完成**（Task 依赖已发布 Workflow，设计器创建超出本次自动化范围） |
+
+后端 240 / 前端 33 / tsc+lint 0。未推送任何提交。
