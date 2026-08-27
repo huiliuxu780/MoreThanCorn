@@ -1,4 +1,4 @@
-import { ArrowLeft, MoreHorizontal, Play } from "lucide-react"
+import { ArrowLeft, History, MoreHorizontal, Play } from "lucide-react"
 import { useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -9,6 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
 import {
   Sheet,
   SheetContent,
@@ -38,6 +39,10 @@ export default function TaskDetailPage() {
   )
 
   const [runsOpen, setRunsOpen] = useState<string | null>(null)
+  // 09 P1-01：历史窗口回填
+  const [backfillOpen, setBackfillOpen] = useState(false)
+  const [backfillStart, setBackfillStart] = useState("")
+  const [backfillEnd, setBackfillEnd] = useState("")
 
   const canManage = rbac.can("task.manage")
   const isActive = task?.status === "active"
@@ -78,6 +83,9 @@ export default function TaskDetailPage() {
                   }}
                 >
                   <Play className="size-3.5" /> 立即执行
+                </Button>
+                <Button variant="outline" size="sm" disabled={!isActive} onClick={() => setBackfillOpen(true)}>
+                  <History className="size-3.5" /> 回填数据
                 </Button>
                 <Button
                   variant={isActive ? "outline" : "default"}
@@ -155,6 +163,17 @@ export default function TaskDetailPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => setRunsOpen(tr.id)}>查看 Interaction Runs</DropdownMenuItem>
+                        {(tr.status === "failed" || tr.status === "partial") && canManage ? (
+                          <DropdownMenuItem onClick={async () => {
+                            try {
+                              const r = await bizApi.retryFailed(task.id, tr.id)
+                              toast.success(r.retried ? `已重试 ${r.retried} 条失败交互（新 attempt，不覆盖历史）` : "无失败项可重试")
+                              retryRuns()
+                            } catch (e) {
+                              toast.error(`重试失败：${(e as Error).message}`)
+                            }
+                          }}>重试失败项</DropdownMenuItem>
+                        ) : null}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -178,6 +197,45 @@ export default function TaskDetailPage() {
             <SheetDescription>一条 Interaction 一个 Run；失败样本有可解释原因（09 §13.1）</SheetDescription>
           </SheetHeader>
           {runsOpen ? <TaskRunDetail trid={runsOpen} onOpenResult={(rid) => navigate(`/quality/results/${rid}`)} /> : null}
+        </SheetContent>
+      </Sheet>
+
+      {/* 09 P1-01 回填 Sheet：历史窗口补跑（新批次，不覆盖历史） */}
+      <Sheet open={backfillOpen} onOpenChange={setBackfillOpen}>
+        <SheetContent className="w-[420px]">
+          <SheetHeader>
+            <SheetTitle>回填历史数据</SheetTitle>
+            <SheetDescription>为指定历史窗口补跑一个新批次；不覆盖既有批次与结果。</SheetDescription>
+          </SheetHeader>
+          <div className="mt-4 space-y-4">
+            <div className="space-y-1.5">
+              <div className="text-sm font-medium">时间范围（interaction 时间）</div>
+              <div className="flex items-center gap-2">
+                <Input type="date" value={backfillStart} onChange={(e) => setBackfillStart(e.target.value)} />
+                <span className="text-xs text-muted-foreground">→</span>
+                <Input type="date" value={backfillEnd} onChange={(e) => setBackfillEnd(e.target.value)} />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">回填将创建新的 TaskRun（trigger=backfill），窗口外的交互不会被处理。</p>
+          </div>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setBackfillOpen(false)}>取消</Button>
+            <Button
+              disabled={!backfillStart && !backfillEnd}
+              onClick={async () => {
+                setBackfillOpen(false)
+                try {
+                  const r = await bizApi.backfillTask(task.id, { start: backfillStart || undefined, end: backfillEnd || undefined })
+                  toast.success(`回填批次已启动（${r.taskRunId.slice(0, 8)}）`)
+                  retryRuns()
+                } catch (e) {
+                  toast.error(`回填失败：${(e as Error).message}`)
+                }
+              }}
+            >
+              开始回填
+            </Button>
+          </div>
         </SheetContent>
       </Sheet>
     </PageContainer>

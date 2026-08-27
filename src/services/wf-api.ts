@@ -887,6 +887,17 @@ export const bizApi = {
     }>(`/api/task-runs/${trid}/snapshot`),
   taskRunRuns: (trid: string) => req<{ items: TaskRunRunDTO[] }>(`/api/task-runs/${trid}/runs`).then((r) => r.items),
   taskRunResults: (trid: string) => req<{ items: TaskRunResultDTO[] }>(`/api/task-runs/${trid}/results`).then((r) => r.items),
+  /** 09 P1-01：历史窗口回填（202 异步） */
+  backfillTask: (id: string, window: { start?: string; end?: string }) =>
+    req<{ taskRunId: string; status: string; window: { start?: string; end?: string }; dataSnapshotId: string | null }>(
+      `/api/tasks/${id}/backfill`, { method: "POST", body: JSON.stringify({ window }) }),
+  /** 09 P1-01：任务级调度列表 */
+  taskSchedules: (id: string) =>
+    req<{ items: { id: string; name: string; cron: string; timezone: string; enabled: boolean; nextRunAt: string | null; lastRanAt: string | null; failedCount: number }[] }>(
+      `/api/tasks/${id}/schedules`).then((r) => r.items),
+  /** 09 P1-06：失败交互行级重试（202） */
+  retryFailed: (id: string, trid: string) =>
+    req<{ retried: number; newRunIds: string[] }>(`/api/tasks/${id}/runs/${trid}/retry-failed`, { method: "POST", body: "{}" }),
   taskSchedule: (id: string, cron: string, timezone = "Asia/Shanghai") =>
     req<{ id: string; nextRunAt: string }>(`/api/tasks/${id}/schedule`, { method: "POST", body: JSON.stringify({ cron, timezone }) }),
 }
