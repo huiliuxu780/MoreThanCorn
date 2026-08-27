@@ -1578,6 +1578,20 @@ def worker_loop(stop: threading.Event) -> None:
 _WORKER_STOP: threading.Event | None = None
 
 
+def start_worker_only() -> threading.Event:
+    """09 P1（审计：进程拆分）：仅启动 worker 循环（独立进程用）。"""
+    stop = threading.Event()
+    threading.Thread(target=worker_loop, args=(stop,), daemon=True, name="wf-worker").start()
+    return stop
+
+
+def start_scheduler_only() -> threading.Event:
+    """09 P1（审计：进程拆分）：仅启动 scheduler 循环（独立进程/选主用）。"""
+    stop = threading.Event()
+    threading.Thread(target=scheduler_loop, args=(stop,), daemon=True, name="wf-scheduler").start()
+    return stop
+
+
 def start_worker() -> threading.Event:
     """幂等单例（09 P0-B4）：全进程仅一组 worker+scheduler 线程。
 

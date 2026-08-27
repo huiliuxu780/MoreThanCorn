@@ -57,9 +57,15 @@ async def lifespan(_app: FastAPI):
         forms.seed_default_forms(db)
     finally:
         db.close()
-    stop = start_worker()
+    # 09 P1（审计：进程拆分）：生产环境 API 进程不内嵌 Worker/Scheduler，
+    # 由独立进程（run_worker.py / run_scheduler.py）部署；
+    # 开发默认内嵌（WF_EMBEDDED_WORKER=off 可关）。
+    import os
+    embedded = os.environ.get("WF_EMBEDDED_WORKER", "off" if is_production() else "on") == "on"
+    stop = start_worker() if embedded else None
     yield
-    stop.set()
+    if stop:
+        stop.set()
 
 
 app = FastAPI(title="Lightweight Workflow Kernel", version="0.1.0", lifespan=lifespan)
