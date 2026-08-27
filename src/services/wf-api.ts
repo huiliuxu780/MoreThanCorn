@@ -695,65 +695,102 @@ export interface AgentAnalysisData {
 
 /** Tab 计数真数据（此前恒来自 mock）。 */
 export async function realQualityResultCounts(): Promise<{ all: number; pending: number; reviewed: number }> {
-  const r = await req<{ counts?: { all: number; ai: number; reviewed: number } }>("/api/quality-results?pageSize=1")
-  const c = r.counts ?? { all: 0, ai: 0, reviewed: 0 }
-  return { all: c.all, pending: c.ai, reviewed: c.reviewed }
+  const k = await analyticsApi.kpi()
+  return { all: k.total, pending: k.pending, reviewed: k.reviewed }
 }
 
-/** 质量总览真数据：KPI 由真实质检结果计算；无数据的板块返回空（页面显示空态，不造假数）。 */
+/** 09 P1-03：质量分析服务端聚合客户端（不再前端取 200 条自算）。 */
+export interface AnalyticsDimRow {
+  value: string; count: number; avgScore: number; issueRate: number; critical: number
+}
+function _qs(params: Record<string, string | number | undefined>): string {
+  const sp = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== "") sp.set(k, String(v))
+  }
+  return sp.toString()
+}
+export const analyticsApi = {
+  kpi: (params?: { search?: string; days?: number }) =>
+    req<{ total: number; avgScore: number; issueRate: number; withIssues: number; critical: number; reviewed: number; pending: number }>(
+      `/api/quality/analytics/kpi?${_qs(params ?? {})}`),
+  trend: (params?: { search?: string; days?: number }) =>
+    req<{ items: { date: string; count: number; avgScore: number; issueRate: number; critical: number }[] }>(
+      `/api/quality/analytics/trend?${_qs({ days: 30, ...(params ?? {}) })}`),
+  topIssues: (params?: { search?: string; days?: number; limit?: number }) =>
+    req<{ items: { criterion: string; affected: number }[] }>(
+      `/api/quality/analytics/top-issues?${_qs(params ?? {})}`),
+  byDimension: (dim: string, params?: { search?: string; days?: number }) =>
+    req<{ dim: string; items: AnalyticsDimRow[] }>(
+      `/api/quality/analytics/by-dimension?${_qs({ dim, ...(params ?? {}) })}`),
+  observability: {
+    runStats: () => req<{ total: number; byStatus: Record<string, number>; avgDurationMs: number }>("/api/observability/run-stats"),
+    queueStats: () => req<{ pending: number; processing: number; dead: number; done: number }>("/api/observability/queue-stats"),
+    scheduleStats: () => req<{ enabled: number; overdue: number }>("/api/observability/schedule-stats"),
+    costStats: () => req<{ totalPromptTokens: number; totalCompletionTokens: number; totalTokens: number }>("/api/observability/cost-stats"),
+  },
+}
+
+/** 质量总览真数据（09 P1-03）：KPI/趋势/Top问题全部来自服务端聚合。 */
 export async function realQualityOverview(): Promise<OverviewData> {
-  const r = await req<{ items: QualityResultListRaw[]; counts?: { all: number; ai: number; reviewed: number } }>(
-    "/api/quality-results?pageSize=200")
-  const items = r.items ?? []
-  const scored = items.filter((x): x is QualityResultListRaw & { score: number } => typeof x.score === "number")
-  const avg = scored.length ? scored.reduce((a, x) => a + x.score, 0) / scored.length : 0
-  const issue = items.filter((x) => (x.issueCount ?? 0) > 0).length
-  const critical = items.filter((x) => x.critical).length
-  const c = r.counts ?? { all: items.length, ai: 0, reviewed: 0 }
+  const [kpi, trend, topIssues] = await Promise.all([
+    analyticsApi.kpi(),
+    analyticsApi.trend({ days: 30 }).catch(() => ({ items: [] as { date: string; count: number; avgScore: number; issueRate: number; critical: number }[] })),
+    analyticsApi.topIssues({ limit: 10 }).catch(() => ({ items: [] as { criterion: string; affected: number }[] })),
+  ])
   return {
     kpis: [
-      { label: "质检交互总数", value: String(c.all), delta: "真实数据", deltaTone: "neutral" },
-      { label: "平均质量得分", value: scored.length ? avg.toFixed(1) : "—", delta: scored.length ? `${scored.length} 条有分` : "暂无评分", deltaTone: "neutral" },
-      { label: "问题交互率", value: c.all ? `${Math.round((issue / c.all) * 100)}%` : "—", delta: `${issue} 条有问题`, deltaTone: issue > 0 ? "warning" : "neutral" },
-      { label: "Critical", value: String(critical), delta: critical > 0 ? "需关注" : "无", deltaTone: critical > 0 ? "danger" : "success" },
-      { label: "已复核", value: String(c.reviewed), delta: `${c.ai} 条待复核`, deltaTone: "neutral" },
+      { label: "质检交互总数", value: String(kpi.total), delta: "全量聚合", deltaTone: "neutral" },
+      { label: "平均质量得分", value: kpi.total ? kpi.avgScore.toFixed(1) : "—", delta: kpi.total ? "服务端全量" : "暂无数据", deltaTone: "neutral" },
+      { label: "问题交互率", value: kpi.total ? `${Math.round(kpi.issueRate * 100)}%` : "—", delta: `${kpi.withIssues} 条有问题`, deltaTone: kpi.withIssues > 0 ? "warning" : "neutral" },
+      { label: "Critical", value: String(kpi.critical), delta: kpi.critical > 0 ? "需关注" : "无", deltaTone: kpi.critical > 0 ? "danger" : "success" },
+      { label: "已复核", value: String(kpi.reviewed), delta: `${kpi.pending} 条待复核`, deltaTone: "neutral" },
     ],
-    trend: [],       // 历史趋势需要按日聚合，待后端提供（真实空态）
+    trend: trend.items.map((t) => ({ date: t.date, avgScore: t.avgScore, issueRate: t.issueRate, critical: t.critical })),
     attention: [],
-    topIssues: [],
+    topIssues: topIssues.items.map((i) => ({
+      section: "质检问题", criterion: i.criterion, affected: i.affected,
+      rate: kpi.total ? `${Math.round((i.affected / kpi.total) * 100)}%` : "—",
+      delta: "—", risk: "—", scene: "—",
+    })),
     sceneQuality: [],
   }
 }
 
-/** 坐席分析真数据：Agent 维度由真实 agents+runs 汇总；细分板块真实空态。 */
+/** 坐席分析真数据（09 P1-03）：Agent/团队维度来自服务端 by-dimension 聚合。 */
 export async function realAgentAnalysis(): Promise<AgentAnalysisData> {
-  const [agents, results, runs] = await Promise.all([
+  const [agents, kpi, runStats, byTeam, byAgent, topIssues, trend] = await Promise.all([
     req<{ items: AgentListItem[] }>("/api/agents?pageSize=100"),
-    req<{ items: QualityResultListRaw[] }>("/api/quality-results?pageSize=200"),
-    req<{ runId: string; status: string }[]>("/api/runs"),
+    analyticsApi.kpi(),
+    analyticsApi.observability.runStats().catch(() => ({ total: 0, byStatus: {} as Record<string, number>, avgDurationMs: 0 })),
+    analyticsApi.byDimension("team").catch(() => ({ dim: "team", items: [] as AnalyticsDimRow[] })),
+    analyticsApi.byDimension("agent").catch(() => ({ dim: "agent", items: [] as AnalyticsDimRow[] })),
+    analyticsApi.topIssues({ limit: 10 }).catch(() => ({ items: [] as { criterion: string; affected: number }[] })),
+    analyticsApi.trend({ days: 30 }).catch(() => ({ items: [] as { date: string; count: number; avgScore: number; issueRate: number; critical: number }[] })),
   ])
-  const items = results.items ?? []
-  const scored = items.filter((x): x is QualityResultListRaw & { score: number } => typeof x.score === "number")
-  const avg = scored.length ? scored.reduce((a, x) => a + x.score, 0) / scored.length : 0
-  const runCount = Array.isArray(runs) ? runs.length : 0
-  const succ = Array.isArray(runs) ? runs.filter((x) => x.status === "succeeded").length : 0
+  const succ = runStats.byStatus["succeeded"] ?? 0
   return {
     scopeSummary: [
       { label: "Agent 总数", value: String((agents.items ?? []).length) },
-      { label: "运行总数", value: String(runCount) },
-      { label: "运行成功率", value: runCount ? `${Math.round((succ / runCount) * 100)}%` : "—" },
-      { label: "质检结果", value: String(items.length) },
-      { label: "平均得分", value: scored.length ? avg.toFixed(1) : "—" },
+      { label: "运行总数", value: String(runStats.total) },
+      { label: "运行成功率", value: runStats.total ? `${Math.round((succ / runStats.total) * 100)}%` : "—" },
+      { label: "质检结果", value: String(kpi.total) },
+      { label: "平均得分", value: kpi.total ? kpi.avgScore.toFixed(1) : "—" },
     ],
-    trend: [],
-    teams: [],
-    agents: (agents.items ?? []).map((a) => ({
+    trend: trend.items.map((t) => ({ date: t.date, avgScore: t.avgScore, issueRate: t.issueRate, critical: t.critical })),
+    teams: byTeam.items.map((t) => ({
+      team: t.value, department: "-", valid: t.count, avgScore: t.avgScore,
+      issueRate: t.issueRate, critical: t.critical, topProblem: "—", topScene: "—", delta: "—",
+    })),
+    agents: byAgent.items.length ? byAgent.items.map((a) => ({
+      agent: a.value, team: "-", valid: a.count, avgScore: a.avgScore,
+      issueRate: a.issueRate, critical: a.critical, topProblem: "—", topScene: "—",
+    })) : (agents.items ?? []).map((a) => ({
       agent: String(a.name ?? a.id), team: String(a.typeLabel ?? "-"),
-      valid: runCount, avgScore: scored.length ? Number(avg.toFixed(1)) : 0,
-      issueRate: 0, critical: 0, topProblem: "—", topScene: "—",
+      valid: 0, avgScore: 0, issueRate: 0, critical: 0, topProblem: "—", topScene: "—",
     })),
     attentionAgents: [],
-    problems: [],
+    problems: topIssues.items.map((i) => ({ criterion: i.criterion, rate: kpi.total ? `${Math.round((i.affected / kpi.total) * 100)}%` : "—", affected: i.affected })),
     scenes: [],
     related: [],
   }
