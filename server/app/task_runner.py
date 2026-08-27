@@ -64,8 +64,12 @@ def _build_locator(asset: DataAsset, tv: AnalysisTaskVersion) -> dict:
 
 def start_task_run(db: Session, task_id: str, trigger: str = "manual",
                    idempotency_key: str | None = None,
-                   schedule_fire_key: str | None = None) -> tuple[TaskRun, dict]:
-    """启动批次。返回 (task_run, resolved)；幂等请求返回既有 TaskRun。"""
+                   schedule_fire_key: str | None = None,
+                   window_override: dict | None = None) -> tuple[TaskRun, dict]:
+    """启动批次。返回 (task_run, resolved)；幂等请求返回既有 TaskRun。
+
+    window_override（09 P1-01 回填）：{{"mode":"fixed","start","end"}} 覆盖任务版本
+    的 data_window，仅处理该历史窗口内的交互。"""
     t = db.get(AnalysisTask, task_id)
     if not t:
         raise TaskStartError("任务不存在", 404)
@@ -106,7 +110,7 @@ def start_task_run(db: Session, task_id: str, trigger: str = "manual",
     snap = DataSnapshot(asset_id=asset.id, asset_revision=asset.revision,
                         definition_version_id=tv.data_definition_version_id,
                         locator=locator,
-                        resolved_window=tv.data_window or {},
+                        resolved_window=window_override or tv.data_window or {},
                         resolved_scope=tv.scope or {},
                         resolved_sampling=tv.sampling or {},
                         expected_count=expected, read_count=0, checksum="")
@@ -135,6 +139,30 @@ def _scope_hit(row: dict, scope: dict) -> bool:
     results = [_match({"field": c.get("field"), "op": c.get("op"),
                        "value": c.get("value")}, row) for c in conds]
     return all(results) if (scope.get("op") or "and") == "and" else any(results)
+
+
+def _window_hit(row: dict, time_field: str, start: str | None, end: str | None) -> bool:
+    """09 P1-01 回填窗口：行时间字段须落在 [start, end] 内（字符串比较；空窗=不过滤）。"""
+    if not start and not end:
+        return True
+    v = str(row.get(time_field) or row.get("interactionTime") or "")
+    if not v:
+        return False
+    if start and v < str(start):
+        return False
+    if end and v > str(end) + "T23:59:59":
+        return False
+    return True
+
+
+def _eligibility_hit(row: dict, eligibility: list) -> bool:
+    """09 P1-04：Eligibility 条件（AND 列表，元素 {field,op,value}）；空=通过。"""
+    from .routers.business import _match
+    if not eligibility:
+        return True
+    return all(_match({"field": c.get("field"), "op": c.get("op") or "eq",
+                       "value": c.get("value")}, row)
+               for c in eligibility if isinstance(c, dict))
 
 
 def _apply_mapping(row: dict, mapping: dict) -> dict:
@@ -180,6 +208,16 @@ def execute_task_run(task_run_id: str) -> None:
                           if sampling.get("mode") == "random" else 0.0)
         scope = tv.scope or {}
         id_field = asset.record_id_field or "interactionId"
+        # 09 P1-01 回填窗口 + P1-04 Eligibility（快照冻结，运行时消费）
+        window = (snap.resolved_window if snap else None) or {}
+        win_start, win_end = window.get("start"), window.get("end")
+        time_field = asset.time_field or "interactionTime"
+        eligibility_conds: list = []
+        if tv.data_definition_version_id:
+            from .models import DataDefinitionVersion
+            ddv = db.get(DataDefinitionVersion, tv.data_definition_version_id)
+            if ddv:
+                eligibility_conds = ddv.eligibility or []
 
         ok = fail = skipped = read_n = 0
         errors: list[dict] = []
@@ -198,6 +236,11 @@ def execute_task_run(task_run_id: str) -> None:
                 db.commit()
                 return
             for row in page.rows:
+                # 窗口外 / 不满足 Eligibility 的行不属于本批次（不计入 total）
+                if not _window_hit(row, time_field, win_start, win_end):
+                    continue
+                if not _eligibility_hit(row, eligibility_conds):
+                    continue
                 read_n += 1
                 if max_items and (ok + fail) >= max_items:
                     skipped += 1

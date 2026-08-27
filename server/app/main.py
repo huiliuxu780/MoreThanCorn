@@ -6,8 +6,8 @@ from sqlalchemy import text
 
 from .config import auth_enforced, is_production
 from .runner import start_worker
-from .routers import (admin, agents, analytics, auth_routes, business, forms,
-                      registry, resources, runs, workflows)
+from .routers import (admin, agents, alerts, analytics, auth_routes, business,
+                      forms, registry, resources, runs, workflows)
 
 # 鉴权白名单：登录与探活不需要身份
 _PUBLIC_PATHS = ("/api/auth/login", "/healthz", "/readyz", "/openapi.json", "/docs")
@@ -88,6 +88,7 @@ app.add_middleware(
 
 app.include_router(auth_routes.router)
 app.include_router(analytics.router)
+app.include_router(alerts.router)
 app.include_router(workflows.router)
 app.include_router(registry.router)
 app.include_router(runs.router)

@@ -584,12 +584,14 @@ def _task_run_dto(tr) -> dict:
 
 def _start_or_409(db: Session, tid: str, trigger: str,
                   idempotency_key: str | None = None,
-                  schedule_fire_key: str | None = None):
+                  schedule_fire_key: str | None = None,
+                  window_override: dict | None = None):
     from ..task_runner import TaskStartError, start_task_run
     try:
         return start_task_run(db, tid, trigger=trigger,
                               idempotency_key=idempotency_key,
-                              schedule_fire_key=schedule_fire_key)
+                              schedule_fire_key=schedule_fire_key,
+                              window_override=window_override)
     except TaskStartError as exc:
         raise HTTPException(exc.status_code, exc.args[0])
 
@@ -617,6 +619,36 @@ def batch_run(tid: str, payload: dict | None = None, db: Session = Depends(get_d
     tr, resolved = _start_or_409(db, tid, "manual",
                                  idempotency_key=(payload or {}).get("idempotencyKey"))
     return {"taskRunId": tr.id, "status": tr.status}
+
+
+@router.post("/api/tasks/{tid}/backfill", status_code=202)
+def backfill_task(tid: str, payload: dict, db: Session = Depends(get_db),
+                  user: dict = Depends(require_operator)):
+    """09 P1-01：历史窗口回填——按指定 [start, end] 窗口补跑批次，不影响常规窗口。"""
+    window = (payload or {}).get("window") or {}
+    if not (window.get("start") or window.get("end")):
+        raise HTTPException(422, "回填需提供 window.start / window.end")
+    tr, resolved = _start_or_409(db, tid, "backfill",
+                                 window_override={"mode": "fixed",
+                                                  "start": window.get("start"),
+                                                  "end": window.get("end")})
+    return {"taskRunId": tr.id, "status": tr.status,
+            "window": {"start": window.get("start"), "end": window.get("end")},
+            "dataSnapshotId": resolved.get("dataSnapshotId") or tr.data_snapshot_id}
+
+
+@router.get("/api/tasks/{tid}/schedules")
+def list_task_schedules(tid: str, db: Session = Depends(get_db)):
+    """09 P1-01：任务级调度列表。"""
+    t = db.get(AnalysisTask, tid)
+    if not t:
+        raise HTTPException(404, "任务不存在")
+    rows = db.query(Schedule).filter_by(task_id=tid).order_by(Schedule.created_at.desc()).all()
+    return {"items": [{"id": s.id, "name": s.name, "cron": s.cron_expr, "timezone": s.timezone,
+                       "enabled": s.enabled,
+                       "nextRunAt": s.next_run_at.isoformat() if s.next_run_at else None,
+                       "lastRanAt": s.last_ran_at.isoformat() if s.last_ran_at else None,
+                       "failedCount": s.failed_count} for s in rows]}
 
 
 @router.get("/api/tasks/{tid}/runs")

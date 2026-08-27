@@ -373,10 +373,30 @@ def delete_definition(did: str, db: Session = Depends(get_db),
     return {"ok": True}
 
 
+def _schema_breaking_changes(prev_fields: list, new_fields: list) -> list:
+    """09 P1-04：Schema 演进校验。破坏性=删除既有必填字段 / 既有必填字段类型变更。
+    新增字段（含可选/必填）与既有可选字段变更均视为兼容。"""
+    issues = []
+    new_by_key = {f.get("key"): f for f in new_fields if isinstance(f, dict)}
+    for pf in prev_fields:
+        if not isinstance(pf, dict):
+            continue
+        key = pf.get("key")
+        if not pf.get("required"):
+            continue  # 既有可选字段：删除/改型不破坏下游必填契约
+        nf = new_by_key.get(key)
+        if nf is None:
+            issues.append(f"必填字段 {key} 被删除")
+        elif (nf.get("type") or "String") != (pf.get("type") or "String"):
+            issues.append(f"必填字段 {key} 类型由 {pf.get('type')} 改为 {nf.get('type')}")
+    return issues
+
+
 @router.post("/api/data-definitions/{did}/publish")
 def publish_definition(did: str, db: Session = Depends(get_db),
                        _user: dict = Depends(require_operator)):
-    """09 P0-B1：发布=冻结不可变 DataDefinitionVersion（供 TaskVersion/DataSnapshot 绑定）。"""
+    """09 P0-B1：发布=冻结不可变 DataDefinitionVersion（供 TaskVersion/DataSnapshot 绑定）。
+    09 P1-04：发布前校验 Schema 演进，拒绝破坏性变更。"""
     from sqlalchemy import func
     from ..models import DataDefinitionVersion
     d = db.get(DataDefinition, did)
@@ -384,6 +404,13 @@ def publish_definition(did: str, db: Session = Depends(get_db),
         raise HTTPException(404, "数据定义不存在")
     if not (d.field_schema or []):
         raise HTTPException(422, "字段 schema 为空，不能发布")
+    # Schema 演进校验：对比最新已发布版本
+    prev = db.query(DataDefinitionVersion).filter_by(definition_id=did)\
+        .order_by(DataDefinitionVersion.version_no.desc()).first()
+    if prev:
+        breaking = _schema_breaking_changes(prev.field_schema or [], d.field_schema or [])
+        if breaking:
+            raise HTTPException(409, "破坏性 Schema 变更：" + "；".join(breaking))
     import copy as _copy
     max_no = db.query(func.max(DataDefinitionVersion.version_no))\
         .filter_by(definition_id=did).scalar() or 0

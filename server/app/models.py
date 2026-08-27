@@ -760,6 +760,36 @@ class AppUser(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class AlertRule(Base):
+    """09 P1-08：告警规则（阈值评估）。"""
+    __tablename__ = "alert_rule"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    metric: Mapped[str] = mapped_column(String(32))  # queue_backlog|run_error_rate|schedule_overdue|dead_letter
+    operator: Mapped[str] = mapped_column(String(4), default="gt")  # gt|gte|lt|lte
+    threshold: Mapped[float] = mapped_column(Float, default=0)
+    severity: Mapped[str] = mapped_column(String(16), default="warning")  # info|warning|critical
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AlertEvent(Base):
+    """09 P1-08：告警事件（触发留痕，可确认）。"""
+    __tablename__ = "alert_event"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    rule_id: Mapped[str | None] = mapped_column(ForeignKey("alert_rule.id", ondelete="SET NULL"), nullable=True, index=True)
+    metric: Mapped[str] = mapped_column(String(32))
+    value: Mapped[float] = mapped_column(Float, default=0)
+    threshold: Mapped[float] = mapped_column(Float, default=0)
+    severity: Mapped[str] = mapped_column(String(16), default="warning")
+    message: Mapped[str] = mapped_column(Text, default="")
+    acknowledged: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class ResourceChangeLog(Base):
     """资源变更记录：无版本类型资源的审计（创建/配置变更/凭证轮换/停用启用/测试失败）。"""
     __tablename__ = "resource_change_log"
