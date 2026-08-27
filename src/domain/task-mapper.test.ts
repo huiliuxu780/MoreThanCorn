@@ -102,6 +102,40 @@ describe("task-mapper：TaskVersion 快照展示", () => {
   })
 })
 
+describe("buildTaskPayload：scope 运算符映射与边界（09 P0-12）", () => {
+  it("scope 运算符映射为后端语义（=→eq, ≠→neq, IN→contains, IS NOT NULL→exists）", () => {
+    const p = buildTaskPayload(base({
+      scope: [
+        { field: "shop", operator: "=", value: "A" },
+        { field: "text", operator: "≠", value: "B" },
+        { field: "tag", operator: "IN", value: "x,y" },
+        { field: "phone", operator: "IS NOT NULL", value: "" },
+      ],
+    }))
+    expect(p.scope).toEqual({
+      op: "and",
+      conditions: [
+        { field: "shop", op: "eq", value: "A" },
+        { field: "text", op: "neq", value: "B" },
+        { field: "tag", op: "contains", value: "x,y" },
+        { field: "phone", op: "exists", value: "" },
+      ],
+    })
+  })
+  it("未知运算符回落 eq（不产生 undefined）", () => {
+    const p = buildTaskPayload(base({ scope: [{ field: "f", operator: "??" as never, value: "v" }] }))
+    expect(p.scope?.conditions?.[0].op).toBe("eq")
+  })
+  it("空 scope → 空条件数组（全部数据），而非缺字段", () => {
+    const p = buildTaskPayload(base())
+    expect(p.scope).toEqual({ op: "and", conditions: [] })
+  })
+  it("随机抽样百分比进入 payload", () => {
+    const p = buildTaskPayload(base({ samplingType: "随机抽样", samplingPercent: 30 }))
+    expect(p.sampling).toEqual({ mode: "random", percent: 30 })
+  })
+})
+
 describe("rbac：服务端角色映射（09 P0-10）", () => {
   it("admin→admin，operator→publisher，viewer→viewer，未知→viewer", () => {
     expect(mapServerRole("admin")).toBe("admin")
