@@ -66,3 +66,35 @@ def list_users(db: Session = Depends(get_db), _admin: dict = Depends(require_adm
     return {"items": [{"id": u.id, "username": u.username, "displayName": u.display_name,
                        "role": u.role, "status": u.status,
                        "createdAt": u.created_at.isoformat()} for u in rows]}
+
+
+@router.post("/api/auth/users/{uid}/status")
+def set_user_status(uid: str, payload: dict, db: Session = Depends(get_db),
+                    admin_user: dict = Depends(require_admin)):
+    """09 P2-01：用户生命周期——启用/停用。停用用户无法登录。"""
+    u = db.get(AppUser, uid)
+    if not u:
+        raise HTTPException(404, "用户不存在")
+    status = str((payload or {}).get("status") or "")
+    if status not in ("active", "disabled"):
+        raise HTTPException(422, "status 必须是 active|disabled")
+    if u.username == admin_user.get("username") and status == "disabled":
+        raise HTTPException(422, "不能停用自己的账号")
+    u.status = status
+    db.commit()
+    return {"id": u.id, "username": u.username, "status": u.status}
+
+
+@router.post("/api/auth/users/{uid}/password")
+def change_user_password(uid: str, payload: dict, db: Session = Depends(get_db),
+                         admin_user: dict = Depends(require_admin)):
+    """09 P2-01：用户生命周期——重置密码（admin）。"""
+    u = db.get(AppUser, uid)
+    if not u:
+        raise HTTPException(404, "用户不存在")
+    new_password = str((payload or {}).get("password") or "")
+    if len(new_password) < 8:
+        raise HTTPException(422, "密码至少 8 位")
+    u.password_hash = hash_password(new_password)
+    db.commit()
+    return {"id": u.id, "username": u.username, "passwordChanged": True}

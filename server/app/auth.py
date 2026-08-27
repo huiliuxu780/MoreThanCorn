@@ -83,7 +83,24 @@ def current_user(request: Request) -> dict | None:
     auth = request.headers.get("authorization", "")
     if not auth.startswith("Bearer "):
         return None
-    return verify_token(auth[7:])
+    user = verify_token(auth[7:])
+    if not user:
+        return None
+    # 09 P2-01：已停用用户的既有令牌立即失效（生命周期）
+    if auth_enforced_now():
+        db = get_db_for(request)
+        try:
+            u = db.get(_app_user_cls(), user.get("uid"))
+            if u and u.status != "active":
+                return None
+        finally:
+            db.close()
+    return user
+
+
+def _app_user_cls():
+    from .models import AppUser
+    return AppUser
 
 
 def resolve_actor(request: Request | None) -> str:
