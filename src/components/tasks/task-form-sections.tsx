@@ -463,7 +463,13 @@ export function StrategyTaskFields({
         </Select>
       </FormField>
       {!form.ruleVersionId && (
-        <FormField label="跟随的规则集（RuleSet 作用域）" description="跟随最新发布时必须限定规则集，避免串用其他规则集版本。">
+        <FormField
+          required
+          label="跟随的规则集（RuleSet 作用域）"
+          description={form.ruleSetId
+            ? "跟随最新发布时限定规则集，避免串用其他规则集版本。"
+            : "未选择规则集：跟随最新策略必须指定 RuleSet 作用域，否则提交会被服务端拒绝（422）。"}
+        >
           <Select value={form.ruleSetId || undefined} onValueChange={(v) => set({ ruleSetId: v })}>
             <SelectTrigger className="h-8 w-64"><SelectValue placeholder="选择规则集" /></SelectTrigger>
             <SelectContent>
