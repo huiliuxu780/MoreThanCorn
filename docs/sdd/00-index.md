@@ -26,6 +26,8 @@
 | [07](07-node-system-reform-sdd.md) | 节点体系改造 SDD（实施契约 + 验收标准） | 可执行细节 | **待用户确认** |
 | [08](08-node-reform-acceptance.md) | 节点体系改造验收报告 | 验收证据 | 已完成（含已登记偏差） |
 | [09](09-production-readiness-and-end-to-end-sdd.md) | 生产就绪、端到端闭环与 P0–P3 分级验收 | 可执行细节 + 上线门禁 | **待评审、待冻结** |
+| [10](10-domain-agent-runtime-provider-sdd.md) | 领域 Agent Module 与 Runtime Provider 集成 | 可执行架构 + 数据模型 + 分阶段验收 | **讨论稿（待评审、待冻结）** |
+| [10A](10-domain-agent-runtime-provider-implementation-prompt.md) | 领域 Agent Runtime 开工提示词 | 分支保护 + R-Archive～R4 实施指令 | **可用于开工** |
 
 > 生产上线判断统一以 09 为最高优先级门禁。01–08 的功能或节点验收通过，不自动等于具备生产上线条件。
 
