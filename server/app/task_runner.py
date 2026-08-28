@@ -16,8 +16,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .data_readers import ReaderError, get_reader
-from .models import (AnalysisTask, AnalysisTaskVersion, DataAsset, DataSnapshot,
-                     JobQueue, Run, TaskRun, Workflow, WorkflowVersion)
+from .models import (Agent, AgentRuntimeProvider, AnalysisTask, AnalysisTaskVersion, AgentVersion,
+                     DataAsset, DataSnapshot, JobQueue, Release, Run, TaskRun, Workflow,
+                     WorkflowVersion)
 
 
 class TaskStartError(Exception):
@@ -91,6 +92,43 @@ def _build_locator(asset: DataAsset, tv: AnalysisTaskVersion) -> dict:
     return locator
 
 
+def _resolve_agent_target(db: Session, tv: AnalysisTaskVersion) -> tuple:
+    """R3-2：Agent 目标版本解析（pinned|latest_sandbox_release|latest_prod_release）。
+
+    返回 (AgentVersion, Release)；Release 必须带 Runtime Provider 绑定（失败关闭）。"""
+    from .models import Agent, AgentVersion, Release
+    if tv.agent_version_policy == "pinned":
+        if not tv.pinned_agent_version_id:
+            raise TaskStartError("pinned 策略缺少 pinnedAgentVersionId")
+        av = db.get(AgentVersion, tv.pinned_agent_version_id)
+        if not av:
+            raise TaskStartError(f"pinned Agent 版本 {tv.pinned_agent_version_id} 不存在")
+        release = (db.query(Release)
+                   .filter(Release.agent_version_id == av.id, Release.status == "active",
+                           Release.runtime_provider_id.isnot(None))
+                   .order_by(Release.canary_percent.asc(), Release.created_at.desc())
+                   .first())
+    else:
+        agent = db.get(Agent, tv.agent_id)
+        if not agent:
+            raise TaskStartError("执行目标 Agent 不存在", 404)
+        env = "sandbox" if tv.agent_version_policy != "latest_prod_release" else "prod"
+        vid = agent.sandbox_version_id if env == "sandbox" else agent.prod_version_id
+        if not vid:
+            raise TaskStartError(f"NO_RELEASED_VERSION：Agent 没有已发布到{env}的版本")
+        av = db.get(AgentVersion, vid)
+        if not av:
+            raise TaskStartError("NO_RELEASED_VERSION：发布版本记录丢失")
+        release = (db.query(Release)
+                   .filter_by(agent_id=tv.agent_id, environment=env, status="active",
+                              agent_version_id=vid)
+                   .order_by(Release.canary_percent.asc(), Release.created_at.desc())
+                   .first())
+    if release is None or not release.runtime_provider_id:
+        raise TaskStartError("NO_RELEASED_VERSION：Agent 需要带 Runtime Provider 绑定的 Release")
+    return av, release
+
+
 def start_task_run(db: Session, task_id: str, trigger: str = "manual",
                    idempotency_key: str | None = None,
                    schedule_fire_key: str | None = None,
@@ -110,6 +148,14 @@ def start_task_run(db: Session, task_id: str, trigger: str = "manual",
     if not tv:
         raise TaskStartError("任务缺少配置版本")
 
+    # R3：统一执行目标解析（启动时一次冻结，批次内不漂移）
+    agent_version = release = None
+    if tv.execution_target_type == "agent":
+        agent_version, release = _resolve_agent_target(db, tv)
+        wv = None
+    else:
+        wv = _resolve_workflow_version(db, tv)
+
     # 幂等：同一 fire key / idempotency key 只创建一个 TaskRun（INV-11）
     if schedule_fire_key:
         exist = db.query(TaskRun).filter_by(schedule_fire_key=schedule_fire_key).first()
@@ -120,7 +166,6 @@ def start_task_run(db: Session, task_id: str, trigger: str = "manual",
         if exist:
             return exist, {"reused": True}
 
-    wv = _resolve_workflow_version(db, tv)
     # 09 P0-08：追踪字段非空——定义版本必须存在（任务创建已校验，此处再防存量数据）
     if not tv.data_definition_version_id:
         raise TaskStartError("任务未绑定数据定义版本（P0-08 追踪字段非空），无法启动", 422)
@@ -156,16 +201,26 @@ def start_task_run(db: Session, task_id: str, trigger: str = "manual",
     tr = TaskRun(task_id=t.id, task_version_id=tv.id, data_snapshot_id=snap.id,
                  trigger=trigger, schedule_fire_key=schedule_fire_key,
                  idempotency_key=idempotency_key, status="queued", total=expected,
-                 resolved_rule_version_id=resolved_rule_version_id)
+                 resolved_rule_version_id=resolved_rule_version_id,
+                 resolved_workflow_version_id=wv.id if wv else None,
+                 resolved_agent_version_id=agent_version.id if agent_version else None,
+                 resolved_release_id=release.id if release else None,
+                 runtime_binding_snapshot=(release.runtime_binding_snapshot
+                                           if release else None))
     db.add(tr)
     db.flush()
     db.add(JobQueue(type="task-run", payload={"task_run_id": tr.id},
                     idempotency_key=schedule_fire_key or idempotency_key))
     db.commit()
-    return tr, {"workflowVersionId": wv.id, "taskVersionId": tv.id,
-                "ruleVersionId": resolved_rule_version_id,
+    resolved = {"taskVersionId": tv.id, "ruleVersionId": resolved_rule_version_id,
                 "outputSchemaVersionId": tv.output_schema_version_id,
-                "dataSnapshotId": snap.id}
+                "dataSnapshotId": snap.id, "executionTarget": tv.execution_target_type}
+    if wv is not None:
+        resolved["workflowVersionId"] = wv.id
+    if agent_version is not None:
+        resolved["agentVersionId"] = agent_version.id
+        resolved["releaseId"] = release.id
+    return tr, resolved
 
 
 def _scope_hit(row: dict, scope: dict) -> bool:
@@ -214,6 +269,39 @@ def _apply_mapping(row: dict, mapping: dict) -> dict:
     return out
 
 
+def _interaction_run(tr: TaskRun, tv: AnalysisTaskVersion, wv, agent_version, release,
+                     *, status: str, input_payload: dict, ref: str, attempt: int,
+                     error: dict | None = None) -> Run:
+    """按执行目标构造 Interaction Run（R3：Agent 目标带冻结版本+Provider 绑定）。"""
+    rule_vid = tr.resolved_rule_version_id or tv.result_rule_version_id
+    common = dict(trigger=tr.trigger or "batch", status=status, input=input_payload,
+                  definition_source="version", task_run_id=tr.id, task_id=tr.task_id,
+                  task_version_id=tv.id, interaction_ref=ref, attempt=attempt,
+                  definition_version_id=tv.data_definition_version_id,
+                  rule_version_id=rule_vid, data_snapshot_id=tr.data_snapshot_id,
+                  error=error)
+    if agent_version is not None:
+        return Run(agent_id=tv.agent_id, agent_version_id=agent_version.id,
+                   runtime_provider_id=release.runtime_provider_id,
+                   runtime_snapshot={"runtimeBinding": tr.runtime_binding_snapshot,
+                                     "releaseId": tr.resolved_release_id}, **common)
+    return Run(workflow_id=tv.workflow_id, workflow_version_id=wv.id, **common)
+
+
+def _dispatch_interaction_run(db: Session, run: Run, agent_version) -> None:
+    """统一分派：Workflow → Runner；Agent → Module 同步执行（含结果事务）。"""
+    if agent_version is not None:
+        from .models import AgentRuntimeProvider
+        from .runtime_providers.worker import execute_module_run_sync
+        provider = db.get(AgentRuntimeProvider, run.runtime_provider_id)
+        execute_module_run_sync(db, run, provider)
+        db.expire(run)
+    else:
+        from .runner import execute_run
+        execute_run(run.id)
+        db.expire(run)
+
+
 def execute_task_run(task_run_id: str) -> None:
     """Worker 入口：分页读取 → 每 Interaction 一个 Run → 统计终态。"""
     from .db import SessionLocal
@@ -233,7 +321,24 @@ def execute_task_run(task_run_id: str) -> None:
         tr.status = "running"
         tr.started_at = datetime.now(timezone.utc)
         db.commit()
-        wv = _resolve_workflow_version(db, tv)
+        # R3：执行目标与冻结快照（INV：分页/重启/重试不漂移）
+        agent_target = tv.execution_target_type == "agent"
+        agent_version = release = None
+        if agent_target:
+            agent_version = (db.get(AgentVersion, tr.resolved_agent_version_id)
+                             if tr.resolved_agent_version_id else None)
+            release = db.get(Release, tr.resolved_release_id) if tr.resolved_release_id else None
+            if not agent_version or not release or not release.runtime_provider_id:
+                tr.status = "failed"
+                tr.error_summary = {"errors": [{"error": "AGENT_TARGET_UNRESOLVED：批次缺少冻结的 Agent 版本/Provider 绑定"}]}
+                tr.ended_at = datetime.now(timezone.utc)
+                db.commit()
+                return
+            target_agent = db.get(Agent, tv.agent_id)
+            wv = None
+        else:
+            target_agent = None
+            wv = _resolve_workflow_version(db, tv)
         asset = db.get(DataAsset, tv.data_asset_id)
         snap = db.get(DataSnapshot, tr.data_snapshot_id) if tr.data_snapshot_id else None
         locator = (snap.locator if snap else _build_locator(asset, tv)) or {}
@@ -299,16 +404,11 @@ def execute_task_run(task_run_id: str) -> None:
                 rule_vid = tr.resolved_rule_version_id or tv.result_rule_version_id
                 if not ref:
                     placeholder = f"__missing_{read_n}__"
-                    run = Run(workflow_id=tv.workflow_id, workflow_version_id=wv.id,
-                              trigger=tr.trigger or "batch", status="failed",
-                              input=_apply_mapping(row, tv.input_mapping or {}),
-                              definition_source="version", task_run_id=tr.id,
-                              task_id=tr.task_id, task_version_id=tv.id,
-                              interaction_ref=placeholder, attempt=1,
-                              definition_version_id=tv.data_definition_version_id,
-                              rule_version_id=rule_vid,
-                              data_snapshot_id=tr.data_snapshot_id,
-                              error={"message": "EMPTY_INTERACTION_REF：缺少 " + id_field})
+                    run = _interaction_run(tr, tv, wv, agent_version, release,
+                                           status="failed",
+                                           input_payload=_apply_mapping(row, tv.input_mapping or {}),
+                                           ref=placeholder, attempt=1,
+                                           error={"message": "EMPTY_INTERACTION_REF：缺少 " + id_field})
                     db.add(run)
                     db.commit()
                     fail += 1
@@ -319,16 +419,11 @@ def execute_task_run(task_run_id: str) -> None:
                     prior_attempt = db.execute(
                         select(func.max(Run.attempt)).where(
                             Run.task_run_id == tr.id, Run.interaction_ref == ref)).scalar() or 1
-                    run = Run(workflow_id=tv.workflow_id, workflow_version_id=wv.id,
-                              trigger=tr.trigger or "batch", status="failed",
-                              input=_apply_mapping(row, tv.input_mapping or {}),
-                              definition_source="version", task_run_id=tr.id,
-                              task_id=tr.task_id, task_version_id=tv.id,
-                              interaction_ref=ref, attempt=prior_attempt + 1,
-                              definition_version_id=tv.data_definition_version_id,
-                              rule_version_id=rule_vid,
-                              data_snapshot_id=tr.data_snapshot_id,
-                              error={"message": "DUPLICATE_INTERACTION_REF：重复输入"})
+                    run = _interaction_run(tr, tv, wv, agent_version, release,
+                                           status="failed",
+                                           input_payload=_apply_mapping(row, tv.input_mapping or {}),
+                                           ref=ref, attempt=prior_attempt + 1,
+                                           error={"message": "DUPLICATE_INTERACTION_REF：重复输入"})
                     db.add(run)
                     db.commit()
                     fail += 1
@@ -346,18 +441,11 @@ def execute_task_run(task_run_id: str) -> None:
                 input_payload["__rawRow"] = row  # 输入快照：重放与证据（INV-12）
                 if tv.output_schema_version_id:
                     input_payload["__outputSchemaVersionId"] = tv.output_schema_version_id
-                run = Run(workflow_id=tv.workflow_id, workflow_version_id=wv.id,
-                          trigger=tr.trigger or "batch", status="queued",
-                          input=input_payload, definition_source="version",
-                          task_run_id=tr.id, task_id=tr.task_id,
-                          task_version_id=tv.id, interaction_ref=ref, attempt=1,
-                          definition_version_id=tv.data_definition_version_id,
-                          rule_version_id=rule_vid,
-                          data_snapshot_id=tr.data_snapshot_id)
+                run = _interaction_run(tr, tv, wv, agent_version, release, status="queued",
+                                       input_payload=input_payload, ref=ref, attempt=1)
                 db.add(run)
                 db.commit()
-                execute_run(run.id)
-                db.expire(run)
+                _dispatch_interaction_run(db, run, agent_version)
                 if run.status == "succeeded":
                     # 09 P0 修复轮（审计反例 3）：成功 Run 必须恰好产生一条生效
                     # QualityResult，否则判为失败（业务不得"成功却无结果"）。
@@ -474,17 +562,31 @@ def retry_failed_in_taskrun(task_run_id: str) -> None:
             if cur is None or (r.attempt or 1) > (cur.attempt or 1):
                 latest[r.interaction_ref] = r
         to_retry = [r for r in latest.values() if r.status == "failed"]
+        tv = db.get(AnalysisTaskVersion, tr.task_version_id)
+        agent_target = bool(tv is not None and tv.execution_target_type == "agent")
+        agent_version = release = None
+        if agent_target:
+            agent_version = (db.get(AgentVersion, tr.resolved_agent_version_id)
+                             if tr.resolved_agent_version_id else None)
+            release = db.get(Release, tr.resolved_release_id) if tr.resolved_release_id else None
         for fr in to_retry:
-            nr = Run(workflow_id=fr.workflow_id, workflow_version_id=fr.workflow_version_id,
-                     trigger="batch", status="queued", input=fr.input,
-                     definition_source="version", task_run_id=task_run_id, task_id=tr.task_id,
-                     task_version_id=fr.task_version_id, interaction_ref=fr.interaction_ref,
-                     attempt=(fr.attempt or 1) + 1, origin_run_id=fr.id,
-                     definition_version_id=fr.definition_version_id,
-                     rule_version_id=fr.rule_version_id, data_snapshot_id=fr.data_snapshot_id)
+            if agent_target:
+                nr = _interaction_run(tr, tv, None, agent_version, release,
+                                      status="queued", input_payload=fr.input,
+                                      ref=fr.interaction_ref, attempt=(fr.attempt or 1) + 1,
+                                      error=None)
+                nr.origin_run_id = fr.id
+            else:
+                nr = Run(workflow_id=fr.workflow_id, workflow_version_id=fr.workflow_version_id,
+                         trigger="batch", status="queued", input=fr.input,
+                         definition_source="version", task_run_id=task_run_id, task_id=tr.task_id,
+                         task_version_id=fr.task_version_id, interaction_ref=fr.interaction_ref,
+                         attempt=(fr.attempt or 1) + 1, origin_run_id=fr.id,
+                         definition_version_id=fr.definition_version_id,
+                         rule_version_id=fr.rule_version_id, data_snapshot_id=fr.data_snapshot_id)
             db.add(nr)
             db.commit()
-            execute_run(nr.id)
+            _dispatch_interaction_run(db, nr, agent_version)
             db.expire(nr)
         reaggregate_task_run(db, tr)
         db.commit()

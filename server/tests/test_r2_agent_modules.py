@@ -23,7 +23,7 @@ from app.main import app
 from app.models import Release, Run
 from app.runner import claim_and_run, start_worker
 from app.runtime_providers import worker as rt_worker
-from tests.test_r1_runtime_providers import FakeProvider, patch_gateway
+from tests.test_r1_runtime_providers import FakeProvider, QualityFake, patch_gateway
 
 client = TestClient(app)
 start_worker()
@@ -39,7 +39,7 @@ def fake_server_r2():
     import threading
 
     import uvicorn
-    fake = FakeProvider()
+    fake = QualityFake()  # 输出符合 Module Schema（R3 结果事务要求）
     server = uvicorn.Server(uvicorn.Config(fake.app(), host="127.0.0.1", port=0,
                                            log_level="error"))
     threading.Thread(target=server.run, daemon=True).start()

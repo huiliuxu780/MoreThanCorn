@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import require_admin, require_operator, require_reviewer
 from ..db import get_db
-from ..models import (AnalysisTask, AnalysisTaskVersion, DataAsset,
+from ..models import (AgentVersion, AnalysisTask, AnalysisTaskVersion, DataAsset,
                       DataDefinitionVersion, QualityResult, ResultRuleSet,
                       ResultRuleVersion, ReviewRevision, Schedule, Workflow,
                       WorkflowVersion)
@@ -604,19 +604,58 @@ def create_task(payload: dict, db: Session = Depends(get_db),
     name = str(payload.get("name") or "").strip()
     if not name:
         raise HTTPException(422, "任务名称必填")
-    workflow_id = payload.get("workflowId")
-    policy = payload.get("workflowVersionPolicy") or "latest_published"
-    if policy == "Latest Published":  # legacy 别名
-        policy = "latest_published"
-    if policy not in ("pinned", "latest_published"):
-        raise HTTPException(422, "workflowVersionPolicy 必须是 pinned|latest_published")
-    pinned = payload.get("pinnedWorkflowVersionId")
-    rule_policy = payload.get("rulePolicy") or ("pinned" if payload.get("resultRuleVersionId") else "pinned")
-    wf = _validate_task_config(db, workflow_id, policy, pinned, payload.get("dataAssetId"),
-                               payload.get("resultRuleVersionId"),
-                               payload.get("dataDefinitionVersionId"),
-                               rule_policy=rule_policy,
-                               rule_set_id=payload.get("resultRuleSetId"))
+    # SDD 10 §15.3（R3）：统一执行目标 workflow|agent；旧 workflow payload 兼容转换
+    target = payload.get("executionTarget") or {}
+    target_type = target.get("type") or "workflow"
+    if target_type not in ("workflow", "agent"):
+        raise HTTPException(422, "executionTarget.type 必须是 workflow|agent")
+    agent_id = agent_version_policy = pinned_agent = None
+    if target_type == "agent":
+        from ..models import Agent
+        agent_id = target.get("agentId")
+        agent = db.get(Agent, agent_id) if agent_id else None
+        if not agent:
+            raise HTTPException(422, "executionTarget.agentId 必填且必须存在")
+        if not agent.module_key:
+            raise HTTPException(422, "仅领域 Module Agent 可作为执行目标（旧三类已封存）")
+        agent_version_policy = target.get("versionPolicy") or "latest_sandbox_release"
+        if agent_version_policy not in ("pinned", "latest_sandbox_release", "latest_prod_release"):
+            raise HTTPException(422, "versionPolicy 必须是 pinned|latest_sandbox_release|latest_prod_release")
+        pinned_agent = target.get("pinnedAgentVersionId")
+        if agent_version_policy == "pinned" and not pinned_agent:
+            raise HTTPException(422, "pinned 策略必须提供 pinnedAgentVersionId")
+        if not db.get(AgentVersion, pinned_agent) if pinned_agent else False:
+            raise HTTPException(422, "pinnedAgentVersionId 不存在")
+        workflow_id = None
+        policy = None
+        pinned = None
+        if not payload.get("dataAssetId") or not db.get(DataAsset, payload["dataAssetId"]):
+            raise HTTPException(422, "dataAssetId 必填且必须存在")
+        if not payload.get("dataDefinitionVersionId") or \
+                not db.get(DataDefinitionVersion, payload["dataDefinitionVersionId"]):
+            raise HTTPException(422, "dataDefinitionVersionId 必填且必须存在")
+        rule_policy = payload.get("rulePolicy") or ("pinned" if payload.get("resultRuleVersionId") else "pinned")
+        if rule_policy not in ("pinned", "follow_latest"):
+            raise HTTPException(422, "rulePolicy 必须是 pinned|follow_latest")
+        if rule_policy == "pinned":
+            if not payload.get("resultRuleVersionId") or not db.get(ResultRuleVersion, payload["resultRuleVersionId"]):
+                raise HTTPException(422, "pinned 规则策略必须提供有效 resultRuleVersionId")
+        elif not payload.get("resultRuleSetId") or not db.get(ResultRuleSet, payload["resultRuleSetId"]):
+            raise HTTPException(422, "follow_latest 策略必须提供 resultRuleSetId")
+    else:
+        workflow_id = payload.get("workflowId")
+        policy = payload.get("workflowVersionPolicy") or "latest_published"
+        if policy == "Latest Published":  # legacy 别名
+            policy = "latest_published"
+        if policy not in ("pinned", "latest_published"):
+            raise HTTPException(422, "workflowVersionPolicy 必须是 pinned|latest_published")
+        pinned = payload.get("pinnedWorkflowVersionId")
+        rule_policy = payload.get("rulePolicy") or ("pinned" if payload.get("resultRuleVersionId") else "pinned")
+        wf = _validate_task_config(db, workflow_id, policy, pinned, payload.get("dataAssetId"),
+                                   payload.get("resultRuleVersionId"),
+                                   payload.get("dataDefinitionVersionId"),
+                                   rule_policy=rule_policy,
+                                   rule_set_id=payload.get("resultRuleSetId"))
     osrow = latest_quality_schema(db)
     if not osrow:
         raise HTTPException(500, "quality_evaluation 输出 Schema 未配置")
@@ -629,7 +668,8 @@ def create_task(payload: dict, db: Session = Depends(get_db),
     # §11.1：配置校验通过且版本就绪才可 active
     status = "active"
     t = AnalysisTask(name=name, description=payload.get("description", ""),
-                     workflow_id=workflow_id, version_policy=policy,
+                     execution_target_type=target_type, agent_id=agent_id,
+                     workflow_id=workflow_id, version_policy=policy or "",
                      data_asset_id=payload["dataAssetId"],
                      data_definition_id=payload.get("dataDefinitionId"),
                      scope=_denorm_scope(scope),
@@ -639,7 +679,11 @@ def create_task(payload: dict, db: Session = Depends(get_db),
                      updated_by=user.get("username", "system"))
     db.add(t)
     db.flush()
-    v = AnalysisTaskVersion(task_id=t.id, version_no=1, workflow_id=workflow_id,
+    v = AnalysisTaskVersion(task_id=t.id, version_no=1,
+                            execution_target_type=target_type, agent_id=agent_id,
+                            agent_version_policy=agent_version_policy,
+                            pinned_agent_version_id=pinned_agent,
+                            workflow_id=workflow_id,
                             workflow_version_policy=policy,
                             pinned_workflow_version_id=pinned,
                             data_asset_id=payload["dataAssetId"],
@@ -656,6 +700,10 @@ def create_task(payload: dict, db: Session = Depends(get_db),
     t.current_version_id = v.id
     db.commit()
     return {"id": t.id, "name": t.name, "workflowId": workflow_id, "status": t.status,
+            "executionTarget": {"type": target_type, **({"agentId": agent_id,
+                                                         "versionPolicy": agent_version_policy,
+                                                         "pinnedAgentVersionId": pinned_agent}
+                                                        if agent_id else {})},
             "taskVersion": _task_version_dto(db, v)}
 
 

@@ -56,6 +56,8 @@ class FakeProvider:
         self.corrupt_next = False                  # 注入坏响应（严格校验）
         self.mismatch_next = False                 # 注入 run_id 不一致
         self.stay_running_on_cancel = False        # 拒绝取消（返回非终态）
+        self.auto_succeed = False                  # 提交即置 succeeded（批次同步链路用）
+        self.output_builder = None                 # (run_id, entry) -> output（默认 answer）
 
     def app(self) -> FastAPI:
         fake = self
@@ -86,8 +88,8 @@ class FakeProvider:
                                    status=entry["status"], runtime=RUNTIME_INFO).model_dump(mode="json")
             run_id = payload["run_id"]
             fake.idempotency[key] = (run_id, body_hash)
-            fake.runs[run_id] = {"status": "queued", "request": payload,
-                                 "cancel_requested": False}
+            fake.runs[run_id] = {"status": "succeeded" if fake.auto_succeed else "queued",
+                                 "request": payload, "cancel_requested": False}
             return RunAccepted(schema_version="1.0", run_id=run_id,
                                status="queued", runtime=RUNTIME_INFO).model_dump(mode="json")
 
@@ -104,7 +106,9 @@ class FakeProvider:
             now = datetime.now(timezone.utc)
             kwargs: dict = {}
             if status == "succeeded":
-                kwargs = {"output": {"answer": "fake-ok"}, "finished_at": now}
+                output = (self.output_builder(run_id, entry) if self.output_builder
+                          else {"answer": "fake-ok"})
+                kwargs = {"output": output, "finished_at": now}
             elif status == "failed":
                 kwargs = {"error": ContractRuntimeError(code="tool_error", message="injected"),
                           "finished_at": now}
@@ -143,6 +147,22 @@ class FakeProvider:
                                 checks={"adapter": "ok"}).model_dump(mode="json")
 
         return app
+
+
+class QualityFake(FakeProvider):
+    """提交即 succeeded 且输出符合 quality_output Schema（R3 结果事务 happy path）。"""
+
+    def __init__(self):
+        super().__init__()
+        self.auto_succeed = True
+        self.output_builder = lambda run_id, entry: {
+            "sample_id": str((entry.get("request", {}).get("input") or {}).get("sample_id") or run_id),
+            "findings": [{"criterion": "promise_fulfillment", "status": "passed",
+                          "confidence": 0.9, "reason": "工单已创建",
+                          "evidence": [{"source": "tool", "reference": "ticket:T-1:event:3",
+                                        "summary": "工单 T-1 已创建"}]}],
+            "labels": {"service_type_code": "consult", "issue_codes": ["promise_fulfilled"]},
+            "summary": "承诺已履约，无违规"}
 
 
 @pytest.fixture(scope="module")

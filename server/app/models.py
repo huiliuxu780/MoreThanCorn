@@ -450,6 +450,8 @@ class QualityResult(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     run_id: Mapped[str | None] = mapped_column(ForeignKey("run.id", ondelete="SET NULL"), nullable=True, index=True)
     workflow_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # SDD 10 §5.9（R3）：Agent 主链结果的版本谱系
+    agent_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     interaction_ref: Mapped[str] = mapped_column(String(128), default="", index=True)
     interaction_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     structured_output: Mapped[dict] = mapped_column(JSONB, default=dict)
@@ -598,13 +600,23 @@ class DataAsset(Base):
 
 
 class AnalysisTask(Base):
-    """分析任务（09-SDD §9.1）：可变身份对象；配置全部下沉到 AnalysisTaskVersion。"""
+    """分析任务（09-SDD §9.1）：可变身份对象；配置全部下沉到 AnalysisTaskVersion。
+
+    SDD 10 §5.5（R3）：统一执行目标 workflow|agent（Check 约束互斥）。"""
     __tablename__ = "analysis_task"
+    __table_args__ = (
+        CheckConstraint("(execution_target_type = 'workflow' AND workflow_id IS NOT NULL "
+                        "AND agent_id IS NULL) OR (execution_target_type = 'agent' "
+                        "AND agent_id IS NOT NULL AND workflow_id IS NULL)",
+                        name="ck_task_target_type"),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(64))
     description: Mapped[str] = mapped_column(Text, default="")
-    workflow_id: Mapped[str] = mapped_column(String(64))  # 冗余自 current TaskVersion，便于列表
+    execution_target_type: Mapped[str] = mapped_column(String(16), default="workflow")
+    agent_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    workflow_id: Mapped[str | None] = mapped_column(String(64), nullable=True)  # 冗余自 current TaskVersion，便于列表
     version_policy: Mapped[str] = mapped_column(String(16), default="Latest Published")  # legacy 扁平列（B1 起只读）
     data_asset_id: Mapped[str] = mapped_column(String(64))
     data_definition_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -620,14 +632,27 @@ class AnalysisTask(Base):
 
 
 class AnalysisTaskVersion(Base):
-    """分析任务不可变配置版本（09-SDD §9.2；INV-01 TaskRun 只绑定一个 TaskVersion）。"""
+    """分析任务不可变配置版本（09-SDD §9.2；INV-01 TaskRun 只绑定一个 TaskVersion）。
+
+    SDD 10 §5.5（R3）：Agent 目标（agent_id + 版本策略 pinned|latest_sandbox_release|
+    latest_prod_release）；与 Workflow 目标经 Check 约束互斥。"""
     __tablename__ = "analysis_task_version"
-    __table_args__ = (UniqueConstraint("task_id", "version_no", name="uq_task_version_no"),)
+    __table_args__ = (
+        UniqueConstraint("task_id", "version_no", name="uq_task_version_no"),
+        CheckConstraint("(execution_target_type = 'workflow' AND workflow_id IS NOT NULL "
+                        "AND agent_id IS NULL) OR (execution_target_type = 'agent' "
+                        "AND agent_id IS NOT NULL AND workflow_id IS NULL)",
+                        name="ck_task_version_target_type"),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     task_id: Mapped[str] = mapped_column(ForeignKey("analysis_task.id", ondelete="CASCADE"), index=True)
     version_no: Mapped[int] = mapped_column(Integer)
-    workflow_id: Mapped[str] = mapped_column(String(64))
+    execution_target_type: Mapped[str] = mapped_column(String(16), default="workflow")
+    agent_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    agent_version_policy: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    pinned_agent_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    workflow_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     workflow_version_policy: Mapped[str] = mapped_column(String(16), default="latest_published")  # pinned|latest_published
     pinned_workflow_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     data_asset_id: Mapped[str] = mapped_column(String(64))
@@ -721,6 +746,11 @@ class TaskRun(Base):
     data_snapshot_id: Mapped[str | None] = mapped_column(ForeignKey("data_snapshot.id", ondelete="SET NULL"), nullable=True)
     # 09 P0 修复轮：批次启动时解析并冻结的规则版本（Run/Result 的 rule_version_id 来源）
     resolved_rule_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # SDD 10 §5.6（R3）：批次启动一次解析并冻结（分页/重启/重试不得漂移到新版本）
+    resolved_workflow_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    resolved_agent_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    resolved_release_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    runtime_binding_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     trigger: Mapped[str] = mapped_column(String(16), default="manual")  # manual|schedule|backfill|api
     schedule_fire_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)

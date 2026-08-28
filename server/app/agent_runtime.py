@@ -520,6 +520,10 @@ def _run_member(ctx: _Ctx, code: str) -> dict:
             pass
     if fresh.status != "succeeded":
         raise RunError(f"成员 Agent「{member.name}」执行失败：{(fresh.error or {}).get('message', fresh.status)}")
+    if getattr(member, "module_key", None):
+        # R3-5：Module 成员输出结构化投影；content 序列化供节点绑定兼容
+        return {"content": json.dumps(fresh.output or {}, ensure_ascii=False),
+                "output": fresh.output or {}}
     return {"content": (fresh.output or {}).get("content", json.dumps(fresh.output or {}, ensure_ascii=False))}
 
 
@@ -535,7 +539,7 @@ def _run_module_agent(db: Session, agent: Agent, run_input: dict, trigger: str,
     - schedule/api：按环境指针 + 沙箱 Release 绑定解析（灰度 Release 按桶选择 Provider）；
     - test/manual 无版本：草稿预览，必须显式 providerId（R3 收敛为统一 target 解析）；
     - 嵌套调用（Workflow agent-exec 调 Module Agent）属 R3-5，暂不支持。"""
-    from .models import AgentVersion, JobQueue, Release
+    from .models import AgentRuntimeProvider, AgentVersion, JobQueue, Release
     if agent.id in agent_chain:
         raise RunError(f"检测到 Agent 递归调用：{agent.id}")
     run_id = new_id()
@@ -545,6 +549,16 @@ def _run_module_agent(db: Session, agent: Agent, run_input: dict, trigger: str,
         ver = db.get(AgentVersion, version_id)
         if not ver or ver.agent_id != agent.id:
             raise RunError(f"version {version_id} not found for agent {agent.id}")
+        if not resolved_provider:
+            # R3：显式版本运行从既有 Release 绑定解析 Provider（稳定优先）
+            rel = (db.query(Release)
+                   .filter(Release.agent_id == agent.id,
+                           Release.agent_version_id == ver.id, Release.status == "active",
+                           Release.runtime_provider_id.isnot(None))
+                   .order_by(Release.canary_percent.asc(), Release.created_at.desc())
+                   .first())
+            if rel:
+                resolved_provider = rel.runtime_provider_id
     elif trigger in ("schedule", "api"):
         vid = agent.sandbox_version_id or agent.prod_version_id
         if not vid:
@@ -562,8 +576,18 @@ def _run_module_agent(db: Session, agent: Agent, run_input: dict, trigger: str,
         if not ver:
             raise RunError("NO_RELEASED_VERSION：发布版本记录丢失，请重新发布")
         resolved_provider = chosen.runtime_provider_id
-    elif not resolved_provider:
-        raise RunError("PREVIEW_PROVIDER_REQUIRED：Module Agent 草稿预览需显式 providerId")
+    else:
+        # 嵌入式调用（Workflow 成员）优先落沙箱 Release 绑定；无绑定才要求显式 providerId
+        rel = (db.query(Release)
+               .filter(Release.agent_id == agent.id, Release.status == "active",
+                       Release.runtime_provider_id.isnot(None))
+               .order_by(Release.canary_percent.asc(), Release.created_at.desc())
+               .first())
+        if rel is not None:
+            ver = db.get(AgentVersion, rel.agent_version_id)
+            resolved_provider = rel.runtime_provider_id
+        elif not resolved_provider:
+            raise RunError("PREVIEW_PROVIDER_REQUIRED：Module Agent 草稿预览需显式 providerId")
     run = Run(id=run_id, agent_id=agent.id, trigger=trigger, input=run_input or {},
               agent_version_id=ver.id if ver else None,
               runtime_provider_id=resolved_provider,
@@ -580,7 +604,13 @@ def _run_module_agent(db: Session, agent: Agent, run_input: dict, trigger: str,
                         payload={"run_id": run.id, "provider_id": resolved_provider}))
         db.commit()
         return run.id
-    raise RunError("RUNTIME_NESTED_UNSUPPORTED：Module Agent 作为嵌套成员属 R3（agent-exec）")
+    # R3-5：嵌套（Workflow agent-exec → Module Agent）同步执行到终态
+    provider = db.get(AgentRuntimeProvider, resolved_provider or "")
+    if provider is None:
+        raise RunError("PROVIDER_UNRESOLVED：无法解析 Runtime Provider 绑定")
+    from .runtime_providers.worker import execute_module_run_sync
+    execute_module_run_sync(db, run, provider)
+    return run.id
 
 
 def _canary_bucket(run_id: str) -> int:

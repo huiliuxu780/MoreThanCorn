@@ -150,12 +150,19 @@ class AgentModule:
         }
 
     def map_result(self, agent_version, runtime_run) -> dict:
-        """Provider 输出 → 领域结果投影（R2 返回质检结构化投影；QualityResult 落库在 R3）。
+        """Provider 输出 → 领域结果投影（quality_output：findings[] 为逐 criterion 结论）。
 
         质检分数由平台规则引擎派生——本映射只透传结构化结论，不计算 score。"""
         output = runtime_run.output or {}
+        findings = output.get("findings") or []
         return {"module": {"key": self.key, "version": self.version},
                 "agentVersionId": getattr(agent_version, "id", None),
-                "criteria": output.get("criteria") or [],
-                "insufficientEvidence": bool(output.get("insufficient_evidence")),
+                "criteria": [{"id": f.get("criterion"), "status": f.get("status"),
+                              "confidence": f.get("confidence"), "reason": f.get("reason"),
+                              "evidence": f.get("evidence")} for f in findings
+                             if isinstance(f, dict)],
+                "labels": output.get("labels") or {},
+                "insufficientEvidence": any(
+                    f.get("status") == "insufficient_evidence" for f in findings
+                    if isinstance(f, dict)),
                 "summary": output.get("summary") or ""}
