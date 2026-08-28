@@ -41,3 +41,6 @@ uvicorn==0.52.4
 uvloop==0.22.1
 watchfiles==1.2.0
 websockets==17.0.1
+
+# SDD 10 R0/R1：Runtime Provider 公共契约（仓库内独立包，editable 安装）
+../packages/runtime_contract

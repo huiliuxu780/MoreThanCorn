@@ -212,6 +212,13 @@ class Run(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     token_usage: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # SDD 10 §5.7：Runtime 执行事实（R1）。runtime_snapshot 保存实际执行事实，
+    # 不只保存期望配置；平台 run.id 即发送给 Provider 的 run_id。
+    runtime_provider_id: Mapped[str | None] = mapped_column(
+        ForeignKey("agent_runtime_provider.id"), nullable=True, index=True)
+    runtime_provider_run_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    runtime_request_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    runtime_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -272,6 +279,9 @@ class CallRecord(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     node_run_id: Mapped[str | None] = mapped_column(ForeignKey("node_run.id"), nullable=True, index=True)
+    # SDD 10 §5.8（R1）：直接领域 Agent 调用只挂 run_id（node_run_id=null）。
+    # 先可空 + 迁移经 node_run 回填；孤儿处置后再收紧 NOT NULL（见 g040r1prov0001）。
+    run_id: Mapped[str | None] = mapped_column(ForeignKey("run.id"), nullable=True, index=True)
     kind: Mapped[str] = mapped_column(String(16))  # tool|model|mcp|knowledge
     target_type: Mapped[str] = mapped_column(String(16), default="")  # tool|model|mcp|knowledge|datasource|asset
     target_id: Mapped[str] = mapped_column(String(64), default="")
@@ -336,8 +346,35 @@ class Release(Base):
     environment: Mapped[str] = mapped_column(String(8))  # sandbox|prod
     status: Mapped[str] = mapped_column(String(16), default="active")  # active|rolled_back|offline
     canary_percent: Mapped[int] = mapped_column(Integer, default=0)  # SDD E-2.3 灰度百分比 0-100
+    # SDD 10 §5.4：Release Runtime Binding（R1）
+    runtime_provider_id: Mapped[str | None] = mapped_column(
+        ForeignKey("agent_runtime_provider.id"), nullable=True)
+    runtime_profile: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    runtime_binding_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_by: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AgentRuntimeProvider(Base):
+    """Runtime Provider 注册表（SDD 10 §5.3）：与 ModelProvider 禁止合表。
+
+    Secret 只能经 connection_id 引用现有 Connection/Secret 管理；
+    config 仅存非敏感配置，禁止保存 API Key。"""
+    __tablename__ = "agent_runtime_provider"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(32))  # agentscope|deepseek-harness|external
+    base_url: Mapped[str] = mapped_column(String(256), default="")
+    connection_id: Mapped[str | None] = mapped_column(ForeignKey("connection.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="draft")  # draft|enabled|disabled
+    contract_version: Mapped[str] = mapped_column(String(16), default="1.0")
+    capabilities: Mapped[dict] = mapped_column(JSONB, default=dict)
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)  # 非敏感配置
+    health_status: Mapped[str | None] = mapped_column(String(16), nullable=True)  # ok|degraded|unavailable|error
+    last_health_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 class ResourceLock(Base):

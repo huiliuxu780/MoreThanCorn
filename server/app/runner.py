@@ -1536,6 +1536,15 @@ def _dispatch_job(jtype: str, payload: dict) -> None:
     elif jtype == "task-run-retry":  # 09 P1-06：失败交互重试 + 重汇父批次
         from .task_runner import retry_failed_in_taskrun
         retry_failed_in_taskrun(payload["task_run_id"])
+    elif jtype == "agent-runtime-submit":  # SDD 10 R1-4：提交 Runtime Provider（幂等）
+        from .runtime_providers.worker import submit_agent_runtime
+        submit_agent_runtime(payload)
+    elif jtype == "agent-runtime-poll":  # SDD 10 R1-4：单次轮询 tick（run_at 退避，不占 worker）
+        from .runtime_providers.worker import poll_agent_runtime
+        poll_agent_runtime(payload)
+    elif jtype == "agent-runtime-cancel":  # SDD 10 R1-4：请求 Provider 取消并按实际终态收尾
+        from .runtime_providers.worker import cancel_agent_runtime
+        cancel_agent_runtime(payload)
     else:
         execute_run(payload["run_id"], resume=payload.get("resume"))
 
