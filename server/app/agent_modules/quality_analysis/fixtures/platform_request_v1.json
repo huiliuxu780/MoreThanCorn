@@ -1,0 +1,179 @@
+{
+  "schema_version": "1.0",
+  "run_id": "platform-fixture-run-0001",
+  "idempotency_key": "runtime:platform-fixture-run-0001:1:fixture",
+  "agent": {
+    "id": "qa-agent-fixture",
+    "version": "1",
+    "instructions": "你负责分析一通已经脱敏的服务热线通话。\n\n所有结论必须来自输入通话或工具返回的事实。禁止补充输入中不存在的\n人物、时间、业务动作或政策。证据不足时必须输出 insufficient_evidence，\n不能猜测。\n\n对每个 criterion 分别给出 status、confidence、reason 和 evidence。\nTool 仅在该 criterion 确实需要外部事实时调用：纯语言判断不得调用业务\nTool；知识核验使用 knowledge_search；承诺履约核验按承诺类型选择\nticket_query、sms_query 或 appointment_query。不得为了“保险”调用全部 Tool。\n\n“我会……”“将在……内……”等未来时业务动作和时限属于承诺，不属于知识或\n政策陈述。仅出现承诺、未出现产品规则、政策、费用、办理条件或标准流程陈述时，\nknowledge_accuracy 必须输出 not_applicable，且禁止调用 knowledge_search。\n\npromise_fulfillment 只评估“具体、针对当前个案、可由业务事实核验”的动作承诺，\n例如创建指定工单、发送短信、预约上门。下列内容不构成可核验承诺，必须输出\nnot_applicable，且不得调用业务事实 Tool：泛泛的服务态度或过程表态（例如\n“尽快处理”“持续关注”“马上帮您处理”）、没有明确业务动作的安抚，以及面向\n所有客户的统一规则或时限说明。统一规则或时限说明只进入 knowledge_accuracy。\n\n如果录音没有任何坐席发言：abusive_language 输出 insufficient_evidence；\nknowledge_accuracy 和 promise_fulfillment 输出 not_applicable；不得调用任何 Tool。\n\n标签只能返回已提供 Master Data 中的 code。不要计算质检分数；评分由平台\nScorecard 完成。最终输出必须严格符合 output_schema。\n",
+    "model": {
+      "provider": "openai-compatible",
+      "model": "qwen3.8-max",
+      "parameters": {}
+    },
+    "tools": [
+      {
+        "name": "knowledge_search",
+        "version": "1.0.0"
+      },
+      {
+        "name": "ticket_query",
+        "version": "1.0.0"
+      },
+      {
+        "name": "sms_query",
+        "version": "1.0.0"
+      },
+      {
+        "name": "appointment_query",
+        "version": "1.0.0"
+      }
+    ],
+    "master_data": [
+      {
+        "name": "service_type",
+        "version": "1"
+      },
+      {
+        "name": "issue_taxonomy",
+        "version": "1"
+      }
+    ],
+    "output_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "quality-platform://schemas/quality-output/1.0",
+      "title": "Quality Agent structured output",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sample_id",
+        "findings",
+        "labels",
+        "summary"
+      ],
+      "properties": {
+        "sample_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "criterion",
+              "status",
+              "confidence",
+              "reason",
+              "evidence"
+            ],
+            "properties": {
+              "criterion": {
+                "type": "string",
+                "enum": [
+                  "abusive_language",
+                  "knowledge_accuracy",
+                  "promise_fulfillment"
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "passed",
+                  "failed",
+                  "not_applicable",
+                  "insufficient_evidence"
+                ]
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "source",
+                    "reference",
+                    "summary"
+                  ],
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "conversation",
+                        "tool"
+                      ]
+                    },
+                    "reference": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "summary": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "service_type_code",
+            "issue_codes"
+          ],
+          "properties": {
+            "service_type_code": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "issue_codes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          }
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "input": {
+    "sample_id": "NATIVE-V02-001",
+    "case_id": "C-001",
+    "start_time": "2026-08-29 10:00:00",
+    "dialogues": [
+      {
+        "speaker": "agent",
+        "text": "您好，我会为您创建工单并在24小时内回复。"
+      }
+    ]
+  },
+  "context": {
+    "task_instance_id": null,
+    "trace_id": "platform-fixture-run-0001",
+    "metadata": {
+      "agentVersionId": "fixture",
+      "workflowMode": "native_quality_v0.2"
+    }
+  },
+  "timeout_seconds": 300
+}

@@ -218,9 +218,11 @@ const H = { "Content-Type": "application/json" };
         c1.status === 410 && c1.json?.code === "LEGACY_AGENT_ARCHIVED", JSON.stringify(c1.json));
   const c2 = await req("POST", "/api/agents", { name: "verify-dialogue", type: "dialogue" });
   check("S13-1b", "创建对话编排 Agent → 410", c2.status === 410 && c2.json?.code === "LEGACY_AGENT_ARCHIVED");
-  const arch = await req("GET", "/api/agents?archived=all&pageSize=5");
+  const arch = await req("GET", "/api/agents?archived=all&pageSize=50");
   check("S13-2", "旧 Agent 历史列表只读可查", arch.status === 200 && Array.isArray(arch.json?.items));
-  const first = (arch.json?.items ?? [])[0];
+  // R2 起列表可能含新 Module Agent：封存断言只针对旧三类
+  const LEGACY = ["autonomous", "dialogue", "expert-group"];
+  const first = (arch.json?.items ?? []).find((i) => LEGACY.includes(i.type));
   if (first) {
     const det = await req("GET", `/api/agents/${first.id}`);
     check("S13-3", "历史 Agent 详情只读可查",

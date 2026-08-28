@@ -1,0 +1,10 @@
+{
+  "name": "service_type",
+  "version": "1",
+  "items": [
+    {"code": "CONSULTATION", "name": "业务咨询", "description": "客户询问政策、产品或办理方式"},
+    {"code": "REPAIR", "name": "故障报修", "description": "客户报告故障并请求处理"},
+    {"code": "COMPLAINT", "name": "投诉", "description": "客户对服务、产品或处理结果表达不满"},
+    {"code": "OTHER", "name": "其他", "description": "不属于已定义服务类型"}
+  ]
+}

@@ -51,6 +51,9 @@ def bootstrap_models(db) -> str:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     check_production_ready()
+    # SDD 10 R2：Module Registry 启动 fail fast（重复版本/缺 Schema/缺实现即拒绝启动）
+    from .agent_modules import registry as module_registry
+    module_registry.warmup()
     from .db import SessionLocal
     db = SessionLocal()
     try:

@@ -525,6 +525,64 @@ def _run_member(ctx: _Ctx, code: str) -> dict:
 
 # ---------- 统一入口（SDD A-03：顶层异步入队，嵌套保持同步） ----------
 
+# ---------- Module Agent 分派（SDD 10 R2/R3） ----------
+
+def _run_module_agent(db: Session, agent: Agent, run_input: dict, trigger: str,
+                      version_id: str | None, provider_id: str | None, enqueue: bool,
+                      agent_chain: list[str]) -> str:
+    """Module Agent 运行：解析版本与 Release Runtime Binding → Run + agent-runtime-submit。
+
+    - schedule/api：按环境指针 + 沙箱 Release 绑定解析（灰度 Release 按桶选择 Provider）；
+    - test/manual 无版本：草稿预览，必须显式 providerId（R3 收敛为统一 target 解析）；
+    - 嵌套调用（Workflow agent-exec 调 Module Agent）属 R3-5，暂不支持。"""
+    from .models import AgentVersion, JobQueue, Release
+    if agent.id in agent_chain:
+        raise RunError(f"检测到 Agent 递归调用：{agent.id}")
+    run_id = new_id()
+    ver: AgentVersion | None = None
+    resolved_provider = provider_id
+    if version_id:
+        ver = db.get(AgentVersion, version_id)
+        if not ver or ver.agent_id != agent.id:
+            raise RunError(f"version {version_id} not found for agent {agent.id}")
+    elif trigger in ("schedule", "api"):
+        vid = agent.sandbox_version_id or agent.prod_version_id
+        if not vid:
+            raise RunError("NO_RELEASED_VERSION：该 Module Agent 尚未发布，请先发布到沙箱")
+        env = "sandbox" if agent.sandbox_version_id else "prod"
+        releases = db.query(Release).filter_by(agent_id=agent.id, environment=env,
+                                               status="active").all()
+        stable = next((r for r in releases if not (r.canary_percent or 0)), None)
+        canary = next((r for r in releases if (r.canary_percent or 0) > 0), None)
+        chosen = canary if (canary and _canary_bucket(run_id) < (canary.canary_percent or 0)) \
+            else stable
+        if not chosen or not chosen.runtime_provider_id:
+            raise RunError("NO_RELEASED_VERSION：Module Agent 需要带 Runtime Provider 绑定的 Release")
+        ver = db.get(AgentVersion, chosen.agent_version_id)
+        if not ver:
+            raise RunError("NO_RELEASED_VERSION：发布版本记录丢失，请重新发布")
+        resolved_provider = chosen.runtime_provider_id
+    elif not resolved_provider:
+        raise RunError("PREVIEW_PROVIDER_REQUIRED：Module Agent 草稿预览需显式 providerId")
+    run = Run(id=run_id, agent_id=agent.id, trigger=trigger, input=run_input or {},
+              agent_version_id=ver.id if ver else None,
+              runtime_provider_id=resolved_provider,
+              definition_source="version" if ver else "draft")
+    db.add(run)
+    db.commit()
+    emit(db, run.id, "agent_started",
+         payload={"agentId": agent.id, "module": agent.module_key,
+                  "moduleVersion": agent.module_version,
+                  "agentVersion": ver.version_no if ver else None,
+                  "providerId": resolved_provider})
+    if enqueue:
+        db.add(JobQueue(type="agent-runtime-submit",
+                        payload={"run_id": run.id, "provider_id": resolved_provider}))
+        db.commit()
+        return run.id
+    raise RunError("RUNTIME_NESTED_UNSUPPORTED：Module Agent 作为嵌套成员属 R3（agent-exec）")
+
+
 def _canary_bucket(run_id: str) -> int:
     """E-2.3：run_id → 0-99 稳定桶（md5 取模，跨进程一致）。"""
     import hashlib
@@ -533,12 +591,17 @@ def _canary_bucket(run_id: str) -> int:
 
 def run_agent(db: Session, agent: Agent, run_input: dict, trigger: str = "agent",
               agent_chain: list[str] | None = None, call_chain_wf: list[str] | None = None,
-              enqueue: bool = True, version_id: str | None = None) -> str:
+              enqueue: bool = True, version_id: str | None = None,
+              provider_id: str | None = None) -> str:
     """返回 run_id。enqueue=True 时创建 Run 后立即返回，由 worker 执行；
     嵌套调用（成员 Agent/子工作流）必须 enqueue=False 保持顺序。
     SDD B-03 运行认版本：version_id 显式指定；schedule/api 默认沙箱已发布版本。
-    R-Archive：旧三类 Agent 在入口统一拒绝，不产生 Run（SDD 10 §8.1）。"""
+    R-Archive：旧三类 Agent 在入口统一拒绝，不产生 Run（SDD 10 §8.1）。
+    R2：Module Agent 走 Runtime Provider 分派（Release 绑定解析 Provider）。"""
     assert_agent_executable(agent)
+    if getattr(agent, "module_key", None):
+        return _run_module_agent(db, agent, run_input, trigger, version_id,
+                                 provider_id, enqueue, agent_chain or [])
     from .models import AgentVersion, JobQueue
     chain = list(agent_chain or [])
     if agent.id in chain:

@@ -1,0 +1,53 @@
+{
+  "id": "quality-agent",
+  "version": "0.1.2",
+  "name": "服务热线质量分析 Agent",
+  "instructions": "你负责分析一通已经脱敏的服务热线通话。\n\n所有结论必须来自输入通话或工具返回的事实。禁止补充输入中不存在的\n人物、时间、业务动作或政策。证据不足时必须输出 insufficient_evidence，\n不能猜测。\n\n对每个 criterion 分别给出 status、confidence、reason 和 evidence。\nTool 仅在该 criterion 确实需要外部事实时调用：纯语言判断不得调用业务\nTool；知识核验使用 knowledge_search；承诺履约核验按承诺类型选择\nticket_query、sms_query 或 appointment_query。不得为了“保险”调用全部 Tool。\n\n“我会……”“将在……内……”等未来时业务动作和时限属于承诺，不属于知识或\n政策陈述。仅出现承诺、未出现产品规则、政策、费用、办理条件或标准流程陈述时，\nknowledge_accuracy 必须输出 not_applicable，且禁止调用 knowledge_search。\n\npromise_fulfillment 只评估“具体、针对当前个案、可由业务事实核验”的动作承诺，\n例如创建指定工单、发送短信、预约上门。下列内容不构成可核验承诺，必须输出\nnot_applicable，且不得调用业务事实 Tool：泛泛的服务态度或过程表态（例如\n“尽快处理”“持续关注”“马上帮您处理”）、没有明确业务动作的安抚，以及面向\n所有客户的统一规则或时限说明。统一规则或时限说明只进入 knowledge_accuracy。\n\n如果录音没有任何坐席发言：abusive_language 输出 insufficient_evidence；\nknowledge_accuracy 和 promise_fulfillment 输出 not_applicable；不得调用任何 Tool。\n\n标签只能返回已提供 Master Data 中的 code。不要计算质检分数；评分由平台\nScorecard 完成。最终输出必须严格符合 output_schema。\n",
+  "criteria": [
+    {
+      "id": "abusive_language",
+      "description": "判断坐席是否存在辱骂、贬损、威胁或明显攻击性表达。",
+      "tool_policy": "forbidden"
+    },
+    {
+      "id": "knowledge_accuracy",
+      "description": "判断坐席给出的产品规则、政策、费用、办理条件或标准流程信息是否与知识库事实一致；未来业务动作承诺不属于本项。",
+      "tool_policy": "knowledge_search"
+    },
+    {
+      "id": "promise_fulfillment",
+      "description": "识别具体、个案化且可由业务事实核验的坐席动作承诺，并核验相应业务动作是否实际完成；泛泛表态和统一规则不适用。",
+      "tool_policy": "business_fact_tools"
+    }
+  ],
+  "tools": [
+    {
+      "name": "knowledge_search",
+      "version": "1.0.0"
+    },
+    {
+      "name": "ticket_query",
+      "version": "1.0.0"
+    },
+    {
+      "name": "sms_query",
+      "version": "1.0.0"
+    },
+    {
+      "name": "appointment_query",
+      "version": "1.0.0"
+    }
+  ],
+  "master_data": [
+    {
+      "name": "service_type",
+      "version": "1"
+    },
+    {
+      "name": "issue_taxonomy",
+      "version": "1"
+    }
+  ],
+  "input_schema": "../schemas/call_record_input.schema.json",
+  "output_schema": "../schemas/quality_output.schema.json"
+}

@@ -1,0 +1,33 @@
+moduleKey: quality-analysis
+moduleVersion: 1.0.0
+displayName: 智能质检
+description: 对脱敏服务热线通话执行事实核验（辱骂/知识准确性/承诺履约）并输出结构化质检结果。
+riskClass: read-only
+specSchema: spec.schema.json
+inputSchema: schemas/call_record_input.schema.json
+outputSchema: schemas/quality_output.schema.json
+defaultSpec: spec.default.json
+masterData:
+  - master_data/service_type_v1.json
+  - master_data/issue_taxonomy_v1.json
+# 阶段语义（SDD 10 §9.1）：identify → plan → execute(per-plan 工具约束/多轮) → barrier → synthesize。
+# 由两个 Provider 实现各自承载；workflowMode 是平台 request mapper 写入 context.metadata 的实现选择标记。
+workflowMode: native_quality_v0.2
+requiredCapabilities:
+  tools: true
+  trace: true
+structuredOutput: true
+implementations:
+  agentscope:
+    version: 0.2.0
+    entry: native_quality_v0.2
+  deepseek-harness:
+    version: 0.2.0
+    bundle: morethancorn-dsh-native-quality-workflow
+logicalTools:
+  - { name: knowledge_search, version: 1.0.0, effect: read }
+  - { name: ticket_query, version: 1.0.0, effect: read }
+  - { name: sms_query, version: 1.0.0, effect: read }
+  - { name: appointment_query, version: 1.0.0, effect: read }
+resultMapper: result_mapper:map_result
+evaluator: evaluators:default_suite

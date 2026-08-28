@@ -1,0 +1,9 @@
+{
+  "name": "issue_taxonomy",
+  "version": "1",
+  "items": [
+    {"code": "ABUSIVE_LANGUAGE", "name": "不当用语", "description": "坐席存在辱骂、贬损、威胁或攻击性表达"},
+    {"code": "KNOWLEDGE_ERROR", "name": "知识错误", "description": "坐席陈述与有效知识或政策不一致"},
+    {"code": "PROMISE_NOT_FULFILLED", "name": "承诺未履行", "description": "坐席承诺的业务动作未按约完成"}
+  ]
+}

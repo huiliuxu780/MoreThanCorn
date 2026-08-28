@@ -17,8 +17,26 @@ NAME_MAX_LEN = 20
 # ---------- 快照组装 ----------
 
 def build_definition(db: Session, agent: Agent) -> dict:
-    """按类型组装 definition 快照（02 §2.5）。dialogue/group 的图拷贝完整草稿定义。"""
+    """按类型组装 definition 快照（02 §2.5）。dialogue/group 的图拷贝完整草稿定义。
+
+    SDD 10 R2：Module Agent 冻结 Module key/version + 完整 AgentSpec + Schema 引用
+    （sha256）+ 执行/安全策略；Provider 选择不在此处（Release 时绑定）。"""
     cfg = agent.config or {}
+    if agent.module_key:
+        from .agent_modules import registry as module_registry
+        mod = module_registry.get(agent.module_key, agent.module_version)
+        try:
+            spec = mod.build_agent_spec(cfg)
+        except ValueError as exc:
+            raise ValueError(f"AGENT_SPEC_INVALID：{exc}") from exc
+        return {
+            "module": {"key": mod.key, "version": mod.version},
+            "agentSpec": spec,
+            "inputSchema": mod.input_schema_ref,
+            "outputSchema": mod.output_schema_ref,
+            "executionPolicy": mod.policies["execution"],
+            "securityPolicy": mod.policies["security"],
+        }
     if agent.type == "autonomous":
         return {
             "rolePrompt": cfg.get("rolePrompt", ""),
@@ -92,8 +110,38 @@ def _resolve_knowledge(db: Session, ref: str) -> dict:
 
 
 def freeze_dependencies(db: Session, agent: Agent, definition: dict) -> dict:
-    """02 §2.6：发布时把资源引用解析为确定版本/状态，运行时不得漂移。"""
+    """02 §2.6：发布时把资源引用解析为确定版本/状态，运行时不得漂移。
+
+    SDD 10 R2：Module Agent 追加 AGENT_MODULE / MODULE_IMPLEMENTATION / MASTER_DATA /
+    INPUT_SCHEMA / OUTPUT_SCHEMA 依赖类型；逻辑工具解析到平台 Tool 的 ready 版本。"""
     items: list[dict] = []
+    if agent.module_key:
+        from .agent_modules import registry as module_registry
+        mod = module_registry.get(agent.module_key, agent.module_version)
+        spec = definition.get("agentSpec") or {}
+        items.append({"type": "AGENT_MODULE", "ref": f"{mod.key}@{mod.version}",
+                      "version": mod.version, "status": "FROZEN",
+                      "inputSchemaSha256": mod.input_schema_ref["sha256"],
+                      "outputSchemaSha256": mod.output_schema_ref["sha256"]})
+        for kind, impl in sorted(mod.manifest["implementations"].items()):
+            items.append({"type": "MODULE_IMPLEMENTATION", "ref": f"{mod.key}@{kind}",
+                          "version": impl.get("version"), "status": "FROZEN"})
+        for t in spec.get("tools", []):
+            items.append(_resolve_tool(db, t["name"]))
+        mid = (spec.get("model") or {}).get("model")
+        if mid:
+            m = db.execute(select(Model).where(Model.model_key == mid)).scalars().first()
+            items.append({"type": "MODEL", "ref": mid,
+                          "status": "FROZEN" if (m and m.enabled) else "MISSING",
+                          "version": m.version if m else None})
+        for md in spec.get("master_data", []):
+            items.append({"type": "MASTER_DATA", "ref": f"{md['name']}@{md['version']}",
+                          "version": md["version"], "status": "FROZEN"})
+        items.append({"type": "INPUT_SCHEMA", "ref": mod.input_schema_ref["id"],
+                      "version": mod.version, "status": "FROZEN"})
+        items.append({"type": "OUTPUT_SCHEMA", "ref": mod.output_schema_ref["id"],
+                      "version": mod.version, "status": "FROZEN"})
+        return {"items": items}
     if agent.type == "autonomous":
         for tref in definition.get("tools", []):
             items.append(_resolve_tool(db, tref))
@@ -148,7 +196,20 @@ def validate_publish(db: Session, agent: Agent, definition: dict, common: dict) 
     if len(agent.name or "") > NAME_MAX_LEN:
         issues.append({"code": "NAME_TOO_LONG", "message": f"Agent 名称不能超过 {NAME_MAX_LEN} 字", "path": "name"})
 
-    if agent.type == "autonomous":
+    if agent.module_key:
+        # SDD 10 R2：Module Agent 发布校验——模型必填且存在启用；Spec 结构已由
+        # build_definition 经 Module Spec Schema 强校验（不合即 AGENT_SPEC_INVALID 409）
+        spec = definition.get("agentSpec") or {}
+        model_key = (spec.get("model") or {}).get("model")
+        if not model_key or model_key == "unset":
+            issues.append({"code": "MODEL_REQUIRED", "message": "Module Agent 实例必须配置 modelRef.modelId",
+                           "path": "config.modelRef"})
+        else:
+            m = db.execute(select(Model).where(Model.model_key == model_key)).scalars().first()
+            if not m or not m.enabled:
+                issues.append({"code": "MODEL_INVALID", "message": f"模型 {model_key} 不存在或已停用",
+                               "path": "config.modelRef"})
+    elif agent.type == "autonomous":
         if not (definition.get("rolePrompt") or "").strip():
             issues.append({"code": "PROMPT_REQUIRED", "message": "角色能力描述（Prompt）不能为空", "path": "definition.rolePrompt"})
         mid = (definition.get("modelRef") or {}).get("modelId")

@@ -4,13 +4,15 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..legacy_agent_archive import assert_agent_executable
-from ..models import Agent, AgentVersion, KnowledgeSource, Release, Run, RunEvent, Tool, Workflow
+from ..models import (Agent, AgentRuntimeProvider, AgentVersion, KnowledgeSource, Release, Run,
+                      RunEvent, Tool, Workflow)
 from ..routers.workflows import _default_definition
 from ..auth import require_operator
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
-TYPE_LABEL = {"autonomous": "自主规划", "dialogue": "对话编排", "expert-group": "编排Agent专家组"}
+TYPE_LABEL = {"autonomous": "自主规划", "dialogue": "对话编排", "expert-group": "编排Agent专家组",
+              "module": "领域 Module"}
 
 # 调研 12 §3.1（SDD A-17）：数据库约束/服务端校验/前端 Schema 共用同一上限
 NAME_MAX_LEN = 20
@@ -26,11 +28,32 @@ def _check_name(name: str) -> None:
 @router.post("", status_code=201)
 def create_agent(payload: dict, db: Session = Depends(get_db),
                  _user: dict = Depends(require_operator) ):
-    """R-Archive（SDD 10 R-A2）：旧三类 Agent 已封存，不接受新建。
-    新 Agent 将在领域 Module 体系下创建（SDD 10 R2，moduleKey）。"""
-    from ..legacy_agent_archive import LegacyAgentArchivedError
-    raise LegacyAgentArchivedError(
-        "旧三类 Agent 已封存，仅支持历史查询；新 Agent 创建将在领域 Module 体系下开放")
+    """SDD 10 R2-1：新 Agent 一律按领域 Module 创建（moduleKey 必填，type 不再对外）。
+    旧三类创建保持封存（410）。实例配置：spec 覆盖 + modelRef（Provider 在 Release 绑定）。"""
+    module_key = payload.get("moduleKey")
+    if not module_key:
+        from ..legacy_agent_archive import LegacyAgentArchivedError
+        raise LegacyAgentArchivedError(
+            "旧三类 Agent 已封存，仅支持历史查询；新 Agent 请按领域 Module 创建（moduleKey）")
+    from ..agent_modules import registry as module_registry
+    try:
+        mod = module_registry.get(module_key, payload.get("moduleVersion"))
+    except module_registry.ModuleRegistryError as exc:
+        raise HTTPException(422, detail={"code": "MODULE_UNKNOWN", "message": str(exc)})
+    _check_name(payload.get("name", ""))
+    agent = Agent(name=payload["name"], type="module", description=payload.get("description", ""),
+                  module_key=mod.key, module_version=mod.version,
+                  config={"spec": payload.get("spec") or {},
+                          "modelRef": payload.get("modelRef") or {}})
+    db.add(agent)
+    db.flush()
+    from .admin import audit
+    audit(db, "质量管理员", "agent.module.create", "agent", agent.id,
+          {"moduleKey": mod.key, "moduleVersion": mod.version})
+    db.commit()
+    return {"id": agent.id, "name": agent.name, "type": agent.type, "workflowId": None,
+            "moduleKey": agent.module_key, "moduleVersion": agent.module_version,
+            "configRevision": agent.config_revision}
 
 
 def default_config(t: str) -> dict:
@@ -66,6 +89,7 @@ def list_agents(page: int = 1, pageSize: int = 20, search: str = "", archived: s
         items.append({"id": a.id, "name": a.name, "type": a.type, "typeLabel": TYPE_LABEL[a.type],
                       "status": a.status, "workflowId": a.workflow_id, "avatar": a.avatar,
                       "archived": bool(a.archived),
+                      "moduleKey": a.module_key, "moduleVersion": a.module_version,
                       "latestVersion": latest.version_no if latest else None,
                       "sandboxVersion": _env_ver(a.sandbox_version_id),
                       "prodVersion": _env_ver(a.prod_version_id),
@@ -81,6 +105,7 @@ def get_agent(aid: str, db: Session = Depends(get_db)):
     return {"id": a.id, "name": a.name, "type": a.type, "typeLabel": TYPE_LABEL[a.type],
             "status": a.status, "workflowId": a.workflow_id, "config": a.config,
             "configRevision": a.config_revision,
+            "moduleKey": a.module_key, "moduleVersion": a.module_version,
             "description": a.description, "avatar": a.avatar}
 
 
@@ -178,7 +203,8 @@ def run_agent_endpoint(aid: str, payload: dict | None = None, db: Session = Depe
     try:
         run_id = run_agent(db, a, (payload or {}).get("input") or {},
                            trigger=(payload or {}).get("trigger", "agent"),
-                           version_id=(payload or {}).get("versionId"))
+                           version_id=(payload or {}).get("versionId"),
+                           provider_id=(payload or {}).get("providerId"))
     except RunError as e:
         msg = str(e)
         if msg.startswith("NO_RELEASED_VERSION"):
@@ -246,6 +272,9 @@ def create_agent_version(aid: str, payload: dict | None = None, db: Session = De
     try:
         definition = build_definition(db, a)
     except ValueError as e:
+        msg = str(e)
+        if msg.startswith("AGENT_SPEC_INVALID"):
+            raise HTTPException(409, detail={"code": "AGENT_SPEC_INVALID", "message": msg})
         raise HTTPException(409, detail={"code": "NO_WORKFLOW", "message": str(e)})
     common = build_common_config(a)
     issues = validate_publish(db, a, definition, common)
@@ -317,6 +346,45 @@ def create_release(aid: str, payload: dict, db: Session = Depends(get_db),
     v = db.get(AgentVersion, (payload or {}).get("versionId", ""))
     if not v or v.agent_id != aid:
         raise HTTPException(404, detail={"code": "VERSION_NOT_FOUND", "message": "版本不存在"})
+    # SDD 10 R2-3：Provider 选择属于部署决策，在 Release 时绑定（不写入 AgentSpec）
+    binding_provider = None
+    binding_snapshot = None
+    runtime_profile = None
+    if a.module_key:
+        from ..agent_modules import registry as module_registry
+        provider_id = (payload or {}).get("runtimeProviderId")
+        if not provider_id:
+            raise HTTPException(422, detail={"code": "RUNTIME_PROVIDER_REQUIRED",
+                                             "message": "Module Agent 发布必须绑定 runtimeProviderId"})
+        binding_provider = db.get(AgentRuntimeProvider, provider_id)
+        if not binding_provider:
+            raise HTTPException(404, detail={"code": "PROVIDER_NOT_FOUND",
+                                             "message": f"runtime provider {provider_id} 不存在"})
+        if binding_provider.status != "enabled":
+            raise HTTPException(409, detail={"code": "PROVIDER_NOT_ENABLED",
+                                             "message": f"provider {provider_id} 状态为 {binding_provider.status}"})
+        mod = module_registry.get(a.module_key, a.module_version)
+        try:
+            impl = mod.resolve_implementation(binding_provider.kind)
+        except KeyError as exc:
+            raise HTTPException(409, detail={"code": "PROVIDER_KIND_UNSUPPORTED",
+                                             "message": str(exc)})
+        if binding_provider.contract_version != "1.0":
+            raise HTTPException(409, detail={"code": "CONTRACT_VERSION_MISMATCH",
+                                             "message": f"provider contract {binding_provider.contract_version} != 1.0"})
+        runtime_profile = (payload or {}).get("runtimeProfile") or f"{mod.key}-{mod.version}"
+        binding_snapshot = {
+            "providerId": binding_provider.id, "providerKind": binding_provider.kind,
+            "contractVersion": binding_provider.contract_version,
+            "profile": runtime_profile,
+            "module": {"key": mod.key, "version": mod.version},
+            "moduleImplementation": {"kind": binding_provider.kind,
+                                     "version": impl.get("version"),
+                                     **({"bundle": impl["bundle"]} if impl.get("bundle") else {}),
+                                     **({"entry": impl["entry"]} if impl.get("entry") else {})},
+            "inputSchemaSha256": mod.input_schema_ref["sha256"],
+            "outputSchemaSha256": mod.output_schema_ref["sha256"],
+        }
     actives = db.query(Release).filter_by(agent_id=aid, environment=env, status="active").all()
     if canary_percent > 0:
         # 灰度部署：只替换已有灰度，稳定版保持
@@ -327,8 +395,17 @@ def create_release(aid: str, payload: dict, db: Session = Depends(get_db),
         # 全量部署：同环境全部 active（含灰度）→ rolled_back
         for r in actives:
             r.status = "rolled_back"
-    rel = Release(agent_id=aid, agent_version_id=v.id, environment=env, canary_percent=canary_percent)
+    rel = Release(agent_id=aid, agent_version_id=v.id, environment=env, canary_percent=canary_percent,
+                  runtime_provider_id=binding_provider.id if binding_provider else None,
+                  runtime_profile=runtime_profile,
+                  runtime_binding_snapshot=binding_snapshot)
     db.add(rel)
+    if canary_percent == 0 and a.module_key:
+        # Module Agent 环境指针指向绑定 Release 的版本（运行期据此解析 Provider）
+        if env == "sandbox":
+            a.sandbox_version_id = v.id
+        else:
+            a.prod_version_id = v.id
     if canary_percent == 0:
         if env == "sandbox":
             a.sandbox_version_id = v.id

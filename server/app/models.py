@@ -304,7 +304,10 @@ class Agent(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(64))
-    type: Mapped[str] = mapped_column(String(16))  # autonomous|dialogue|expert-group
+    type: Mapped[str] = mapped_column(String(16))  # 历史：autonomous|dialogue|expert-group；新体系内部值 "module"（SDD 10 §5.1，仅历史读取保留）
+    # SDD 10 §5.1（R2）：领域 Module 标识；expand/contract 先可空兼容封存历史行，新 Agent 必填（应用层）
+    module_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    module_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
     description: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(16), default="draft")
     workflow_id: Mapped[str | None] = mapped_column(ForeignKey("workflow.id"), nullable=True)
