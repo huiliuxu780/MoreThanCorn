@@ -93,6 +93,7 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
         "durationMs": run.duration_ms,
         "definitionSource": run.definition_source,  # draft|version
         "versionNo": version_no,
+        "agentId": run.agent_id,  # R-Archive：前端据此隐藏旧 Agent 运行的重试入口
         "originRunId": run.origin_run_id,
         "retryChildren": retry_children,
         "nodeRuns": [{

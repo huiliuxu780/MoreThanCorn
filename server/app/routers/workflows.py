@@ -182,6 +182,18 @@ def publish_workflow(wf_id: str, note: str = "", db: Session = Depends(get_db),
     report = validate(defn)
     if not report.ok:
         raise HTTPException(409, detail=report.model_dump())
+    # R-Archive（SDD 10 R-A4）：发布校验阻止引用已封存旧 Agent 的工作流
+    from ..legacy_agent_archive import (LEGACY_ARCHIVED_CODE, LEGACY_ARCHIVED_MESSAGE,
+                                        workflow_legacy_refs)
+    refs = workflow_legacy_refs(db, wf_id)
+    if refs:
+        raise HTTPException(409, detail={
+            "ok": False, "code": LEGACY_ARCHIVED_CODE, "message": LEGACY_ARCHIVED_MESSAGE,
+            "issues": [{"code": LEGACY_ARCHIVED_CODE,
+                        "message": f"节点 {h['nodeId']}（{h['type']}）引用已封存 Agent"
+                                   f"「{h['agentName']}」，发布被阻止",
+                        "nodeId": h["nodeId"], "agentId": h["agentId"]}
+                       for h in refs]})
     version_no = (db.query(WorkflowVersion)
                   .filter_by(workflow_id=wf_id).count()) + 1
     # 07-SDD form：发布快照冻结 form 字段（与 tool 版本冻结同哲学）
@@ -204,9 +216,12 @@ def publish_workflow(wf_id: str, note: str = "", db: Session = Depends(get_db),
     db.refresh(ver)
     wf.current_version_id = ver.id
     # 发布同步（05 设计）：绑定该工作流的 Agent 状态同步为 published
+    # R-Archive：旧 Agent 已封存只读，跳过状态回写（独立 Workflow 发布不受影响）
+    from ..legacy_agent_archive import is_legacy_agent
     from ..models import Agent
     for a in db.query(Agent).filter_by(workflow_id=wf_id).all():
-        a.status = "published"
+        if not is_legacy_agent(a):
+            a.status = "published"
     from .admin import audit
     audit(db, user.get("username", "system"), "workflow.publish", "workflow", wf_id,
           {"versionNo": ver.version_no})

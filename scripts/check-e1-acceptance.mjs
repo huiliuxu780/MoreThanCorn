@@ -1,4 +1,9 @@
-/** E-1.3 手工动线 API 级核验（对 :8100 wf_dev）：A1/A2/B2/B3/D2。 */
+/** E-1.3 手工动线 API 级核验（对 :8100 wf_dev）：A1/A2/B2/B3/D2。
+ *  R-Archive（SDD 10，2026-08-28）：本脚本验收的旧 Agent 写路径（创建/保存/版本/发布/回滚）
+ *  已整体封存（410 LEGACY_AGENT_ARCHIVED），脚本退役；替代契约见 scripts/verify-fullstack.mjs S13，
+ *  原验收行为封存于 tag archive/legacy-agents-20260828。 */
+console.error("[deprecated] 旧 Agent 写路径已封存（SDD 10 R-Archive），本脚本退役不再运行。");
+process.exit(2);
 const BASE = "http://localhost:8100";
 const H = { "Content-Type": "application/json" };
 let pass = 0, fail = 0;

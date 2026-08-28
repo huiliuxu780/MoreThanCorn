@@ -1525,9 +1525,11 @@ def recover_stale_jobs(db: Session, lease_seconds: int = LEASE_SECONDS_DEFAULT) 
 
 
 def _dispatch_job(jtype: str, payload: dict) -> None:
-    if jtype == "agent-execution":  # SDD A-03：Agent 顶层运行
-        from .agent_runtime import execute_agent_job
-        execute_agent_job(payload["run_id"])
+    if jtype == "agent-execution":
+        # R-Archive（SDD 10）：旧 Agent 执行器从 worker 分派表解除注册；
+        # 历史积压任务防呆处理——Run 置失败终态，不执行、不重试。
+        from .legacy_agent_archive import fail_stale_agent_execution
+        fail_stale_agent_execution(payload.get("run_id"))
     elif jtype == "task-run":  # 09 P0-B2：任务批次（per-interaction）
         from .task_runner import execute_task_run
         execute_task_run(payload["task_run_id"])

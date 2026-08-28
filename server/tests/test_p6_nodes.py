@@ -235,13 +235,20 @@ def test_data_read_sampling_random_n():
 
 
 def test_migration_rewriter_agent_to_workflow_trio():
-    ag = client.post("/api/agents", json={"name": "P6-agent", "type": "dialogue"})
-    aid = ag.json()["id"]
-    underlying = ag.json().get("workflowId") or ag.json().get("workflow_id")
-    if not underlying:
-        from app.models import Agent
-        db = SessionLocal()
-        underlying = db.get(Agent, aid).workflow_id
+    # R-Archive：旧 Agent 不再经 API 创建，历史数据直接播种（dialogue 需绑定工作流）
+    from app.models import Agent, Workflow
+    from app.routers.workflows import _default_definition
+    db = SessionLocal()
+    try:
+        wf = Workflow(name="P6-agent-底座流")
+        wf.draft_definition = _default_definition(wf.name).model_dump(mode="json")
+        db.add(wf)
+        db.flush()
+        ag = Agent(name="P6-agent", type="dialogue", workflow_id=wf.id)
+        db.add(ag)
+        db.commit()
+        aid, underlying = ag.id, wf.id
+    finally:
         db.close()
     wid = _new_wf()
     g = client.get(f"/api/workflows/{wid}").json()

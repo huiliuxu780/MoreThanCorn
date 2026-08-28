@@ -312,6 +312,8 @@ export interface Run {
   /** E-3.2 重试谱系：上游来源与下游派生 */
   originRunId?: string
   retryChildren?: { runId: string; status: string; createdAt: string }[]
+  /** R-Archive：旧 Agent Run 标识（运行详情据此隐藏重试入口） */
+  agentId?: string
   dataWindow: { start: string; end: string; label: string }
   snapshot: {
     agentName: string

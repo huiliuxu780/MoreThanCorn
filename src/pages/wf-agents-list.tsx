@@ -1,27 +1,18 @@
-/** Agents 列表 — quickservice 复刻版（16 §8）。真 API（server/:8100）。 */
+/** Agents 列表 — quickservice 复刻版（16 §8）。真 API（server/:8100）。
+ *  R-Archive（SDD 10）：旧三类 Agent 已只读封存——创建/复制/归档/删除入口移除，
+ *  仅保留历史查看；列表徽标文案改为「已封存」。 */
 import { useCallback, useEffect, useState } from "react"
 import { useListQuery } from "@/hooks/use-list-query"
 import { Pagination } from "@/components/app/pagination"
-import { agentApi, pagedApi } from "@/services/wf-api"
-import { rbac } from "@/services/rbac"
-import { toast } from "sonner"
+import { pagedApi } from "@/services/wf-api"
 import { useNavigate } from "react-router-dom"
-import { MoreHorizontal, Plus, Search } from "lucide-react"
+import { MoreHorizontal, Search } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ConfirmDeleteDialog } from "@/components/resources/resource-dialogs"
 
 export const AVATARS = Array.from({ length: 20 }, (_, i) => `/avatars/avatar-${i}.png`)
 
@@ -33,12 +24,6 @@ export function avatarFor(id: string, avatar?: string | null) {
 const INK2 = "#5A6472"
 const INK3 = "#B9C2CF"
 const ORANGE = "#F97E2B"
-
-const TYPES = [
-  { key: "autonomous", label: "自主规划 Agent", desc: "Agent具备自主思考与任务规划执行能力，适用于较为宽泛的会话场景" },
-  { key: "dialogue", label: "对话编排 Agent", desc: "Agent严格按照人工编排的工作流进行对话，适用于较为严谨的会话场景" },
-  { key: "expert-group", label: "编排 Agent 专家组", desc: "Agent专家组根据人工编排的流程进行协作，适用于稳定且复杂的业务流程" },
-]
 
 interface AgentRow {
   id: string; name: string; type: string; typeLabel: string; status: string; updatedAt: string; description?: string; avatar?: string | null;
@@ -53,48 +38,10 @@ export default function WfAgentsListPage() {
   const [rows, setRows] = useState<AgentRow[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [open, setOpen] = useState(false)
-  const [name, setName] = useState("")
-  const [atype, setAtype] = useState("dialogue")
-  const [creating, setCreating] = useState(false)
-  const [delTarget, setDelTarget] = useState<AgentRow | null>(null)
-  // 筛选接真（此前是假按钮）：排序 + 类型过滤 + 归档过滤（E-2.1）
+  // 筛选接真：排序 + 类型过滤 + 封存过滤（历史查看入口）
   const [sort, setSort] = useState<"updated" | "name">("updated")
   const [typeFilter, setTypeFilter] = useState("all")
   const [archivedFilter, setArchivedFilter] = useState<"" | "true">("")
-
-  const onDuplicate = async (w: AgentRow) => {
-    try {
-      const d = await agentApi.duplicate(w.id)
-      toast.success(`已创建副本「${d.name}」`)
-      load()
-    } catch (e) {
-      toast.error((e as Error).message.replace(/^\d+:\s*/, "").replace(/^"|"$/g, "") || "复制失败")
-    }
-  }
-
-  const onArchive = async (w: AgentRow) => {
-    try {
-      await agentApi.setArchived(w.id, !w.archived)
-      toast.success(w.archived ? `已恢复「${w.name}」` : `已归档「${w.name}」`)
-      load()
-    } catch (e) {
-      toast.error((e as Error).message.replace(/^\d+:\s*/, "").replace(/^"|"$/g, "") || "操作失败")
-    }
-  }
-
-  const confirmDelete = async () => {
-    if (!delTarget) return
-    try {
-      await agentApi.del(delTarget.id)
-      toast.success(`已删除「${delTarget.name}」`)
-      load()
-    } catch (e) {
-      toast.error((e as Error).message.replace(/^\d+:\s*/, "").replace(/^"|"$/g, "") || "删除失败")
-    } finally {
-      setDelTarget(null)
-    }
-  }
 
   const load = useCallback(() => {
     setLoading(true)
@@ -104,17 +51,6 @@ export default function WfAgentsListPage() {
   }, [params.page, params.pageSize, search, archivedFilter])
   useEffect(() => { load() }, [load])
 
-  const onCreate = async () => {
-    if (!name.trim()) return
-    setCreating(true)
-    try {
-      const a = await agentApi.create({ name: name.trim(), type: atype, description: "" })
-      setOpen(false)
-      navigate(`/config/agents/${a.id}`)
-    } finally {
-      setCreating(false)
-    }
-  }
   const filtered = rows
     .filter((r) => !search || r.name.toLowerCase().includes(search.toLowerCase()))
     .filter((r) => typeFilter === "all" || r.type === typeFilter)
@@ -127,7 +63,7 @@ export default function WfAgentsListPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-baseline gap-4">
           <h1 className="text-lg font-semibold" style={{ color: "#1F2329" }}>我的Agent</h1>
-          <span className="text-sm" style={{ color: INK2 }}>我的模板</span>
+          <span className="text-sm" style={{ color: INK2 }}>旧版 Agent 已封存，仅支持历史查询</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -154,12 +90,9 @@ export default function WfAgentsListPage() {
             <SelectTrigger className="h-8 w-32 bg-white text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="active">使用中</SelectItem>
-              <SelectItem value="archived">已归档</SelectItem>
+              <SelectItem value="archived">已封存</SelectItem>
             </SelectContent>
           </Select>
-          <Button size="sm" className="h-8 rounded-md bg-black text-white hover:bg-neutral-800" onClick={() => setOpen(true)}>
-            <Plus className="size-4" /> 创建Agent
-          </Button>
         </div>
       </div>
 
@@ -179,7 +112,7 @@ export default function WfAgentsListPage() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <div className="truncate text-[15px] font-semibold" style={{ color: "#1F2329" }}>{w.name}</div>
-                  {w.archived && <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">已归档</span>}
+                  <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">已封存</span>
                 </div>
                 <span className="mt-1 inline-block rounded bg-neutral-100 px-1.5 py-0.5 text-[11px]" style={{ color: INK2 }}>{w.typeLabel}</span>
               </div>
@@ -192,16 +125,6 @@ export default function WfAgentsListPage() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                   <DropdownMenuItem onClick={() => navigate(`/config/agents/${w.id}`)}>查看详情</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate(`/config/agents/${w.id}`)}>编辑</DropdownMenuItem>
-                  {rbac.can("agent.edit") && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => onDuplicate(w)}>复制</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onArchive(w)}>{w.archived ? "恢复" : "归档"}</DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive" onClick={() => setDelTarget(w)}>删除</DropdownMenuItem>
-                    </>
-                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -228,33 +151,10 @@ export default function WfAgentsListPage() {
         ))}
       </div>
       {!loading && filtered.length === 0 && (
-        <div className="py-20 text-center text-sm" style={{ color: INK3 }}>暂无 Agent，点击"创建Agent"开始</div>
+        <div className="py-20 text-center text-sm" style={{ color: INK3 }}>暂无历史 Agent；旧三类 Agent 已封存，仅支持历史查询</div>
       )}
       <Pagination page={params.page ?? 1} pageSize={params.pageSize ?? 12} total={total}
         pageSizeOptions={[12, 24, 48]} onPageChange={(pg) => update({ page: pg })} onPageSizeChange={(n) => update({ pageSize: n }, true)} />
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="rounded-xl">
-          <DialogHeader><DialogTitle>创建Agent</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div className="grid grid-cols-1 gap-2">
-              {TYPES.map((t) => (
-                <button key={t.key} className={`rounded-lg border p-2 text-left ${atype === t.key ? "border-neutral-800" : ""}`} style={{ borderColor: atype === t.key ? undefined : "#EDF0F4" }} onClick={() => setAtype(t.key)}>
-                  <div className="text-sm font-medium" style={{ color: "#1F2329" }}>{t.label}</div>
-                  <div className="pt-0.5 text-[11px]" style={{ color: INK3 }}>{t.desc}</div>
-                </button>
-              ))}
-            </div>
-            <Input placeholder="名称（必填）" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>取消</Button>
-            <Button className="bg-black text-white hover:bg-neutral-800" disabled={creating || !name.trim()} onClick={onCreate}>创建</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <ConfirmDeleteDialog open={!!delTarget} name={delTarget?.name ?? ""} onConfirm={confirmDelete} onClose={() => setDelTarget(null)} />
     </div>
   )
 }

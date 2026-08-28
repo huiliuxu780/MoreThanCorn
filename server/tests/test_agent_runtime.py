@@ -1,105 +1,50 @@
-"""Agent 运行层（05 设计）验收：三型运行 / 挂载消费 / 护栏 / 发布同步 / mounts-health。
-SDD A-03 后顶层运行异步执行：统一用 wait_terminal 等待终态。"""
-import json
-import time
+"""R-Archive：旧 Agent 运行层封存后的存活契约。
 
+原"三型运行/挂载消费/护栏/发布同步"行为已整体封存（tag archive/legacy-agents-20260828，
+行为规格见 docs/archive/legacy-agents/manifest.md），本文件只保留仍有效的运行层契约；
+封存矩阵全量用例见 test_legacy_agent_archive.py。
+"""
 from fastapi.testclient import TestClient
 
+from app.db import SessionLocal
 from app.main import app
-from app.runner import start_worker
+from app.models import JobQueue, Run
+from tests._legacy_agents import seed_agent, uniq
 
 client = TestClient(app)
-start_worker()  # 确保独立运行本文件时也有 worker（重复启动无害）
 
 
-def wait_terminal(agent_id: str, run_id: str, timeout: float = 30.0) -> dict:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        d = client.get(f"/api/agents/{agent_id}/runs/{run_id}").json()
-        if d["status"] in ("succeeded", "failed", "cancelled"):
-            return d
-        time.sleep(0.2)
-    raise AssertionError(f"run {run_id} 未在 {timeout}s 内到达终态：{d['status']}")
+def test_run_agent_entry_blocked_no_job_no_run():
+    """运行入口 410；不创建 Run、不入队 agent-execution。"""
+    a = seed_agent(config={"rolePrompt": "x", "modelRef": {"modelId": ""}})
+    db = SessionLocal()
+    try:
+        jobs_before = db.query(JobQueue).filter_by(type="agent-execution").count()
+    finally:
+        db.close()
+    r = client.post(f"/api/agents/{a['id']}/run", json={"input": {"userQuery": "hi"}})
+    assert r.status_code == 410, r.text
+    assert r.json()["code"] == "LEGACY_AGENT_ARCHIVED"
+    db = SessionLocal()
+    try:
+        assert db.query(Run).filter_by(agent_id=a["id"]).count() == 0
+        assert db.query(JobQueue).filter_by(type="agent-execution").count() == jobs_before
+    finally:
+        db.close()
 
 
-def _create_agent(name, atype, config=None):
-    r = client.post("/api/agents", json={"name": name, "type": atype, "config": config or {}})
-    assert r.status_code == 201, r.text
-    return r.json()
-
-
-def test_autonomous_run_with_tool_mount():
-    tool = client.post("/api/tools", json={"name": "echo-tool-rt", "kind": "builtin",
+def test_mounts_health_read_semantics_preserved():
+    """历史挂载体检（mounts-health）保持只读可用，失效项照实标记。"""
+    tool = client.post("/api/tools", json={"name": uniq("echo-arch"), "kind": "builtin",
                                            "spec": {"kind": "echo"}}).json()
-    a = _create_agent("autonomous-rt", "autonomous", {
-        "rolePrompt": "# 角色：测试", "modelRef": {"modelId": "qwen-plus"},
-        "skills": ["技能A"], "tools": ["echo-tool-rt", "ghost-tool"], "workflows": [], "knowledges": []})
-    r = client.post(f"/api/agents/{a['id']}/run", json={"input": {"userQuery": "你好"}})
-    assert r.status_code == 202, r.text
-    run_id = r.json()["runId"]
-    d = wait_terminal(a["id"], run_id)
-    assert d["status"] == "succeeded", d
-    types = [e["type"] for e in d["events"]]
-    assert "agent_started" in types and "agent_completed" in types
-    # mock LLM 首轮触发挂载工具调用，验证 function-call 循环
-    assert "tool_call" in types and "tool_result" in types
-    assert d["output"]["content"]
-
-
-def test_mounts_health():
-    a = _create_agent("mounts-rt", "autonomous", {
-        "rolePrompt": "", "modelRef": {"modelId": ""}, "skills": ["s1"],
-        "tools": ["echo-tool-rt", "ghost-tool"], "workflows": ["不存在的流"], "knowledges": []})
+    a = seed_agent(config={"skills": ["s1"], "tools": [tool["name"], "ghost-tool"],
+                           "workflows": ["不存在的流"], "knowledges": []})
     items = client.get(f"/api/agents/{a['id']}/mounts-health").json()["items"]
     by = {(i["kind"], i["name"]): i["valid"] for i in items}
-    assert by[("tool", "echo-tool-rt")] is True
+    assert by[("tool", tool["name"])] is True
     assert by[("tool", "ghost-tool")] is False
     assert by[("workflow", "不存在的流")] is False
     assert by[("skill", "s1")] is True
-
-
-def test_expert_group_run_with_agent_exec():
-    member = _create_agent("member-dialogue-rt", "dialogue")
-    eg = _create_agent("expert-rt", "expert-group")
-    wf_id = eg["workflowId"]
-    det = client.get(f"/api/workflows/{wf_id}").json()
-    defn = det["definition"]
-    defn["graph"]["nodes"] = [
-        {"id": "s", "type": "input", "name": "开始", "config": {}, "inputs": []},
-        {"id": "sel", "type": "agent-select", "name": "Agent选择",
-         "config": {"primaryAgents": [member["id"]], "fallbackAgent": member["id"]}, "inputs": []},
-        {"id": "ex", "type": "agent-exec", "name": "Agent执行",
-         "config": {}, "inputs": [
-             {"name": "agentCode", "type": "string",
-              "source": {"kind": "upstream", "nodeId": "sel", "path": "outputs.agentCode"}}]},
-        {"id": "e", "type": "end", "name": "结束", "config": {"outputKey": "quality_result"},
-         "inputs": [{"name": "output", "type": "string",
-                     "source": {"kind": "upstream", "nodeId": "ex", "path": "outputs.content"}}]},
-    ]
-    defn["graph"]["edges"] = [
-        {"id": "e1", "source": "s", "target": "sel"},
-        {"id": "e2", "source": "sel", "target": "ex"},
-        {"id": "e3", "source": "ex", "target": "e"},
-    ]
-    sv = client.put(f"/api/workflows/{wf_id}/draft",
-                    json={"definition": defn, "baseRevision": det["draftRevision"]})
-    assert sv.status_code == 200, sv.text
-    r = client.post(f"/api/agents/{eg['id']}/run", json={"input": {"userQuery": "hi"}})
-    assert r.status_code == 202, r.text
-    d = wait_terminal(eg["id"], r.json()["runId"])
-    assert d["status"] == "succeeded", d
-    # 成员 dialogue 产生独立 Run（agent_id=member）
-    member_runs = client.get(f"/api/agents/{member['id']}/runs").json()["items"]
-    assert len(member_runs) >= 1
-
-
-def test_publish_syncs_agent_status():
-    a = _create_agent("pub-sync-rt", "dialogue")
-    assert a["workflowId"]
-    p = client.post(f"/api/workflows/{a['workflowId']}/publish?note=rt")
-    assert p.status_code == 201, p.text
-    g = client.get(f"/api/agents/{a['id']}").json()
-    assert g["status"] == "published"
 
 
 def test_run_unknown_agent_404():

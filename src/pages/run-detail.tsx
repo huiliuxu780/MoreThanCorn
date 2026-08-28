@@ -135,7 +135,7 @@ export default function RunDetailPage() {
               ) : run.status === "FAILED" || run.status === "PARTIAL_SUCCESS" ? (
                 <Button variant="outline" size="sm" onClick={() => setRerunOpen(true)}>重新运行</Button>
               ) : null}
-                  {run?.status === "FAILED" && (
+                  {run?.status === "FAILED" && !run?.agentId && (
                     <Button variant="outline" size="sm" className="gap-1" onClick={async () => {
                       try { await runRetry(runId); toast.success("已创建重试 Run"); retry() }
                       catch { toast.error("重试失败") }

@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import CodeMirror from "@uiw/react-codemirror"
 import { python } from "@codemirror/lang-python"
-import { AgentPublishDialog, useAgentVersionState } from "@/components/agent-publish-dialog"
+import { useAgentVersionState } from "@/components/agent-publish-dialog"
 import { AgentVersionDiffDialog } from "@/components/agent-version-diff"
 import { avatarFor, AVATARS } from "./wf-agents-list"
 import { WORKFLOW_ICONS, WfIcon } from "@/components/wf/wf-icons"
@@ -1555,8 +1555,9 @@ function KnowledgeFallbackPicker({ ids, onChange }: { ids: string[]; onChange: (
   )
 }
 
-/* SDD D-1：专家组成员池选择器（排除自身；供 Agent选择/执行节点联动） */
-function MemberPoolPicker({ ids, onChange, selfId }: { ids: string[]; onChange: (v: string[]) => void; selfId: string }) {
+/* SDD D-1：专家组成员池选择器（排除自身；供 Agent选择/执行节点联动）
+ * R-Archive：readOnly 时只展示成员清单，隐藏添加/移除。 */
+function MemberPoolPicker({ ids, onChange, selfId, readOnly = false }: { ids: string[]; onChange: (v: string[]) => void; selfId: string; readOnly?: boolean }) {
   const [all, setAll] = useState<{ id: string; name: string }[]>([])
   const [open, setOpen] = useState(false)
   useEffect(() => {
@@ -1567,7 +1568,9 @@ function MemberPoolPicker({ ids, onChange, selfId }: { ids: string[]; onChange: 
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-[13px] font-medium" style={{ color: C.ink }}>| 成员 Agent</span>
-        <button className="text-xs" style={{ color: C.primary }} onClick={() => setOpen(!open)}>{open ? "收起" : "添加成员"}</button>
+        {!readOnly && (
+          <button className="text-xs" style={{ color: C.primary }} onClick={() => setOpen(!open)}>{open ? "收起" : "添加成员"}</button>
+        )}
       </div>
       {ids.length === 0 && !open && (
         <p className="text-[11px]" style={{ color: C.ink3 }}>添加后，画布中「Agent选择/执行」节点可从成员池选择。</p>
@@ -1575,7 +1578,7 @@ function MemberPoolPicker({ ids, onChange, selfId }: { ids: string[]; onChange: 
       {ids.map((id) => (
         <div key={id} className="flex items-center gap-1 text-xs">
           <span className="flex-1 truncate rounded border px-1 py-0.5" style={{ borderColor: C.cardBorder }}>{nameOf(id)}</span>
-          <button onClick={() => onChange(ids.filter((x) => x !== id))}><X className="size-3 text-neutral-400" /></button>
+          {!readOnly && <button onClick={() => onChange(ids.filter((x) => x !== id))}><X className="size-3 text-neutral-400" /></button>}
         </div>
       ))}
       {open && (
@@ -1594,8 +1597,7 @@ function MemberPoolPicker({ ids, onChange, selfId }: { ids: string[]; onChange: 
   )
 }
 
-function AgentConfigDrawer({ agentId, inline, avatar, onAvatar, onClose }: { agentId: string; onClose?: () => void; inline?: boolean; avatar?: string; onAvatar?: (v: string) => void }) {
-  const [avatarOpen, setAvatarOpen] = useState(false)
+function AgentConfigDrawer({ agentId, inline, avatar, onClose, readOnly = false }: { agentId: string; onClose?: () => void; inline?: boolean; avatar?: string; readOnly?: boolean }) {
   const [collapsed, setCollapsed] = useState(false)
   const [agent, setAgent] = useState<{ name: string; description: string; config: NodeCfgLoose; workflowId?: string | null; configRevision: number; avatar?: string | null; type?: string } | null>(null)
   useEffect(() => {
@@ -1604,18 +1606,7 @@ function AgentConfigDrawer({ agentId, inline, avatar, onAvatar, onClose }: { age
   if (!agent) return null
   const cfg = agent.config ?? {}
   const setCfg = (k: string, v: unknown) => setAgent({ ...agent, config: { ...cfg, [k]: v } })
-  const save = async () => {
-    try {
-      const r = await agentApi.update(agentId, { config: cfg, workflowId: agent.workflowId, name: agent.name, description: agent.description }, agent.configRevision)
-      setAgent({ ...agent, config: r.config, configRevision: r.configRevision })
-      toast.success("Agent 配置已保存")
-    } catch (e) {
-      if (String((e as Error).message).startsWith("409")) {
-        toast.error("配置已被更新，请刷新后重试")
-        agentApi.get(agentId).then(setAgent)
-      } else toast.error((e as Error).message)
-    }
-  }
+  /* R-Archive：本抽屉仅在旧 Agent 页挂载（readOnly），保存/头像编辑已移除 */
   if (collapsed) {
     return (
       <div className="flex h-full w-10 shrink-0 flex-col items-center border-r bg-white py-2" style={{ borderColor: C.cardBorder }}>
@@ -1642,61 +1633,42 @@ function AgentConfigDrawer({ agentId, inline, avatar, onAvatar, onClose }: { age
           <div className="flex items-start gap-3">
             <div className="flex-1 space-y-3">
               <div className="relative">
-                <Input value={agent.name} maxLength={20} placeholder="请输入Agent名称" className="pr-12"
+                <Input value={agent.name} maxLength={20} placeholder="请输入Agent名称" className="pr-12" readOnly={readOnly}
                   onChange={(e) => setAgent({ ...agent, name: e.target.value })} />
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px]" style={{ color: C.ink3 }}>{agent.name.length}/20</span>
               </div>
               <div className="relative">
-                <Textarea value={agent.description} maxLength={20000} placeholder="请输入该Agent描述介绍文案（仅在管理平台展示）" className="min-h-24 pb-6"
+                <Textarea value={agent.description} maxLength={20000} placeholder="请输入该Agent描述介绍文案（仅在管理平台展示）" className="min-h-24 pb-6" readOnly={readOnly}
                   onChange={(e) => setAgent({ ...agent, description: e.target.value })} />
                 <span className="absolute bottom-2 right-2 text-[11px]" style={{ color: C.ink3 }}>{(agent.description ?? "").length}/20000</span>
               </div>
             </div>
-            <button className="shrink-0 overflow-hidden rounded-lg border bg-white p-1" style={{ borderColor: C.cardBorder }} title="选择头像"
-              onClick={() => setAvatarOpen(true)}>
+            <button className="shrink-0 overflow-hidden rounded-lg border bg-white p-1" style={{ borderColor: C.cardBorder }} title="头像"
+              disabled>
               {/* 头像优先级：本次会话新选 > 已保存头像 > 按 id 哈希回落（与列表/头部一致） */}
               <img src={avatar ?? avatarFor(agentId ?? "", agent.avatar)} alt="agent头像" className="size-24 rounded-md object-cover" />
             </button>
-            <Dialog open={avatarOpen} onOpenChange={setAvatarOpen}>
-              <DialogContent className="max-w-2xl">
-                <DialogHeader><DialogTitle>推荐头像</DialogTitle></DialogHeader>
-                <div className="text-xs" style={{ color: C.ink2 }}>推荐图形</div>
-                <div className="grid grid-cols-6 gap-3 pt-2">
-                  {Array.from({ length: 20 }, (_, i) => `/avatars/avatar-${i}.png`).map((src) => (
-                    <button key={src} className={`overflow-hidden rounded-lg ${avatar === src ? "ring-2 ring-primary" : ""}`}
-                      onClick={() => { onAvatar?.(src); setAvatarOpen(false) }}>
-                      <img src={src} alt="头像" className="size-full object-cover" />
-                    </button>
-                  ))}
-                </div>
-                <div className="pt-3 text-xs" style={{ color: C.ink2 }}>自定义上传</div>
-                <input type="file" accept="image/*" className="pt-1 text-xs"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0]
-                    if (!f) return
-                    const r = new FileReader()
-                    r.onload = () => { onAvatar?.(String(r.result)); setAvatarOpen(false) }
-                    r.readAsDataURL(f)
-                  }} />
-              </DialogContent>
-            </Dialog>
           </div>
         </div>
         {/* A-10 门面已删除；Phase B：结构化记忆 Schema + 对话体验真实现 */}
         <KnowledgeFallbackPicker ids={cfg.knowledges ?? []} onChange={(v) => setCfg("knowledges", v)} />
         {/* SDD D-1：专家组成员池（画布 Agent选择/执行节点从这里取候选） */}
         {agent.type === "expert-group" && (
-          <MemberPoolPicker ids={(cfg.members ?? []) as string[]} onChange={(v) => setCfg("members", v)} selfId={agentId} />
+          <MemberPoolPicker ids={(cfg.members ?? []) as string[]} onChange={(v) => setCfg("members", v)} selfId={agentId} readOnly={readOnly} />
         )}
         <div className="space-y-2">
           <span className="text-[13px] font-medium" style={{ color: C.ink }}>| Agent 记忆</span>
-          <MemorySchemaForm memories={cfg.memoriesSchema ?? []} onChange={(v) => setCfg("memoriesSchema", v)} />
+          <MemorySchemaForm memories={cfg.memoriesSchema ?? []} onChange={(v) => setCfg("memoriesSchema", v)} readOnly={readOnly} />
         </div>
         <div className="space-y-2">
           <span className="text-[13px] font-medium" style={{ color: C.ink }}>| 对话体验</span>
-          <ConversationPanel cfg={cfg} setCfg={(v) => setAgent({ ...agent, config: v })} />
+          <ConversationPanel cfg={cfg} setCfg={(v) => setAgent({ ...agent, config: v })} readOnly={readOnly} />
         </div>
-        <Button size="sm" className="bg-black text-white hover:bg-neutral-800" onClick={save}>保存配置</Button>
+        {readOnly && (
+          <div className="rounded bg-amber-50 px-3 py-2 text-xs text-amber-600">
+            该旧版 Agent 已封存，仅支持历史查询；配置编辑不再开放。
+          </div>
+        )}
       </div>
     </div>
   )
@@ -1840,7 +1812,9 @@ function RunsDrawer({ workflowId, lastRunId, onClose }: { workflowId: string; la
 }
 
 /* ============ 主页面 ============ */
-function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avatar }: { workflowId?: string; agentId?: string; agentMeta?: { name: string; typeLabel: string; agentType?: string }; avatar?: string }) {
+function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avatar, readOnly = false }: { workflowId?: string; agentId?: string; agentMeta?: { name: string; typeLabel: string; agentType?: string }; avatar?: string; readOnly?: boolean }) {
+  /* readOnly（R-Archive，SDD 10）：旧 Agent 绑定的画布只读——隐藏保存/发布/试运行/
+     定时任务/节点面板与编辑锁，禁止连线与拖放加节点；仅保留查看。 */
   const params = useParams()
   const workflowId = wfProp ?? params.agentId ?? ""
   const agentId = agentProp ?? ""
@@ -1866,7 +1840,6 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const [metaIcon, setMetaIcon] = useState<string | null>(null)
   const [lastRunId, setLastRunId] = useState<string | null>(null)
   const [publishOpen, setPublishOpen] = useState(false)
-  const [agentPublishOpen, setAgentPublishOpen] = useState(false)
   /* E-4.3：节点单测（⋯菜单 → 填 mock 输入 → 后端执行单节点，不落 Run） */
   const [testNodeId, setTestNodeId] = useState<string | null>(null)
   const [testInput, setTestInput] = useState("{}")
@@ -1909,7 +1882,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   /* bugfix：v12 MiniMap 读用户节点对象的 measured；受控模式下测量结果经
      onNodesChange 的 dimensions 事件下发，此前被丢弃导致小地图全空 */
   const [nodeDims, setNodeDims] = useState<Record<string, { width: number; height: number }>>({})
-  const [agentAvatar, setAgentAvatar] = useState<string | undefined>(undefined)
+  const [agentAvatar] = useState<string | undefined>(undefined)
   const historyRef = useRef<WfDefinition[]>([])
   const pointerRef = useRef(-1)
   const wsIdRef = useRef(Math.random().toString(36).slice(2, 8))
@@ -1921,12 +1894,13 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const lockResourceId = agentMeta && agentId ? `agent:${agentId}` : workflowId
   const [lockByOther, setLockByOther] = useState(false)
   useEffect(() => {
+    if (readOnly && agentMeta) return  // R-Archive：封存画布不取编辑锁
     const wsId = wsIdRef.current
     lockApi.acquire(lockResourceId, wsId, "质量管理员")
       .then((r) => { setLockUser(r.user ?? ""); setLockByOther(!!r.lockedByOther) })
       .catch(() => undefined)
     return () => { lockApi.release(lockResourceId, wsId).catch(() => undefined) }
-  }, [lockResourceId])
+  }, [lockResourceId, readOnly, agentMeta])
 
   useEffect(() => {
     let alive = true
@@ -2141,6 +2115,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
   const selected = def.graph.nodes.find((n) => n.id === selectedId) ?? null
 
   const onConnect = (conn: { source: string | null; target: string | null; sourceHandle?: string | null }) => {
+    if (readOnly) return  // R-Archive：封存画布禁止改图
     if (!conn.source || !conn.target) return
     const sh = conn.sourceHandle ?? undefined
     if (def.graph.edges.some((e) => e.source === conn.source && e.target === conn.target && (e.sourceHandle ?? undefined) === sh)) {
@@ -2263,6 +2238,9 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
             </span>
             {agentMeta && (
               <span className="rounded px-1.5 py-0.5 text-[11px]" style={{ background: "#F1F3F7", color: C.ink2 }}>{agentMeta.typeLabel}</span>
+            )}
+            {readOnly && agentMeta && (
+              <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-600">已封存 · 只读</span>
             )}
           </div>
           <div className="text-[11px]" style={{ color: C.ink3 }}>
@@ -2395,11 +2373,13 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
               <ListChecks className="size-4" style={{ color: C.ink2 }} />
             </button>
           )}
-          <button className="rounded p-1.5 hover:bg-neutral-100" title="定时任务"
-            onClick={() => setDrawer("schedule")}>
-            <CalendarDays className="size-4" style={{ color: C.ink2 }} />
-          </button>
-          {lockUser && (
+          {!readOnly && (
+            <button className="rounded p-1.5 hover:bg-neutral-100" title="定时任务"
+              onClick={() => setDrawer("schedule")}>
+              <CalendarDays className="size-4" style={{ color: C.ink2 }} />
+            </button>
+          )}
+          {!readOnly && lockUser && (
             <span className="flex items-center gap-1 text-xs" style={{ color: lockByOther ? "#D97706" : C.ink2 }}>
               {lockByOther ? `${lockUser} 编辑中` : lockUser} <LockKeyhole className="size-3.5" style={{ color: lockByOther ? "#D97706" : "#34C759" }} />
               {lockByOther && rbac.can("admin.force-unlock") && (
@@ -2411,10 +2391,12 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
               )}
             </span>
           )}
-          <Button variant="outline" size="sm" className="rounded-md" onClick={() => doSave(defRef.current!)}>保存</Button>
-          <Button size="sm" className="rounded-md bg-black text-white hover:bg-neutral-800"
-            disabled={!rbacCanPublish} title={rbacCanPublish ? "" : "当前角色无发布权限（需 Publisher 及以上）"}
-            onClick={() => (agentMeta && agentId ? setAgentPublishOpen(true) : (issues.length ? setPublishOpen(true) : onPublish()))}>发布</Button>
+          {!readOnly && <Button variant="outline" size="sm" className="rounded-md" onClick={() => doSave(defRef.current!)}>保存</Button>}
+          {!readOnly && (
+            <Button size="sm" className="rounded-md bg-black text-white hover:bg-neutral-800"
+              disabled={!rbacCanPublish} title={rbacCanPublish ? "" : "当前角色无发布权限（需 Publisher 及以上）"}
+              onClick={() => (issues.length ? setPublishOpen(true) : onPublish())}>发布</Button>
+          )}
         </div>
       </div>
 
@@ -2432,9 +2414,12 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
         <EvalPanel workflowId={workflowId} onClose={() => setDrawer(null)} />
       ))}
       {drawer === "evo" && <EvoPanel workflowId={workflowId} onClose={() => setDrawer(null)} />}
-      {agentMeta && agentId && <AgentConfigDrawer agentId={agentId} onClose={() => undefined} inline avatar={agentAvatar} onAvatar={(v) => { setAgentAvatar(v); agentApi.update(agentId, { avatar: v }).catch(() => undefined) }} />}
-      <NodePalette families={families} onAdd={addNode} open={paletteOpen}
-        onToggle={() => setPaletteOpen((v) => { localStorage.setItem("wf-palette-open", v ? "0" : "1"); return !v })} />
+      {agentMeta && agentId && (
+        <AgentConfigDrawer agentId={agentId} onClose={() => undefined} inline readOnly
+          avatar={agentAvatar} />
+      )}
+      {!readOnly && <NodePalette families={families} onAdd={addNode} open={paletteOpen}
+        onToggle={() => setPaletteOpen((v) => { localStorage.setItem("wf-palette-open", v ? "0" : "1"); return !v })} />}
       <div className="relative flex-1">
         <ReactFlow
           nodes={nodes} edges={edges} nodeTypes={nodeTypes}
@@ -2459,6 +2444,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
           onReconnect={onReconnect}
           onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move" }}
           onDrop={(e) => {
+            if (readOnly) return  // R-Archive：封存画布禁止拖放加节点
             const t = e.dataTransfer.getData("application/wf-node")
             if (!t) return
             e.preventDefault()
@@ -2488,19 +2474,27 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
         </Panel>
         {/* 底部工具条（16 §4） */}
         <div className="absolute bottom-4 left-1/2 z-10 flex max-w-[95%] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-lg border bg-white px-2 py-1.5 shadow-sm" style={{ borderColor: C.cardBorder }}>
-          <button className="rounded p-1.5 hover:bg-neutral-100" title="节点面板开关"
-            onClick={() => setPaletteOpen((v) => { localStorage.setItem("wf-palette-open", v ? "0" : "1"); return !v })}>
-            {paletteOpen ? <PanelLeftClose className="size-4" style={{ color: C.ink2 }} /> : <PanelLeftOpen className="size-4" style={{ color: C.primary }} />}
-          </button>
-          <span className="mx-1 h-4 w-px bg-neutral-200" />
-          <button className="rounded p-1.5 hover:bg-neutral-100" title="撤销 (⌘Z)" onClick={undo}><Undo2 className="size-4" style={{ color: C.ink2 }} /></button>
-          <button className="rounded p-1.5 hover:bg-neutral-100" title="重做 (⌘⇧Z)" onClick={redo}><Redo2 className="size-4" style={{ color: C.ink2 }} /></button>
+          {!readOnly && (
+            <button className="rounded p-1.5 hover:bg-neutral-100" title="节点面板开关"
+              onClick={() => setPaletteOpen((v) => { localStorage.setItem("wf-palette-open", v ? "0" : "1"); return !v })}>
+              {paletteOpen ? <PanelLeftClose className="size-4" style={{ color: C.ink2 }} /> : <PanelLeftOpen className="size-4" style={{ color: C.primary }} />}
+            </button>
+          )}
+          {!readOnly && <span className="mx-1 h-4 w-px bg-neutral-200" />}
+          {!readOnly && (
+            <button className="rounded p-1.5 hover:bg-neutral-100" title="撤销 (⌘Z)" onClick={undo}><Undo2 className="size-4" style={{ color: C.ink2 }} /></button>
+          )}
+          {!readOnly && (
+            <button className="rounded p-1.5 hover:bg-neutral-100" title="重做 (⌘⇧Z)" onClick={redo}><Redo2 className="size-4" style={{ color: C.ink2 }} /></button>
+          )}
           <button className="rounded p-1.5 hover:bg-neutral-100" title="缩略图" onClick={() => setShowMiniMap((v) => !v)}>
             <MapIcon className="size-4" style={{ color: showMiniMap ? C.primary : C.ink2 }} />
           </button>
-          <button className="rounded p-1.5 hover:bg-neutral-100" title="优化布局" onClick={autoLayout}>
-            <LayoutTemplate className="size-4" style={{ color: C.ink2 }} />
-          </button>
+          {!readOnly && (
+            <button className="rounded p-1.5 hover:bg-neutral-100" title="优化布局" onClick={autoLayout}>
+              <LayoutTemplate className="size-4" style={{ color: C.ink2 }} />
+            </button>
+          )}
           <button className="rounded p-1.5 hover:bg-neutral-100" title="适应画布" onClick={() => rf.fitView()}>
             <Crosshair className="size-4" style={{ color: C.ink2 }} />
           </button>
@@ -2522,9 +2516,11 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
               }} />
             </PopoverContent>
           </Popover>
-          <Button size="sm" className="rounded-md" style={{ background: C.primary }} disabled={running} onClick={tryRun}>
-            {running ? <span className="size-3 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Play className="size-3.5" />} {running ? "运行中" : "试运行"}
-          </Button>
+          {!readOnly && (
+            <Button size="sm" className="rounded-md" style={{ background: C.primary }} disabled={running} onClick={tryRun}>
+              {running ? <span className="size-3 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Play className="size-3.5" />} {running ? "运行中" : "试运行"}
+            </Button>
+          )}
         </div>
 
         {/* 抽屉层 */}
@@ -2575,11 +2571,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
                       {rels.filter((r) => r.canaryPercent > 0).map((r) => (
                         <div key={r.releaseId} className="flex items-center justify-between pt-1">
                           <span className="rounded bg-purple-50 px-1 py-0.5 text-[10px] text-purple-600">灰度 {r.canaryPercent}%（{r.environment === "prod" ? "线上" : "沙箱"}）</span>
-                          <button className="text-[10px] underline" style={{ color: "#DC2626" }} onClick={async () => {
-                            await agentApi.stopCanary(agentId, r.releaseId)
-                            toast.success("已停止灰度，流量回到稳定版本")
-                            setAgentReleases(await agentApi.releases(agentId).catch(() => []))
-                          }}>停止灰度</button>
+                          {/* R-Archive：停止灰度为写操作，已封存 */}
                         </div>
                       ))}
                       <div className="pt-0.5 text-[10px]" style={{ color: C.ink3 }}>
@@ -2627,11 +2619,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
         </DialogContent>
       </Dialog>
 
-      {/* SDD B：Agent 级发布（生成不可变版本 → 沙箱/线上部署；回滚=重新部署旧版本） */}
-      {agentMeta && agentId && (
-        <AgentPublishDialog agentId={agentId} open={agentPublishOpen} onClose={() => setAgentPublishOpen(false)}
-          onPublished={agentVersionState.refresh} />
-      )}
+      {/* SDD B：Agent 级发布对话框已随 R-Archive 封存移除（画布只读不挂发布） */}
       {/* E-2.2：历史抽屉「对比」入口（该版本 vs 当前草稿） */}
       {agentMeta && agentId && (
         <AgentVersionDiffDialog agentId={agentId} open={!!diffVersion} onClose={() => setDiffVersion(null)}
@@ -2834,11 +2822,11 @@ function EvoPanel({ workflowId, onClose }: { workflowId: string; onClose: () => 
   )
 }
 
-export default function WfDesignerPage({ workflowId, agentId, agentMeta, avatar }: { workflowId?: string; agentId?: string; agentMeta?: { name: string; typeLabel: string; agentType?: string }; avatar?: string }) {
+export default function WfDesignerPage({ workflowId, agentId, agentMeta, avatar, readOnly }: { workflowId?: string; agentId?: string; agentMeta?: { name: string; typeLabel: string; agentType?: string }; avatar?: string; readOnly?: boolean }) {
   return (
     <ReactFlowProvider>
       <div className="h-[calc(100dvh-3.5rem)] min-h-0">
-        <DesignerInner workflowId={workflowId} agentId={agentId} agentMeta={agentMeta} avatar={avatar} />
+        <DesignerInner workflowId={workflowId} agentId={agentId} agentMeta={agentMeta} avatar={avatar} readOnly={readOnly} />
       </div>
       <ToastHost />
     </ReactFlowProvider>

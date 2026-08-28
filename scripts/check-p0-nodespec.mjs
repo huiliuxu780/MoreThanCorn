@@ -1,6 +1,11 @@
 /** P0 节点总纲验证（06-workflow-node-master-spec §2）：
  *  x-control 映射 / # 唤起铺全 / 校验呈现三处 / 节点描述图标。
- *  无头 Chrome 直启（不碰用户 Chrome）；临时工作流走 API 创建。 */
+ *  无头 Chrome 直启（不碰用户 Chrome）；临时工作流走 API 创建。
+ *  R-Archive（SDD 10，2026-08-28）：脚本依赖"API 创建对话型 Agent"作为画布宿主，
+ *  该入口已封存（410），第二段（FLOW 画布）不可运行，脚本退役；
+ *  原验收行为封存于 tag archive/legacy-agents-20260828。 */
+console.error("[deprecated] 旧 Agent 创建入口已封存（SDD 10 R-Archive），本脚本退役不再运行。");
+process.exit(2);
 import puppeteer from "puppeteer-core";
 import { writeFileSync } from "node:fs";
 

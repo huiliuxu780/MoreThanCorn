@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from .config import auth_enforced, is_production
+from .legacy_agent_archive import LegacyAgentArchivedError
 from .runner import start_worker
 from .routers import (admin, agents, alerts, analytics, auth_routes, business,
                       forms, governance, registry, resources, runs, workflows)
@@ -71,6 +72,13 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="Lightweight Workflow Kernel", version="0.1.0", lifespan=lifespan)
 
 
+@app.exception_handler(LegacyAgentArchivedError)
+async def _legacy_agent_archived_handler(_request, exc: LegacyAgentArchivedError):
+    """SDD 10 R-A2：旧 Agent 写/运行操作统一 410 Gone。"""
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"code": exc.code, "message": exc.message}, status_code=410)
+
+
 @app.middleware("http")
 async def auth_middleware(request, call_next):
     """09 P0-10：服务端鉴权。auth_enforced（生产恒开 / WF_AUTH=on）时
@@ -85,10 +93,14 @@ async def auth_middleware(request, call_next):
 
 
 def _cors_origins() -> list[str]:
-    """09 §12：生产 CORS 用明确域名列表（WF_CORS_ORIGINS 逗号分隔）。"""
+    """09 §12：CORS 白名单。WF_CORS_ORIGINS 任何环境都可显式覆盖；
+    生产必须显式配置（空列表=不允许跨域），开发默认放行本机 5173。"""
     import os
+    env = os.environ.get("WF_CORS_ORIGINS", "")
+    if env:
+        return [o.strip() for o in env.split(",") if o.strip()]
     if is_production():
-        return [o.strip() for o in os.environ.get("WF_CORS_ORIGINS", "").split(",") if o.strip()]
+        return []
     return ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 

@@ -250,6 +250,7 @@ interface RunDetailRaw {
   retryChildren?: { runId: string; status: string; createdAt: string }[]
   definitionSource?: "draft" | "version" | null
   versionNo?: number | null
+  agentId?: string | null
   workflowVersionId?: string | null
   taskRunId?: string | null
   taskId?: string | null
@@ -298,6 +299,7 @@ export async function realRunDetail(runId: string): Promise<{ run: Run; executio
     duration: d.durationMs != null ? `${d.durationMs}ms` : undefined,
     originRunId: d.originRunId ?? undefined,          // E-3.2 重试谱系
     retryChildren: d.retryChildren ?? [],
+    agentId: d.agentId ?? undefined,                  // R-Archive：旧 Agent 运行隐藏重试
     dataWindow: { start: "-", end: "-", label: windowLabel },
     snapshot: {
       agentName: "workflow",
@@ -391,6 +393,9 @@ export interface AgentRunDetail {
   output?: { content?: string } | null; error?: { message?: string } | null;
   durationMs?: number | null; events: AgentRunEvent[]
 }
+/** R-Archive（SDD 10）：旧三类 Agent 只读封存——agentApi 仅保留只读查询；
+ *  创建/编辑/复制/发布/部署/运行/评测/进化等写函数已随 UI 入口一并移除
+ *  （后端对应端点返回 410 LEGACY_AGENT_ARCHIVED）。 */
 export const agentApi = {
   list: (p?: { page?: number; pageSize?: number; search?: string; archived?: "" | "true" | "all" }) => {
     const q = new URLSearchParams()
@@ -400,60 +405,24 @@ export const agentApi = {
     return req<{ items: { id: string; name: string; type: string; status: string; archived?: boolean }[]; total: number }>(`/api/agents?${q}`)
   },
   get: (id: string) => req<AgentInfo>(`/api/agents/${id}`),
-  del: (id: string) => req<{ ok: boolean }>(`/api/agents/${id}`, { method: "DELETE" }),
-  create: (body: { name: string; type: string; description?: string; config?: Record<string, unknown> }) =>
-    req<{ id: string; workflowId: string | null; configRevision: number }>("/api/agents", {
-      method: "POST", body: JSON.stringify(body) }),
-  /** SDD A-08：携带 expectedRevision，冲突时抛出 409（REVISION_CONFLICT） */
-  update: (id: string, body: Record<string, unknown>, expectedRevision?: number) =>
-    req<{ id: string; config: Record<string, unknown>; configRevision: number }>(`/api/agents/${id}`, {
-      method: "PUT", body: JSON.stringify({ ...body, ...(expectedRevision != null ? { expectedRevision } : {}) }) }),
-  run: (id: string, input: Record<string, unknown>, trigger = "test") =>
-    req<{ runId: string }>(`/api/agents/${id}/run`, {
-      method: "POST", body: JSON.stringify({ input, trigger }) }),
   runDetail: (id: string, runId: string) => req<AgentRunDetail>(`/api/agents/${id}/runs/${runId}`),
   runs: (id: string) =>
     req<{ items: { runId: string; status: string; trigger: string; startedAt: string | null; durationMs: number | null; error?: { message?: string } | null }[] }>(`/api/agents/${id}/runs`),
   mountsHealth: (id: string) =>
     req<{ items: { kind: string; name: string; valid: boolean }[] }>(`/api/agents/${id}/mounts-health`),
-  /** SDD A-03：顶层运行异步入队，轮询直到终态 */
-  async runOnce(id: string, input: Record<string, unknown>, timeoutMs = 90000): Promise<AgentRunDetail> {
-    const { runId } = await agentApi.run(id, input)
-    const deadline = Date.now() + timeoutMs
-    for (; ;) {
-      const d = await agentApi.runDetail(id, runId)
-      if (["succeeded", "failed", "cancelled"].includes(d.status)) return d
-      if (Date.now() > deadline) throw new Error(`运行超时（${Math.round(timeoutMs / 1000)}s 未到终态）`)
-      await new Promise((r) => setTimeout(r, 500))
-    }
-  },
-  /* ---------- SDD Phase B：Agent 版本与部署 ---------- */
+  /* ---------- SDD Phase B：Agent 版本与部署（只读） ---------- */
   versions: (id: string) =>
     req<AgentVersionInfo[]>(`/api/agents/${id}/versions`),
-  createVersion: (id: string, note = "") =>
-    req<{ versionId: string; versionNo: number; artifactHash: string } | { detail: { code: string; issues?: { code: string; message: string }[]; message?: string } }>(
-      `/api/agents/${id}/versions`, { method: "POST", body: JSON.stringify({ note }) }),
   versionDetail: (id: string, versionId: string) =>
     req<Record<string, unknown>>(`/api/agents/${id}/versions/${versionId}`),
   /* E-2.2：草稿 definition 预览（版本对比用） */
   draftDefinition: (id: string) =>
     req<{ definition: Record<string, unknown> }>(`/api/agents/${id}/definition-draft`),
-  release: (id: string, versionId: string, environment: "sandbox" | "prod", canaryPercent = 0) =>
-    req<{ releaseId: string; environment: string; versionNo: number; status: string; canaryPercent: number }>(
-      `/api/agents/${id}/releases`, { method: "POST", body: JSON.stringify({ versionId, environment, canaryPercent }) }),
   releases: (id: string) =>
     req<{ releaseId: string; environment: string; status: string; canaryPercent: number; versionNo: number | null; createdAt: string }[]>(
       `/api/agents/${id}/releases`),
-  /* E-2.3：停止灰度（该 release → rolled_back） */
-  stopCanary: (id: string, releaseId: string) =>
-    req<{ releaseId: string; status: string }>(`/api/agents/${id}/releases/${releaseId}/stop-canary`, { method: "POST" }),
-  /* E-2.1：复制/归档 */
-  duplicate: (id: string) =>
-    req<{ id: string; name: string; type: string; workflowId: string | null }>(`/api/agents/${id}/duplicate`, { method: "POST" }),
-  setArchived: (id: string, archived: boolean) =>
-    req<{ id: string; archived: boolean }>(`/api/agents/${id}`, { method: "PUT", body: JSON.stringify({ archived }) }),
   eventsUrl: (runId: string) => `${WF_BASE}/api/runs/${runId}/events`,
-  /* ---------- SDD D-1：观测 / 评测 / 生成 ---------- */
+  /* ---------- SDD D-1：观测 / 评测（只读） ---------- */
   metrics: (id: string) =>
     req<{ total: number; succeeded: number; failed: number; successRate: number; avgDurationMs: number; maxDurationMs: number;
           totalTokens?: number; firstToken?: { avgMs: number | null; p50Ms: number | null; samples: number } }>(
@@ -462,27 +431,9 @@ export const agentApi = {
     req<(AgentVersionInfo & { frozenMembers: { ref: string; version: string | null }[] })[]>(`/api/agents/${id}/versions`),
   evalSamples: (id: string) =>
     req<{ items: { id: string; name: string; input: Record<string, unknown>; expected?: unknown }[] }>(`/api/agents/${id}/eval-samples`),
-  addEvalSample: (id: string, name: string, input: Record<string, unknown>, expected?: { text?: string } | null) =>
-    req<{ id: string }>(`/api/agents/${id}/eval-samples`, { method: "POST", body: JSON.stringify({ name, input, ...(expected ? { expected } : {}) }) }),
-  delEvalSample: (sampleId: string) => req<{ ok: boolean }>(`/api/eval-samples/${sampleId}`, { method: "DELETE" }),
-  evalRun: (id: string, judge: "none" | "rule" | "model" = "none") =>
-    req<{ total: number; succeeded: number; results: { sampleId: string; name: string; runId?: string; status: string; durationMs?: number | null; output?: string; judge?: { kind: string; score: number; passed?: boolean; note?: string } | null; error?: string | null }[] }>(
-      `/api/agents/${id}/eval-run`, { method: "POST", body: JSON.stringify({ judge }) }),
-  humanScore: (id: string, sampleId: string, score: number, note = "") =>
-    req<{ id: string; judge: unknown }>(`/api/agents/${id}/eval-samples/${sampleId}/human-score`,
-      { method: "POST", body: JSON.stringify({ score, note }) }),
-  /* ---------- SDD D-3：进化（失败归因→候选补丁→审批应用） ---------- */
-  evolutionCandidates: (id: string) =>
-    req<{ id: string; attribution: string; basePrompt: string; proposedPrompt: string; status: string }>(
-      `/api/agents/${id}/evolution/candidates`, { method: "POST", body: "{}" }),
+  /* ---------- SDD D-3：进化（只读历史） ---------- */
   evolutionList: (id: string) =>
     req<{ id: string; attribution: string; reason: string; status: string; createdAt: string }[]>(`/api/agents/${id}/evolution`),
-  evolutionApply: (id: string, patchId: string) =>
-    req<{ id: string; status: string; configRevision: number }>(`/api/agents/${id}/evolution/${patchId}/apply`, { method: "POST", body: "{}" }),
-  evolutionReject: (id: string, patchId: string) =>
-    req<{ id: string; status: string }>(`/api/agents/${id}/evolution/${patchId}/reject`, { method: "POST", body: "{}" }),
-  generatePrompt: (name: string, hint: string) =>
-    req<{ prompt: string }>("/api/agents/generate-prompt", { method: "POST", body: JSON.stringify({ name, hint }) }),
 }
 
 /** SSE 事件流消费（SDD B-08 / 09 P0-13）：fetch + ReadableStream 解析。

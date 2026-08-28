@@ -15,6 +15,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import SessionLocal
+from .legacy_agent_archive import (LEGACY_ARCHIVED_CODE, LEGACY_ARCHIVED_MESSAGE,
+                                   assert_agent_executable, is_legacy_agent)
 from .models import (Agent, Connection, KnowledgeSource, Model, ModelProvider, Release, Run,
                      Tool, ToolVersion, Workflow, new_id)
 from .runner import RunError, _decrypt, create_run, emit, execute_run, exec_tool
@@ -492,6 +494,9 @@ def _run_member(ctx: _Ctx, code: str) -> dict:
     member = ctx.db.get(Agent, code)
     if not member:
         raise RunError(f"Agent {code} 不存在")
+    # R-Archive：Workflow agent-exec 不能再发起旧 Agent Run（节点级失败，不产生子 Run）
+    if is_legacy_agent(member):
+        raise RunError(f"{LEGACY_ARCHIVED_CODE}：成员 Agent「{member.name}」已封存，仅支持历史查询")
     # call_chain 中 "agent:" 前缀项 = Agent 递归链，其余 = workflow 链
     agent_chain = [x[len("agent:"): ] for x in ctx.call_chain if x.startswith("agent:")]
     wf_chain = [x for x in ctx.call_chain if not x.startswith("agent:")]
@@ -531,7 +536,9 @@ def run_agent(db: Session, agent: Agent, run_input: dict, trigger: str = "agent"
               enqueue: bool = True, version_id: str | None = None) -> str:
     """返回 run_id。enqueue=True 时创建 Run 后立即返回，由 worker 执行；
     嵌套调用（成员 Agent/子工作流）必须 enqueue=False 保持顺序。
-    SDD B-03 运行认版本：version_id 显式指定；schedule/api 默认沙箱已发布版本。"""
+    SDD B-03 运行认版本：version_id 显式指定；schedule/api 默认沙箱已发布版本。
+    R-Archive：旧三类 Agent 在入口统一拒绝，不产生 Run（SDD 10 §8.1）。"""
+    assert_agent_executable(agent)
     from .models import AgentVersion, JobQueue
     chain = list(agent_chain or [])
     if agent.id in chain:
@@ -616,6 +623,14 @@ def execute_agent_job(run_id: str) -> None:
             run.status = "failed"
             run.error = {"message": "agent not found"}
             db.commit()
+            return
+        # R-Archive 防呆：分派表已解除注册，此入口仅兜底历史残留任务
+        if is_legacy_agent(agent):
+            run.status = "failed"
+            run.error = {"code": LEGACY_ARCHIVED_CODE, "message": LEGACY_ARCHIVED_MESSAGE}
+            run.ended_at = datetime.now(timezone.utc)
+            db.commit()
+            emit(db, run.id, "agent_failed", payload={"error": LEGACY_ARCHIVED_MESSAGE})
             return
         _execute_agent_inline(db, agent, run, run.input or {}, [], None)
     except Exception as exc:  # noqa: BLE001

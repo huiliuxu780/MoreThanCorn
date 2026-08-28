@@ -426,10 +426,12 @@ def retry_run(run_id: str, db: Session = Depends(get_db),
     if old.agent_id:
         # E-3.2：Agent 运行重试走 run_agent（自主规划无工作流，此前直接 500）
         from ..agent_runtime import RunError, run_agent
+        from ..legacy_agent_archive import assert_agent_executable
         from ..models import Agent
         a = db.get(Agent, old.agent_id)
         if not a:
             raise HTTPException(404, "该运行的 Agent 已不存在")
+        assert_agent_executable(a)  # R-Archive：旧 Agent Run 不重放
         trigger = old.trigger if old.trigger in ("manual", "api", "schedule", "test") else "manual"
         try:
             new_id = run_agent(db, a, old.input or {}, trigger=trigger,
@@ -540,9 +542,12 @@ def release_lock(rid: str, wsId: str = "", db: Session = Depends(get_db),
 def delete_agent(aid: str, db: Session = Depends(get_db),
                         _user: dict = Depends(require_admin)):
     from ..models import Agent, AgentVersion, Release
+    from ..legacy_agent_archive import assert_agent_executable
     a = db.get(Agent, aid)
     if not a:
         raise HTTPException(404, "Agent 不存在")
+    # R-Archive：旧 Agent 历史不可删除（SDD 10：不得不可恢复地删除源码/历史记录）
+    assert_agent_executable(a)
     # SDD B：先清理部署记录与不可变版本（FK 级联），再删 Agent 本体
     audit(db, "质量管理员", "agent.delete", "agent", aid, {"name": a.name})
     db.query(Release).filter_by(agent_id=aid).delete()

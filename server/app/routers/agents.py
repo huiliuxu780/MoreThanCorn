@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..legacy_agent_archive import assert_agent_executable
 from ..models import Agent, AgentVersion, KnowledgeSource, Release, Run, RunEvent, Tool, Workflow
 from ..routers.workflows import _default_definition
 from ..auth import require_operator
@@ -25,25 +26,11 @@ def _check_name(name: str) -> None:
 @router.post("", status_code=201)
 def create_agent(payload: dict, db: Session = Depends(get_db),
                  _user: dict = Depends(require_operator) ):
-    t = payload.get("type", "dialogue")
-    if t not in TYPE_LABEL:
-        raise HTTPException(422, "unknown agent type")
-    _check_name(payload.get("name", ""))
-    wf_id = None
-    if t in ("dialogue", "expert-group"):
-        wf = Workflow(name=f"{payload['name']}的工作流")
-        defn = _default_definition(wf.name)
-        wf.draft_definition = defn.model_dump(mode="json")
-        db.add(wf)
-        db.commit()
-        wf_id = wf.id
-    agent = Agent(name=payload["name"], type=t, description=payload.get("description", ""),
-                  workflow_id=wf_id,
-                  config=payload.get("config", default_config(t)))
-    db.add(agent)
-    db.commit()
-    return {"id": agent.id, "name": agent.name, "type": agent.type, "workflowId": wf_id,
-            "configRevision": agent.config_revision}
+    """R-Archive（SDD 10 R-A2）：旧三类 Agent 已封存，不接受新建。
+    新 Agent 将在领域 Module 体系下创建（SDD 10 R2，moduleKey）。"""
+    from ..legacy_agent_archive import LegacyAgentArchivedError
+    raise LegacyAgentArchivedError(
+        "旧三类 Agent 已封存，仅支持历史查询；新 Agent 创建将在领域 Module 体系下开放")
 
 
 def default_config(t: str) -> dict:
@@ -103,6 +90,7 @@ def update_agent(aid: str, payload: dict, db: Session = Depends(get_db),
     a = db.get(Agent, aid)
     if not a:
         raise HTTPException(404, "agent not found")
+    assert_agent_executable(a)  # R-Archive：旧 Agent 只读（含 archived 开关）
     # SDD A-08 乐观锁：携带 expectedRevision 时校验，冲突 409（旧调用不带则兼容放行）
     expected = payload.get("expectedRevision")
     if expected is not None and int(expected) != a.config_revision:
@@ -135,6 +123,7 @@ def duplicate_agent(aid: str, db: Session = Depends(get_db),
     src = db.get(Agent, aid)
     if not src:
         raise HTTPException(404, "agent not found")
+    assert_agent_executable(src)  # R-Archive：旧 Agent 不复制
     suffix = " 副本"
     base = src.name if len(src.name) + len(suffix) <= NAME_MAX_LEN else src.name[:NAME_MAX_LEN - len(suffix)]
     name = base + suffix
@@ -253,6 +242,7 @@ def create_agent_version(aid: str, payload: dict | None = None, db: Session = De
     a = db.get(Agent, aid)
     if not a:
         raise HTTPException(404, "agent not found")
+    assert_agent_executable(a)  # R-Archive：旧 Agent 不再创建版本
     try:
         definition = build_definition(db, a)
     except ValueError as e:
@@ -314,6 +304,7 @@ def create_release(aid: str, payload: dict, db: Session = Depends(get_db),
     a = db.get(Agent, aid)
     if not a:
         raise HTTPException(404, "agent not found")
+    assert_agent_executable(a)  # R-Archive：旧 Agent 不再部署/回滚
     env = (payload or {}).get("environment", "sandbox")
     if env not in ("sandbox", "prod"):
         raise HTTPException(422, detail={"code": "BAD_ENVIRONMENT", "message": "environment 必须是 sandbox|prod"})
@@ -359,6 +350,7 @@ def stop_canary(aid: str, rid: str, db: Session = Depends(get_db),
     rel = db.get(Release, rid)
     if not rel or rel.agent_id != aid:
         raise HTTPException(404, "release not found")
+    assert_agent_executable(db.get(Agent, aid))  # R-Archive：旧 Agent 发布生命周期冻结
     if rel.status != "active" or not rel.canary_percent:
         raise HTTPException(409, detail={"code": "NOT_CANARY_ACTIVE", "message": "该记录不是进行中的灰度发布"})
     rel.status = "rolled_back"
@@ -429,6 +421,7 @@ def agent_eval_run(aid: str, payload: dict | None = None, db: Session = Depends(
     a = db.get(Agent, aid)
     if not a:
         raise HTTPException(404, "agent not found")
+    assert_agent_executable(a)  # R-Archive：旧 Agent 评测运行封存
     judge = (payload or {}).get("judge") or "none"
     samples = db.query(EvalSample).filter_by(agent_id=aid).all()
     ids = (payload or {}).get("sampleIds") or [s.id for s in samples]
@@ -487,6 +480,7 @@ def human_score_sample(aid: str, sid: str, payload: dict, db: Session = Depends(
     s = db.get(EvalSample, sid)
     if not s or s.agent_id != aid:
         raise HTTPException(404, "样本不存在")
+    assert_agent_executable(db.get(Agent, aid))  # R-Archive：旧 Agent 评测数据冻结
     score = (payload or {}).get("score")
     if score is None or not (0 <= float(score) <= 5):
         raise HTTPException(422, "score 必须在 0-5 之间")
@@ -506,6 +500,7 @@ def create_evolution_candidate(aid: str, db: Session = Depends(get_db),
     a = db.get(Agent, aid)
     if not a:
         raise HTTPException(404, "agent not found")
+    assert_agent_executable(a)  # R-Archive：旧 Agent 不再进化
     failed = (db.query(Run).filter(Run.agent_id == aid, Run.status == "failed")
               .order_by(Run.created_at.desc()).limit(5).all())
     if not failed:
@@ -549,6 +544,7 @@ def apply_evolution(aid: str, pid: str, db: Session = Depends(get_db),
     if p.status != "pending":
         raise HTTPException(409, "补丁已处理")
     a = db.get(Agent, aid)
+    assert_agent_executable(a)  # R-Archive：旧 Agent 配置冻结
     cfg = dict(a.config or {})
     cfg["rolePrompt"] = p.proposed_prompt
     a.config = cfg
@@ -565,6 +561,7 @@ def reject_evolution(aid: str, pid: str, db: Session = Depends(get_db),
     p = db.get(EvolutionPatch, pid)
     if not p or p.agent_id != aid:
         raise HTTPException(404, "补丁不存在")
+    assert_agent_executable(db.get(Agent, aid))  # R-Archive：旧 Agent 进化记录冻结
     p.status = "rejected"
     db.commit()
     return {"id": p.id, "status": "rejected"}
@@ -582,8 +579,10 @@ def list_agent_eval_samples(aid: str, db: Session = Depends(get_db)):
 def create_agent_eval_sample(aid: str, payload: dict, db: Session = Depends(get_db),
                  _user: dict = Depends(require_operator) ):
     from ..models import EvalSample
-    if not db.get(Agent, aid):
+    a = db.get(Agent, aid)
+    if not a:
         raise HTTPException(404, "agent not found")
+    assert_agent_executable(a)  # R-Archive：旧 Agent 评测样本冻结
     s = EvalSample(agent_id=aid, name=payload.get("name") or "样本",
                    input=payload.get("input", {}), expected=payload.get("expected"))
     db.add(s)

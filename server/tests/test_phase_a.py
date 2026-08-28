@@ -1,6 +1,10 @@
 """Phase A 批次1（SDD 01）：A-01 运行认版本 / A-05 注册表与通知节点 / A-06 条件运算符 /
 A-07 调用记录关联节点 / A-08 Agent config 乐观锁 / A-17 名称长度一致化。
-批次2：A-02 真路由 / A-03 异步运行 / A-09 挂载留痕。"""
+批次2：A-02 真路由 / A-03 异步运行 / A-09 挂载留痕。
+
+R-Archive（SDD 10）：Agent 写/运行入口整体封存（410 LEGACY_AGENT_ARCHIVED）——
+A-02/A-03/A-08/A-09/A-17 的 Agent 用例改写为封存契约断言；原行为由 tag
+archive/legacy-agents-20260828 保存。Workflow 部分不受影响。"""
 import time
 import uuid
 
@@ -10,20 +14,10 @@ from fastapi.testclient import TestClient
 from app.db import SessionLocal
 from app.main import app
 from app.runner import RunError, _branch_ok, create_run, execute_run, start_worker
+from tests._legacy_agents import seed_agent
 
 client = TestClient(app)
-start_worker()  # A-03 后 Agent 顶层运行依赖 worker；重复启动无害
-
-
-def wait_terminal(agent_id: str, run_id: str, timeout: float = 30.0) -> dict:
-    deadline = time.time() + timeout
-    d = {}
-    while time.time() < deadline:
-        d = client.get(f"/api/agents/{agent_id}/runs/{run_id}").json()
-        if d["status"] in ("succeeded", "failed", "cancelled"):
-            return d
-        time.sleep(0.2)
-    raise AssertionError(f"run {run_id} 未在 {timeout}s 内到达终态：{d.get('status')}")
+start_worker()  # A-01 API 运行依赖 worker；重复启动无害
 
 
 def poll_wf_run_terminal(run_id: str, timeout: float = 30.0) -> dict:
@@ -344,19 +338,13 @@ def test_a07_call_record_links_node_run():
         db.close()
 
 
-# ---------- A-08 Agent config 乐观锁 ----------
+# ---------- A-08 Agent config 乐观锁（机制保留给 R2 Module Agent；旧 Agent 封存门优先） ----------
 
-def test_a08_revision_conflict_blocks_stale_write():
-    aid = client.post("/api/agents", json={"name": u("rev"), "type": "autonomous"}).json()["id"]
-    assert client.get(f"/api/agents/{aid}").json()["configRevision"] == 1
-    r1 = client.put(f"/api/agents/{aid}", json={"config": {"x": 1}, "expectedRevision": 1})
-    assert r1.status_code == 200 and r1.json()["configRevision"] == 2
-    r2 = client.put(f"/api/agents/{aid}", json={"config": {"x": 2}, "expectedRevision": 1})
-    assert r2.status_code == 409
-    assert r2.json()["detail"]["code"] == "REVISION_CONFLICT"
-    # 以新 revision 再写成功
-    r3 = client.put(f"/api/agents/{aid}", json={"config": {"x": 3}, "expectedRevision": 2})
-    assert r3.status_code == 200 and r3.json()["configRevision"] == 3
+def test_a08_legacy_agent_write_blocked_by_archive_gate():
+    a = seed_agent()
+    r = client.put(f"/api/agents/{a['id']}", json={"config": {"x": 1}, "expectedRevision": 1})
+    assert r.status_code == 410, r.text
+    assert r.json()["code"] == "LEGACY_AGENT_ARCHIVED"
 
 
 # ---------- A-17 名称长度三层一致 ----------
@@ -364,15 +352,12 @@ def test_a08_revision_conflict_blocks_stale_write():
 LONG_NAME = "超长" * 11  # 22 字
 
 
-def test_a17_api_rejects_overlong_name():
+def test_a17_legacy_create_blocked_before_name_check():
+    """R-Archive：创建入口先撞封存门（410）；名称校验机制保留给 R2 Module Agent。"""
     assert len(LONG_NAME) > 20
     r = client.post("/api/agents", json={"name": LONG_NAME, "type": "autonomous"})
-    assert r.status_code == 400
-    assert r.json()["detail"]["code"] == "NAME_TOO_LONG"
-    aid = client.post("/api/agents", json={"name": u("nm"), "type": "autonomous"}).json()["id"]
-    r2 = client.put(f"/api/agents/{aid}", json={"name": LONG_NAME})
-    assert r2.status_code == 400
-    assert r2.json()["detail"]["code"] == "NAME_TOO_LONG"
+    assert r.status_code == 410
+    assert r.json()["code"] == "LEGACY_AGENT_ARCHIVED"
 
 
 def test_a17_db_check_constraint():
@@ -387,142 +372,37 @@ def test_a17_db_check_constraint():
     db.close()
 
 
-# ---------- A-02 Agent选择真路由（LLM 判定 + 兜底） ----------
+# ---------- A-02 Agent选择真路由（行为封存于 tag archive/legacy-agents-20260828） ----------
 
-def _mk_member(name: str) -> dict:
-    r = client.post("/api/agents", json={"name": name, "type": "dialogue"})
-    assert r.status_code == 201, r.text
-    return r.json()
-
-
-def _mk_group(name: str, primary: list[str], fallback: str | None) -> dict:
-    eg = client.post("/api/agents", json={"name": name, "type": "expert-group"}).json()
-    det = client.get(f"/api/workflows/{eg['workflowId']}").json()
-    defn = det["definition"]
-    defn["graph"]["nodes"] = [
-        {"id": "s", "type": "input", "name": "开始", "config": {}, "inputs": []},
-        {"id": "sel", "type": "agent-select", "name": "Agent选择",
-         "config": {"primaryAgents": primary, "fallbackAgent": fallback},
-         "inputs": [{"name": "query", "type": "string",
-                     "source": {"kind": "input", "path": "userQuery"}}]},
-        {"id": "ex", "type": "agent-exec", "name": "Agent执行", "config": {},
-         "inputs": [{"name": "agentCode", "type": "string",
-                     "source": {"kind": "upstream", "nodeId": "sel", "path": "outputs.agentCode"}}]},
-        {"id": "e", "type": "end", "name": "结束", "config": {"outputKey": "quality_result"},
-         "inputs": [{"name": "output", "type": "string",
-                     "source": {"kind": "upstream", "nodeId": "ex", "path": "outputs.content"}}]},
-    ]
-    defn["graph"]["edges"] = [
-        {"id": "e1", "source": "s", "target": "sel"},
-        {"id": "e2", "source": "sel", "target": "ex"},
-        {"id": "e3", "source": "ex", "target": "e"},
-    ]
-    sv = client.put(f"/api/workflows/{eg['workflowId']}/draft",
-                    json={"definition": defn, "baseRevision": det["draftRevision"]})
-    assert sv.status_code == 200, sv.text
-    return eg
-
-
-def _force_real_llm(monkeypatch, answer: str):
-    import app.agent_runtime as ar
-    monkeypatch.setattr(ar, "_resolve_base_secret", lambda db, k: ("https://fake-llm", "sk"))
-    monkeypatch.setattr(ar, "_chat_completion",
-                        lambda db, mk, messages, tools: {"content": answer, "tool_calls": []})
-
-
-def test_a02_router_hits_primary_by_llm_choice(monkeypatch):
-    m1 = _mk_member(u("候选甲"))
-    m2 = _mk_member(u("候选乙"))
-    eg = _mk_group(u("路由组"), [m1["id"], m2["id"]], None)
-    _force_real_llm(monkeypatch, "2")
-    r = client.post(f"/api/agents/{eg['id']}/run", json={"input": {"userQuery": "帮我做乙的事"}})
-    assert r.status_code == 202
-    d = wait_terminal(eg["id"], r.json()["runId"])
-    assert d["status"] == "succeeded", d
-    sel = [e for e in d["events"] if e["type"] == "agent_select"]
-    assert sel and sel[0]["payload"]["chosen"] == m2["id"]
-    assert sel[0]["payload"]["routing"] == "primary"
-
-
-def test_a02_router_none_falls_back(monkeypatch):
-    m1, fb = _mk_member(u("主要丙")), _mk_member(u("兜底丁"))
-    eg = _mk_group(u("兜底组"), [m1["id"]], fb["id"])
-    _force_real_llm(monkeypatch, "NONE")
-    r = client.post(f"/api/agents/{eg['id']}/run", json={"input": {"userQuery": "没人会"}})
-    d = wait_terminal(eg["id"], r.json()["runId"])
-    assert d["status"] == "succeeded", d
-    sel = [e for e in d["events"] if e["type"] == "agent_select"]
-    assert sel[0]["payload"]["chosen"] == fb["id"]
-    assert sel[0]["payload"]["routing"] == "fallback"
-
-
-def test_a02_router_no_hit_no_fallback_fails(monkeypatch):
-    m1 = _mk_member(u("孤立戊"))
-    eg = _mk_group(u("无兜底组"), [m1["id"]], None)
-    _force_real_llm(monkeypatch, "NONE")
-    r = client.post(f"/api/agents/{eg['id']}/run", json={"input": {"userQuery": "没人会"}})
-    d = wait_terminal(eg["id"], r.json()["runId"])
-    assert d["status"] == "failed"
-    assert "兜底" in d["error"]["message"]
-
-
-def test_a02_mock_mode_keeps_first_primary():
-    m1 = _mk_member(u("默选己"))
-    eg = _mk_group(u("默认组"), [m1["id"]], None)
+def test_a02_legacy_group_run_blocked_by_archive_gate():
+    """专家组运行入口封存：410，且不进入路由/成员执行。"""
+    eg = seed_agent(atype="expert-group")
     r = client.post(f"/api/agents/{eg['id']}/run", json={"input": {"userQuery": "hi"}})
-    d = wait_terminal(eg["id"], r.json()["runId"])
-    assert d["status"] == "succeeded", d
-    sel = [e for e in d["events"] if e["type"] == "agent_select"]
-    assert sel[0]["payload"]["routing"] == "mock"
+    assert r.status_code == 410, r.text
+    assert r.json()["code"] == "LEGACY_AGENT_ARCHIVED"
 
 
-# ---------- A-03 顶层运行异步入队 ----------
+# ---------- A-03 顶层运行异步入队（行为封存） ----------
 
-def test_a03_run_enqueues_agent_job_and_reaches_terminal():
-    a = client.post("/api/agents", json={
-        "name": u("异步"), "type": "autonomous",
-        "config": {"rolePrompt": "测试", "modelRef": {"modelId": ""},
-                   "skills": [], "tools": [], "workflows": [], "knowledges": []}}).json()
-    r = client.post(f"/api/agents/{a['id']}/run", json={"input": {"userQuery": "你好"}})
-    assert r.status_code == 202
-    run_id = r.json()["runId"]
+def test_a03_legacy_run_creates_no_job():
+    """封存门在入队之前：不创建 agent-execution 任务。"""
     from app.models import JobQueue
+    a = seed_agent()
     db = SessionLocal()
     try:
-        jobs = db.query(JobQueue).filter_by(type="agent-execution").all()
-        assert any((j.payload or {}).get("run_id") == run_id for j in jobs)
+        before = db.query(JobQueue).filter_by(type="agent-execution").count()
     finally:
         db.close()
-    d = wait_terminal(a["id"], run_id)
-    assert d["status"] == "succeeded", d
+    r = client.post(f"/api/agents/{a['id']}/run", json={"input": {"userQuery": "你好"}})
+    assert r.status_code == 410
+    db = SessionLocal()
+    try:
+        assert db.query(JobQueue).filter_by(type="agent-execution").count() == before
+    finally:
+        db.close()
 
 
-def test_a03_unbound_dialogue_agent_fails_fast():
-    a = client.post("/api/agents", json={"name": u("无流"), "type": "dialogue"}).json()
-    client.put(f"/api/agents/{a['id']}", json={"workflowId": None})
-    r = client.post(f"/api/agents/{a['id']}/run", json={"input": {}})
-    assert r.status_code == 202
-    d = client.get(f"/api/agents/{a['id']}/runs/{r.json()['runId']}").json()
-    assert d["status"] == "failed" and "未绑定工作流" in d["error"]["message"]
-
-
-# ---------- A-09 挂载解析留痕 ----------
-
-def test_a09_mounts_resolved_event_records_hits_and_missing():
-    client.post("/api/tools", json={"name": "echo-a09", "kind": "builtin",
-                                    "spec": {"kind": "echo"}})
-    a = client.post("/api/agents", json={
-        "name": u("留痕"), "type": "autonomous",
-        "config": {"rolePrompt": "", "modelRef": {"modelId": ""}, "skills": [],
-                   "tools": ["echo-a09", "ghost-a09"], "workflows": ["不存在的流"],
-                   "knowledges": []}}).json()
-    r = client.post(f"/api/agents/{a['id']}/run", json={"input": {"userQuery": "hi"}})
-    d = wait_terminal(a["id"], r.json()["runId"])
-    assert d["status"] == "succeeded", d
-    ev = [e for e in d["events"] if e["type"] == "agent_mounts_resolved"]
-    assert len(ev) == 1
-    p = ev[0]["payload"]
-    assert p["tools"][0]["name"] == "echo-a09" and p["tools"][0]["toolVersionId"]
-    missing = {(m["kind"], m["name"]) for m in p["missing"]}
-    assert ("tool", "ghost-a09") in missing
-    assert ("workflow", "不存在的流") in missing
+def test_a03_unbound_dialogue_agent_blocked_by_archive_gate():
+    """未绑定工作流的失败路径也已封存：封存门先于绑定检查。"""
+    a = seed_agent(atype="dialogue")
+    assert client.post(f"/api/agents/{a['id']}/run", json={"input": {}}).status_code == 410

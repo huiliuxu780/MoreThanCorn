@@ -207,38 +207,31 @@ let wfId = "", runId = "", qrId = "";
   check("S12-3", "评测汇总（成功率/时长）", es.json?.total > 0);
 }
 
-// ---------- 汇总 ----------
-const failed = results.filter((r) => !r.pass);
-console.log(`\n==== ${results.length - failed.length}/${results.length} PASS ====`);
-if (failed.length) {
-  console.log("FAILED:", failed.map((f) => f.id).join(", "));
-  process.exit(1);
-}
+// （汇总移至文件末尾：S13/S14 的 check() 也计入退出码——修复此前"汇总先于尾部场景执行"的门禁漏洞）
 
-// ---- S13 Agent 运行层（05 设计；SDD A-03 后顶层运行异步：轮询到终态） ----
+// ---- S13 Legacy Agent 封存契约（SDD 10 R-Archive；原 Agent 运行层行为封存于
+//      tag archive/legacy-agents-20260828，见 docs/archive/legacy-agents/manifest.md） ----
 const H = { "Content-Type": "application/json" };
-async function pollAgentRun(aid, runId, timeoutMs = 30000) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < timeoutMs) {
-    const d = await (await fetch(`${BASE}/api/agents/${aid}/runs/${runId}`)).json();
-    if (["succeeded", "failed", "cancelled"].includes(d.status)) return d;
-    await sleep(500);
+{
+  const c1 = await req("POST", "/api/agents", { name: "verify-autonomous", type: "autonomous" });
+  check("S13-1", "创建旧三类 Agent → 410 LEGACY_AGENT_ARCHIVED",
+        c1.status === 410 && c1.json?.code === "LEGACY_AGENT_ARCHIVED", JSON.stringify(c1.json));
+  const c2 = await req("POST", "/api/agents", { name: "verify-dialogue", type: "dialogue" });
+  check("S13-1b", "创建对话编排 Agent → 410", c2.status === 410 && c2.json?.code === "LEGACY_AGENT_ARCHIVED");
+  const arch = await req("GET", "/api/agents?archived=all&pageSize=5");
+  check("S13-2", "旧 Agent 历史列表只读可查", arch.status === 200 && Array.isArray(arch.json?.items));
+  const first = (arch.json?.items ?? [])[0];
+  if (first) {
+    const det = await req("GET", `/api/agents/${first.id}`);
+    check("S13-3", "历史 Agent 详情只读可查",
+          det.status === 200 && ["autonomous", "dialogue", "expert-group"].includes(det.json?.type));
+    const mh = await req("GET", `/api/agents/${first.id}/mounts-health`);
+    check("S13-4", "mounts-health 只读保留", mh.status === 200 && Array.isArray(mh.json?.items));
+  } else {
+    check("S13-3", "历史 Agent 详情只读可查（库中无历史 Agent）", true);
+    check("S13-4", "mounts-health 只读保留（库中无历史 Agent）", true);
   }
-  return null;
 }
-const ag = await (await fetch(`${BASE}/api/agents`, { method: "POST", headers: H, body: JSON.stringify({ name: "verify-autonomous", type: "autonomous", config: { rolePrompt: "# 角色：验证", modelRef: { modelId: "qwen-plus" }, skills: [], tools: [], workflows: [], knowledges: [] } }) })).json();
-const rr = await (await fetch(`${BASE}/api/agents/${ag.id}/run`, { method: "POST", headers: H, body: JSON.stringify({ input: { userQuery: "你好" }, trigger: "test" }) })).json();
-const rd = await pollAgentRun(ag.id, rr.runId);
-console.log("S13-1 autonomous run:", rd?.status, "| events:", rd ? rd.events.map(e => e.type).join(",") : "TIMEOUT");
-console.log("S13-1b 挂载留痕:", rd?.events.some(e => e.type === "agent_mounts_resolved") ? "PASS" : "FAIL");
-const rl = await (await fetch(`${BASE}/api/agents/${ag.id}/runs`)).json();
-console.log("S13-2 runs list:", rl.items.length >= 1 ? "PASS" : "FAIL");
-const mh = await (await fetch(`${BASE}/api/agents/${ag.id}/mounts-health`)).json();
-console.log("S13-3 mounts-health:", Array.isArray(mh.items) ? "PASS" : "FAIL");
-const dlg2 = await (await fetch(`${BASE}/api/agents`, { method: "POST", headers: H, body: JSON.stringify({ name: "verify-dialogue", type: "dialogue" }) })).json();
-await fetch(`${BASE}/api/workflows/${dlg2.workflowId}/publish?note=v`, { method: "POST" });
-const ag2 = await (await fetch(`${BASE}/api/agents/${dlg2.id}`)).json();
-console.log("S13-4 publish sync:", ag2.status === "published" ? "PASS" : "FAIL", ag2.status);
 
 // ---- S14 运行认版本（SDD A-01） ----
 {
@@ -270,4 +263,12 @@ console.log("S13-4 publish sync:", ag2.status === "published" ? "PASS" : "FAIL",
   const mk2 = await (await fetch(`${BASE}/api/workflows`, { method: "POST", headers: H, body: JSON.stringify({ name: u("nopub") }) })).json();
   const rNo = await req("POST", "/api/runs", { workflowId: mk2.id, trigger: "schedule", input: {} });
   check("S14-4", "无发布版本的 schedule 被拦截（NO_PUBLISHED_VERSION）", rNo.status === 409 && String(rNo.json?.detail ?? "").includes("NO_PUBLISHED_VERSION"));
+}
+
+// ---------- 汇总 ----------
+const failed = results.filter((r) => !r.pass);
+console.log(`\n==== ${results.length - failed.length}/${results.length} PASS ====`);
+if (failed.length) {
+  console.log("FAILED:", failed.map((f) => f.id).join(", "));
+  process.exit(1);
 }
