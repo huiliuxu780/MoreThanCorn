@@ -112,3 +112,22 @@
 - 最后一段（Rule 发布→Task→执行→复核→重启 全浏览器）仍未干净跑通：任务向导绑定「Evaluation Agent」聚合，
   空库无可选 Agent；多选向导的无头自动化不稳定。属环境/自动化限制，非已证实产品缺陷。
 - 结论维持：**本地执行引擎与浏览器数据层 PASS；纯浏览器完整业务闭环差最后一段。** 未推送任何提交。
+
+## 十、最终轮（2026-08-28）：纯浏览器完整业务闭环 **PASS**
+
+按用户更正的根因（任务下拉本就列 Workflow；系验收脚本未正确操作 Radix Select + 一次性 catalog 缓存）重跑：
+种子后整页 reload 绕开缓存；改为「鼠标点 trigger→读取 option 文本→点击精确项」，不再用模糊 typeahead。
+
+| 步骤 | 方式 | 结果 |
+|------|------|------|
+| 确认 `GET /api/workflows?pageSize=100` 返回种子 r4-wf | API | PASS |
+| Rule 浏览器发布，DB 确认 status=published | 浏览器+DB | PASS |
+| Task 浏览器创建（4 步向导：Workflow=r4-wf / Definition=r4-def / RuleSet=r4-rule，follow_latest） | 浏览器 | PASS（tv: follow_latest+ruleSet 置位） |
+| 执行 3 条 → 3 Run succeeded / 3 Result | 浏览器+DB | PASS（3=3=3） |
+| 详情不白屏 + 领取/完成复核（review_revision=1） | 浏览器+DB | PASS |
+| 刷新 + 重启后端后 3 条仍在 | 浏览器 | PASS |
+
+前置（非浏览器，已声明）：外部测试表 accept_input、已发布 Workflow/Definition 种子。
+Connection/Datasource/Asset 已于第二轮纯浏览器创建。已知轻微 UX 缺口：向导 stepValid 未校验 ruleSetId（空值靠后端 422 兜底），不阻断闭环。
+
+**最终判定：本地执行引擎 PASS + 浏览器数据层 PASS + 纯浏览器完整业务闭环 PASS。** 未推送任何提交。
