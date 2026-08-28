@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "quality-runtime-contract"
+version = "0.1.0"
+description = "Provider-neutral Agent Runtime contract for the Quality Platform"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "pydantic>=2.12,<3",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=9,<10",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/quality_runtime_contract"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

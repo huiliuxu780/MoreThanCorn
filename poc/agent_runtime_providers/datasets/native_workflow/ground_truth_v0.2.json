@@ -1,0 +1,55 @@
+{
+  "sample_id": "NATIVE-V02-001",
+  "consumer_needs": [
+    {"category": "repair", "evidence_sequences": [0]},
+    {"category": "complaint", "evidence_sequences": [0]},
+    {"category": "policy_consultation", "evidence_sequences": [0]}
+  ],
+  "knowledge_claims": [
+    {
+      "claim_id": "knowledge-1",
+      "expected_status": "accurate",
+      "required_evidence_refs": ["KB-ONSITE-FEE-X2-EAST-V2"],
+      "minimum_search_rounds": 2
+    },
+    {
+      "claim_id": "knowledge-2",
+      "expected_status": "inaccurate",
+      "required_evidence_refs": ["KB-BROADBAND-CONTACT-SLA-V2"],
+      "minimum_search_rounds": 1
+    }
+  ],
+  "promises": [
+    {
+      "promise_id": "promise-1",
+      "type": "ticket",
+      "expected_status": "fulfilled",
+      "required_tool": "ticket_query"
+    },
+    {
+      "promise_id": "promise-2",
+      "type": "sms",
+      "expected_status": "unfulfilled",
+      "required_tool": "sms_query"
+    },
+    {
+      "promise_id": "promise-3",
+      "type": "appointment",
+      "expected_status": "mismatched",
+      "required_tool": "appointment_query"
+    }
+  ],
+  "required_stage_order": [
+    "identify",
+    "plan",
+    "execute",
+    "barrier",
+    "synthesize"
+  ],
+  "required_tools": [
+    "knowledge_search",
+    "ticket_query",
+    "sms_query",
+    "appointment_query"
+  ]
+}

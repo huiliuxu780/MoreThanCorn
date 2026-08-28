@@ -1,0 +1,19 @@
+{
+  "name": "morethancorn-dsh-native-quality-workflow",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "main": "./native_quality_workflow.mjs",
+  "files": [
+    "native_quality_workflow.mjs",
+    "cordis.patch.yml"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

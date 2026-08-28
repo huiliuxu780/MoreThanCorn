@@ -1,0 +1,27 @@
+[project]
+name = "quality-runtime-evaluation"
+version = "0.1.0"
+description = "Provider-neutral POC request builder and comparison runner"
+requires-python = ">=3.12"
+dependencies = [
+  "httpx>=0.28,<1",
+  "jsonschema>=4.25,<5",
+  "pyyaml>=6.0,<7",
+  "quality-runtime-contract",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/quality_runtime_evaluation"]
+
+[tool.uv.sources]
+quality-runtime-contract = { path = "../../../packages/runtime_contract", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

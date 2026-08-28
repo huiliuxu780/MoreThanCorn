@@ -10,6 +10,15 @@ dist-ssr
 .venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+*.egg-info/
+
+# Runtime Provider local state and POC-only outputs.
+poc/agent_runtime_providers/evaluation/results/
+poc/agent_runtime_providers/.artifacts/
+runtimes/**/.runtime-home/
+runtimes/**/.sessions/
+runtimes/**/.workspaces/
 
 # 自动生成的 harness/repowiki 知识库（非源码，不入库）
 .qoder/

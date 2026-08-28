@@ -1,0 +1,50 @@
+{
+  "sample_id": "NATIVE-V02-001",
+  "call_id": "SYN-NATIVE-V02-001",
+  "case_id": "CASE-SYN-NATIVE-001",
+  "servicer_id": "AGENT-SYN-NATIVE-01",
+  "start_time": "2026-08-27T10:00:00+08:00",
+  "conversation": [
+    {
+      "sequence": 0,
+      "speaker": "customer",
+      "text": "我家华东地区的 X2 路由器从昨晚开始反复断网。上次报修一直没人处理，这次请马上报修，也告诉我保修期内如果是设备自身故障，上门要不要收费。"
+    },
+    {
+      "sequence": 1,
+      "speaker": "agent",
+      "text": "我先核对：您要处理本次断网、投诉上次报修未跟进，还要确认上门费用，对吗？"
+    },
+    {
+      "sequence": 2,
+      "speaker": "customer",
+      "text": "对。另外明天下午两点我在家，请约这个时间，并把新工单号短信发给我。"
+    },
+    {
+      "sequence": 3,
+      "speaker": "agent",
+      "text": "华东地区 X2 路由器在保修期内确认属于设备自身故障时不收上门费。所有宽带故障单都会在二十四小时内联系客户。"
+    },
+    {
+      "sequence": 4,
+      "speaker": "agent",
+      "text": "我现在为您创建故障工单，五分钟内短信发送工单号，并预约明天下午两点上门。"
+    },
+    {
+      "sequence": 5,
+      "speaker": "customer",
+      "text": "三个事情都请落实，尤其别再漏掉短信。"
+    },
+    {
+      "sequence": 6,
+      "speaker": "agent",
+      "text": "好的，已经提交，请留意后续通知。"
+    }
+  ],
+  "product_context": {
+    "product": "router_x2",
+    "region": "synthetic-east",
+    "warranty": "active",
+    "reported_cause": "unknown"
+  }
+}

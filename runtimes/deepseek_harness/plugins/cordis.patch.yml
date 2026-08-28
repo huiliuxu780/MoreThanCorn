@@ -1,0 +1,21 @@
+# DSH >= 0.1.2 profile bundle for the code-governed quality workflow.
+# Install with:
+#   dsh plugin --profile sdk add file:/absolute/path/to/runtimes/deepseek_harness/plugins
+
+- insert:
+    - id: mcp-quality-tools
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: quality
+        transport: streamable-http
+        url: !!js process.env.QUALITY_TOOL_MCP_URL ?? 'http://127.0.0.1:8200/mcp/'
+        failOnStartupError: true
+        toolCallTimeoutMs: 30000
+
+    - id: native-quality-workflow
+      name: morethancorn-dsh-native-quality-workflow
+      config:
+        knowledgeTool: mcp__quality__knowledge_search
+        ticketTool: mcp__quality__ticket_query
+        smsTool: mcp__quality__sms_query
+        appointmentTool: mcp__quality__appointment_query

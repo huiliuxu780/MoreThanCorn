@@ -1,0 +1,4 @@
+# Keep the quality MCP tools but disable the staged workflow controller.
+# The adapter applies this overlay for ordinary v0.1 single-agent requests.
+- id: native-quality-workflow
+  disabled: true

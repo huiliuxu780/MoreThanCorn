@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "quality-runtime-agentscope"
+version = "0.1.0"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "agentscope==2.0.7",
+  "jsonschema>=4.26,<5",
+  "quality-runtime-contract==0.1.0",
+  "quality-runtime-service==0.1.0",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=9,<10",
+]
+
+[tool.uv.sources]
+quality-runtime-contract = { path = "../../packages/runtime_contract", editable = true }
+quality-runtime-service = { path = "../../packages/runtime_service", editable = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

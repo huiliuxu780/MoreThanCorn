@@ -1,0 +1,65 @@
+{
+  "dataset_id": "quality-runtime-native-workflow-v0.2",
+  "knowledge_search": {
+    "articles": [
+      {
+        "id": "KB-ONSITE-FEE-ROUTER-GENERAL-V2",
+        "title": "路由器上门费用查询指引",
+        "keywords": ["路由器", "上门", "费用", "保修", "故障"],
+        "content": "路由器上门费用需结合服务地区、设备型号、保修状态和故障归因判断；缺少上述条件时不能直接判定收费结果。",
+        "decisive": false,
+        "refinement_hints": ["服务地区", "设备型号", "保修状态", "故障归因"]
+      },
+      {
+        "id": "KB-ONSITE-FEE-X2-EAST-V2",
+        "title": "华东地区 X2 路由器保修期上门费用",
+        "keywords": ["华东", "X2", "路由器", "保修期", "设备自身故障", "上门费"],
+        "required_query_terms": ["华东", "X2", "保修"],
+        "content": "华东地区 X2 路由器在保修期内，经确认属于设备自身故障的，不收取上门服务费。",
+        "decisive": true,
+        "refinement_hints": []
+      },
+      {
+        "id": "KB-BROADBAND-CONTACT-SLA-V2",
+        "title": "宽带故障受理联系时限",
+        "keywords": ["宽带", "故障", "故障单", "联系", "时限", "二十四小时", "四十八小时"],
+        "required_query_terms": ["宽带"],
+        "content": "宽带故障单受理后，工作人员应在四十八小时内联系客户。",
+        "decisive": true,
+        "refinement_hints": []
+      }
+    ]
+  },
+  "ticket_query": {
+    "CASE-SYN-NATIVE-001": {
+      "exists": true,
+      "tickets": [
+        {
+          "ticket_id": "TICKET-SYN-NATIVE-001",
+          "service_type": "repair",
+          "created_at": "2026-08-27T10:06:00+08:00",
+          "status": "accepted"
+        }
+      ]
+    }
+  },
+  "sms_query": {
+    "CASE-SYN-NATIVE-001": {
+      "sent": false,
+      "messages": []
+    }
+  },
+  "appointment_query": {
+    "CASE-SYN-NATIVE-001": {
+      "exists": true,
+      "appointments": [
+        {
+          "appointment_id": "APPT-SYN-NATIVE-001",
+          "scheduled_at": "2026-08-28T09:00:00+08:00",
+          "status": "confirmed",
+          "last_changed_at": "2026-08-27T10:07:00+08:00"
+        }
+      ]
+    }
+  }
+}

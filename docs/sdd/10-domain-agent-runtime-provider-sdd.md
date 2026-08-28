@@ -37,8 +37,8 @@ POC 分支：`codex/poc-agent-runtime-providers`（工作树：`/Users/rivers/Mo
 
 ### 0.1 上游依据
 
-下列 `docs/poc/...` 路径均相对于 POC 工作树
-`/Users/rivers/MoreThanCorn-agent-runtime-poc`；Phase R0 合并后再改为本仓库相对路径。
+下列 `docs/poc/...` POC 证据已在 Phase R0 迁入本仓库；原始未提交工作树仍保留在
+`/Users/rivers/MoreThanCorn-agent-runtime-poc` 供对照。
 
 - 原始方案：`/Users/rivers/Downloads/企业智能质量平台 —— Agent Runtime Provider 架构与 POC 实施方案.md`；
 - POC 公共协议：`docs/poc/runtime-contract-v0.1.md`；
@@ -1593,3 +1593,4 @@ Module/Runtime 自己实现。
 | --- | --- | --- |
 | 2026-08-28 | 讨论稿 | 基于原始方案、双 Provider POC、5 次稳定性结果与现有源代码形成首版 SDD；尚未实施代码 |
 | 2026-08-28 | **R-Archive 完成（待用户验收）** | 分支 `codex/domain-agent-runtime-provider`；封存基线 tag `archive/legacy-agents-20260828`（43575ae）；封存清单 `docs/archive/legacy-agents/manifest.md`。全部写/运行入口 410 `LEGACY_AGENT_ARCHIVED`（创建/复制/编辑/版本/发布/停灰度/运行/重试/删除/评测/进化），`run_agent` 入口统一拦截不产生 Run；Workflow 发布校验阻止引用封存 Agent，`agent-exec` 运行期拒绝且不产生子 Run；worker 分派表解除 `agent-execution` 注册（历史任务防呆置失败）；数据封存工具 `server/run_legacy_agent_archive.py`（默认 dry-run，--apply 单事务+AuditLog+幂等，已对开发库 dry-run：27 个旧 Agent）；前端只读化（列表无创建/详情封存徽标/画布只读/运行详情隐藏重试）。证据：245 pytest 绿（含新增 `test_legacy_agent_archive.py` 16 项）+ verify-fullstack S13 封存契约 5/5 + 无头浏览器 `scripts/check-ra4-readonly.mjs` 16/16。偏差：verify-fullstack 另有 11 个存量失败（S2-3…S11-7，经 main 分支 8101 对照确认与本次无关）；workflow 版本快照/灰度/子 Run trace 等旧行为测试随封存退役，由 tag 承载；`check-e1-acceptance.mjs`/`check-p0-nodespec.mjs` 依赖旧创建入口，标记退役（exit 2）。数据 --apply 未执行（须用户授权） |
+| 2026-08-28 | **R0 完成（待用户验收）** | 公共 `runtime_contract`、共享 `runtime_service`、AgentScope/DSH 独立服务、POC 数据/评测/文档已按白名单迁入；五个 Python 项目均有独立 pyproject/lock，两个 Runtime 有独立镜像边界和真实 health 检查；主 server 未引入 Runtime 私有依赖，DSH 高权限默认值已移除。证据：R0 套件 37 passed、五个 lock check 通过、边界验证通过、后端 245 passed、前端 typecheck/lint/build 全绿。`verify-fullstack` 38/49，11 项失败与 R-Archive 时 main 对照确认的存量集合一致；Docker 本机不可用、DSH 源码版制品固化和真实模型测试后移。完整证据见 `docs/sdd/acceptance/10-r0-acceptance.md`；未接业务流量、未读取 Secret、未执行数据 `--apply` |

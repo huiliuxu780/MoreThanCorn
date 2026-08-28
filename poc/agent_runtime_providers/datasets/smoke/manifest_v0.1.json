@@ -1,0 +1,22 @@
+{
+  "dataset_id": "quality-runtime-smoke-v0.1",
+  "kind": "fully_synthetic",
+  "created_at": "2026-08-28",
+  "record_count": 15,
+  "language": "zh-CN",
+  "cases": {
+    "language_judgement": 5,
+    "knowledge_verification": 5,
+    "promise_fulfillment": 5
+  },
+  "files": {
+    "inputs": "call_records_v0.1.jsonl",
+    "ground_truth": "ground_truth_v0.1.jsonl",
+    "tool_fixtures": "tool_fixtures_v0.1.json"
+  },
+  "notes": [
+    "No record is derived from a real person, customer, employee, case, or identifier.",
+    "Synthetic IDs use SYN markers and must never be resolved against production systems.",
+    "This dataset validates engineering behavior only and must not drive final provider selection."
+  ]
+}

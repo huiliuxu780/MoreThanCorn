@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "quality-runtime-service"
+version = "0.1.0"
+description = "Shared HTTP lifecycle for Quality Platform Runtime Providers"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "fastapi>=0.141,<0.142",
+  "quality-runtime-contract==0.1.0",
+  "uvicorn>=0.52,<0.53",
+]
+
+[project.optional-dependencies]
+test = [
+  "httpx>=0.28,<0.29",
+  "pytest>=9,<10",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/quality_runtime_service"]
+
+[tool.uv.sources]
+quality-runtime-contract = { path = "../runtime_contract", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,54 @@
+{
+  "knowledge_search": {
+    "articles": [
+      {
+        "id": "KB-BROADBAND-RESPONSE-V1",
+        "title": "宽带故障受理联系时限",
+        "keywords": ["宽带", "故障", "报修", "联系", "时限"],
+        "content": "宽带故障单受理后，工作人员应在四十八小时内联系客户。"
+      },
+      {
+        "id": "KB-WARRANTY-FEE-V1",
+        "title": "保修期内设备故障上门费用",
+        "keywords": ["保修", "设备", "故障", "上门", "费用"],
+        "content": "保修期内，经确认属于设备自身故障的，不收取上门服务费。"
+      },
+      {
+        "id": "KB-APPOINTMENT-CHANGE-V1",
+        "title": "上门预约改约规则",
+        "keywords": ["上门", "预约", "改约", "费用"],
+        "content": "在上门人员出发前完成改约，不收取改约费用。"
+      }
+    ]
+  },
+  "ticket_query": {
+    "CASE-SYN-C01": {"exists": false, "tickets": []},
+    "CASE-SYN-C02": {
+      "exists": true,
+      "tickets": [{"ticket_id": "TICKET-SYN-002", "service_type": "repair", "created_at": "2026-08-20T11:13:00+08:00", "status": "accepted"}]
+    },
+    "CASE-SYN-C03": {"exists": false, "tickets": []},
+    "CASE-SYN-C04": {"exists": false, "tickets": []},
+    "CASE-SYN-C05": {
+      "exists": true,
+      "tickets": [{"ticket_id": "TICKET-SYN-005", "service_type": "repair", "created_at": "2026-08-20T11:43:00+08:00", "status": "accepted"}]
+    }
+  },
+  "sms_query": {
+    "CASE-SYN-C01": {"sent": false, "messages": []},
+    "CASE-SYN-C02": {"sent": false, "messages": []},
+    "CASE-SYN-C03": {"sent": false, "messages": []},
+    "CASE-SYN-C04": {"sent": false, "messages": []},
+    "CASE-SYN-C05": {"sent": false, "messages": []}
+  },
+  "appointment_query": {
+    "CASE-SYN-C01": {"exists": false, "appointments": []},
+    "CASE-SYN-C02": {"exists": false, "appointments": []},
+    "CASE-SYN-C03": {
+      "exists": true,
+      "appointments": [{"appointment_id": "APPT-SYN-003", "scheduled_at": "2026-08-21T09:00:00+08:00", "status": "confirmed", "last_changed_at": "2026-08-19T16:00:00+08:00"}]
+    },
+    "CASE-SYN-C04": {"exists": false, "appointments": []},
+    "CASE-SYN-C05": {"exists": false, "appointments": []}
+  }
+}
