@@ -81,7 +81,7 @@ def test_business_module_readonly_run_no_quality_result(monkeypatch):
             "name": "R5-biz", "executionTarget": {"type": "agent", "agentId": aid,
                                                  "versionPolicy": "latest_sandbox_release"},
             "dataAssetId": asset, "dataDefinitionVersionId": defv,
-            "resultRuleVersionId": rulev, "inputMapping": {},
+            "resultRuleVersionId": rulev, "inputMapping": {"question_id": "question_id"},
             "sampling": {"mode": "all"}, "dataWindow": {"mode": "all"}}).json()
         db = SessionLocal()
         try:

@@ -143,7 +143,7 @@ export default function TasksPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>任务名称</TableHead>
-                  <TableHead>工作流</TableHead>
+                  <TableHead>执行目标</TableHead>
                   <TableHead>配置版本</TableHead>
                   <TableHead>Data Asset</TableHead>
                   <TableHead>状态</TableHead>
@@ -153,6 +153,7 @@ export default function TasksPage() {
                 {filteredItems.map((task) => {
                   const assetName = dataAssets.find((a) => a.id === task.dataAssetId)?.name ?? task.dataAssetId.slice(0, 8)
                   const policy = task.taskVersion?.workflowVersionPolicy ?? task.workflowVersionPolicy
+                  const et = (task as { executionTargetType?: string; agentName?: string | null; moduleKey?: string | null })
                   return (
                     <TableRow key={task.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/config/tasks/${task.id}`)}>
                       <TableCell>
@@ -160,10 +161,13 @@ export default function TasksPage() {
                         {task.description ? <div className="line-clamp-1 max-w-md text-xs text-muted-foreground">{task.description}</div> : null}
                       </TableCell>
                       <TableCell>
-                        <div className="text-sm">{wfName(task.workflowId)}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {policy === "pinned" ? "Fixed（钉住版本）" : "Latest Published"}
-                        </div>
+                        {et.executionTargetType === "agent" ? (
+                          <><div className="text-sm">{et.agentName ?? "—"}</div>
+                            <div className="text-xs text-muted-foreground">Module：{et.moduleKey ?? "—"}</div></>
+                        ) : (
+                          <><div className="text-sm">{wfName(task.workflowId)}</div>
+                            <div className="text-xs text-muted-foreground">{policy === "pinned" ? "Fixed（钉住版本）" : "Latest Published"}</div></>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm tabular-nums">
                         {task.taskVersion ? `V${task.taskVersion.versionNo}` : "—"}

@@ -83,7 +83,7 @@ def test_ticket_write_policy_fields_and_no_quality_result(monkeypatch):
             "name": "R6-ticket", "executionTarget": {"type": "agent", "agentId": aid,
                                                     "versionPolicy": "latest_sandbox_release"},
             "dataAssetId": asset, "dataDefinitionVersionId": defv,
-            "resultRuleVersionId": rulev, "inputMapping": {},
+            "resultRuleVersionId": rulev, "inputMapping": {"ticket_id": "ticket_id"},
             "sampling": {"mode": "all"}, "dataWindow": {"mode": "all"}}).json()
         db = SessionLocal()
         try:

@@ -409,7 +409,7 @@ export const agentApi = {
   },
   get: (id: string) => req<AgentInfo>(`/api/agents/${id}`),
   // R4：Module Agent 创建与目录
-  modules: () => req<{ items: { key: string; version: string; displayName: string; description: string; riskClass: string; providers: string[]; logicalTools: string[]; criteria: string[] }[] }>(`/api/agents/modules`),
+  modules: () => req<{ items: { key: string; version: string; displayName: string; description: string; riskClass: string; providers: string[]; logicalTools: string[]; criteria: string[]; resultProjection?: string; producesQualityResult?: boolean; inputSchema?: { required?: string[]; properties?: Record<string, { type?: string }> }; outputSchema?: Record<string, unknown> }[] }>(`/api/agents/modules`),
   create: (body: { name: string; moduleKey: string; moduleVersion?: string; description?: string; modelRef?: Record<string, unknown> }) =>
     req<{ id: string; name: string; type: string; moduleKey: string; moduleVersion: string; configRevision: number }>(`/api/agents`, {
       method: "POST", body: JSON.stringify(body) }),
@@ -780,9 +780,11 @@ import type { DataAsset } from "@/domain/types"
 export interface CreateTaskPayload {
   name: string
   description?: string
-  workflowId: string
-  workflowVersionPolicy: "pinned" | "latest_published"
+  workflowId?: string
+  workflowVersionPolicy?: "pinned" | "latest_published"
   pinnedWorkflowVersionId?: string
+  /** R7-1：统一执行目标（agent 默认 / workflow 兼容） */
+  executionTarget?: { type: "agent" | "workflow"; agentId?: string; workflowId?: string; versionPolicy?: string; pinnedAgentVersionId?: string | null; pinnedWorkflowVersionId?: string | null }
   dataAssetId: string
   dataDefinitionVersionId?: string
   resultRuleVersionId?: string

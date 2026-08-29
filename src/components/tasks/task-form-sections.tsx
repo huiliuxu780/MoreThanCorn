@@ -16,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { FormField } from "@/components/app/form-field"
 import { SectionHeader } from "@/components/app/page"
 import { defApi, type DefinitionDTO } from "@/services/resource-api"
-import { bizApi, formsApi, listDataAssets, wfApi } from "@/services/wf-api"
+import { agentApi, bizApi, formsApi, listDataAssets, wfApi } from "@/services/wf-api"
 import type { AgentDetail, DataAsset, DataAssetField } from "@/domain/types"
 import { cn } from "@/lib/utils"
 
@@ -33,6 +33,27 @@ function loadCatalog() {
   catalogLoaded = true
   // 08-27 用户链路：任务挂 workflow 主干——catalog 源换成工作流，inputSchema 取自开始节点 form
   // 09 P0-B4：同时加载已发布版本列表（Fixed 策略需要真实 versionId）
+  // R7-3：Module Agent 作为默认执行目标（输入 Schema 取自 Module inputSchema）。
+  agentApi.modules().then(async (mods) => {
+    const list = await agentApi.list({ pageSize: 100, archived: "" }).catch(() => ({ items: [] }))
+    const schemaByKey = new Map((mods.items ?? []).map((m) => [m.key, m]))
+    const out: AgentDetail[] = []
+    for (const a of (list.items ?? []) as { id: string; name: string; type?: string; moduleKey?: string; sandboxVersion?: number | null }[]) {
+      if (a.type !== "module") continue
+      const m = schemaByKey.get(a.moduleKey ?? "")
+      const schema = ((m?.inputSchema?.properties ?? {}) as Record<string, { type?: string }>)
+      const required = new Set((m?.inputSchema?.required ?? []) as string[])
+      out.push({
+        id: a.id, name: `${a.name}（Module）`, status: a.sandboxVersion != null ? "Published" : "Draft",
+        moduleKey: a.moduleKey,
+        inputSchema: Object.entries(schema).map(([key, v]) => ({ key, type: (v?.type ?? "string"), label: key, required: required.has(key) })) as unknown as DataAssetField[],
+        versions: [],
+      } as unknown as AgentDetail)
+    }
+    agents = [...out, ...agents.filter((x) => !(x as { moduleKey?: string }).moduleKey)]
+    for (const a of agents) agentDetails[a.id] = a
+    subs.forEach((f) => f())
+  }).catch(() => undefined)
   wfApi.list({ pageSize: 100 }).then(async (r) => {
     const out: AgentDetail[] = []
     for (const w of (r.items ?? []) as { id: string; name: string; status?: string }[]) {
@@ -54,7 +75,7 @@ function loadCatalog() {
         versions: versions.map((v) => ({ version: `v${v.versionNo}`, status: "Published" as const, versionId: v.versionId, publishedAt: v.publishedAt })),
       } as unknown as AgentDetail)
     }
-    agents = out
+    agents = [...agents.filter((x) => (x as { moduleKey?: string }).moduleKey), ...out]
     for (const a of agents) agentDetails[a.id] = a
     subs.forEach((f) => f())
   }).catch(() => undefined)
@@ -84,6 +105,8 @@ export interface ScopeCondition {
 export interface TaskFormState {
   name: string
   description: string
+  /** R7-1：执行目标类型（agent 默认 / workflow 兼容） */
+  targetType: "agent" | "workflow"
   /** 09 P0-02：任务直接绑定 Workflow（历史命名沿用字段名，语义=工作流） */
   agentId: string
   versionPolicy: "Latest Published" | "Fixed"
@@ -112,6 +135,7 @@ export interface TaskFormState {
 export const emptyTaskForm: TaskFormState = {
   name: "",
   description: "",
+  targetType: "agent",
   agentId: "",
   versionPolicy: "Latest Published",
   fixedVersion: "",
@@ -196,15 +220,17 @@ export function BasicTaskFields({
       <FormField label="描述">
         <Textarea value={form.description} className="min-h-16" placeholder="任务用途说明（可选）" onChange={(e) => set({ description: e.target.value })} />
       </FormField>
-      <FormField label="执行工作流（workflow 主干）" required>
+      <FormField label="执行目标（默认 Module Agent）" required>
         <Select
           value={form.agentId || undefined}
           onValueChange={(agentId) => {
-            const agent = agentDetails[agentId] ?? null
-            onChange({ ...form, agentId, mapping: autoMapping(agent, assetOf(form)) })
+            const agent = (agentDetails[agentId] ?? null) as (AgentDetail & { moduleKey?: string }) | null
+            onChange({ ...form, agentId,
+              targetType: agent?.moduleKey ? "agent" : "workflow",
+              mapping: autoMapping(agent, assetOf(form)) })
           }}
         >
-          <SelectTrigger><SelectValue placeholder="选择 Evaluation Agent" /></SelectTrigger>
+          <SelectTrigger><SelectValue placeholder="选择 Module Agent / 工作流" /></SelectTrigger>
           <SelectContent>
             {agents.filter((a) => a.status !== "Deprecated").map((a) => (
               <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>

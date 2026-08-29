@@ -81,6 +81,10 @@ export interface TaskRunDTO {
   failed: number
   skipped: number
   cancelled: number
+  /** R7-5：冻结快照（AgentVersion/Release/Provider） */
+  resolvedAgentVersionId?: string | null
+  resolvedReleaseId?: string | null
+  runtimeBinding?: { providerId?: string; providerKind?: string } | null
   errorSummary: { errors: { interactionRef?: string; row?: number; error: string }[] } | null
   startedAt: string | null
   endedAt: string | null

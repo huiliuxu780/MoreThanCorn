@@ -243,6 +243,7 @@ export default function TaskDetailPage() {
 }
 
 function TaskRunDetail({ trid, onOpenResult }: { trid: string; onOpenResult: (resultId: string) => void }) {
+  const navigate = useNavigate()
   const { data, loading } = useAsyncData(async () => {
     const [runs, results, tr] = await Promise.all([
       bizApi.taskRunRuns(trid), bizApi.taskRunResults(trid), bizApi.taskRun(trid),
@@ -255,6 +256,8 @@ function TaskRunDetail({ trid, onOpenResult }: { trid: string; onOpenResult: (re
       <div className="text-xs text-muted-foreground">
         批次 {data.tr.id.slice(0, 8)} · 状态 {data.tr.status} · 成功 {data.tr.succeeded} / 失败 {data.tr.failed} / 跳过 {data.tr.skipped}
         {data.tr.dataSnapshotId ? ` · DataSnapshot ${data.tr.dataSnapshotId.slice(0, 8)}` : ""}
+        {data.tr.resolvedAgentVersionId ? ` · 冻结 AgentVersion ${data.tr.resolvedAgentVersionId.slice(0, 8)}` : ""}
+        {data.tr.runtimeBinding?.providerId ? ` · Provider ${String(data.tr.runtimeBinding.providerId).slice(0, 8)}` : ""}
       </div>
       <TableFrame>
         <Table>
@@ -263,6 +266,7 @@ function TaskRunDetail({ trid, onOpenResult }: { trid: string; onOpenResult: (re
               <TableHead>Interaction</TableHead>
               <TableHead>状态</TableHead>
               <TableHead>耗时</TableHead>
+              <TableHead>Run</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -271,6 +275,10 @@ function TaskRunDetail({ trid, onOpenResult }: { trid: string; onOpenResult: (re
                 <TableCell className="font-mono text-xs">{r.interactionRef || "（空）"}</TableCell>
                 <TableCell><StatusBadge status={r.status} context="run" /></TableCell>
                 <TableCell className="text-xs tabular-nums">{r.durationMs != null ? `${r.durationMs}ms` : "—"}</TableCell>
+                <TableCell>
+                  <button type="button" className="text-xs text-primary underline"
+                    onClick={() => navigate(`/config/tasks/${data.tr.taskId}/runs/${r.id}`)}>查看 Run</button>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

@@ -20,14 +20,14 @@ export function windowLabelOf(form: TaskFormState): string {
     : form.dataWindowTemplate
 }
 
-/** 表单 → 结构化提交体（09 §10.1）。所有公开字段进入请求，不静默丢弃。 */
+/** 表单 → 结构化提交体（09 §10.1 / R7-1）。所有公开字段进入请求，不静默丢弃。 */
 export function buildTaskPayload(form: TaskFormState): CreateTaskPayload {
-  const policy = form.versionPolicy === "Fixed" ? "pinned" : "latest_published"
+  const isAgent = form.targetType === "agent"
+  const policy = form.versionPolicy === "Fixed" ? "pinned"
+    : isAgent ? "latest_sandbox_release" : "latest_published"
   const payload: CreateTaskPayload = {
     name: form.name.trim(),
     description: form.description,
-    workflowId: form.agentId,
-    workflowVersionPolicy: policy,
     dataAssetId: form.assetId,
     inputMapping: { ...form.mapping },
     scope: {
@@ -54,7 +54,17 @@ export function buildTaskPayload(form: TaskFormState): CreateTaskPayload {
             timezone: "Asia/Shanghai",
           },
   }
-  if (policy === "pinned") payload.pinnedWorkflowVersionId = form.fixedVersion
+  // R7-1：统一执行目标。Agent 默认；Workflow 兼容。Provider 由 Release 决定，Task 不选 Provider。
+  if (isAgent) {
+    payload.executionTarget = {
+      type: "agent", agentId: form.agentId, versionPolicy: policy,
+      pinnedAgentVersionId: form.versionPolicy === "Fixed" ? form.fixedVersion : null,
+    }
+  } else {
+    payload.workflowId = form.agentId
+    payload.workflowVersionPolicy = form.versionPolicy === "Fixed" ? "pinned" : "latest_published"
+    if (policy === "pinned") payload.pinnedWorkflowVersionId = form.fixedVersion
+  }
   if (form.definitionVersionId) payload.dataDefinitionVersionId = form.definitionVersionId
   // 09 P0：规则绑定——显式版本=pinned；未选=跟随最新发布（服务端解析时失败关闭）
   if (form.ruleVersionId) {

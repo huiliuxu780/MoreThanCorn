@@ -52,7 +52,7 @@ def _make_agent_task(aid, asset_id, defv, rulev, **extra) -> dict:
             "executionTarget": {"type": "agent", "agentId": aid,
                                 "versionPolicy": "latest_sandbox_release"},
             "dataAssetId": asset_id, "dataDefinitionVersionId": defv,
-            "resultRuleVersionId": rulev, "inputMapping": {},
+            "resultRuleVersionId": rulev, "inputMapping": {"sample_id": "sample_id", "call_id": "call_id", "conversation": "conversation"},
             "sampling": {"mode": "all"}, "dataWindow": {"mode": "all"}, **extra}
     r = client.post("/api/tasks", json=body)
     assert r.status_code == 201, r.text
