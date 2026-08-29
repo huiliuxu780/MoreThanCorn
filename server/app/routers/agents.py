@@ -386,6 +386,17 @@ def create_release(aid: str, payload: dict, db: Session = Depends(get_db),
         if binding_provider.contract_version != "1.0":
             raise HTTPException(409, detail={"code": "CONTRACT_VERSION_MISMATCH",
                                              "message": f"provider contract {binding_provider.contract_version} != 1.0"})
+        # 用户口径（08-29）：一个 Agent 只对应一种 Provider——禁止跨 Provider 分流。
+        # 已有 active Release 绑定了不同 Provider 时拒绝（同 Provider 的灰度/多版本仍允许）。
+        other = (db.query(Release)
+                 .filter(Release.agent_id == aid, Release.status == "active",
+                         Release.runtime_provider_id.isnot(None),
+                         Release.runtime_provider_id != binding_provider.id).first())
+        if other:
+            raise HTTPException(409, detail={"code": "ONE_PROVIDER_PER_AGENT",
+                                             "message": "该 Agent 已绑定其他 Runtime Provider"
+                                                        "（一个 Agent 只对应一种 Provider），"
+                                                        "如需更换请先停用现有 Release"})
         runtime_profile = (payload or {}).get("runtimeProfile") or f"{mod.key}-{mod.version}"
         binding_snapshot = {
             "providerId": binding_provider.id, "providerKind": binding_provider.kind,
@@ -414,12 +425,6 @@ def create_release(aid: str, payload: dict, db: Session = Depends(get_db),
                   runtime_profile=runtime_profile,
                   runtime_binding_snapshot=binding_snapshot)
     db.add(rel)
-    if canary_percent == 0 and a.module_key:
-        # Module Agent 环境指针指向绑定 Release 的版本（运行期据此解析 Provider）
-        if env == "sandbox":
-            a.sandbox_version_id = v.id
-        else:
-            a.prod_version_id = v.id
     if canary_percent == 0:
         if env == "sandbox":
             a.sandbox_version_id = v.id

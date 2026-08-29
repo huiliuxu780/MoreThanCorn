@@ -190,7 +190,10 @@ def test_create_module_agent_and_publish_version():
 
 
 def _setup_dual_release(base_url: str):
-    """同一 AgentVersion 分别绑定 AgentScope（稳定）与 DSH（灰度）到 sandbox。"""
+    """1:1 口径（08-29 用户）：一个 Agent 只对应一种 Provider。
+
+    验证：绑定必填/未知/未启用/kind 无实现 → 拒绝；首个 Provider 绑定成功；
+    跨 Provider 再绑定 → 409 ONE_PROVIDER_PER_AGENT；同 Provider 灰度仍允许。"""
     _seed_tools()
     prov_as = make_provider("agentscope", base_url)
     prov_dsh = make_provider("deepseek-harness", base_url)
@@ -200,7 +203,6 @@ def _setup_dual_release(base_url: str):
 
     a = make_module_agent()
     v = publish_version(a["id"])
-    # 绑定必填 / 未知 / 未启用 / kind 无实现 → 拒绝
     assert client.post(f"/api/agents/{a['id']}/releases", json={
         "versionId": v["versionId"], "environment": "sandbox"}).status_code == 422
     assert client.post(f"/api/agents/{a['id']}/releases", json={
@@ -212,14 +214,20 @@ def _setup_dual_release(base_url: str):
     assert client.post(f"/api/agents/{a['id']}/releases", json={
         "versionId": v["versionId"], "environment": "sandbox",
         "runtimeProviderId": prov_ext["id"]}).status_code == 409
-    # 同一 AgentVersion：AgentScope 稳定 + DSH 灰度并存于 sandbox（SDD 5.4）
+    # 首个 Provider 绑定成功
     r1 = client.post(f"/api/agents/{a['id']}/releases", json={
         "versionId": v["versionId"], "environment": "sandbox",
         "runtimeProviderId": prov_as["id"]})
     assert r1.status_code == 201, r1.text
-    r2 = client.post(f"/api/agents/{a['id']}/releases", json={
+    # 跨 Provider 再绑定 → 409（一个 Agent 只对应一种 Provider）
+    r_x = client.post(f"/api/agents/{a['id']}/releases", json={
         "versionId": v["versionId"], "environment": "sandbox",
         "runtimeProviderId": prov_dsh["id"], "canaryPercent": 50})
+    assert r_x.status_code == 409 and "ONE_PROVIDER_PER_AGENT" in r_x.text
+    # 同 Provider 灰度仍允许（同 Provider 多版本/灰度不算分流）
+    r2 = client.post(f"/api/agents/{a['id']}/releases", json={
+        "versionId": v["versionId"], "environment": "sandbox",
+        "runtimeProviderId": prov_as["id"], "canaryPercent": 50})
     assert r2.status_code == 201, r2.text
     rels = [x for x in client.get(f"/api/agents/{a['id']}/releases").json()
             if x["status"] == "active" and x["environment"] == "sandbox"]
@@ -235,11 +243,10 @@ def _setup_dual_release(base_url: str):
     assert as_snap["module"] == {"key": "quality-analysis", "version": "1.0.0"}
     assert as_snap["moduleImplementation"]["entry"] == "native_quality_v0.2"
     assert len(as_snap["outputSchemaSha256"]) == 64
-    assert snaps[prov_dsh["id"]]["moduleImplementation"]["bundle"]
     return a, v, prov_as, prov_dsh
 
 
-def test_release_binds_runtime_provider_and_dual_provider_sandbox():
+def test_release_binds_runtime_provider_one_provider_per_agent():
     _setup_dual_release("http://fake-runtime")
 
 
@@ -264,14 +271,14 @@ def test_module_run_dispatch_same_agent_hash_across_providers(monkeypatch, fake_
     assert {t["name"] for t in req_as["agent"]["tools"]} == set(TOOL_NAMES)
     assert req_as["agent"]["output_schema"].get("$schema")
 
-    # 显式版本 + DSH Provider → 同一 AgentVersion 的请求体 agent 段哈希完全一致
+    # 显式版本 + 同一 Provider 再跑一次 → 同一 AgentVersion 的请求体 agent 段哈希一致
     r2 = client.post(f"/api/agents/{a['id']}/run",
                      json={"input": {"sample_id": "S1", "dialogues": []}, "trigger": "test",
-                           "versionId": v["versionId"], "providerId": prov_dsh["id"]})
+                           "versionId": v["versionId"], "providerId": prov_as["id"]})
     assert r2.status_code == 202, r2.text
     run_dsh = r2.json()["runId"]
     drive_submit(run_dsh)
-    assert get_run_row(run_dsh).runtime_provider_id == prov_dsh["id"]
+    assert get_run_row(run_dsh).runtime_provider_id == prov_as["id"]
     req_dsh = fake.runs[run_dsh]["request"]
     agent_hash = lambda body: hashlib.sha256(  # noqa: E731
         json.dumps(body["agent"], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
@@ -328,8 +335,8 @@ def test_run_resolution_rejects_unreleased_and_requires_preview_provider():
     assert row.agent_version_id is None
 
 
-def test_run_uses_canary_provider_binding(monkeypatch):
-    """灰度 Release 绑定 DSH 时，api 触发按桶落到 DSH（100% canary → 全部 DSH）。"""
+def test_run_uses_canary_same_provider_binding(monkeypatch):
+    """1:1 口径：同 Provider 灰度 Release（100% canary）时 api 触发按桶落到该 Provider。"""
     def _dead(provider, transport=None):
         def handler(request):
             return httpx.Response(500, text="no egress in this test")
@@ -339,7 +346,6 @@ def test_run_uses_canary_provider_binding(monkeypatch):
     monkeypatch.setattr(rt_worker, "build_gateway", _dead)
     _seed_tools()
     prov_as = make_provider("agentscope", "http://127.0.0.1:9")
-    prov_dsh = make_provider("deepseek-harness", "http://127.0.0.1:9")
     a = make_module_agent()
     v = publish_version(a["id"])
     assert client.post(f"/api/agents/{a['id']}/releases", json={
@@ -347,8 +353,8 @@ def test_run_uses_canary_provider_binding(monkeypatch):
         "runtimeProviderId": prov_as["id"]}).status_code == 201
     assert client.post(f"/api/agents/{a['id']}/releases", json={
         "versionId": v["versionId"], "environment": "sandbox",
-        "runtimeProviderId": prov_dsh["id"], "canaryPercent": 100}).status_code == 201
+        "runtimeProviderId": prov_as["id"], "canaryPercent": 100}).status_code == 201
     r = client.post(f"/api/agents/{a['id']}/run", json={"input": {}, "trigger": "api"})
     assert r.status_code == 202
-    # 未投递 worker：Run 已按桶预解析 Provider 绑定
-    assert get_run_row(r.json()["runId"]).runtime_provider_id == prov_dsh["id"]
+    # 未投递 worker：Run 已按桶预解析 Provider 绑定（1:1，恒为该 Provider）
+    assert get_run_row(r.json()["runId"]).runtime_provider_id == prov_as["id"]
