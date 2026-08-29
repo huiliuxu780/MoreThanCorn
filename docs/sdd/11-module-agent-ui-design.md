@@ -6,10 +6,11 @@
 ## 1. 原型清单（uiux/prototypes/）
 | 文件 | 覆盖 |
 | --- | --- |
-| `module-agent-config.html`（已有，v2·shadcn 对账稿） | Agent 配置页（身份/模型/Spec 摘要/资源只读/版本对照/发布对话框含 Runtime Provider）、运行观测、版本与发布、效果评测 |
-| `module-agent-r4-screens.html`（本稿新增 v1） | ① Module Catalog（列表+创建流程+封存区）② Runtime Providers 管理页 ③ Run Detail 增强 ④ 新建质检任务·执行目标步骤 |
+| `module-agent-config-v3.html`（08-29，对位用户参考图） | Agent 配置页高保真：深色左导航/头部版本对照卡/六 Tab/四分区卡（身份可编辑、模型、指令只读+业务定位追加、资源冻结只读）/右侧测试面板（环境=Release 绑定选择、会话+质检摘要+工具调用/上下文/Trace 折叠、usage 行） |
+| `module-agent-config.html`（v2·shadcn 对账稿） | 配置页另一稿+发布对话框（版本描述→环境→Runtime Provider 绑定→灰度）+运行观测/版本/评测 Tab |
+| `module-agent-r4-screens.html`（v1） | ① Module Catalog ② Providers 管理页 ③ Run Detail 增强 ④ 任务执行目标步骤 |
 
-浏览器打开两个 HTML 即可评审；本稿后附交互确认清单。
+浏览器打开三个 HTML 即可评审。
 
 ## 2. 参考图（AgentHub）对齐与取舍
 | 参考图元素 | 取舍 |
@@ -34,10 +35,15 @@
 4. 任务向导：执行目标二选一（Workflow 现状保位）；Agent 目标=仅列 Module Agent+版本策略三选+确认页展示全部冻结值。
 5. 配置页（见 v2 原型）：四 Tab+分区卡+右侧预览调试+发布绑定。
 
-## 5. 交互确认清单（请逐条拍板）
-1. Catalog 新建流程四步（选 Module→基本信息→模型→Spec 知会）是否 OK？Spec 摘要"仅知会不可改"是否符合预期？
-2. Run Detail 用表格式阶段列表（识别/计划/执行/屏障/总结）——DSH 的阶段名一致，是否需要统一中文文案表？
-3. 任务向导默认版本策略=最新沙箱发布，是否改为最新线上？
-4. Providers 页放在资源中心新 Tab（与 Connections/Tools 同级）还是 Agents 区？
-5. 预览调试（参考图右侧面板）首期只做"发一条样例输入→看结构化输出+调用记录"，不做流式打字机，是否 OK？
-6. 发布对话框灰度比例仅对 DSH 类 Provider 展示（AgentScope 首期稳定通道），还是两类都展示？
+## 5. 参考图对齐决策（08-29 用户指示"参考这个画原型"后采纳）
+1. 配置页以参考图布局为准（v3）：六 Tab、编号分区卡、右侧测试面板、头部 Draft/Last-published 对照。
+2. Instructions 区参考图为可编辑大编辑器+变量 chips——本平台语义为 **Module 资产只读**（橙色提示条），实例仅追加"业务定位"；变量 chips 只读展示 Module 输入 Schema 字段。
+3. 右侧测试面板环境选择=Release 绑定（沙箱 AgentScope / 沙箱 DSH 灰度 / 线上），草稿预览须选 Provider（R3 语义）。
+4. 评分展示标注"规则派生"（Agent 不算分，平台 Scorecard 派生）。
+
+## 6. 剩余产品默认（如无异议即按此开发，改口随时调）
+1. 任务向导默认版本策略=**最新沙箱发布**。
+2. Providers 页放**资源中心新 Tab**（与 Connections/Tools 同级）。
+3. 预览调试首期=发样例输入→结构化输出+调用记录（无流式打字机）。
+4. 发布对话框灰度比例**两类 Provider 都展示**（DSH 默认 0 且提示"实验通道"）。
+5. Run Detail 阶段表中文文案：识别/计划/执行/屏障/总结（两 Provider 统一）。
