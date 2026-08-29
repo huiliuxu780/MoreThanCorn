@@ -107,9 +107,14 @@ def _cors_origins() -> list[str]:
     return ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
+# 开发环境放行所有本机端口（5173/5175/5176/…），避免 dev/preview 多端口逐个加白名单；
+# 生产不使用该正则，仍以显式 WF_CORS_ORIGINS 为准。
+_DEV_CORS_REGEX = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins(),
+    allow_origin_regex=_DEV_CORS_REGEX if not is_production() else None,
     allow_methods=["*"],
     allow_headers=["*"],
 )
