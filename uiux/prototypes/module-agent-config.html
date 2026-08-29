@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>原型 v2 · Module Agent 配置页（shadcn 对账稿）</title>
+<style>
+  /* ---- shadcn tokens（对齐主应用：zinc 中性 + 橙强调） ---- */
+  :root{
+    --background:#f7f8fa; --foreground:#18181b;
+    --card:#ffffff; --card-foreground:#18181b;
+    --muted:#f4f4f5; --muted-foreground:#71717a;
+    --border:#e4e6eb; --input:#e4e6eb;
+    --primary:#18181b; --primary-foreground:#fafafa;
+    --secondary:#f4f4f5; --secondary-foreground:#18181b;
+    --accent:#f4f4f5; --accent-foreground:#18181b;
+    --destructive:#ef4444; --ring:#a1a1aa;
+    --orange:#f97e2b; --radius:8px;
+    --shadow-xs:0 1px 2px 0 rgb(0 0 0 / 0.04);
+    --shadow-sm:0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.08);
+    --shadow-lg:0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{font-size:14px;}
+  body{font-family:ui-sans-serif,system-ui,-apple-system,"PingFang SC","Segoe UI",sans-serif;
+       background:var(--background);color:var(--foreground);min-width:1280px;
+       -webkit-font-smoothing:antialiased;}
+  .icon{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;
+        stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;}
+  .icon-sm{width:14px;height:14px;}
+  [hidden]{display:none !important;}
+
+  .app{display:flex;min-height:100vh;}
+
+  /* ---- Sidebar（对齐主应用窄轨） ---- */
+  aside{width:176px;background:var(--card);border-right:1px solid var(--border);
+        padding:12px 10px;flex-shrink:0;}
+  .brand{display:flex;align-items:center;gap:8px;padding:4px 8px 16px;}
+  .brand-mark{width:26px;height:26px;border-radius:7px;background:var(--primary);
+              color:#fff;display:flex;align-items:center;justify-content:center;}
+  .brand span{font-size:12px;font-weight:600;color:var(--muted-foreground);}
+  .nav{display:flex;flex-direction:column;gap:2px;}
+  .nav-item{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:7px;
+            font-size:12.5px;color:var(--muted-foreground);}
+  .nav-item .icon{color:#b6bac2;}
+  .nav-item.active{background:var(--muted);color:var(--foreground);font-weight:500;}
+  .nav-item.active .icon{color:var(--foreground);}
+  .nav-sep{height:10px;}
+
+  main{flex:1;display:flex;flex-direction:column;min-width:0;}
+  .topbar{height:46px;background:var(--card);border-bottom:1px solid var(--border);
+          display:flex;align-items:center;justify-content:space-between;padding:0 20px;}
+  .crumbs{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted-foreground);}
+  .crumbs b{color:var(--foreground);font-weight:500;}
+  .topbar-right{display:flex;align-items:center;gap:14px;font-size:12px;color:var(--muted-foreground);}
+  .topbar-right .who{display:flex;align-items:center;gap:6px;}
+
+  .page{flex:1;padding:20px 24px 40px;overflow:auto;}
+
+  /* ---- 页头 ---- */
+  .head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .icon-btn{width:30px;height:30px;border-radius:var(--radius);border:1px solid var(--border);
+            background:var(--card);display:flex;align-items:center;justify-content:center;
+            color:var(--muted-foreground);cursor:pointer;}
+  .icon-btn:hover{background:var(--accent);}
+  .avatar{width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,#fdba74,#f97e2b);
+          color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;}
+  .title-wrap{display:flex;align-items:center;gap:7px;}
+  h1{font-size:16px;font-weight:600;letter-spacing:-0.01em;}
+  .pencil{color:var(--muted-foreground);cursor:pointer;border-radius:6px;padding:4px;}
+  .pencil:hover{background:var(--accent);color:var(--foreground);}
+
+  /* Badge（shadcn 变体） */
+  .badge{display:inline-flex;align-items:center;gap:5px;border-radius:6px;padding:2px 8px;
+         font-size:11px;font-weight:500;white-space:nowrap;border:1px solid transparent;}
+  .badge-outline{border-color:var(--border);color:var(--muted-foreground);background:var(--card);}
+  .badge-secondary{background:var(--secondary);color:var(--secondary-foreground);}
+  .badge-module{background:#fff7ed;color:#c2410c;border-color:#fed7aa;}
+  .badge-emerald{background:#ecfdf5;color:#047857;border-color:#a7f3d0;}
+  .badge-blue{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;}
+  .badge-violet{background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe;}
+  .badge-amber{background:#fffbeb;color:#b45309;border-color:#fde68a;}
+  .badge-red{background:#fef2f2;color:#b91c1c;border-color:#fecaca;}
+
+  /* Tabs（shadcn TabsList） */
+  .tabs{display:flex;gap:2px;background:var(--muted);border-radius:9px;padding:3px;margin:0 auto;}
+  .tab{padding:5px 14px;border-radius:7px;font-size:12.5px;font-weight:500;
+       color:var(--muted-foreground);cursor:pointer;}
+  .tab:hover{color:var(--foreground);}
+  .tab.active{background:var(--card);color:var(--foreground);box-shadow:var(--shadow-xs);}
+
+  .head-actions{margin-left:auto;display:flex;align-items:center;gap:8px;}
+  .save-hint{font-size:11px;color:var(--muted-foreground);}
+
+  /* Button */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;
+       border-radius:var(--radius);padding:0 14px;font-size:12.5px;font-weight:500;
+       cursor:pointer;border:1px solid transparent;transition:background .12s;}
+  .btn-primary{background:var(--primary);color:var(--primary-foreground);}
+  .btn-primary:hover{background:#27272a;}
+  .btn-outline{background:var(--card);border-color:var(--border);color:var(--foreground);}
+  .btn-outline:hover{background:var(--accent);}
+
+  /* ---- 布局双栏 ---- */
+  .cols{display:grid;grid-template-columns:440px 1fr;gap:16px;margin-top:16px;align-items:start;}
+
+  /* Card */
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;
+        box-shadow:var(--shadow-xs);}
+  .card + .card{margin-top:12px;}
+  .card-header{padding:14px 16px 0;display:flex;align-items:center;gap:8px;}
+  .card-header .icon{color:var(--muted-foreground);}
+  .card-title{font-size:13px;font-weight:600;letter-spacing:-0.01em;}
+  .card-desc{font-size:11.5px;color:var(--muted-foreground);margin-top:2px;}
+  .card-body{padding:14px 16px 16px;}
+  .card-head-right{margin-left:auto;display:flex;align-items:center;gap:6px;}
+
+  .label{display:block;font-size:12px;font-weight:500;color:var(--foreground);margin:12px 0 6px;}
+  .label:first-child{margin-top:0;}
+  .label .count{float:right;font-weight:400;color:var(--muted-foreground);font-size:10.5px;}
+
+  /* Input / Textarea / Select（shadcn） */
+  .input,.textarea,select{width:100%;border:1px solid var(--input);border-radius:var(--radius);
+      background:var(--card);padding:7px 11px;font-size:12.5px;color:var(--foreground);
+      outline:none;font-family:inherit;box-shadow:var(--shadow-xs);}
+  .input:focus,.textarea:focus,select:focus{border-color:var(--ring);
+      box-shadow:0 0 0 3px rgb(161 161 170 / .15);}
+  .textarea{resize:vertical;line-height:1.6;}
+  .select-wrap{position:relative;}
+  select{appearance:none;padding-right:30px;cursor:pointer;}
+  .select-wrap .icon{position:absolute;right:9px;top:50%;transform:translateY(-50%);
+                     color:var(--muted-foreground);pointer-events:none;}
+  .hint{font-size:11px;color:var(--muted-foreground);line-height:1.6;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+
+  details.adv{margin-top:10px;border:1px solid var(--border);border-radius:var(--radius);}
+  details.adv summary{cursor:pointer;font-size:12px;font-weight:500;color:var(--muted-foreground);
+                      padding:8px 11px;list-style:none;display:flex;align-items:center;gap:6px;}
+  details.adv summary:hover{color:var(--foreground);}
+  details.adv[open] summary{border-bottom:1px solid var(--border);}
+  details.adv .adv-body{padding:10px 11px;}
+
+  .callout{border-radius:var(--radius);padding:10px 12px;font-size:11.5px;line-height:1.65;
+           display:flex;gap:8px;align-items:flex-start;}
+  .callout-amber{background:#fffbeb;color:#92400e;border:1px solid #fde68a;}
+  .callout .icon{margin-top:1px;}
+
+  /* ---- 只读资产区 ---- */
+  .ro-banner{display:flex;align-items:center;gap:8px;background:var(--muted);
+             border:1px solid var(--border);border-radius:var(--radius);
+             padding:8px 12px;margin-bottom:12px;font-size:12px;}
+  .ro-banner .icon{color:var(--muted-foreground);}
+  .ro-banner b{font-weight:600;}
+  .ro-banner .hint{margin-left:auto;}
+
+  .pipe{display:flex;align-items:stretch;gap:6px;}
+  .step{flex:1;background:var(--secondary);border:1px solid var(--border);border-radius:var(--radius);
+        padding:8px 10px;}
+  .step b{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;}
+  .step b .icon{color:var(--muted-foreground);}
+  .step span{display:block;font-size:10.5px;color:var(--muted-foreground);margin-top:4px;line-height:1.5;}
+  .pipe-arr{display:flex;align-items:center;color:#c6c9cf;}
+
+  .crit{border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;}
+  .crit + .crit{margin-top:8px;}
+  .crit-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .crit-id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:600;}
+  .crit-desc{font-size:11.5px;color:var(--muted-foreground);line-height:1.6;margin-top:5px;}
+
+  .tool-row{display:flex;align-items:center;gap:8px;padding:7px 0;
+            border-bottom:1px solid var(--border);font-size:12px;}
+  .tool-row:last-of-type{border-bottom:none;}
+  .tool-name{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:500;font-size:11.5px;}
+  .tool-row .hint{margin-left:auto;}
+
+  .kv{display:flex;gap:6px;flex-wrap:wrap;}
+
+  .schema-box{margin-top:8px;border:1px solid var(--border);border-radius:var(--radius);
+              background:#fafafa;padding:10px 12px;
+              font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
+              color:var(--muted-foreground);line-height:1.9;}
+  .schema-box .no{color:var(--destructive);}
+
+  .imp-row{display:flex;align-items:center;gap:10px;border:1px solid var(--border);
+           border-radius:var(--radius);padding:10px 12px;}
+  .imp-row + .imp-row{margin-top:8px;}
+  .imp-name{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px;}
+  .imp-meta{margin-left:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+            font-size:10.5px;color:var(--muted-foreground);}
+
+  /* ---- 标注 ---- */
+  .note-toggle{position:fixed;right:20px;bottom:20px;z-index:60;height:34px;
+               border-radius:17px;border:1px solid var(--border);background:var(--card);
+               color:var(--foreground);font-size:12px;font-weight:500;padding:0 14px;
+               cursor:pointer;box-shadow:var(--shadow-sm);display:flex;align-items:center;gap:6px;}
+  .note-dot{display:none;position:absolute;width:17px;height:17px;border-radius:50%;
+            background:var(--orange);color:#fff;font-size:10px;font-weight:700;
+            align-items:center;justify-content:center;cursor:help;z-index:50;
+            box-shadow:0 0 0 2px var(--card);}
+  body.notes .note-dot{display:flex;}
+  .note-tip{display:none;position:fixed;z-index:70;max-width:320px;background:var(--primary);
+            color:var(--primary-foreground);border-radius:var(--radius);padding:10px 12px;
+            font-size:11.5px;line-height:1.65;box-shadow:var(--shadow-lg);}
+
+  /* ---- Dialog（shadcn） ---- */
+  .backdrop{position:fixed;inset:0;background:rgb(24 24 27 / .55);z-index:80;
+            display:flex;align-items:flex-start;justify-content:center;padding-top:7vh;}
+  .dialog{width:580px;background:var(--card);border-radius:12px;box-shadow:var(--shadow-lg);
+          padding:20px 22px;}
+  .dialog h2{font-size:15px;font-weight:600;letter-spacing:-0.01em;}
+  .dialog .desc{font-size:12px;color:var(--muted-foreground);margin-top:3px;}
+  .sep{height:1px;background:var(--border);margin:14px 0;}
+  .steps{display:flex;gap:6px;margin:14px 0;}
+  .stp{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+       font-size:11px;font-weight:500;color:var(--muted-foreground);
+       padding:6px 0;border-radius:7px;background:var(--secondary);}
+  .stp.done{background:#ecfdf5;color:#047857;}
+  .stp.cur{background:var(--primary);color:#fff;}
+  .frozen{border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;}
+  .frozen b{font-size:12px;}
+  .frozen .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;
+                color:var(--muted-foreground);margin-top:5px;line-height:1.7;}
+  .env-row{display:flex;gap:10px;}
+  .env-card{flex:1;border:1.5px solid var(--border);border-radius:var(--radius);
+            padding:10px 12px;cursor:pointer;}
+  .env-card:hover{background:var(--accent);}
+  .env-card.sel{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary);}
+  .env-card b{font-size:12.5px;display:flex;align-items:center;gap:6px;}
+  .env-card span{display:block;font-size:10.5px;color:var(--muted-foreground);margin-top:3px;}
+  .prov-card{border:1.5px solid var(--border);border-radius:var(--radius);
+             padding:11px 13px;cursor:pointer;}
+  .prov-card + .prov-card{margin-top:9px;}
+  .prov-card:hover{background:var(--accent);}
+  .prov-card.sel{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary);}
+  .prov-top{display:flex;align-items:center;gap:8px;}
+  .prov-name{font-size:12.5px;font-weight:600;}
+  .prov-desc{font-size:10.5px;color:var(--muted-foreground);margin-top:4px;line-height:1.55;}
+  .canary{display:flex;align-items:center;gap:10px;margin-top:10px;}
+  .canary input[type=range]{flex:1;accent-color:var(--primary);}
+  .canary-val{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+              width:40px;text-align:right;}
+  .binding{background:#fafafa;border:1px solid var(--border);border-radius:var(--radius);
+           padding:9px 12px;margin-top:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+           font-size:10.5px;color:var(--muted-foreground);line-height:1.8;}
+  .dlg-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}
+
+  /* ---- 版本 tab ---- */
+  .ver-row{border:1px solid var(--border);border-radius:var(--radius);padding:11px 13px;}
+  .ver-row + .ver-row{margin-top:8px;}
+  .ver-top{display:flex;align-items:center;gap:8px;}
+  .ver-top b{font-size:12.5px;}
+  .ver-top .mono{margin-left:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+                 font-size:10.5px;color:var(--muted-foreground);}
+  .stub{border:1px dashed var(--border);border-radius:10px;background:var(--card);
+        padding:48px;text-align:center;color:var(--muted-foreground);font-size:12px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ============ 侧栏 ============ -->
+  <aside>
+    <div class="brand">
+      <div class="brand-mark"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg></div>
+      <span>企业智能质量平台</span>
+    </div>
+    <div class="nav">
+      <div class="nav-item"><svg class="icon" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>质量总览</div>
+      <div class="nav-item"><svg class="icon" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>质量结果</div>
+      <div class="nav-item"><svg class="icon" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>坐席</div>
+      <div class="nav-item"><svg class="icon" viewBox="0 0 24 24"><path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/></svg>任务</div>
+      <div class="nav-item active"><svg class="icon" viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>Agents</div>
+      <div class="nav-item"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3"/><path d="M12 18v3"/><path d="M3 12h3"/><path d="M18 12h3"/></svg>工作流</div>
+      <div class="nav-item"><svg class="icon" viewBox="0 0 24 24"><path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><rect x="3" y="13" width="18" height="8" rx="2"/></svg>表单</div>
+      <div class="nav-sep"></div>
+      <div class="nav-item"><svg class="icon" viewBox="0 0 24 24"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>AI 资源</div>
+      <div class="nav-item"><svg class="icon" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>数据资源</div>
+      <div class="nav-item"><svg class="icon" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>规则</div>
+      <div class="nav-item"><svg class="icon" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>连接</div>
+      <div class="nav-item"><svg class="icon" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>发布治理</div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="topbar">
+      <div class="crumbs">企业智能质量平台 <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg> 配置管理 <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg> <b>Agents</b></div>
+      <div class="topbar-right">
+        <span class="who"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>dev · admin</span>
+        <span>退出</span>
+      </div>
+    </div>
+
+    <div class="page">
+      <!-- ============ 页头 ============ -->
+      <div class="head">
+        <button class="icon-btn"><svg class="icon" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></button>
+        <div class="avatar">质</div>
+        <div class="title-wrap">
+          <h1>服务热线质量分析 Agent</h1>
+          <span class="pencil"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>
+        </div>
+        <span class="badge badge-module"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>质检 Module · v1.0.0</span>
+        <span class="badge badge-outline">V2 草稿有改动</span>
+        <span class="badge badge-emerald">沙箱 V2 · AgentScope</span>
+        <span class="badge badge-blue">线上 V1 · AgentScope</span>
+        <div class="tabs">
+          <div class="tab active" data-tab="config">配置</div>
+          <div class="tab" data-tab="runs">运行观测</div>
+          <div class="tab" data-tab="versions">版本与发布</div>
+          <div class="tab" data-tab="eval">效果评测</div>
+        </div>
+        <div class="head-actions">
+          <span class="save-hint">已保存 · 14:32</span>
+          <button class="btn btn-outline"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>保存</button>
+          <button class="btn btn-primary" onclick="openPublish()"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>发布</button>
+        </div>
+      </div>
+
+      <!-- ============ Tab 配置 ============ -->
+      <div id="tab-config">
+        <div class="cols">
+          <!-- 左：可编辑业务语义层 -->
+          <section>
+            <div style="position:relative;">
+              <span class="note-dot" style="top:-7px;left:-7px;" data-tip="①业务语义层（可编辑）：仅名称/描述/业务定位/模型。对应 POST·PUT /api/agents 的 config={spec.purpose, modelRef}。">1</span>
+              <div class="card">
+                <div class="card-header"><svg class="icon" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg><div><div class="card-title">基本信息</div></div></div>
+                <div class="card-body">
+                  <div style="display:flex;gap:14px;align-items:flex-start;">
+                    <div style="flex:1;">
+                      <label class="label">名称 <span class="count">11/20</span></label>
+                      <input class="input" value="服务热线质量分析 Agent">
+                      <label class="label">描述 <span class="count">0/20000</span></label>
+                      <textarea class="textarea" rows="2" placeholder="描述该 Agent 的用途（仅平台内展示）"></textarea>
+                    </div>
+                    <div style="text-align:center;padding-top:22px;">
+                      <div class="avatar" style="width:56px;height:56px;border-radius:12px;font-size:20px;">质</div>
+                      <div class="hint" style="margin-top:6px;cursor:pointer;">更换头像</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="position:relative;">
+              <span class="note-dot" style="top:-7px;left:-7px;" data-tip="②业务定位 purpose：注入 Module 指令尾部『## 本实例业务定位』，区分同一 Module 的不同实例。改动后需重新生成版本才进入发布物。">2</span>
+              <div class="card">
+                <div class="card-header"><svg class="icon" viewBox="0 0 24 24"><path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/></svg><div><div class="card-title">业务定位（本实例）</div></div></div>
+                <div class="card-body">
+                  <textarea class="textarea" rows="3">服务热线售后场景，重点核验工单创建与短信通知类承诺。</textarea>
+                  <div class="hint" style="margin-top:8px;">将注入 Module 指令尾部「## 本实例业务定位」。核验项、工具策略等语义由 Module 版本决定，此处不可改。</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header"><svg class="icon" viewBox="0 0 24 24"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg><div><div class="card-title">模型</div></div></div>
+              <div class="card-body">
+                <div class="row2">
+                  <div>
+                    <label class="label">Provider</label>
+                    <div class="select-wrap"><select><option>openai-compatible</option><option>deepseek-compatible</option></select><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></div>
+                  </div>
+                  <div>
+                    <label class="label">模型</label>
+                    <div class="select-wrap"><select><option>qwen3.8-max</option><option>qwen-max</option></select><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></div>
+                  </div>
+                </div>
+                <details class="adv">
+                  <summary><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>高级参数</summary>
+                  <div class="adv-body">
+                    <div class="row2">
+                      <div><label class="label">temperature</label><input class="input" value="0.2"></div>
+                      <div><label class="label">max_tokens</label><input class="input" value="4096"></div>
+                    </div>
+                  </div>
+                </details>
+                <div class="hint" style="margin-top:10px;">模型随版本冻结：发布后修改模型需生成新版本；凭据由平台 Connection 注入，不落入配置。</div>
+              </div>
+            </div>
+
+            <div class="callout callout-amber" style="margin-top:12px;">
+              <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+              <span>该页面仅暴露 Module 允许配置的业务语义层；阶段编排、工具白名单、完成屏障、安全策略与评分均由 Module 代码与平台控制——「提示词只管语义，代码管行为」。</span>
+            </div>
+          </section>
+
+          <!-- 右：Module 只读资产 -->
+          <section>
+            <div style="position:relative;">
+              <span class="note-dot" style="top:-7px;left:-7px;" data-tip="③Module 只读资产区：由 quality-analysis v1.0.0 冻结。改核验项/工具策略 = 发布新 Module 版本（代码评审资产）。">3</span>
+              <div class="ro-banner">
+                <svg class="icon" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <b>质检 Module v1.0.0 · 资产（只读）</b>
+                <span class="hint">由 Module 版本与平台代码控制</span>
+              </div>
+
+              <div style="position:relative;">
+                <span class="note-dot" style="top:-7px;left:-7px;" data-tip="④阶段语义 identify→plan→execute→barrier→synthesize：由两个 Provider 各自原生实现，平台只读展示，不做 Workflow DAG。">4</span>
+                <div class="card">
+                  <div class="card-header"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3"/><path d="M12 18v3"/><path d="M3 12h3"/><path d="M18 12h3"/></svg><div><div class="card-title">阶段语义</div></div>
+                    <div class="card-head-right"><span class="badge badge-secondary">代码屏障</span></div></div>
+                  <div class="card-body">
+                    <div class="pipe">
+                      <div class="step"><b><svg class="icon icon-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>识别</b><span>诉求 / 知识陈述 / 承诺</span></div>
+                      <div class="pipe-arr"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></div>
+                      <div class="step"><b><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/></svg>计划</b><span>每对象独立 Plan</span></div>
+                      <div class="pipe-arr"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></div>
+                      <div class="step"><b><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>核验执行</b><span>多轮检索 · 工具白名单</span></div>
+                      <div class="pipe-arr"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></div>
+                      <div class="step"><b><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>完成屏障</b><span>代码判定全部终态</span></div>
+                      <div class="pipe-arr"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></div>
+                      <div class="step"><b><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>结构化总结</b><span>不挂企业工具</span></div>
+                    </div>
+                    <div class="hint" style="margin-top:10px;">证据不足 → fail closed 输出 insufficient_evidence，不猜测。</div>
+                  </div>
+                </div>
+              </div>
+
+              <div style="position:relative;">
+                <span class="note-dot" style="top:-7px;left:-7px;" data-tip="⑤工具策略按核验项声明（tool_policy）：提示词只是辅助；真正边界 = 代码 per-plan 工具注册 + Tool Gateway 服务端鉴权。">5</span>
+                <div class="card">
+                  <div class="card-header"><svg class="icon" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg><div><div class="card-title">核验项与工具策略</div></div></div>
+                  <div class="card-body">
+                    <div class="crit">
+                      <div class="crit-top"><span class="crit-id">abusive_language</span><span class="badge badge-red">forbidden · 禁用工具</span></div>
+                      <div class="crit-desc">判断坐席是否存在辱骂、贬损、威胁或明显攻击性表达。</div>
+                    </div>
+                    <div class="crit">
+                      <div class="crit-top"><span class="crit-id">knowledge_accuracy</span><span class="badge badge-blue">knowledge_search</span></div>
+                      <div class="crit-desc">产品规则/政策/费用/办理条件是否与知识库一致；支持多轮 refinement（≤3 轮）。</div>
+                    </div>
+                    <div class="crit">
+                      <div class="crit-top"><span class="crit-id">promise_fulfillment</span>
+                        <span class="badge badge-blue">ticket_query</span><span class="badge badge-blue">sms_query</span><span class="badge badge-blue">appointment_query</span></div>
+                      <div class="crit-desc">具体、个案化、可核验的动作承诺核验；泛泛表态与统一规则不适用。</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style="position:relative;">
+                <span class="note-dot" style="top:-7px;left:-7px;" data-tip="⑥逻辑工具清单：发布时解析并冻结到平台 Tool 的 ready ToolVersion（dependency_snapshot），运行期不漂移 latest。">6</span>
+                <div class="card">
+                  <div class="card-header"><svg class="icon" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><div><div class="card-title">逻辑工具</div></div>
+                    <div class="card-head-right"><span class="badge badge-emerald">effect: read</span></div></div>
+                  <div class="card-body">
+                    <div class="tool-row"><span class="tool-name">knowledge_search</span><span class="badge badge-secondary">v1.0.0</span><span class="hint">知识核验</span></div>
+                    <div class="tool-row"><span class="tool-name">ticket_query</span><span class="badge badge-secondary">v1.0.0</span><span class="hint">工单承诺核验</span></div>
+                    <div class="tool-row"><span class="tool-name">sms_query</span><span class="badge badge-secondary">v1.0.0</span><span class="hint">短信承诺核验</span></div>
+                    <div class="tool-row"><span class="tool-name">appointment_query</span><span class="badge badge-secondary">v1.0.0</span><span class="hint">预约承诺核验</span></div>
+                    <div class="hint" style="margin-top:9px;">发布时冻结到平台 Tool ready 版本；工具仍由资源中心统一管理，运行期经 Tool Gateway 鉴权。</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-header"><svg class="icon" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg><div><div class="card-title">Master Data</div></div></div>
+                <div class="card-body">
+                  <div class="kv"><span class="badge badge-secondary">service_type · v1</span><span class="badge badge-secondary">issue_taxonomy · v1</span></div>
+                  <div class="hint" style="margin-top:8px;">标签只能返回已提供 Master Data 中的 code。</div>
+                </div>
+              </div>
+
+              <div style="position:relative;">
+                <span class="note-dot" style="top:-7px;left:-7px;" data-tip="⑦输出 Schema 不含质检分数——评分由平台 ResultRule/Scorecard 派生；发布时 Schema 哈希随版本冻结，平台网关对 Provider 输出二次校验。">7</span>
+                <div class="card">
+                  <div class="card-header"><svg class="icon" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg><div><div class="card-title">输出 Schema</div><div class="card-desc">quality-analysis-output · v1.0.0 · sha256 de7a5b073a12…</div></div></div>
+                  <div class="card-body">
+                    <div class="schema-box">
+                      criteria[]: { id, status: compliant | violation | insufficient_evidence | not_applicable,<br>
+                      &nbsp;&nbsp;&nbsp;&nbsp;confidence, reason, evidence[] }<br>
+                      insufficient_evidence: boolean<br>
+                      summary: string<br>
+                      <span class="no">// 不含 score / risk —— 由平台规则引擎派生</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-header"><svg class="icon" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg><div><div class="card-title">执行与安全策略</div></div></div>
+                <div class="card-body">
+                  <div class="kv">
+                    <span class="badge badge-secondary">超时 300s</span>
+                    <span class="badge badge-secondary">检索 ≤ 3 轮</span>
+                    <span class="badge badge-secondary">并行 Plan ≤ 2</span>
+                    <span class="badge badge-emerald">read-only</span>
+                    <span class="badge badge-secondary">network: tool-gateway-only</span>
+                    <span class="badge badge-secondary">审批: 无</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style="position:relative;">
+                <span class="note-dot" style="top:-7px;left:-7px;" data-tip="⑧Provider 实现元数据（只读）：两个实现共享同一 Spec/Schema/工具/Ground Truth；选择哪一个在『发布』时绑定，不写入 Agent 配置（SDD 5.4 / ADR-R04）。">8</span>
+                <div class="card">
+                  <div class="card-header"><svg class="icon" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg><div><div class="card-title">Provider 实现（发布时选择绑定）</div></div></div>
+                  <div class="card-body">
+                    <div class="imp-row"><span class="imp-name"><span class="badge badge-emerald">默认候选</span>AgentScope</span><span class="imp-meta">v0.2.0 · native_quality_v0.2</span></div>
+                    <div class="imp-row"><span class="imp-name"><span class="badge badge-violet">实验 / 对照</span>DeepSeek Harness</span><span class="imp-meta">v0.2.0 · bundle: morethancorn-dsh-native-quality…</span></div>
+                    <div class="hint" style="margin-top:9px;">不自动跨 Provider 回退（ADR-R08）；DSH 需通过晋级门禁才可承担生产流量。</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ============ Tab 版本与发布 ============ -->
+      <div id="tab-versions" hidden>
+        <div class="cols" style="grid-template-columns:1fr;">
+          <section style="max-width:880px;">
+            <div class="card">
+              <div class="card-header"><svg class="icon" viewBox="0 0 24 24"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg><div><div class="card-title">版本历史</div></div></div>
+              <div class="card-body">
+                <div class="ver-row">
+                  <div class="ver-top"><b>V2</b><span class="badge badge-emerald">沙箱生效 · AgentScope</span><span class="mono">sha256:e3b0c442…</span></div>
+                  <div class="hint" style="margin-top:6px;">冻结：模型 qwen3.8-max · 工具×4 · 主数据×2 · 输入/输出 Schema 哈希 · 业务定位（售后场景） · 2026-08-29 14:20</div>
+                </div>
+                <div class="ver-row">
+                  <div class="ver-top"><b>V1</b><span class="badge badge-blue">线上生效 · AgentScope</span><span class="mono">sha256:aa53f01c…</span></div>
+                  <div class="hint" style="margin-top:6px;">冻结：模型 qwen3.8-max · 工具×4 · 主数据×2 · 无业务定位 · 2026-08-29 10:02</div>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header"><svg class="icon" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg><div><div class="card-title">Release 绑定记录</div></div></div>
+              <div class="card-body">
+                <div class="ver-row">
+                  <div class="ver-top"><b>sandbox</b><span class="badge badge-emerald">AgentScope · 稳定 100%</span><span class="mono">2026-08-29 14:22 · admin</span></div>
+                  <div class="hint" style="margin-top:6px;font-family:ui-monospace,Menlo,monospace;">profile: quality-analysis-1.0.0 · impl: agentscope 0.2.0 (native_quality_v0.2)</div>
+                </div>
+                <div class="ver-row">
+                  <div class="ver-top"><b>sandbox</b><span class="badge badge-violet">DeepSeek Harness · 灰度 20%</span><span class="mono">2026-08-29 14:25 · admin</span></div>
+                  <div class="hint" style="margin-top:6px;font-family:ui-monospace,Menlo,monospace;">bundle: morethancorn-dsh-native-quality-workflow · schema sha256 已固化</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div id="tab-runs" hidden><div class="stub">运行观测（Run Detail：stage / calls / usage / runtime 版本 / evidence）—— 属 R3·R4 范围，本原型不展开</div></div>
+      <div id="tab-eval" hidden><div class="stub">效果评测（Golden Set 对比 / 双 Provider 同 Ground Truth）—— 属 R4 范围，本原型不展开</div></div>
+    </div>
+  </main>
+</div>
+
+<!-- ============ 发布对话框 ============ -->
+<div class="backdrop" id="publishDlg" hidden onclick="if(event.target===this)closePublish()">
+  <div class="dialog">
+    <h2>发布「服务热线质量分析 Agent」</h2>
+    <div class="desc">生成不可变版本，并选择部署环境与 Runtime Provider 绑定。</div>
+    <div class="steps">
+      <div class="stp done"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>生成版本 V3</div>
+      <div class="stp cur">选择环境与 Provider</div>
+      <div class="stp">确认绑定</div>
+    </div>
+    <div class="frozen">
+      <b>已冻结版本 V3</b>
+      <div class="mono">artifactHash e3b0c44298fc… ｜ 模型 qwen3.8-max · 工具×4 · 主数据×2 · Schema 哈希×2 · 业务定位已注入</div>
+      <div class="hint" style="margin-top:6px;">版本不可变：此后编辑草稿不影响本版本；回滚 = 对旧版本重新部署。</div>
+    </div>
+    <div class="sep"></div>
+    <label class="label" style="margin-top:0;">部署环境</label>
+    <div class="env-row">
+      <div class="env-card sel" onclick="selEnv(this)"><b><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/></svg>沙箱</b><span>默认测试环境；稳定 + 灰度可并存</span></div>
+      <div class="env-card" onclick="selEnv(this)"><b><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>线上</b><span>需 DSH 通过晋级门禁后方可承载</span></div>
+    </div>
+    <div style="position:relative;">
+      <span class="note-dot" style="top:-7px;right:-7px;" data-tip="⑨Provider 在 Release 时绑定（SDD 5.4）：同一 AgentVersion 可 AgentScope 稳定 + DSH 灰度并存；灰度按 Run 哈希稳定分流；禁止自动跨 Provider 回退。绑定写 binding_snapshot。">9</span>
+      <label class="label">Runtime Provider</label>
+      <div class="prov-card sel" onclick="selProv(this,'as')">
+        <div class="prov-top"><span class="badge badge-emerald">默认候选</span><span class="prov-name">AgentScope</span><span class="imp-meta">impl v0.2.0 · native_quality_v0.2</span></div>
+        <div class="prov-desc">稳定全量部署；同环境旧稳定 Release 自动转为 rolled_back。</div>
+      </div>
+      <div class="prov-card" onclick="selProv(this,'dsh')">
+        <div class="prov-top"><span class="badge badge-violet">实验 / 对照</span><span class="prov-name">DeepSeek Harness</span><span class="imp-meta">bundle: morethancorn-dsh-native-quality…</span></div>
+        <div class="prov-desc">以灰度 Release 与稳定版并存，按 Run 哈希稳定分流；不自动跨 Provider 回退。</div>
+        <div class="canary" id="canaryRow" style="opacity:.4;">
+          <span class="hint" style="white-space:nowrap;">灰度比例</span>
+          <input type="range" min="0" max="100" value="20" oninput="canaryVal.textContent=this.value+'%'">
+          <span class="canary-val" id="canaryVal">20%</span>
+        </div>
+      </div>
+    </div>
+    <div class="binding" id="bindingPreview">binding_snapshot 预览（随 Release 落库）：{ providerId: rp_agentscope, providerKind: agentscope, contractVersion: 1.0, profile: quality-analysis-1.0.0, moduleImplementation: {version: 0.2.0, entry: native_quality_v0.2}, inputSchemaSha256: 5cefcd4e…, outputSchemaSha256: de7a5b07… }</div>
+    <div class="dlg-foot">
+      <button class="btn btn-outline" onclick="closePublish()">取消</button>
+      <button class="btn btn-primary" onclick="closePublish()">部署到沙箱</button>
+    </div>
+  </div>
+</div>
+
+<button class="note-toggle" onclick="document.body.classList.toggle('notes');this.querySelector('span').textContent=document.body.classList.contains('notes')?' 隐藏标注':' 显示标注'"><svg class="icon icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span> 显示标注</span></button>
+<div class="note-tip" id="tip" hidden></div>
+
+<script>
+  document.querySelectorAll('.tab').forEach(t=>{
+    t.addEventListener('click',()=>{
+      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+      t.classList.add('active');
+      ['config','runs','versions','eval'].forEach(k=>{
+        document.getElementById('tab-'+k).hidden = k!==t.dataset.tab;
+      });
+    });
+  });
+  function openPublish(){ document.getElementById('publishDlg').hidden=false; }
+  function closePublish(){ document.getElementById('publishDlg').hidden=true; }
+  function selEnv(el){ el.parentElement.querySelectorAll('.env-card').forEach(c=>c.classList.remove('sel')); el.classList.add('sel'); }
+  function selProv(el,kind){
+    el.parentElement.querySelectorAll('.prov-card').forEach(c=>c.classList.remove('sel'));
+    el.classList.add('sel');
+    document.getElementById('canaryRow').style.opacity = kind==='dsh'?'1':'.4';
+    renderBinding(kind);
+  }
+  function renderBinding(kind){
+    document.getElementById('bindingPreview').textContent = kind==='as'
+      ? 'binding_snapshot 预览（随 Release 落库）：{ providerId: rp_agentscope, providerKind: agentscope, contractVersion: 1.0, profile: quality-analysis-1.0.0, moduleImplementation: {version: 0.2.0, entry: native_quality_v0.2}, inputSchemaSha256: 5cefcd4e…, outputSchemaSha256: de7a5b07… }'
+      : 'binding_snapshot 预览（随 Release 落库）：{ providerId: rp_dsh, providerKind: deepseek-harness, contractVersion: 1.0, canaryPercent: 见滑杆, profile: quality-analysis-1.0.0, moduleImplementation: {version: 0.2.0, bundle: morethancorn-dsh-native-quality-workflow}, inputSchemaSha256: 5cefcd4e…, outputSchemaSha256: de7a5b07… }';
+  }
+  const tip=document.getElementById('tip');
+  document.addEventListener('click',e=>{
+    if(e.target.classList && e.target.classList.contains('note-dot')){
+      tip.textContent=e.target.dataset.tip; tip.hidden=false;
+      const r=e.target.getBoundingClientRect();
+      tip.style.left=Math.min(r.left, window.innerWidth-340)+'px';
+      tip.style.top=(r.bottom+8)+'px';
+      e.stopPropagation();
+    } else if(!tip.hidden){ tip.hidden=true; }
+  });
+</script>
+</body>
+</html>

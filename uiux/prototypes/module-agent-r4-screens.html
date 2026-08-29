@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>原型 v1 · Module Agent R4 其余四屏（Catalog/Providers/RunDetail/任务目标）</title>
+<style>
+  :root { --ink:#1F2329; --ink2:#5A6472; --ink3:#B9C2CF; --line:#EDF0F4; --bg:#F5F6FA;
+          --accent:#3D6BFF; --ok:#16A34A; --warn:#F97E2B; --card:#fff; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:#E9ECF2; font:13px/1.5 -apple-system,"PingFang SC",sans-serif; color:var(--ink); padding:24px; }
+  h1 { font-size:16px; margin-bottom:4px; }
+  .note { color:var(--ink2); font-size:12px; margin-bottom:20px; }
+  .row { display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; }
+  .frame { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; width:640px; box-shadow:0 1px 4px rgba(31,35,41,.08); }
+  .frame > .cap { padding:8px 14px; background:#111; color:#fff; font-size:12px; }
+  .frame > .cap small { color:#9aa3b2; margin-left:8px; }
+  .body { padding:14px; background:var(--bg); height:100%; }
+  .pagebar { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .pagebar h2 { font-size:15px; }
+  .muted { color:var(--ink2); font-size:12px; }
+  .btn { display:inline-flex; align-items:center; gap:4px; border:1px solid var(--line); background:#fff;
+         border-radius:6px; padding:5px 10px; font-size:12px; cursor:pointer; }
+  .btn.primary { background:#111; color:#fff; border-color:#111; }
+  .btn.ghost { border-color:transparent; }
+  .pill { font-size:10px; border-radius:4px; padding:1px 6px; background:#F1F3F7; color:var(--ink2); }
+  .pill.ok { background:#E8F7EE; color:var(--ok); }
+  .pill.warn { background:#FFF4EA; color:var(--warn); }
+  .pill.err { background:#FEECEC; color:#DC2626; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px; }
+  .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  table { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th { text-align:left; font-size:11px; color:var(--ink2); font-weight:500; padding:8px 10px; background:#FAFBFD; border-bottom:1px solid var(--line); }
+  td { padding:9px 10px; border-bottom:1px solid var(--line); font-size:12px; }
+  .kv { display:flex; gap:8px; font-size:12px; padding:3px 0; }
+  .kv b { color:var(--ink2); font-weight:500; min-width:96px; }
+  .mono { font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(--ink2); }
+  .sec { font-size:12px; font-weight:600; margin:10px 0 6px; }
+  .steps { display:flex; gap:6px; margin-bottom:12px; }
+  .step { flex:1; text-align:center; border:1px solid var(--line); border-radius:6px; padding:5px; font-size:11px; background:#fff; }
+  .step.on { border-color:var(--accent); color:var(--accent); background:#F0F4FF; }
+  .radio { border:1px solid var(--line); border-radius:10px; padding:10px; background:#fff; margin-bottom:8px; }
+  .radio.on { border-color:var(--ink); }
+  input[type=text] { width:100%; border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:12px; background:#fff; }
+</style>
+</head>
+<body>
+<h1>Module Agent · R4 其余四屏原型 v1</h1>
+<div class="note">与《原型 v2 · Module Agent 配置页》（module-agent-config.html）互补：配置页/发布绑定/评测已在彼稿，此稿覆盖 Catalog、Provider 管理、Run Detail 增强、任务执行目标。参考图（AgentHub）影响：配置信息分区卡、右侧测试面板、Draft/Published 版本对照——配置页部分见彼稿评审。</div>
+
+<div class="row">
+  <!-- ① Catalog -->
+  <div class="frame"><div class="cap">① 我的 Agent · Module Catalog <small>取代旧三类创建入口；旧 Agent 折叠为封存区</small></div>
+    <div class="body">
+      <div class="pagebar">
+        <h2>我的 Agent</h2><span class="pill">Module 4</span><span class="pill warn">已封存 29</span>
+        <div style="flex:1"></div>
+        <button class="btn">搜索</button><button class="btn primary">＋ 新建 Agent</button>
+      </div>
+      <div class="grid">
+        <div class="card"><div style="display:flex;justify-content:space-between"><b>售后热线质检</b><span class="pill ok">V2</span></div>
+          <div class="muted">quality-analysis · 1.0.0</div>
+          <div class="muted">沙箱 V2 · AgentScope ｜ 线上 V1</div></div>
+        <div class="card"><div style="display:flex;justify-content:space-between"><b>物流工单质检</b><span class="pill">草稿</span></div>
+          <div class="muted">quality-analysis · 1.0.0</div><div class="muted">未发布</div></div>
+        <div class="card" style="opacity:.6"><div style="display:flex;justify-content:space-between"><b>（新建占位）</b></div>
+          <div class="muted">ticket-automation · 规划中</div></div>
+      </div>
+      <div class="sec">已封存（旧三类 · 只读）<span class="pill warn">不可新建/运行</span></div>
+      <table><tr><th>名称</th><th>类型</th><th>状态</th><th></th></tr>
+        <tr><td>verify-autonomous</td><td>自主规划</td><td><span class="pill warn">已封存</span></td><td class="muted">查看历史</td></tr>
+        <tr><td>Undo演示</td><td>对话编排</td><td><span class="pill warn">已封存</span></td><td class="muted">查看历史</td></tr></table>
+      <div class="sec">创建流程（点「新建 Agent」）</div>
+      <div class="card">
+        <div class="kv"><b>① 选 Module</b><span>卡片列出 registry 全部 Module（图标+名称+一句职责+风险等级）</span></div>
+        <div class="kv"><b>② 基本信息</b><span>名称(≤20)/描述</span></div>
+        <div class="kv"><b>③ 模型</b><span>模型下拉（registry models）+ 高级参数折叠</span></div>
+        <div class="kv"><b>④ 确认</b><span>只读展示该 Module 将冻结的 Spec 摘要（criteria/工具/主数据——不可改，仅知会）→ 创建</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ② Providers -->
+  <div class="frame"><div class="cap">② Runtime Providers 管理页 <small>资源中心新资源类型；health 真探测</small></div>
+    <div class="body">
+      <div class="pagebar"><h2>Runtime Providers</h2><span class="muted">Agent 执行底座（与模型供应商分离）</span>
+        <div style="flex:1"></div><button class="btn primary">＋ 注册 Provider</button></div>
+      <table>
+        <tr><th>名称</th><th>Kind</th><th>Endpoint</th><th>Contract</th><th>健康</th><th>状态</th><th></th></tr>
+        <tr><td>AgentScope 生产</td><td>agentscope</td><td class="mono">http://…:8301</td><td>1.0</td>
+            <td><span class="pill ok">ok · 2m 前</span></td><td><span class="pill ok">enabled</span></td>
+            <td class="muted">探测｜停用｜编辑</td></tr>
+        <tr><td>DSH 实验</td><td>deepseek-harness</td><td class="mono">http://…:8302</td><td>1.0</td>
+            <td><span class="pill warn">degraded · 凭据缺失</span></td><td><span class="pill">enabled</span></td>
+            <td class="muted">探测｜停用｜编辑</td></tr>
+        <tr><td>备用外部</td><td>external</td><td class="mono">https://…</td><td>1.0</td>
+            <td><span class="pill err">error · 不可达</span></td><td><span class="pill">disabled</span></td>
+            <td class="muted">启用｜编辑</td></tr>
+      </table>
+      <div class="sec">注册/编辑抽屉</div>
+      <div class="card">
+        <div class="kv"><b>名称/Kind</b><span>kind ∈ agentscope｜deepseek-harness｜external</span></div>
+        <div class="kv"><b>Endpoint</b><span>baseUrl（出站过 Egress）</span></div>
+        <div class="kv"><b>凭据</b><span>仅引用既有 Connection（下拉）；<u>不接收明文 Secret</u></span></div>
+        <div class="kv"><b>高级</b><span>contractVersion / config（禁 API Key，服务端校验拒绝）</span></div>
+        <div class="kv"><b>能力</b><span>probe 后展示 capabilities 只读（tools/trace/session…）</span></div>
+      </div>
+      <div class="sec">确认点</div>
+      <div class="card muted">停用需 admin+审计；停用不影响历史 Run（列表徽标"已停用，历史可查"）。Module 兼容矩阵（该 Provider 支持哪些 Module 实现）在详情页只读展示。</div>
+    </div>
+  </div>
+
+  <!-- ③ Run Detail -->
+  <div class="frame"><div class="cap">③ Run Detail（Agent Run 增强）<small>stage/calls/usage/runtime 版本/evidence</small></div>
+    <div class="body">
+      <div class="pagebar"><button class="btn ghost">←</button><h2>Run 8f3a…c2</h2>
+        <span class="pill ok">succeeded</span><span class="pill">agent · quality-analysis@1.0.0</span>
+        <div style="flex:1"></div><button class="btn">导出</button></div>
+      <div class="card">
+        <div class="kv"><b>执行目标</b><span>Agent V2 ／ 来源：任务「每日热线质检」批次 #12（interactionRef S1）</span></div>
+        <div class="kv"><b>Runtime</b><span>AgentScope · runtime 2.0.7 · adapter 0.1.0 · contract 1.0 · impl 0.2.0</span></div>
+        <div class="kv"><b>耗时/Token</b><span>137.7s ｜ in 18,220 · out 5,265 · total 23,485（模型 13 次 / 工具 6 次）</span></div>
+      </div>
+      <div class="sec">阶段（provider Trace → CONTROL 事件）</div>
+      <table>
+        <tr><th>#</th><th>阶段</th><th>名称</th><th>耗时</th></tr>
+        <tr><td class="mono">0</td><td>identify</td><td>诉求/承诺识别</td><td>6.1s</td></tr>
+        <tr><td class="mono">1</td><td>plan</td><td>3 个核验 Plan</td><td>1.2s</td></tr>
+        <tr><td class="mono">2</td><td>execute</td><td>knowledge_search ×2（2 轮）</td><td>41s</td></tr>
+        <tr><td class="mono">3</td><td>barrier</td><td>全部 Plan 终态 ✓</td><td>0.1s</td></tr>
+        <tr><td class="mono">4</td><td>synthesize</td><td>结构化总结 + Schema 校验</td><td>22s</td></tr>
+      </table>
+      <div class="sec">调用记录（CallRecord，按 run 直查）</div>
+      <table>
+        <tr><th>Kind</th><th>目标</th><th>Token</th><th></th></tr>
+        <tr><td>model</td><td>qwen3.8-max</td><td class="mono">1,842</td><td class="muted">详情</td></tr>
+        <tr><td>tool</td><td>knowledge_search</td><td>—</td><td class="muted">详情（脱敏 req/resp）</td></tr>
+      </table>
+      <div class="sec">质检结果（派生）</div>
+      <div class="card">
+        <div class="kv"><b>评分</b><span>92 / Risk Low<span class="muted">（规则 V3 派生，非 Agent 给分）</span></span></div>
+        <div class="kv"><b>结论</b><span>promise_fulfillment=passed（confidence 0.9）</span></div>
+        <div class="kv"><b>证据</b><span class="mono">tool:ticket:T-1:event:3「工单已创建」</span></div>
+        <div class="kv"><b>复核</b><span class="pill">AI · 待复核</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ④ 任务向导 -->
+  <div class="frame"><div class="cap">④ 新建质检任务 · 执行目标步骤 <small>Workflow 或 Agent 二选一</small></div>
+    <div class="body">
+      <div class="steps"><div class="step">① 基本信息</div><div class="step on">② 执行目标</div><div class="step">③ 数据</div><div class="step">④ 规则</div><div class="step">⑤ 确认</div></div>
+      <div class="sec">执行目标类型</div>
+      <div style="display:flex; gap:10px; margin-bottom:10px">
+        <div class="radio" style="flex:1"><b>工作流 Workflow</b><div class="muted">选择工作流与版本策略（现状能力）</div></div>
+        <div class="radio on" style="flex:1"><b>✓ 领域 Agent</b><div class="muted">直接对 Agent 跑质检（无需编排工作流）</div></div>
+      </div>
+      <div class="sec">选择 Agent（仅列 Module Agent；旧三类不可选）</div>
+      <div class="radio on"><b>售后热线质检</b> <span class="pill ok">V2</span>
+        <div class="muted">quality-analysis · 1.0.0</div></div>
+      <div class="radio"><b>物流工单质检</b> <span class="pill">草稿（不可选：无发布版本）</span>
+        <div class="muted">quality-analysis · 1.0.0</div></div>
+      <div class="sec">版本策略</div>
+      <div class="card">
+        <div class="kv"><b>radio</b><span>最新沙箱发布（默认）</span></div>
+        <div class="kv"><b>radio</b><span>最新线上发布</span></div>
+        <div class="kv"><b>radio</b><span>钉住版本（下拉列该 Agent 版本+artifactHash 前 8 位）</span></div>
+        <div class="muted">批次启动即冻结版本与 Runtime Provider 绑定；批次期间发布新版本不影响已开始批次（重试亦不漂移）。</div>
+      </div>
+      <div class="sec">确认页追加</div>
+      <div class="card muted">展示解析结果：AgentVersion V2（hash 8f3a…）· Release r-92（AgentScope）· 规则 V3 · 输出 Schema v1 —— 全部冻结值。</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
