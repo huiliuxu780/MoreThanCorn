@@ -1,0 +1,12 @@
+{ "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "ticket_automation_output",
+  "type": "object", "additionalProperties": false,
+  "required": ["ticket_id", "decision", "actions"],
+  "properties": {
+    "ticket_id": { "type": "string" },
+    "decision": { "type": "string", "enum": ["handled", "escalated", "needs_approval", "insufficient_evidence"] },
+    "actions": { "type": "array", "items": { "type": "object", "additionalProperties": false,
+      "required": ["action_id", "tool", "effect", "idempotency_key", "executed", "side_effect_verified"],
+      "properties": { "action_id": { "type": "string" }, "tool": { "type": "string" },
+        "effect": { "type": "string" }, "idempotency_key": { "type": "string" },
+        "executed": { "type": "boolean" }, "side_effect_verified": { "type": "boolean" },
+        "requiresApproval": { "type": "boolean" }, "compensation": { "type": "string" } } } } } }

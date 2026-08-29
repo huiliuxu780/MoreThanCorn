@@ -1,0 +1,28 @@
+moduleKey: ticket-automation
+moduleVersion: 1.0.0
+displayName: 工单自动处理
+description: 写型 Module：工单接收/分类/取证/提出动作/策略校验/审批/执行/副作用核验/关单或升级。读写分离，写操作带幂等键+审批+补偿。
+riskClass: write
+specSchema: spec.schema.json
+inputSchema: schemas/input.schema.json
+outputSchema: schemas/output.schema.json
+defaultSpec: spec.default.json
+masterData: []
+workflowMode: ticket_automation_v1
+requiredCapabilities:
+  tools: true
+  trace: true
+structuredOutput: true
+implementations:
+  agentscope:
+    version: 0.1.0
+    entry: ticket_automation_v1
+  deepseek-harness:
+    version: 0.1.0
+    bundle: morethancorn-dsh-ticket-automation
+logicalTools:
+  - { name: ticket_query, version: 1.0.0, effect: read }
+  - { name: ticket_update, version: 1.0.0, effect: write-reversible }
+  - { name: ticket_close, version: 1.0.0, effect: write-irreversible }
+resultMapper: result_mapper:map_result
+evaluator: evaluators:default_suite

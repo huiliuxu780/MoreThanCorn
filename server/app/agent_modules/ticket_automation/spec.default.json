@@ -1,0 +1,8 @@
+{ "id": "ticket-automation", "version": "1.0.0", "name": "工单自动处理 Agent",
+  "instructions": "你负责工单自动处理。只读取证用 ticket_query；写操作仅提出动作意图，由代码校验参数后执行；写操作必须带平台幂等键；高风险动作需人工审批；执行后用独立查询核验副作用；失败记录补偿动作；不得把不确定标成已处理。",
+  "actions": [
+    { "id": "update_tag", "tool": "ticket_update", "effect": "write-reversible", "requiresApproval": false },
+    { "id": "close_ticket", "tool": "ticket_close", "effect": "write-irreversible", "requiresApproval": true } ],
+  "tools": [ { "name": "ticket_query", "version": "1.0.0" }, { "name": "ticket_update", "version": "1.0.0" }, { "name": "ticket_close", "version": "1.0.0" } ],
+  "approvalPolicy": "high-risk", "idempotencyPolicy": "platform-key", "compensationPolicy": "record",
+  "master_data": [] }
