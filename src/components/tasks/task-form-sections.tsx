@@ -168,13 +168,14 @@ export function assetOf(form: TaskFormState): DataAsset | null {
 export function autoMapping(agent: AgentDetail | null, asset: DataAsset | null): Record<string, string> {
   const mapping: Record<string, string> = {}
   if (!agent || !asset) return mapping
-  for (const input of agent.inputSchema) {
-    const exact = asset.schema.find((f) => f.key === input.key)
+  const fields = (asset.schema ?? (asset as { fields?: DataAssetField[] }).fields ?? []) as DataAssetField[]
+  for (const input of (agent.inputSchema ?? [])) {
+    const exact = fields.find((f) => f.key === input.key)
     if (exact) {
       mapping[input.key] = exact.key
       continue
     }
-    const compatible = asset.schema.find((f) => f.type === input.type && !Object.values(mapping).includes(f.key))
+    const compatible = fields.find((f) => f.type === input.type && !Object.values(mapping).includes(f.key))
     if (compatible) mapping[input.key] = compatible.key
   }
   return mapping
@@ -184,15 +185,16 @@ export function mappingIssues(form: TaskFormState): { key: string; message: stri
   const agent = agentOf(form)
   const asset = assetOf(form)
   if (!agent || !asset) return []
+  const fields = (asset.schema ?? (asset as { fields?: DataAssetField[] }).fields ?? []) as DataAssetField[]
   const issues: { key: string; message: string }[] = []
-  for (const input of agent.inputSchema) {
+  for (const input of (agent.inputSchema ?? [])) {
     const mapped = form.mapping[input.key]
     if (input.required && !mapped) {
       issues.push({ key: input.key, message: "Required Input 未 Mapping" })
       continue
     }
     if (mapped) {
-      const field = asset.schema.find((f) => f.key === mapped)
+      const field = fields.find((f) => f.key === mapped)
       if (field && field.type !== input.type) {
         issues.push({ key: input.key, message: `类型不兼容：${input.type} ← ${field.type}` })
       }
@@ -308,6 +310,7 @@ export function DataTaskFields({
     }
   }
   const asset = shellFromDef(selDef) ?? assetOf(form)
+  const assetFields = (asset?.schema ?? (asset as { fields?: DataAssetField[] } | null)?.fields ?? []) as DataAssetField[]
   const issues = mappingIssues(form)
 
   return (
@@ -348,7 +351,7 @@ export function DataTaskFields({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {agent.inputSchema.map((input) => {
+                {(agent.inputSchema ?? []).map((input) => {
                   const issue = issues.find((i) => i.key === input.key)
                   return (
                     <TableRow key={input.key}>
@@ -367,7 +370,7 @@ export function DataTaskFields({
                             <SelectValue placeholder="选择字段" />
                           </SelectTrigger>
                           <SelectContent>
-                            {asset.schema.map((f) => (
+                            {assetFields.map((f) => (
                               <SelectItem key={f.key} value={f.key}>
                                 {f.key}（{f.type}）
                               </SelectItem>

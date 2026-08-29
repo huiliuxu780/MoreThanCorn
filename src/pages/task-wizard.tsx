@@ -33,7 +33,7 @@ export default function TaskWizardPage() {
   const mappingOk = useMemo(() => {
     const agent = agentOf(form)
     if (!agent || !form.assetId) return false
-    return mappingIssues(form).length === 0 && agent.inputSchema.filter((i) => i.required).every((i) => form.mapping[i.key])
+    return mappingIssues(form).length === 0 && (agent.inputSchema ?? []).filter((i) => i.required).every((i) => form.mapping[i.key])
   }, [form])
 
   const stepValid = [
