@@ -82,9 +82,36 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
     elif wv:
         version_no = wv.version_no
     # E-3.2 重试谱系：由本 run 重试派生的子链（向上用 originRunId）
-    retry_children = [{"runId": c.id, "status": c.status,
-                       "createdAt": c.created_at.isoformat()}
-                      for c in db.query(Run).filter_by(origin_run_id=run.id).order_by(Run.created_at).all()]
+    retry_children = [
+        {"runId": c.id, "status": c.status, "createdAt": c.created_at.isoformat()}
+        for c in db.query(Run).filter_by(origin_run_id=run.id).order_by(Run.created_at).all()]
+    # R4：Agent Run 增强——runtime 版本/stages/calls/usage/evidence（SDD §15.4）
+    from ..models import CallRecord, Evidence, QualityResult, RunEvent
+    snapshot = run.runtime_snapshot or {}
+    runtime_block = None
+    if run.runtime_provider_id or snapshot.get("provider"):
+        runtime_block = {"providerId": run.runtime_provider_id,
+                         "provider": snapshot.get("providerKind") or snapshot.get("provider"),
+                         "runtimeVersion": snapshot.get("runtimeVersion"),
+                         "adapterVersion": snapshot.get("adapterVersion"),
+                         "contractVersion": snapshot.get("contractVersion"),
+                         "moduleImplementationVersion": snapshot.get("moduleImplementationVersion"),
+                         "module": snapshot.get("moduleKey") and
+                         {"key": snapshot.get("moduleKey"), "version": snapshot.get("moduleVersion")}}
+    stages = [{"sequence": e.sequence, "type": e.type,
+               "stage": (e.payload or {}).get("workflowStage") or (e.payload or {}).get("stage"),
+               "name": (e.payload or {}).get("name")}
+              for e in db.query(RunEvent).filter_by(run_id=run_id, type="runtime_trace")
+              .order_by(RunEvent.sequence).all()]
+    calls = [{"kind": c.kind, "targetType": c.target_type, "targetId": c.target_id,
+              "status": c.status, "latencyMs": c.latency_ms, "tokenUsage": c.token_usage,
+              "request": c.request}
+             for c in db.query(CallRecord).filter_by(run_id=run_id).order_by(CallRecord.created_at).all()]
+    evidence = []
+    for qr in db.query(QualityResult).filter_by(run_id=run_id).all():
+        for ev in db.query(Evidence).filter_by(result_id=qr.id).all():
+            evidence.append({"kind": ev.kind, "locator": ev.locator, "text": ev.text,
+                             "sourceRef": ev.source_ref})
     return {
         "runId": run.id, "status": run.status, "trigger": run.trigger,
         "input": run.input, "output": run.output, "error": run.error,
@@ -94,6 +121,11 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
         "definitionSource": run.definition_source,  # draft|version
         "versionNo": version_no,
         "agentId": run.agent_id,  # R-Archive：前端据此隐藏旧 Agent 运行的重试入口
+        "runtime": runtime_block,
+        "stages": stages,
+        "calls": calls,
+        "usage": run.token_usage or {},
+        "evidence": evidence,
         "originRunId": run.origin_run_id,
         "retryChildren": retry_children,
         "nodeRuns": [{

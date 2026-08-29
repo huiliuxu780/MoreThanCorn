@@ -85,18 +85,36 @@ def create_provider(payload: dict, db: Session = Depends(get_db),
     return _summary(provider)
 
 
-@router.get("")
-def list_providers(db: Session = Depends(get_db)):
-    rows = db.query(AgentRuntimeProvider).order_by(AgentRuntimeProvider.created_at).all()
-    return {"items": [_summary(p) for p in rows], "total": len(rows)}
+@router.get("/metrics/aggregate")
+def runtime_metrics(provider_id: str = "", module_key: str = "", db: Session = Depends(get_db)):
+    """R4 生产门禁指标：按 Provider/Module 聚合 token/调用/时长分位（cost 由 token 估算）。"""
+    from sqlalchemy import func as _f
+    from ..models import Run
+    q = db.query(Run).filter(Run.runtime_provider_id.isnot(None))
+    if provider_id:
+        q = q.filter(Run.runtime_provider_id == provider_id)
+    runs = q.all()
+    if module_key:
+        runs = [r for r in runs if (r.runtime_snapshot or {}).get("moduleKey") == module_key]
+    durs = sorted(r.duration_ms for r in runs if r.duration_ms is not None)
 
-
-@router.get("/{provider_id}")
-def get_provider(provider_id: str, db: Session = Depends(get_db)):
-    provider = _get_or_404(db, provider_id)
-    detail = _summary(provider)
-    detail["config"] = provider.config or {}
-    return detail
+    def pct(p: float) -> int | None:
+        if not durs:
+            return None
+        return durs[min(len(durs) - 1, int(round((p / 100) * (len(durs) - 1))))]
+    tokens = sum((r.token_usage or {}).get("total", 0) or 0 for r in runs)
+    model_calls = sum((r.token_usage or {}).get("modelCalls", 0) or 0 for r in runs)
+    tool_calls = sum((r.token_usage or {}).get("toolCalls", 0) or 0 for r in runs)
+    succeeded = sum(1 for r in runs if r.status == "succeeded")
+    return {"total": len(runs), "succeeded": succeeded,
+            "failed": sum(1 for r in runs if r.status == "failed"),
+            "cancelled": sum(1 for r in runs if r.status == "cancelled"),
+            "successRate": round(succeeded / len(runs), 3) if runs else 0,
+            "totalTokens": tokens, "modelCalls": model_calls, "toolCalls": tool_calls,
+            "durationMs": {"p50": pct(50), "p95": pct(95),
+                           "max": durs[-1] if durs else None},
+            # 成本估算（门禁展示用；真实计价以供应商账单为准）
+            "estimatedCostUsd": round(tokens / 1000 * 0.0008, 4)}
 
 
 @router.put("/{provider_id}")
@@ -131,6 +149,27 @@ def update_provider(provider_id: str, payload: dict, db: Session = Depends(get_d
                         ("name", "baseUrl", "connectionId", "status", "contractVersion")})
     db.commit()
     return _summary(provider)
+
+
+@router.get("/{provider_id}")
+def get_provider(provider_id: str, db: Session = Depends(get_db)):
+    provider = _get_or_404(db, provider_id)
+    detail = _summary(provider)
+    detail["config"] = provider.config or {}
+    # R4：兼容矩阵——该 Provider kind 支持哪些 Module 实现（manifest 声明）
+    from ..agent_modules import registry as module_registry
+    detail["compatibleModules"] = [
+        {"key": m.key, "version": m.version,
+         "implementation": m.manifest["implementations"][provider.kind]}
+        for m in module_registry.all_modules()
+        if provider.kind in m.manifest["implementations"]]
+    return detail
+
+
+@router.get("")
+def list_providers(db: Session = Depends(get_db)):
+    rows = db.query(AgentRuntimeProvider).order_by(AgentRuntimeProvider.created_at).all()
+    return {"items": [_summary(p) for p in rows], "total": len(rows)}
 
 
 @router.post("/{provider_id}/probe")

@@ -381,7 +381,8 @@ export const authApi = {
 export interface AgentInfo {
   id: string; name: string; type: string; typeLabel: string; status: string;
   workflowId: string | null; config: Record<string, unknown>; configRevision: number;
-  description: string; avatar?: string | null
+  description: string; avatar?: string | null;
+  moduleKey?: string | null; moduleVersion?: string | null
 }
 
 export interface AgentVersionInfo {
@@ -391,7 +392,9 @@ export interface AgentRunEvent { type: string; payload: Record<string, unknown>;
 export interface AgentRunDetail {
   runId: string; status: string; trigger: string; input: Record<string, unknown>;
   output?: { content?: string } | null; error?: { message?: string } | null;
-  durationMs?: number | null; events: AgentRunEvent[]
+  durationMs?: number | null; events: AgentRunEvent[];
+  runtime?: Record<string, unknown> | null; stages?: unknown[]; calls?: unknown[];
+  usage?: Record<string, unknown>; evidence?: unknown[]
 }
 /** R-Archive（SDD 10）：旧三类 Agent 只读封存——agentApi 仅保留只读查询；
  *  创建/编辑/复制/发布/部署/运行/评测/进化等写函数已随 UI 入口一并移除
@@ -405,6 +408,26 @@ export const agentApi = {
     return req<{ items: { id: string; name: string; type: string; status: string; archived?: boolean }[]; total: number }>(`/api/agents?${q}`)
   },
   get: (id: string) => req<AgentInfo>(`/api/agents/${id}`),
+  // R4：Module Agent 创建与目录
+  modules: () => req<{ items: { key: string; version: string; displayName: string; description: string; riskClass: string; providers: string[]; logicalTools: string[]; criteria: string[] }[] }>(`/api/agents/modules`),
+  create: (body: { name: string; moduleKey: string; moduleVersion?: string; description?: string; modelRef?: Record<string, unknown> }) =>
+    req<{ id: string; name: string; type: string; moduleKey: string; moduleVersion: string; configRevision: number }>(`/api/agents`, {
+      method: "POST", body: JSON.stringify(body) }),
+  // R4：Module Agent 版本与 Release（Provider 绑定）
+  createVersion: (id: string, note = "") =>
+    req<{ versionId: string; versionNo: number; artifactHash: string } | { detail: { code: string; issues?: { code: string; message: string }[]; message?: string } }>(
+      `/api/agents/${id}/versions`, { method: "POST", body: JSON.stringify({ note }) }),
+  release: (id: string, versionId: string, environment: "sandbox" | "prod", canaryPercent = 0, runtimeProviderId?: string, runtimeProfile?: string) =>
+    req<{ releaseId: string; environment: string; versionNo: number; status: string; canaryPercent: number }>(
+      `/api/agents/${id}/releases`, { method: "POST", body: JSON.stringify({ versionId, environment, canaryPercent, runtimeProviderId, runtimeProfile }) }),
+  providers: () => req<{ items: { id: string; name: string; kind: string; status: string; healthStatus: string | null }[] }>(`/api/runtime-providers`),
+  // R4：Module 实例身份可编辑 + 预览运行（旧三类仍被后端 410 封存）
+  update: (id: string, body: Record<string, unknown>, expectedRevision?: number) =>
+    req<{ id: string; config: Record<string, unknown>; configRevision: number }>(`/api/agents/${id}`, {
+      method: "PUT", body: JSON.stringify({ ...body, ...(expectedRevision != null ? { expectedRevision } : {}) }) }),
+  run: (id: string, input: Record<string, unknown>, trigger = "test", extra?: Record<string, unknown>) =>
+    req<{ runId: string }>(`/api/agents/${id}/run`, {
+      method: "POST", body: JSON.stringify({ input, trigger, ...(extra ?? {}) }) }),
   runDetail: (id: string, runId: string) => req<AgentRunDetail>(`/api/agents/${id}/runs/${runId}`),
   runs: (id: string) =>
     req<{ items: { runId: string; status: string; trigger: string; startedAt: string | null; durationMs: number | null; error?: { message?: string } | null }[] }>(`/api/agents/${id}/runs`),

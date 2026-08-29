@@ -97,6 +97,20 @@ def list_agents(page: int = 1, pageSize: int = 20, search: str = "", archived: s
     return {"items": items, "total": total, "page": page, "pageSize": pageSize}
 
 
+@router.get("/modules")
+def list_modules(db: Session = Depends(get_db)):
+    """R4：Module Catalog——registry 全量 Module（创建入口与目录页共用）。"""
+    from ..agent_modules import registry as module_registry
+    return {"items": [{
+        "key": m.key, "version": m.version, "displayName": m.manifest["displayName"],
+        "description": m.manifest.get("description", ""),
+        "riskClass": m.manifest.get("riskClass", "read-only"),
+        "providers": sorted(m.manifest["implementations"]),
+        "logicalTools": [t["name"] for t in m.logical_tools],
+        "criteria": [c["id"] for c in m.default_spec.get("criteria", [])],
+    } for m in module_registry.all_modules()]}
+
+
 @router.get("/{aid}")
 def get_agent(aid: str, db: Session = Depends(get_db)):
     a = db.get(Agent, aid)

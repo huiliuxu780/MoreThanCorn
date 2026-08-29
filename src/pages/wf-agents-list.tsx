@@ -4,14 +4,20 @@
 import { useCallback, useEffect, useState } from "react"
 import { useListQuery } from "@/hooks/use-list-query"
 import { Pagination } from "@/components/app/pagination"
-import { pagedApi } from "@/services/wf-api"
+import { agentApi, pagedApi, wfApi } from "@/services/wf-api"
 import { useNavigate } from "react-router-dom"
-import { MoreHorizontal, Search } from "lucide-react"
+import { MoreHorizontal, Plus, Search } from "lucide-react"
+import { toast } from "sonner"
 
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export const AVATARS = Array.from({ length: 20 }, (_, i) => `/avatars/avatar-${i}.png`)
@@ -28,8 +34,11 @@ const ORANGE = "#F97E2B"
 interface AgentRow {
   id: string; name: string; type: string; typeLabel: string; status: string; updatedAt: string; description?: string; avatar?: string | null;
   archived?: boolean;
+  moduleKey?: string | null; moduleVersion?: string | null;
   latestVersion?: number | null; sandboxVersion?: number | null; prodVersion?: number | null
 }
+
+interface ModuleMeta { key: string; version: string; displayName: string; description: string; riskClass: string; providers: string[]; logicalTools: string[]; criteria: string[] }
 
 export default function WfAgentsListPage() {
   const navigate = useNavigate()
@@ -42,6 +51,34 @@ export default function WfAgentsListPage() {
   const [sort, setSort] = useState<"updated" | "name">("updated")
   const [typeFilter, setTypeFilter] = useState("all")
   const [archivedFilter, setArchivedFilter] = useState<"" | "true">("")
+  // R4：Module Catalog 创建入口
+  const [createOpen, setCreateOpen] = useState(false)
+  const [modules, setModules] = useState<ModuleMeta[]>([])
+  const [models, setModels] = useState<{ modelKey: string }[]>([])
+  const [fModule, setFModule] = useState("")
+  const [fName, setFName] = useState("")
+  const [fModel, setFModel] = useState("")
+  const [creating, setCreating] = useState(false)
+
+  const openCreate = () => {
+    setCreateOpen(true)
+    agentApi.modules().then((r) => { setModules(r.items); if (!fModule && r.items[0]) setFModule(r.items[0].key) }).catch(() => undefined)
+    wfApi.models().then((r) => { const arr = Array.isArray(r) ? r : (r as { items?: { modelKey: string }[] }).items ?? []; setModels(arr); if (!fModel && arr[0]) setFModel(arr[0].modelKey) }).catch(() => undefined)
+  }
+  const onCreate = async () => {
+    if (!fName.trim() || !fModule) return
+    setCreating(true)
+    try {
+      const mod = modules.find((m) => m.key === fModule)
+      const a = await agentApi.create({ name: fName.trim(), moduleKey: fModule, moduleVersion: mod?.version, modelRef: { modelId: fModel, provider: "openai-compatible" } })
+      toast.success(`已创建 Module Agent「${a.name}」`)
+      setCreateOpen(false); setFName("")
+      load()
+      navigate(`/config/agents/${a.id}`)
+    } catch (e) {
+      toast.error((e as Error).message.replace(/^\d+:\s*/, "").replace(/^"|"$/g, "") || "创建失败")
+    } finally { setCreating(false) }
+  }
 
   const load = useCallback(() => {
     setLoading(true)
@@ -81,9 +118,10 @@ export default function WfAgentsListPage() {
             <SelectTrigger className="h-8 w-32 bg-white text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部类型</SelectItem>
-              <SelectItem value="autonomous">自主规划</SelectItem>
-              <SelectItem value="dialogue">对话编排</SelectItem>
-              <SelectItem value="expert-group">专家组</SelectItem>
+              <SelectItem value="module">领域 Module</SelectItem>
+              <SelectItem value="autonomous">自主规划（封存）</SelectItem>
+              <SelectItem value="dialogue">对话编排（封存）</SelectItem>
+              <SelectItem value="expert-group">专家组（封存）</SelectItem>
             </SelectContent>
           </Select>
           <Select value={archivedFilter || "active"} onValueChange={(v) => setArchivedFilter(v === "archived" ? "true" : "")}>
@@ -93,6 +131,9 @@ export default function WfAgentsListPage() {
               <SelectItem value="archived">已封存</SelectItem>
             </SelectContent>
           </Select>
+          <Button size="sm" className="h-8 rounded-md bg-black text-white hover:bg-neutral-800" onClick={openCreate}>
+            <Plus className="size-4" /> 新建 Agent
+          </Button>
         </div>
       </div>
 
@@ -112,9 +153,13 @@ export default function WfAgentsListPage() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <div className="truncate text-[15px] font-semibold" style={{ color: "#1F2329" }}>{w.name}</div>
-                  <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">已封存</span>
+                  {w.type === "module"
+                    ? <span className="shrink-0 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-600">Module</span>
+                    : <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">已封存</span>}
                 </div>
-                <span className="mt-1 inline-block rounded bg-neutral-100 px-1.5 py-0.5 text-[11px]" style={{ color: INK2 }}>{w.typeLabel}</span>
+                <span className="mt-1 inline-block rounded bg-neutral-100 px-1.5 py-0.5 text-[11px]" style={{ color: INK2 }}>
+                  {w.type === "module" ? `${w.moduleKey}@${w.moduleVersion}` : w.typeLabel}
+                </span>
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -155,6 +200,50 @@ export default function WfAgentsListPage() {
       )}
       <Pagination page={params.page ?? 1} pageSize={params.pageSize ?? 12} total={total}
         pageSizeOptions={[12, 24, 48]} onPageChange={(pg) => update({ page: pg })} onPageSizeChange={(n) => update({ pageSize: n }, true)} />
+
+      {/* R4：Module Catalog 创建对话框（选 Module→名称→模型→Spec 知会） */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="rounded-xl">
+          <DialogHeader><DialogTitle>新建领域 Agent</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">领域 Module</Label>
+              <Select value={fModule} onValueChange={setFModule}>
+                <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {modules.map((m) => (
+                    <SelectItem key={m.key} value={m.key}>{m.displayName}（{m.key}@{m.version}）</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {(() => { const m = modules.find((x) => x.key === fModule); return m ? (
+                <p className="text-[11px] leading-5" style={{ color: INK2 }}>{m.description}</p>) : null })()}
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">名称（≤20）</Label>
+              <Input value={fName} maxLength={20} placeholder="如：售后退款工单 Agent" onChange={(e) => setFName(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">模型</Label>
+              <Select value={fModel} onValueChange={setFModel}>
+                <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
+                <SelectContent>{models.map((m) => <SelectItem key={m.modelKey} value={m.modelKey}>{m.modelKey}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            {(() => { const m = modules.find((x) => x.key === fModule); return m ? (
+              <div className="rounded-md border p-2 text-[11px] leading-5" style={{ borderColor: "#EDF0F4", color: INK2 }}>
+                <div className="font-medium" style={{ color: "#1F2329" }}>将冻结的 Module 资产（只读，不可改）</div>
+                <div>criteria：{m.criteria.join(" / ")}</div>
+                <div>工具：{m.logicalTools.join(" / ")}</div>
+                <div>Provider：{m.providers.join(" / ")}（发布时绑定）</div>
+              </div>) : null })()}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
+            <Button className="bg-black text-white hover:bg-neutral-800" disabled={creating || !fName.trim() || !fModule} onClick={onCreate}>创建</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

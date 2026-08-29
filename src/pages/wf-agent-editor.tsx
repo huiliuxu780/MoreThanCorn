@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { resApi } from "@/services/resource-api"
 import { agentApi, wfApi, type AgentInfo } from "@/services/wf-api"
 import WfDesignerPage from "./wf-designer"
+import ModuleAgentConfigPage from "./module-agent-config"
 import { avatarFor } from "./wf-agents-list"
 
 const INK = "#1F2329"; const INK2 = "#5A6472"; const INK3 = "#B9C2CF"; const CARD = "#EDF0F4"
@@ -144,6 +145,11 @@ export default function WfAgentEditorPage() {
   }, [agentId])
   if (legacy) return <WfDesignerPage workflowId={agentId} />
   if (!agent) return <div className="p-8 text-sm" style={{ color: INK2 }}>加载中…</div>
+
+  // R4：领域 Module Agent → 配置页（身份/模型/指令只读/资源 + 测试面板 + 发布绑定）
+  if (agent.type === "module") {
+    return <ModuleAgentConfigPage agent={agent} />
+  }
 
   // 对话编排 / 专家组：画布只读（R-Archive：封存后不可编辑/发布，成员与节点仅查看）
   if (agent.type === "dialogue" || agent.type === "expert-group") {
