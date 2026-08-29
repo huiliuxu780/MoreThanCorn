@@ -99,16 +99,28 @@ def list_agents(page: int = 1, pageSize: int = 20, search: str = "", archived: s
 
 @router.get("/modules")
 def list_modules(db: Session = Depends(get_db)):
-    """R4：Module Catalog——registry 全量 Module（创建入口与目录页共用）。"""
+    """R4/R7-2：Module Catalog——registry 全量 Module（创建/任务映射共用）。
+
+    暴露 inputSchema/outputSchema（任务映射目标不再写死）+ resultProjection（领域结果路由）。"""
     from ..agent_modules import registry as module_registry
-    return {"items": [{
-        "key": m.key, "version": m.version, "displayName": m.manifest["displayName"],
-        "description": m.manifest.get("description", ""),
-        "riskClass": m.manifest.get("riskClass", "read-only"),
-        "providers": sorted(m.manifest["implementations"]),
-        "logicalTools": [t["name"] for t in m.logical_tools],
-        "criteria": [c["id"] for c in m.default_spec.get("criteria", [])],
-    } for m in module_registry.all_modules()]}
+    projection = {"quality-analysis": "QualityResult",
+                  "business-analysis": "BusinessAnalysisResult",
+                  "ticket-automation": "ActionLedger"}
+    items = []
+    for m in module_registry.all_modules():
+        items.append({
+            "key": m.key, "version": m.version, "displayName": m.manifest["displayName"],
+            "description": m.manifest.get("description", ""),
+            "riskClass": m.manifest.get("riskClass", "read-only"),
+            "providers": sorted(m.manifest["implementations"]),
+            "logicalTools": [t["name"] for t in m.logical_tools],
+            "criteria": [c["id"] for c in m.default_spec.get("criteria", [])],
+            "resultProjection": projection.get(m.key, "DomainResult"),
+            "producesQualityResult": m.key == "quality-analysis",
+            "inputSchema": m.input_schema,
+            "outputSchema": m.output_schema,
+        })
+    return {"items": items}
 
 
 @router.get("/{aid}")

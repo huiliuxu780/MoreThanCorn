@@ -220,6 +220,7 @@ def start_task_run(db: Session, task_id: str, trigger: str = "manual",
     if agent_version is not None:
         resolved["agentVersionId"] = agent_version.id
         resolved["releaseId"] = release.id
+        resolved["providerId"] = release.runtime_provider_id
     return tr, resolved
 
 

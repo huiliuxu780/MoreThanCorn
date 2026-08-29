@@ -463,6 +463,36 @@ def _denorm_scope(s: dict) -> str:
     return "all"
 
 
+def _execution_target_dto(v: AnalysisTaskVersion) -> dict:
+    """R7-1：统一执行目标契约。agent → {type,agentId,versionPolicy,pinnedAgentVersionId}；
+    workflow → {type,workflowId,versionPolicy,pinnedWorkflowVersionId}。"""
+    if v.execution_target_type == "agent":
+        return {"type": "agent", "agentId": v.agent_id,
+                "versionPolicy": v.agent_version_policy,
+                "pinnedAgentVersionId": v.pinned_agent_version_id}
+    return {"type": "workflow", "workflowId": v.workflow_id,
+            "versionPolicy": v.workflow_version_policy,
+            "pinnedWorkflowVersionId": v.pinned_workflow_version_id}
+
+
+def _validate_input_mapping(module_key: str | None, mapping: dict) -> None:
+    """R7-3：字段映射目标来自 Module inputSchema。必填输入必须全部被映射
+    （mapping = {agent输入键: 数据字段}），否则任务无法构造合法 Agent 输入。"""
+    if not module_key:
+        return
+    from ..agent_modules import registry as module_registry
+    try:
+        mod = module_registry.get(module_key)
+    except Exception:
+        return
+    required = (mod.input_schema or {}).get("required") or []
+    missing = [k for k in required if k not in (mapping or {})]
+    if missing:
+        raise HTTPException(422, {"code": "INPUT_MAPPING_INCOMPLETE",
+                                  "message": f"Module 必填输入未映射：{', '.join(missing)}",
+                                  "path": "inputMapping"})
+
+
 def _task_version_dto(db: Session, v: AnalysisTaskVersion) -> dict:
     os_label = ""
     if v.output_schema_version_id:
@@ -474,6 +504,8 @@ def _task_version_dto(db: Session, v: AnalysisTaskVersion) -> dict:
             "workflowId": v.workflow_id,
             "workflowVersionPolicy": v.workflow_version_policy,
             "pinnedWorkflowVersionId": v.pinned_workflow_version_id,
+            # R7-1：统一执行目标契约（agent|workflow）
+            "executionTarget": _execution_target_dto(v),
             "dataAssetId": v.data_asset_id,
             "dataDefinitionVersionId": v.data_definition_version_id,
             "resultRuleVersionId": v.result_rule_version_id,
@@ -580,12 +612,25 @@ def list_tasks(page: int = 1, pageSize: int = 50, db: Session = Depends(get_db))
     q = db.query(AnalysisTask).order_by(AnalysisTask.created_at.desc())
     total = q.count()
     rows = q.offset((page - 1) * pageSize).limit(pageSize).all()
+    from ..models import Agent, TaskRun
     items = []
     for t in rows:
         v = db.get(AnalysisTaskVersion, t.current_version_id) if t.current_version_id else None
+        agent = None
+        if v is not None and v.execution_target_type == "agent" and v.agent_id:
+            agent = db.get(Agent, v.agent_id)
+        last = (db.query(TaskRun).filter_by(task_id=t.id)
+                .order_by(TaskRun.created_at.desc()).first())
         items.append({"id": t.id, "name": t.name, "description": t.description,
                       "workflowId": t.workflow_id,
                       "workflowVersionPolicy": (v.workflow_version_policy if v else t.version_policy),
+                      # R7-4：执行目标类型 + Agent/Module + 最近批次
+                      "executionTarget": _execution_target_dto(v) if v else
+                      {"type": "workflow", "workflowId": t.workflow_id,
+                       "versionPolicy": t.version_policy, "pinnedWorkflowVersionId": None},
+                      "executionTargetType": (v.execution_target_type if v else "workflow"),
+                      "agentName": agent.name if agent else None,
+                      "moduleKey": agent.module_key if agent else None,
                       "dataAssetId": t.data_asset_id,
                       "dataDefinitionId": t.data_definition_id,
                       "scope": v.scope if v else t.scope,
@@ -593,7 +638,9 @@ def list_tasks(page: int = 1, pageSize: int = 50, db: Session = Depends(get_db))
                       "schedule": v.data_window if v else t.data_window,
                       "dataWindow": v.data_window if v else t.data_window,
                       "status": t.status,
-                      "currentVersionNo": v.version_no if v else None})
+                      "currentVersionNo": v.version_no if v else None,
+                      "lastTaskRun": {"id": last.id, "status": last.status,
+                                      "createdAt": last.created_at.isoformat()} if last else None})
     return {"items": items, "total": total, "page": page, "pageSize": pageSize}
 
 
@@ -624,8 +671,12 @@ def create_task(payload: dict, db: Session = Depends(get_db),
         pinned_agent = target.get("pinnedAgentVersionId")
         if agent_version_policy == "pinned" and not pinned_agent:
             raise HTTPException(422, "pinned 策略必须提供 pinnedAgentVersionId")
-        if not db.get(AgentVersion, pinned_agent) if pinned_agent else False:
-            raise HTTPException(422, "pinnedAgentVersionId 不存在")
+        if pinned_agent:
+            pav = db.get(AgentVersion, pinned_agent)
+            if not pav:
+                raise HTTPException(422, "pinnedAgentVersionId 不存在")
+            if pav.agent_id != agent_id:
+                raise HTTPException(422, "pinnedAgentVersionId 必须属于所选 Agent")
         workflow_id = None
         policy = None
         pinned = None
@@ -634,6 +685,8 @@ def create_task(payload: dict, db: Session = Depends(get_db),
         if not payload.get("dataDefinitionVersionId") or \
                 not db.get(DataDefinitionVersion, payload["dataDefinitionVersionId"]):
             raise HTTPException(422, "dataDefinitionVersionId 必填且必须存在")
+        # R7-3：字段映射目标来自 Module inputSchema，必填输入必须全部映射
+        _validate_input_mapping(agent.module_key, payload.get("inputMapping") or {})
         rule_policy = payload.get("rulePolicy") or ("pinned" if payload.get("resultRuleVersionId") else "pinned")
         if rule_policy not in ("pinned", "follow_latest"):
             raise HTTPException(422, "rulePolicy 必须是 pinned|follow_latest")
@@ -714,6 +767,10 @@ def _task_run_dto(tr) -> dict:
             "status": tr.status, "total": tr.total,
             "succeeded": tr.succeeded_count, "failed": tr.failed_count,
             "skipped": tr.skipped_count, "cancelled": tr.cancelled_count,
+            # R7-5：冻结快照（AgentVersion/Release/Provider）
+            "resolvedAgentVersionId": tr.resolved_agent_version_id,
+            "resolvedReleaseId": tr.resolved_release_id,
+            "runtimeBinding": tr.runtime_binding_snapshot,
             "errorSummary": tr.error_summary,
             "startedAt": tr.started_at.isoformat() if tr.started_at else None,
             "endedAt": tr.ended_at.isoformat() if tr.ended_at else None,
@@ -816,6 +873,10 @@ def _run_dto(r) -> dict:
     return {"id": r.id, "status": r.status, "interactionRef": r.interaction_ref,
             "attempt": r.attempt, "workflowVersionId": r.workflow_version_id,
             "taskRunId": r.task_run_id, "taskId": r.task_id,
+            # R7-6：Run 行携带 Agent/Provider 冻结信息，供详情与跳转
+            "agentId": r.agent_id, "agentVersionId": r.agent_version_id,
+            "runtimeProviderId": r.runtime_provider_id,
+            "originRunId": r.origin_run_id,
             "error": r.error,
             "startedAt": r.started_at.isoformat() if r.started_at else None,
             "endedAt": r.ended_at.isoformat() if r.ended_at else None,
@@ -828,7 +889,7 @@ def list_task_run_runs(trid: str, db: Session = Depends(get_db)):
     if not db.get(TaskRun, trid):
         raise HTTPException(404, "TaskRun 不存在")
     rows = db.query(Run).filter_by(task_run_id=trid).order_by(Run.created_at.asc()).all()
-    return {"items": [_run_dto(r) for r in rows]}
+    return {"items": [_run_dto(r) for r in rows], "total": len(rows)}
 
 
 @router.get("/api/task-runs/{trid}/snapshot")
@@ -916,6 +977,84 @@ def list_task_versions(tid: str, db: Session = Depends(get_db)):
     return {"items": [_task_version_dto(db, v) for v in vs]}
 
 
+def _update_agent_task(db: Session, t: AnalysisTask, cur, payload: dict, user: dict):
+    """R7-1：编辑 Agent 任务=生成新 TaskVersion，保留 Agent 执行目标（不误改 Workflow）。"""
+    from ..models import Agent, AgentVersion
+    from sqlalchemy import func
+    tgt = payload.get("executionTarget") or {}
+    agent_id = tgt.get("agentId") or (cur.agent_id if cur else t.agent_id)
+    agent = db.get(Agent, agent_id) if agent_id else None
+    if not agent or not agent.module_key:
+        raise HTTPException(422, "executionTarget.agentId 必须指向领域 Module Agent")
+    version_policy = (tgt.get("versionPolicy")
+                      or (cur.agent_version_policy if cur else "latest_sandbox_release"))
+    if version_policy not in ("pinned", "latest_sandbox_release", "latest_prod_release"):
+        raise HTTPException(422, "versionPolicy 必须是 pinned|latest_sandbox_release|latest_prod_release")
+    pinned = (tgt.get("pinnedAgentVersionId") if "pinnedAgentVersionId" in tgt
+              else (cur.pinned_agent_version_id if cur else None))
+    if version_policy == "pinned" and not pinned:
+        raise HTTPException(422, "pinned 策略必须提供 pinnedAgentVersionId")
+    if pinned:
+        pav = db.get(AgentVersion, pinned)
+        if not pav or pav.agent_id != agent_id:
+            raise HTTPException(422, "pinnedAgentVersionId 必须属于所选 Agent")
+    if payload.get("name") is not None:
+        t.name = str(payload["name"]).strip() or t.name
+    if payload.get("description") is not None:
+        t.description = payload["description"]
+    asset_id = payload.get("dataAssetId") or (cur.data_asset_id if cur else t.data_asset_id)
+    if not db.get(DataAsset, asset_id):
+        raise HTTPException(422, "dataAssetId 必填且必须存在")
+    def_version_id = (payload.get("dataDefinitionVersionId")
+                      if "dataDefinitionVersionId" in payload else (cur.data_definition_version_id if cur else None))
+    if not db.get(DataDefinitionVersion, def_version_id):
+        raise HTTPException(422, "dataDefinitionVersionId 必填且必须存在")
+    rule_policy = (payload.get("rulePolicy") if "rulePolicy" in payload
+                   else (cur.rule_policy if cur else "pinned"))
+    rule_version_id = (payload.get("resultRuleVersionId") if "resultRuleVersionId" in payload
+                       else (cur.result_rule_version_id if cur else None))
+    rule_set_id = (payload.get("resultRuleSetId") if "resultRuleSetId" in payload
+                   else (cur.result_rule_set_id if cur else None))
+    if rule_policy == "pinned" and not (rule_version_id and db.get(ResultRuleVersion, rule_version_id)):
+        raise HTTPException(422, "pinned 规则策略必须提供有效 resultRuleVersionId")
+    mapping = (payload.get("inputMapping") if payload.get("inputMapping") is not None
+               else ((cur.input_mapping or {}) if cur else {}))
+    if not isinstance(mapping, dict):
+        raise HTTPException(422, "inputMapping 必须是对象")
+    _validate_input_mapping(agent.module_key, mapping)
+    scope = _norm_scope(payload.get("scope")) if payload.get("scope") is not None else ((cur.scope if cur else None) or {"op": "and", "conditions": []})
+    sampling = _norm_sampling(payload.get("sampling")) if payload.get("sampling") is not None else ((cur.sampling if cur else None) or {"mode": "all"})
+    window = _norm_window(payload.get("dataWindow")) if payload.get("dataWindow") is not None else ((cur.data_window if cur else None) or {"mode": "all"})
+    version_no = (db.query(func.max(AnalysisTaskVersion.version_no))
+                  .filter_by(task_id=t.id).scalar() or 0) + 1
+    v = AnalysisTaskVersion(task_id=t.id, version_no=version_no,
+                            execution_target_type="agent", agent_id=agent_id,
+                            agent_version_policy=version_policy,
+                            pinned_agent_version_id=pinned, workflow_id=None,
+                            data_asset_id=asset_id,
+                            data_definition_version_id=def_version_id,
+                            result_rule_version_id=rule_version_id, rule_policy=rule_policy,
+                            result_rule_set_id=rule_set_id, input_mapping=mapping,
+                            scope=scope, sampling=sampling, data_window=window,
+                            output_schema_version_id=(cur.output_schema_version_id if cur else None)
+                            or (latest_quality_schema(db).id if latest_quality_schema(db) else None),
+                            note=payload.get("note", ""), created_by=user.get("username", "system"))
+    db.add(v)
+    db.flush()
+    t.current_version_id = v.id
+    t.execution_target_type = "agent"
+    t.agent_id = agent_id
+    t.workflow_id = None
+    t.data_asset_id = asset_id
+    t.scope = _denorm_scope(scope)
+    t.sampling = _denorm_sampling(sampling)
+    t.data_window = _denorm_window(window)
+    t.updated_by = user.get("username", "system")
+    db.commit()
+    return {"id": t.id, "name": t.name, "status": t.status,
+            "taskVersion": _task_version_dto(db, v)}
+
+
 @router.put("/api/tasks/{tid}")
 def update_task(tid: str, payload: dict, db: Session = Depends(get_db),
                 user: dict = Depends(require_operator)):
@@ -929,6 +1068,13 @@ def update_task(tid: str, payload: dict, db: Session = Depends(get_db),
 
     def _cur(attr: str, default=None):
         return (getattr(cur, attr) if cur is not None else default)
+
+    # R7-1：编辑保真——Agent 任务不能被误改成 Workflow；沿用当前执行目标除非显式提供。
+    target_type = ((payload.get("executionTarget") or {}).get("type")
+                   or (cur.execution_target_type if cur else None)
+                   or t.execution_target_type or "workflow")
+    if target_type == "agent":
+        return _update_agent_task(db, t, cur, payload, user)
 
     if payload.get("name") is not None:
         t.name = str(payload["name"]).strip() or t.name
