@@ -1,0 +1,13 @@
+{ "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "business_analysis_output",
+  "type": "object", "additionalProperties": false,
+  "required": ["question_id", "answer", "metrics", "citations"],
+  "properties": {
+    "question_id": { "type": "string" },
+    "answer": { "type": "string", "minLength": 1 },
+    "metrics": { "type": "array", "items": { "type": "object", "additionalProperties": false,
+      "required": ["metric", "value", "unit"], "properties": { "metric": { "type": "string" },
+        "value": { "type": "number" }, "unit": { "type": "string" } } } },
+    "citations": { "type": "array", "items": { "type": "object", "additionalProperties": false,
+      "required": ["source", "reference"], "properties": { "source": { "type": "string" },
+        "reference": { "type": "string" }, "summary": { "type": "string" } } } },
+    "confidence": { "type": "number" } } }

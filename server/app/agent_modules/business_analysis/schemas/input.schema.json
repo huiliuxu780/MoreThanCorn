@@ -1,0 +1,3 @@
+{ "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "business_analysis_input",
+  "type": "object", "additionalProperties": false,
+  "required": ["question_id"], "properties": { "question_id": { "type": "string" }, "window": { "type": "string" } } }

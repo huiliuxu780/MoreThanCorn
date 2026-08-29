@@ -1,0 +1,9 @@
+{
+  "id": "business-analysis", "version": "1.0.0", "name": "业务分析 Agent",
+  "instructions": "你负责只读业务分析。明确指标口径与时间范围；查询数据源并记录来源与版本；数值计算由确定性代码完成；结论必须引用对应数据片段；不得伪造缺失指标；不要给出超出数据的建议。",
+  "questions": [
+    { "id": "q1", "text": "近 7 日热线接通率是多少？", "metric": "connect_rate", "dimensions": ["day"] }
+  ],
+  "tools": [ { "name": "metric_query", "version": "1.0.0" }, { "name": "dimension_query", "version": "1.0.0" } ],
+  "master_data": []
+}

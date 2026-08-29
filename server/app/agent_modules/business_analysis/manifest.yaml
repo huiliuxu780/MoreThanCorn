@@ -1,0 +1,27 @@
+moduleKey: business-analysis
+moduleVersion: 1.0.0
+displayName: 业务分析
+description: 对业务数据进行只读分析：明确指标口径、查询数据源、确定性计算、交叉核验并带引用输出结论。
+riskClass: read-only
+specSchema: spec.schema.json
+inputSchema: schemas/input.schema.json
+outputSchema: schemas/output.schema.json
+defaultSpec: spec.default.json
+masterData: []
+workflowMode: business_analysis_v1
+requiredCapabilities:
+  tools: true
+  trace: true
+structuredOutput: true
+implementations:
+  agentscope:
+    version: 0.1.0
+    entry: business_analysis_v1
+  deepseek-harness:
+    version: 0.1.0
+    bundle: morethancorn-dsh-business-analysis
+logicalTools:
+  - { name: metric_query, version: 1.0.0, effect: read }
+  - { name: dimension_query, version: 1.0.0, effect: read }
+resultMapper: result_mapper:map_result
+evaluator: evaluators:default_suite

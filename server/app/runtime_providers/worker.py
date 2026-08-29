@@ -447,6 +447,11 @@ def _settle_module_result(db: Session, run: Run, state) -> None:
         snapshot["lastCallRecordSequence"] = event.sequence
     run.runtime_snapshot = snapshot
     db.flush()
+    # SDD 10 §5.9：仅 quality-analysis 映射到 QualityResult；其余 Module 的领域结果
+    # （ticket/business）走各自 Result Mapper，R5+ 落地，此处不落 QualityResult。
+    if mod.key != "quality-analysis":
+        db.commit()
+        return
     # QualityResult 恰好一条（INV-03；重复轮询安全）
     existing = (db.query(QualityResult)
                 .filter(QualityResult.run_id == run.id, QualityResult.is_latest.is_(True))
