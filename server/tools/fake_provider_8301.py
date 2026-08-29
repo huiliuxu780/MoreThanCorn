@@ -25,7 +25,8 @@ def quality_output(sid):
             "summary": "验收 fake 输出"}
 
 
-RUNTIME = {"provider": "agentscope", "runtime_version": "2.0.7", "adapter_version": "0.1.0"}
+RUNTIME = {"provider": __import__("os").environ.get("FAKE_PROVIDER_KIND", "agentscope"),
+           "runtime_version": "2.0.7", "adapter_version": "0.1.0"}
 CAPS = {"tools": True, "skills": True, "structured_output": True, "trace": True,
         "session": True, "cancel": True, "streaming": True, "sandbox": False}
 
@@ -67,4 +68,4 @@ def health():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8301)
+    uvicorn.run(app, host="127.0.0.1", port=int(__import__("os").environ.get("FAKE_PROVIDER_PORT", "8301")))
