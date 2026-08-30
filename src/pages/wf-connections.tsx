@@ -207,31 +207,34 @@ export default function WfConnectionsPage() {
     } catch (e) { toast.error((e as Error).message) }
   }
 
-  /** SDD-12 §5.3/B-02：轮换=新 revision 生效、旧 revision 退役 */
-  const rotate = async (c: ConnectionDTO) => {
-    const v = window.prompt(`轮换「${c.name}」的根凭据（旧凭据将退役，不可回显）：`)
-    if (!v) return
+  /** SDD-12 §5.3/B-02：轮换=新 revision 生效、旧 revision 退役（Dialog 交互，不用原生 prompt） */
+  const [rotateTarget, setRotateTarget] = useState<ConnectionDTO | null>(null)
+  const [rotateValue, setRotateValue] = useState("")
+  const openRotate = (c: ConnectionDTO) => { setRotateTarget(c); setRotateValue("") }
+  const submitRotate = async () => {
+    if (!rotateTarget || rotateValue === "") return
     try {
-      const r = await connApi.rotateSecret(c.id, v)
+      const r = await connApi.rotateSecret(rotateTarget.id, rotateValue)
       toast.success(`凭据已轮换（版本 ${r.versionNo}），健康度转为 Stale，请重新测试`)
-      load()
+      setRotateTarget(null); load()
     } catch (e) { toast.error((e as Error).message) }
   }
 
-  /** SDD-12 §5.3/B-03：清除需二次确认；有引用时提示并允许强制 */
-  const clearSecret = async (c: ConnectionDTO) => {
-    const confirmText = window.prompt(`清除「${c.name}」的根凭据？请输入 CLEAR_SECRET 确认：`)
-    if (confirmText == null) return
+  /** SDD-12 §5.3/B-03：清除需二次确认；有引用时展示引用清单并允许强制（Dialog 交互） */
+  const [clearTarget, setClearTarget] = useState<ConnectionDTO | null>(null)
+  const [clearConfirm, setClearConfirm] = useState("")
+  const [clearRefs, setClearRefs] = useState<{ kind: string; label?: string }[] | null>(null)
+  const openClear = (c: ConnectionDTO) => { setClearTarget(c); setClearConfirm(""); setClearRefs(null) }
+  const submitClear = async (force: boolean) => {
+    if (!clearTarget) return
     try {
-      await connApi.clearSecret(c.id, confirmText)
-      toast.success("凭据已清除"); load()
+      await connApi.clearSecret(clearTarget.id, clearConfirm, { force })
+      toast.success(force ? "凭据已强制清除" : "凭据已清除")
+      setClearTarget(null); load()
     } catch (e) {
       const err = e as Error & { refs?: { kind: string; label?: string }[] }
-      if (err.refs?.length && window.confirm(
-        `该连接被 ${err.refs.length} 个资源引用（${err.refs.map(r => r.label || r.kind).join("、")}），清除后其鉴权将失败。仍要强制清除吗？`)) {
-        try { await connApi.clearSecret(c.id, "CLEAR_SECRET", { force: true }); toast.success("凭据已强制清除"); load() }
-        catch (e2) { toast.error((e2 as Error).message) }
-      } else { toast.error(err.message) }
+      if (err.refs?.length && !force) { setClearRefs(err.refs) }
+      else { toast.error(err.message) }
     }
   }
 
@@ -367,9 +370,9 @@ export default function WfConnectionsPage() {
                 {lifecycle === "active" && (
                   <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => disable(c)}>停用</button>
                 )}
-                <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => rotate(c)}>轮换凭据</button>
+                <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => openRotate(c)}>轮换凭据</button>
                 {c.secretConfigured && (
-                  <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => clearSecret(c)}>清除凭据</button>
+                  <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => openClear(c)}>清除凭据</button>
                 )}
                 <button aria-label={`删除连接 ${c.name}`} className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => del(c)}>
                   <Trash2 className="size-3" />
@@ -530,6 +533,48 @@ export default function WfConnectionsPage() {
               onClick={submit}>
               {form.id ? "保存" : "创建"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* SDD-12 §5.3：轮换凭据对话框（新凭据仅在本请求传输，落库即加密） */}
+      <Dialog open={!!rotateTarget} onOpenChange={(v) => !v && setRotateTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>轮换凭据 · {rotateTarget?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-2 text-xs text-muted-foreground">
+            <p>已保存的凭据不可回显。提交新凭据后旧版本立即退役，健康度转为 Stale，需重新测试。</p>
+            <Label className="text-xs text-foreground">新凭据</Label>
+            <Input type="password" autoComplete="new-password" value={rotateValue}
+              onChange={(e) => setRotateValue(e.target.value)} placeholder="输入新凭据" />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setRotateTarget(null)}>取消</Button>
+            <Button className="bg-black text-white hover:bg-neutral-800" disabled={rotateValue === ""} onClick={submitRotate}>轮换</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* SDD-12 §5.3/B-03：清除凭据对话框（二次确认 + 依赖检查） */}
+      <Dialog open={!!clearTarget} onOpenChange={(v) => !v && setClearTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>清除凭据 · {clearTarget?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-2 text-xs text-muted-foreground">
+            <p>清除后依赖该凭据的连接将鉴权失败，且不可恢复（需重新轮换）。输入 <code className="rounded bg-muted px-1">CLEAR_SECRET</code> 确认。</p>
+            <Label className="text-xs text-foreground">确认口令</Label>
+            <Input value={clearConfirm} onChange={(e) => setClearConfirm(e.target.value)} placeholder="CLEAR_SECRET" autoComplete="off" />
+            {clearRefs && clearRefs.length > 0 && (
+              <div className="rounded-md border border-red-200 bg-red-50 p-2 text-red-700">
+                该连接被 {clearRefs.length} 个资源引用（{clearRefs.map((r) => r.label || r.kind).join("、")}），清除后其鉴权将失败。
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setClearTarget(null)}>取消</Button>
+            {clearRefs && clearRefs.length > 0 ? (
+              <Button variant="destructive" onClick={() => submitClear(true)}>强制清除</Button>
+            ) : (
+              <Button variant="destructive" disabled={clearConfirm !== "CLEAR_SECRET"} onClick={() => submitClear(false)}>清除</Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
