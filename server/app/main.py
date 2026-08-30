@@ -95,6 +95,17 @@ async def auth_middleware(request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def slo_latency_middleware(request, call_next):
+    """P2-09：API 时延采样（内存环，供 /api/ops/slo p95/p99 对比冻结目标）。"""
+    from .slo import latency_timer
+    stop = latency_timer()
+    try:
+        return await call_next(request)
+    finally:
+        stop()
+
+
 def _cors_origins() -> list[str]:
     """09 §12：CORS 白名单。WF_CORS_ORIGINS 任何环境都可显式覆盖；
     生产必须显式配置（空列表=不允许跨域），开发默认放行本机 5173。"""

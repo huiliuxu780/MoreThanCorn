@@ -53,19 +53,45 @@ def create_user(payload: dict, db: Session = Depends(get_db),
     from ..auth import user_by_name
     if user_by_name(db, username):
         raise HTTPException(409, "用户名已存在")
+    # P2-02：创建时可指定团队与数据范围（默认 all，存量行为不变）
+    data_scope = str((payload or {}).get("dataScope") or "all")
+    if data_scope not in ("all", "team"):
+        raise HTTPException(422, "dataScope 必须是 all|team")
     u = AppUser(username=username, display_name=(payload or {}).get("displayName", username),
-                password_hash=hash_password(password), role=role)
+                password_hash=hash_password(password), role=role,
+                team=str((payload or {}).get("team") or ""), data_scope=data_scope)
     db.add(u)
     db.commit()
-    return {"id": u.id, "username": u.username, "role": u.role}
+    return {"id": u.id, "username": u.username, "role": u.role,
+            "team": u.team, "dataScope": u.data_scope}
 
 
 @router.get("/api/auth/users")
 def list_users(db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
     rows = db.query(AppUser).order_by(AppUser.created_at.desc()).all()
     return {"items": [{"id": u.id, "username": u.username, "displayName": u.display_name,
-                       "role": u.role, "status": u.status,
+                       "role": u.role, "status": u.status, "team": u.team or "",
+                       "dataScope": u.data_scope or "all",
                        "createdAt": u.created_at.isoformat()} for u in rows]}
+
+
+@router.post("/api/auth/users/{uid}/scope")
+def set_user_scope(uid: str, payload: dict, db: Session = Depends(get_db),
+                   admin_user: dict = Depends(require_admin)):
+    """P2-02：设置用户团队与数据范围（admin；变更即时生效于后续请求）。"""
+    u = db.get(AppUser, uid)
+    if not u:
+        raise HTTPException(404, "用户不存在")
+    data_scope = str((payload or {}).get("dataScope") or u.data_scope or "all")
+    if data_scope not in ("all", "team"):
+        raise HTTPException(422, "dataScope 必须是 all|team")
+    if "team" in (payload or {}):
+        u.team = str((payload or {}).get("team") or "")
+    u.data_scope = data_scope
+    if u.data_scope == "team" and not u.team:
+        raise HTTPException(422, "dataScope=team 时必须提供 team")
+    db.commit()
+    return {"id": u.id, "username": u.username, "team": u.team, "dataScope": u.data_scope}
 
 
 @router.post("/api/auth/users/{uid}/status")

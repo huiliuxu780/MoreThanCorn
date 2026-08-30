@@ -9,7 +9,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import require_admin, require_operator, require_reviewer
+from ..auth import (apply_data_scope, assert_task_readable, data_scope_members,
+                    require_admin, require_operator, require_reviewer, require_role)
 from ..db import get_db
 from ..models import (AgentVersion, AnalysisTask, AnalysisTaskVersion, DataAsset,
                       DataDefinitionVersion, QualityResult, ResultRuleSet,
@@ -257,8 +258,13 @@ def _review_item(qr) -> dict:
 def review_queue(pool: str = "pending", reviewer: str = "", page: int = 1,
                  pageSize: int = 50, db: Session = Depends(get_db),
                  _user: dict = Depends(require_reviewer)):
-    """pool=pending：待复核池（AI/REOPENED 且未被领取）；pool=mine：指定复核人已领取。"""
+    """pool=pending：待复核池（AI/REOPENED 且未被领取）；pool=mine：指定复核人已领取。
+    P2-02：team 数据范围按任务创建者归属强制（无任务归属的行对 team 范围不可见）。"""
     q = db.query(QualityResult)
+    members = data_scope_members(db, _user)
+    if members is not None:
+        from ..models import AnalysisTask as _AT
+        q = q.join(_AT, QualityResult.task_id == _AT.id).filter(_AT.created_by.in_(members))
     if pool == "mine":
         if not reviewer:
             reviewer = _user.get("username", "")
@@ -607,9 +613,11 @@ def retention_purge(payload: dict, db: Session = Depends(get_db),
 
 
 @router.get("/api/tasks")
-def list_tasks(page: int = 1, pageSize: int = 50, db: Session = Depends(get_db)):
-    """09 P1-10：真分页。"""
-    q = db.query(AnalysisTask).order_by(AnalysisTask.created_at.desc())
+def list_tasks(page: int = 1, pageSize: int = 50, db: Session = Depends(get_db),
+               user: dict = Depends(require_role())):
+    """09 P1-10：真分页。P2-02：team 数据范围服务端强制。"""
+    q = apply_data_scope(db, db.query(AnalysisTask), user, AnalysisTask.created_by) \
+        .order_by(AnalysisTask.created_at.desc())
     total = q.count()
     rows = q.offset((page - 1) * pageSize).limit(pageSize).all()
     from ..models import Agent, TaskRun
@@ -949,11 +957,13 @@ def retry_failed_interactions(tid: str, trid: str, db: Session = Depends(get_db)
 
 
 @router.get("/api/tasks/{tid}")
-def get_task(tid: str, db: Session = Depends(get_db)):
-    """D-5 + 09 §10.1：任务详情含当前 TaskVersion 快照。"""
+def get_task(tid: str, db: Session = Depends(get_db),
+             user: dict = Depends(require_role())):
+    """D-5 + 09 §10.1：任务详情含当前 TaskVersion 快照。P2-02：team 范围越权 403。"""
     t = db.get(AnalysisTask, tid)
     if not t:
         raise HTTPException(404, "任务不存在")
+    assert_task_readable(db, user, t)
     v = db.get(AnalysisTaskVersion, t.current_version_id) if t.current_version_id else None
     return {"id": t.id, "name": t.name, "description": t.description,
             "workflowId": t.workflow_id,

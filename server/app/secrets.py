@@ -8,41 +8,27 @@
 from __future__ import annotations
 
 import json
-import os
 
 
 def encrypt_secret(secret: str) -> str:
+    """P2-06：经 KMS 抽象层信封加密。生产缺/非法 key 失败关闭；非生产无 key 回落明文（开发便利）。"""
     from .config import is_production  # 局部导入避免配置循环依赖
-    from cryptography.fernet import Fernet
-    key = os.environ.get("WF_SECRET_KEY")
-    if is_production():
-        if not key:
-            raise RuntimeError("生产环境未配置 WF_SECRET_KEY，无法加密 Secret")
-        try:
-            return Fernet(key.encode()).encrypt(secret.encode()).decode()
-        except Exception as exc:  # noqa: BLE001
-            raise RuntimeError(f"WF_SECRET_KEY 非合法 Fernet 密钥，无法加密：{exc}")
-    # 非生产：尽力加密，失败回落明文（开发便利）
-    if key:
-        try:
-            return Fernet(key.encode()).encrypt(secret.encode()).decode()
-        except Exception:  # noqa: BLE001
-            pass
-    return secret
+    from .kms import kms_encrypt
+    try:
+        return kms_encrypt(secret)
+    except RuntimeError:
+        if is_production():
+            raise
+        return secret
 
 
 def decrypt_secret(ref: str) -> str:
-    """密钥解密（失败关闭，任何环境）。非密文（历史明文）原样返回仅为兼容遗留。"""
-    key = os.environ.get("WF_SECRET_KEY")
-    if isinstance(ref, str) and ref.startswith("gAAAAA"):  # Fernet 密文特征前缀
-        if not key:
-            raise RuntimeError("WF_SECRET_KEY 缺失：无法解密 Secret（禁止明文模式）")
-        from cryptography.fernet import Fernet
-        try:
-            return Fernet(key.encode()).decrypt(ref.encode()).decode()
-        except Exception as exc:  # noqa: BLE001
-            raise RuntimeError(f"Secret 解密失败（密钥非法或密文损坏）：{exc}")
-    return ref
+    """密钥解密（失败关闭，任何环境）。兼容 env1 信封/旧 Fernet 直密/历史明文。"""
+    from .kms import kms_decrypt
+    try:
+        return kms_decrypt(ref)
+    except RuntimeError as exc:
+        raise RuntimeError(f"Secret 解密失败（密钥非法或密文损坏）：{exc}")
 
 
 def decrypt_payload(ref: str) -> dict | str:

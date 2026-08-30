@@ -328,13 +328,40 @@ def schedule_tick() -> int:
     return fired
 
 
+SCHEDULER_LEADER_LOCK_KEY = 77001
+
+
+def try_scheduler_leader_lock(db: Session, key: int = SCHEDULER_LEADER_LOCK_KEY) -> bool:
+    """P2-04：PG advisory lock 选主。会话级锁——leader 进程死亡会话关闭即自动释放。
+    key 参数供测试用独立锁域，避免与运行中实例互斥。"""
+    return bool(db.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": key}).scalar())
+
+
+def release_scheduler_leader_lock(db: Session, key: int = SCHEDULER_LEADER_LOCK_KEY) -> None:
+    db.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": key})
+
+
 def scheduler_loop(stop: threading.Event) -> None:
+    """P2-04：多实例部署下仅 leader 跑调度；单实例行为不变（首 tick 即获锁）。"""
+    leader_db: Session | None = None
     while not stop.is_set():
         try:
+            if leader_db is None:
+                leader_db = SessionLocal()
+                if not try_scheduler_leader_lock(leader_db):
+                    leader_db.close()
+                    leader_db = None
+                    stop.wait(5)
+                    continue
             schedule_tick()
         except Exception:  # noqa: BLE001
             pass
         stop.wait(10)
+    if leader_db is not None:
+        try:
+            release_scheduler_leader_lock(leader_db)
+        finally:
+            leader_db.close()
 
 
 def exec_condition(node, ctx) -> dict:

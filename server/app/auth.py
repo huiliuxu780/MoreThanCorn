@@ -76,7 +76,8 @@ def verify_token(token: str) -> dict | None:
 
 # ---------- 请求身份 ----------
 
-DEV_USER = {"id": "dev", "username": "dev", "role": "admin"}
+DEV_USER = {"id": "dev", "username": "dev", "role": "admin",
+            "team": "", "data_scope": "all"}
 
 
 def current_user(request: Request) -> dict | None:
@@ -93,6 +94,10 @@ def current_user(request: Request) -> dict | None:
             u = db.get(_app_user_cls(), user.get("uid"))
             if u and u.status != "active":
                 return None
+            # P2-02：数据范围随请求解析（scope 变更无需重新登录）
+            if u:
+                user["team"] = u.team or ""
+                user["data_scope"] = u.data_scope or "all"
         finally:
             db.close()
     return user
@@ -154,4 +159,36 @@ def login(db: Session, username: str, password: str) -> dict | None:
     if not u or u.status != "active" or not verify_password(password, u.password_hash):
         return None
     return {"id": u.id, "username": u.username, "role": u.role,
-            "displayName": u.display_name}
+            "displayName": u.display_name, "team": u.team or "",
+            "dataScope": u.data_scope or "all"}
+
+
+# ---------- P2-02：组织/团队/数据范围服务端强制 ----------
+
+def _team_members(db: Session, team: str) -> set[str]:
+    from .models import AppUser
+    return {r[0] for r in db.query(AppUser.username).filter_by(team=team).all()}
+
+
+def data_scope_members(db: Session, user: dict) -> set[str] | None:
+    """P2-02：返回 None=不限制（admin/data_scope=all/无团队）；否则同队成员 username 集合。"""
+    if (user.get("role") or "") == "admin":
+        return None
+    if (user.get("data_scope") or "all") != "team" or not (user.get("team") or ""):
+        return None
+    return _team_members(db, user["team"]) or {user.get("username") or ""}
+
+
+def apply_data_scope(db: Session, q, user: dict, owner_col):
+    """P2-02 数据范围强制：按 owner_col ∈ 同队成员过滤（不限制时原样返回）。"""
+    members = data_scope_members(db, user)
+    if members is None:
+        return q
+    return q.filter(owner_col.in_(members))
+
+
+def assert_task_readable(db: Session, user: dict, task) -> None:
+    """P2-02：team 范围用户仅可访问本队成员创建的任务，越权 403。"""
+    members = data_scope_members(db, user)
+    if members is not None and (task.created_by or "") not in members:
+        raise HTTPException(403, "权限不足：数据范围限定为本团队")

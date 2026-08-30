@@ -865,6 +865,9 @@ class AppUser(Base):
     password_hash: Mapped[str] = mapped_column(String(256))
     role: Mapped[str] = mapped_column(String(16), default="viewer")  # admin|operator|viewer
     status: Mapped[str] = mapped_column(String(16), default="active")  # active|disabled
+    # P2-02：组织/团队/数据范围（单租户内团队维度）；data_scope=all 直通，team 按同队成员过滤
+    team: Mapped[str] = mapped_column(String(64), default="")
+    data_scope: Mapped[str] = mapped_column(String(16), default="all")  # all|team
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

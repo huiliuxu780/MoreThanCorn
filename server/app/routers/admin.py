@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
-from ..auth import require_admin, require_operator
+from ..auth import data_scope_members, require_admin, require_operator, require_role
 from ..auth_sandbox import run_auth_script
 from ..auth_signers import AuthSignError, build_auth_headers, normalize_kind
 from ..connection_runtime import resolve_for_request
@@ -691,11 +691,17 @@ def list_quality_results(page: int = 1, pageSize: int = 20, review: str = "",
                          reviewStatus: str = "", serviceType: str = "", team: str = "",
                          department: str = "", agent: str = "", brand: str = "",
                          productCategory: str = "", issue: str = "", requestType: str = "",
-                         db: Session = Depends(get_db)):
-    """E-1.1：筛选参数真落地（此前前端筛选不进后端）：列内条件走 SQL，业务维度走真实数据扫描。"""
+                         db: Session = Depends(get_db),
+                         user: dict = Depends(require_role())):
+    """E-1.1：筛选参数真落地（此前前端筛选不进后端）：列内条件走 SQL，业务维度走真实数据扫描。
+    P2-02：team 数据范围按任务创建者归属强制（无任务归属的行对 team 范围不可见）。"""
     from datetime import datetime, timedelta, timezone
-    from ..models import QualityResult, Run
+    from ..models import AnalysisTask, QualityResult, Run
     q = db.query(QualityResult)
+    members = data_scope_members(db, user)
+    if members is not None:
+        q = q.join(AnalysisTask, QualityResult.task_id == AnalysisTask.id) \
+            .filter(AnalysisTask.created_by.in_(members))
     if tab == "pending":
         q = q.filter(QualityResult.review_status == "AI")
     elif tab == "reviewed":
@@ -990,3 +996,10 @@ def version_metrics(wid: str, db: Session = Depends(get_db)):
     failed_cases = [{"runId": r.id, "error": (r.error or {}).get("message", "")[:160]}
                     for r in db.query(Run).filter(Run.workflow_id == wid, Run.status == "failed").order_by(Run.created_at.desc()).limit(10)]
     return {"versions": out, "failedCases": failed_cases}
+
+
+@router.get("/api/ops/slo")
+def ops_slo(db: Session = Depends(get_db), _user: dict = Depends(require_role())):
+    """P2-09/§15.1：SLO 草稿目标 + 可测项测量对比；不可测项显式注记（不造假结论）。"""
+    from ..slo import SLO_DRAFT_NOTE, SLO_TARGETS, measure
+    return {"note": SLO_DRAFT_NOTE, "targets": SLO_TARGETS, "measured": measure(db)}
