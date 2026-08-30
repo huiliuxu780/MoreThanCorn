@@ -51,13 +51,18 @@ export function ResourceTestDialog({ open, title, desc, onRun, onClose }: {
             <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
               <div className="flex items-center gap-1.5 font-semibold"><Check className="size-3.5" /> 测试通过 · {result.latencyMs}ms</div>
               <pre className="mt-2 overflow-x-auto rounded bg-white/60 p-2 font-mono text-[11px]">{JSON.stringify(result.output ?? {}, null, 2).slice(0, 600)}</pre>
+              {result.checkRunId && (
+                <div className="mt-1.5 text-[10px] text-emerald-800/70">
+                  CheckRun {result.checkRunId.slice(0, 8)} · 指纹 {result.configFingerprint} —— 启用门禁依据此记录
+                </div>
+              )}
             </div>
           )}
           {state === "fail" && result && (
             <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">
               <div className="flex items-center gap-1.5 font-semibold"><AlertTriangle className="size-3.5" /> 测试失败</div>
               <div className="mt-1 font-mono text-[11px]">{result.error}</div>
-              <div className="mt-1">失败不会自动停用资源，健康度将标记为 Error。</div>
+              <div className="mt-1">失败不会自动停用资源，健康度将标记为 Failed；配置或凭据变化后显示 Stale。</div>
             </div>
           )}
         </div>

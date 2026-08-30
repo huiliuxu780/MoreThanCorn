@@ -11,12 +11,47 @@ import {
 import {
   Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger,
 } from "@/components/ui/sheet"
-import { connApi, type ConnectionDTO } from "@/services/resource-api"
+import { connApi, type ConnSecret, type ConnectionDTO } from "@/services/resource-api"
 import { KINDS } from "@/services/connection-auth"
 
 export const PROTOCOLS = ["http-api", "mysql", "postgresql", "oss", "mcp-http", "llm"] as const
 
-/** 连接选择器：选择既有 Connection 或内嵌新建（凭证加密不回显）。 */
+/** 内嵌新建表单的鉴权方式：script 需要 KV/沙箱等高级配置，统一到 Connections 页完成
+ *（SDD-12 审计 P0-4：内嵌创建器与主表单共用同一套结构化密钥模型）。 */
+const INLINE_KINDS = KINDS.filter((k) => k.value !== "script")
+
+interface InlineForm {
+  name: string; protocol: string; kind: string; base_url: string; host: string; port: string
+  user: string; database: string; secret: ConnSecret | ""
+}
+
+/** 按 kind 渲染密钥输入，与 Connections 页同构（basic=用户名/密码，aksk=AK/SK） */
+function InlineSecretFields({ kind, value, onChange }: {
+  kind: string; value: ConnSecret | ""; onChange: (v: ConnSecret | "") => void
+}) {
+  if (kind === "none") return null
+  const rec = (typeof value === "object" ? value : {}) as Record<string, string>
+  const setRec = (k: string, v: string) => onChange({ ...rec, [k]: v })
+  if (kind === "basic") {
+    return (
+      <div className="grid grid-cols-2 gap-2">
+        <div><Label className="text-xs">用户名</Label><Input value={rec.username ?? ""} onChange={(e) => setRec("username", e.target.value)} /></div>
+        <div><Label className="text-xs">密码</Label><Input type="password" autoComplete="new-password" value={rec.password ?? ""} onChange={(e) => setRec("password", e.target.value)} /></div>
+      </div>
+    )
+  }
+  if (kind === "aksk") {
+    return (
+      <div className="space-y-2">
+        <div><Label className="text-xs">AccessKey</Label><Input className="font-mono text-xs" value={rec.access_key ?? ""} onChange={(e) => setRec("access_key", e.target.value)} /></div>
+        <div><Label className="text-xs">SecretKey</Label><Input type="password" autoComplete="new-password" className="font-mono text-xs" value={rec.secret_key ?? ""} onChange={(e) => setRec("secret_key", e.target.value)} /></div>
+      </div>
+    )
+  }
+  return <Input type="password" autoComplete="new-password" value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} placeholder="加密存储，不回显" />
+}
+
+/** 连接选择器：选择既有 Connection 或内嵌新建（凭证加密不回显；新建即返回稳定 ID）。 */
 export function ConnectionPicker({ value, onChange, protocols }: {
   value: string
   onChange: (id: string) => void
@@ -24,12 +59,17 @@ export function ConnectionPicker({ value, onChange, protocols }: {
 }) {
   const [items, setItems] = useState<ConnectionDTO[]>([])
   const [open, setOpen] = useState(false)
-  const [form, setForm] = useState({ name: "", protocol: "http-api", kind: "api_key", base_url: "", host: "", port: "", user: "", database: "", secret: "" })
+  const [form, setForm] = useState<InlineForm>({
+    name: "", protocol: "http-api", kind: "api_key", base_url: "", host: "", port: "", user: "", database: "", secret: "",
+  })
 
   const load = () => connApi.list({}).then((r) => setItems(r.items)).catch(() => undefined)
   useEffect(() => { load() }, [])
 
-  const filtered = items.filter((c) => !protocols?.length || protocols.includes(c.protocol as typeof PROTOCOLS[number]))
+  // SDD-12：归档/停用连接不可被新绑定；draft 允许选择（启用门禁在连接侧）
+  const filtered = items
+    .filter((c) => (c.lifecycle ?? c.status) !== "archived" && (c.lifecycle ?? c.status) !== "disabled")
+    .filter((c) => !protocols?.length || protocols.includes(c.protocol as typeof PROTOCOLS[number]))
 
   const create = async () => {
     const endpoint: Record<string, unknown> = form.protocol === "http-api" || form.protocol === "llm" || form.protocol === "mcp-http"
@@ -37,8 +77,11 @@ export function ConnectionPicker({ value, onChange, protocols }: {
       : form.protocol === "oss" ? { bucket: form.base_url }
       : { host: form.host, port: Number(form.port || (form.protocol === "postgresql" ? 5432 : 3306)), user: form.user, database: form.database }
     try {
-      const r = await connApi.create({ name: form.name, protocol: form.protocol, endpoint, kind: form.kind, secret: form.secret })
-      toast.success("Connection 已创建")
+      const r = await connApi.create({
+        name: form.name, protocol: form.protocol, endpoint, kind: form.kind,
+        secret: form.secret === "" ? undefined : form.secret,
+      })
+      toast.success("Connection 已创建（草稿，可在 Connections 页测试后启用）")
       setOpen(false)
       await load()
       onChange(r.id)
@@ -54,7 +97,7 @@ export function ConnectionPicker({ value, onChange, protocols }: {
         <SelectContent>
           {filtered.map((c) => (
             <SelectItem key={c.id} value={c.id}>
-              {c.name} · {c.protocol}{c.secretConfigured ? " · 凭证已配置" : ""}
+              {c.name} · {c.protocol}{c.secretConfigured ? " · 凭证已配置" : ""}{(c.lifecycle ?? c.status) === "draft" ? " · 草稿" : ""}
             </SelectItem>
           ))}
         </SelectContent>
@@ -92,15 +135,17 @@ export function ConnectionPicker({ value, onChange, protocols }: {
               </div>
             )}
             <div><Label className="text-xs">认证方式</Label>
-              <Select value={form.kind} onValueChange={(v) => setForm({ ...form, kind: v })}>
+              <Select value={form.kind} onValueChange={(v) => setForm({ ...form, kind: v, secret: "" })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {/* R4：与 Connections 页共享规范枚举；多环境/脚本等高级配置在 Connections 页 */}
-                  {KINDS.map((k) => <SelectItem key={k.value} value={k.value}>{k.label}</SelectItem>)}
+                  {/* 与 Connections 页同一套结构化密钥模型（审计 P0-4 修复） */}
+                  {INLINE_KINDS.map((k) => <SelectItem key={k.value} value={k.value}>{k.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div><Label className="text-xs">Credential / Secret</Label><Input type="password" value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })} placeholder="加密存储，不回显" /></div>
+            <div><Label className="text-xs">Credential / Secret</Label>
+              <InlineSecretFields kind={form.kind} value={form.secret} onChange={(v) => setForm({ ...form, secret: v })} />
+            </div>
           </div>
           <SheetFooter className="mt-6">
             <Button variant="outline" onClick={() => setOpen(false)}>取消</Button>

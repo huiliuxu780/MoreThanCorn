@@ -18,13 +18,16 @@ export const TYPE_LABEL: Record<string, string> = {
   datasource: "Datasource", asset: "Data Asset", workflow: "Workflow", agent: "Agent",
 }
 
-/** 生命周期 × 健康度双轨徽章：健康异常优先；metadata.lifecycleLabel 可覆盖文案（workflow/agent 的 已发布/草稿）。 */
+/** 生命周期 × 健康度双轨徽章：健康异常优先；metadata.lifecycleLabel 可覆盖文案（workflow/agent 的 已发布/草稿）。
+ * SDD-12 §11.2/H-02：untested 不得显示为 Healthy；stale=配置已变化需重测。 */
 export function ResourceStatusBadge({ dto }: { dto: ResourceDTO }) {
   const label = dto.metadata?.lifecycleLabel as string | undefined
   if (label) return <Badge variant={(dto.metadata?.lifecycleTone as "success" | "warning" | "neutral") ?? "neutral"}>{label}</Badge>
   if (dto.status === "disabled") return <Badge variant="neutral" className="b-dot">Disabled</Badge>
-  if (dto.health === "error") return <Badge variant="danger">Error</Badge>
+  if (dto.health === "error" || dto.health === "failed") return <Badge variant="danger">Failed</Badge>
   if (dto.health === "degraded") return <Badge variant="warning">Degraded</Badge>
+  if (dto.health === "stale") return <Badge variant="warning">Stale</Badge>
+  if (dto.health === "untested") return <Badge variant="neutral">Untested</Badge>
   return <Badge variant="success">Enabled</Badge>
 }
 

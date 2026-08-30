@@ -33,7 +33,10 @@ const STEPS = ["选择类型", "填写配置", "测试", "完成"]
 
 const emptyForm = {
   name: "", description: "", providerId: "", modelKey: "", capabilities: ["text"],
-  kind: "http", spec: '{ "kind": "echo" }', connectionId: "", transport: "stdio", command: "",
+  kind: "http",
+  // SDD-12 D-07：不再默认 echo 假通过——提供真实请求配方骨架（相对地址由 Connection 提供为 P2 目标）
+  spec: '{ "kind": "http", "request": { "method": "GET", "url": "https://…/path", "timeoutMs": 10000 } }',
+  connectionId: "", transport: "stdio", command: "",
   ksKind: "vector", embeddingModelId: "", sourceUrl: "", dsType: "mysql", location: "",
   datasourceId: "", recordMeaning: "", timeField: "", recordIdField: "",
 }
@@ -73,11 +76,12 @@ export default function ResWizardPage({ scope }: { scope: "ai" | "data" }) {
     return true
   }, [step, form, type, tested])
 
-  /** 进入测试步：先以 disabled 落库（草稿），测试通过后才可启用。 */
+  /** 进入测试步：先以 disabled 落库（草稿），测试通过后才可启用。
+   * SDD-12 P0-04：不再上送客户端自报 tested；启用依据服务端真实 CheckRun。 */
   const enterTest = async () => {
     try {
       let id = createdId
-      const body: Record<string, unknown> = { tested: false }
+      const body: Record<string, unknown> = {}
       if (type === "model") Object.assign(body, { name: form.name, providerId: form.providerId, modelKey: form.modelKey, capabilities: form.capabilities, description: form.description })
       if (type === "tool") Object.assign(body, { name: form.name, kind: form.kind, spec: JSON.parse(form.spec || "{}"), connectionId: form.connectionId || null, description: form.description })
       if (type === "mcp") Object.assign(body, { name: form.name, transport: form.transport, command: form.command, connectionId: form.connectionId || null, description: form.description })
@@ -115,8 +119,13 @@ export default function ResWizardPage({ scope }: { scope: "ai" | "data" }) {
   }
 
   const saveEnabled = async () => {
-    await resApi.toggle(type, createdId, true)
-    setStep(3)
+    // SDD-12 P0-04：启用受服务端门禁校验——须存在当前配置指纹的成功 CheckRun
+    try {
+      await resApi.toggle(type, createdId, true)
+      setStep(3)
+    } catch (e) {
+      toast.error(`启用失败：${(e as Error).message}`)
+    }
   }
 
   const backToList = (withNew: boolean) => {

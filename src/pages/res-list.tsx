@@ -159,9 +159,11 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
           <SelectTrigger className="h-9 w-32"><SelectValue placeholder="全部健康度" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">全部健康度</SelectItem>
+            <SelectItem value="untested">Untested</SelectItem>
             <SelectItem value="healthy">Healthy</SelectItem>
             <SelectItem value="degraded">Degraded</SelectItem>
-            <SelectItem value="error">Error</SelectItem>
+            <SelectItem value="failed">Failed</SelectItem>
+            <SelectItem value="stale">Stale</SelectItem>
           </SelectContent>
         </Select>
         <span className="ml-auto text-xs text-muted-foreground">共 {total} 个资源</span>

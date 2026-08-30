@@ -170,17 +170,8 @@ export default function WfConnectionsPage() {
     })
     setShowSecret(false); setDryRun(null); setTestEnv("")
     setOpen(true)
-    // 密钥回显（admin）；失败静默（viewer 无权限）
-    pagedApi.reveal(c.id).then((rv) => {
-      setForm((f) => ({
-        ...f,
-        secret: f.secret === "" ? (rv.secret ?? "") : f.secret,
-        environments: f.environments.map((e) => {
-          const s = rv.envSecrets?.[e.code]
-          return s ? { ...e, secret: s, hasSecret: true } : e
-        }),
-      }))
-    }).catch(() => undefined)
+    // SDD-12 B-01：Secret 永不回显。编辑时密钥字段留空=保留原值；
+    // 需更新凭据请使用"轮换"（独立操作），不再自动加载明文。
   }
 
   const submit = async () => {
@@ -189,31 +180,78 @@ export default function WfConnectionsPage() {
       endpoint: endpointOf(form.protocol, e),
       ...(e.hasSecret && e.secret !== "" ? { secret: e.secret } : {}),
     }))
+    // SDD-12 §5.3：PUT 不接受根级 secret；根密钥变更走独立的轮换接口
     const body = {
       name: form.name.trim(), kind: form.kind, protocol: form.protocol,
       endpoint: endpointOf(form.protocol, form), providerHint: form.providerHint.trim(),
       environments: envs, default_env: form.defaultEnv || null,
       authScript: form.kind === "script" ? form.authScript : null,
-      ...(form.secret !== "" ? { secret: form.secret } : {}),
     }
     try {
       if (form.id) {
         await connApi.update(form.id, body)
-        toast.success("连接已更新")
+        if (form.secret !== "") {
+          await connApi.rotateSecret(form.id, form.secret)
+          toast.success("连接已更新，根凭据已轮换")
+        } else {
+          toast.success("连接已更新（未填写的凭据保持原值）")
+        }
       } else {
         if (form.kind !== "none" && form.kind !== "script" && form.secret === "") {
           toast.error("创建连接需要填写 Secret"); return
         }
-        await connApi.create(body)
-        toast.success("连接已创建")
+        await connApi.create({ ...body, secret: form.secret === "" ? undefined : form.secret })
+        toast.success("连接已创建（草稿，测试通过后可启用）")
       }
       setOpen(false); load()
     } catch (e) { toast.error((e as Error).message) }
   }
 
-  const del = async (id: string) => {
-    try { await connApi.remove(id); load() }
+  /** SDD-12 §5.3/B-02：轮换=新 revision 生效、旧 revision 退役 */
+  const rotate = async (c: ConnectionDTO) => {
+    const v = window.prompt(`轮换「${c.name}」的根凭据（旧凭据将退役，不可回显）：`)
+    if (!v) return
+    try {
+      const r = await connApi.rotateSecret(c.id, v)
+      toast.success(`凭据已轮换（版本 ${r.versionNo}），健康度转为 Stale，请重新测试`)
+      load()
+    } catch (e) { toast.error((e as Error).message) }
+  }
+
+  /** SDD-12 §5.3/B-03：清除需二次确认；有引用时提示并允许强制 */
+  const clearSecret = async (c: ConnectionDTO) => {
+    const confirmText = window.prompt(`清除「${c.name}」的根凭据？请输入 CLEAR_SECRET 确认：`)
+    if (confirmText == null) return
+    try {
+      await connApi.clearSecret(c.id, confirmText)
+      toast.success("凭据已清除"); load()
+    } catch (e) {
+      const err = e as Error & { refs?: { kind: string; label?: string }[] }
+      if (err.refs?.length && window.confirm(
+        `该连接被 ${err.refs.length} 个资源引用（${err.refs.map(r => r.label || r.kind).join("、")}），清除后其鉴权将失败。仍要强制清除吗？`)) {
+        try { await connApi.clearSecret(c.id, "CLEAR_SECRET", { force: true }); toast.success("凭据已强制清除"); load() }
+        catch (e2) { toast.error((e2 as Error).message) }
+      } else { toast.error(err.message) }
+    }
+  }
+
+  const enable = async (c: ConnectionDTO) => {
+    try { await connApi.enable(c.id); toast.success("连接已启用"); load() }
+    catch (e) { toast.error(`启用失败：${(e as Error).message}（需先通过连接测试）`) }
+  }
+  const disable = async (c: ConnectionDTO) => {
+    try { await connApi.disable(c.id); toast.success("连接已停用"); load() }
     catch (e) { toast.error((e as Error).message) }
+  }
+
+  const del = async (c: ConnectionDTO) => {
+    try { await connApi.remove(c.id); toast.success("连接已归档"); load() }
+    catch (e) {
+      const err = e as Error & { refs?: { kind: string; label?: string }[] }
+      if (err.refs?.length) {
+        toast.error(`该连接被引用，无法删除：${err.refs.map(r => `${r.kind}${r.label ? "·" + r.label : ""}`).join("、")}`)
+      } else { toast.error(err.message) }
+    }
   }
   const [searching, setSearching] = useState<string | null>(null)
   const test = async (id: string, env?: string) => {
@@ -284,8 +322,17 @@ export default function WfConnectionsPage() {
         <EmptyState title="暂无连接" description="创建第一个连接，安全托管凭证" />
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filtered.map((c) => (
-            <div key={c.id} className="group flex h-32 flex-col rounded-lg border bg-card p-3.5 hover:border-muted-foreground/40">
+          {filtered.map((c) => {
+            const lifecycle = (c.lifecycle ?? c.status) as string
+            const health = c.health ?? "untested"
+            const lifeCls = lifecycle === "active" ? "text-emerald-600"
+              : lifecycle === "archived" ? "text-neutral-400" : "text-amber-600"
+            const healthCls = health === "healthy" ? "text-emerald-600"
+              : health === "untested" ? "text-neutral-500"
+              : health === "stale" ? "text-amber-600" : "text-red-500"
+            const healthLabel = { untested: "未测试", healthy: "健康", degraded: "降级", failed: "失败", stale: "已过时" }[health] ?? health
+            return (
+            <div key={c.id} className="group flex min-h-32 flex-col rounded-lg border bg-card p-3.5 hover:border-muted-foreground/40">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#1F2329]">
@@ -296,21 +343,41 @@ export default function WfConnectionsPage() {
                     <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
                       {kindLabel(c.kind)} · {protocolLabel(c.protocol)}
                       {(c.environments?.length ?? 0) > 0 ? ` · ${c.environments!.length} 环境` : ""}
-                      {c.providerHint ? ` · ${c.providerHint}` : ""} · {c.secretConfigured ? "••••••" : "未配置密钥"}
+                      {c.providerHint ? ` · ${c.providerHint}` : ""}
                     </div>
                   </div>
                 </div>
-                <Badge variant="secondary" className={`shrink-0 text-[10px] ${c.status === "active" ? "text-emerald-600" : "text-red-500"}`}>{c.status}</Badge>
+                {/* SDD-12 §11：生命周期与健康度分离展示（untested 不显示为 healthy） */}
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <Badge variant="secondary" className={`text-[10px] ${lifeCls}`}>{lifecycle}</Badge>
+                  <Badge variant="outline" className={`text-[10px] ${healthCls}`}>{healthLabel}</Badge>
+                </div>
               </div>
-              <div className="mt-auto flex items-center justify-end gap-2 pt-2 text-[11px]">
+              <div className="mt-1 text-[11px] text-muted-foreground">
+                {c.secretConfigured
+                  ? `凭据已配置 · 版本 ${c.secretRevision?.versionNo ?? 1}${c.secretRevision?.rotatedAt ? ` · 轮换于 ${c.secretRevision.rotatedAt.slice(0, 10)}` : ""}`
+                  : "未配置密钥"}
+              </div>
+              <div className="mt-auto flex flex-wrap items-center justify-end gap-2 pt-2 text-[11px]">
                 <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => openEdit(c)}>编辑</button>
                 <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100 disabled:opacity-50" disabled={searching === c.id} onClick={() => test(c.id)}>{searching === c.id ? "测试中…" : "测试"}</button>
-                <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => del(c.id)}>
+                {lifecycle === "draft" && (
+                  <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => enable(c)}>启用</button>
+                )}
+                {lifecycle === "active" && (
+                  <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => disable(c)}>停用</button>
+                )}
+                <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => rotate(c)}>轮换凭据</button>
+                {c.secretConfigured && (
+                  <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => clearSecret(c)}>清除凭据</button>
+                )}
+                <button aria-label={`删除连接 ${c.name}`} className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => del(c)}>
                   <Trash2 className="size-3" />
                 </button>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -419,22 +486,18 @@ export default function WfConnectionsPage() {
 
             {form.kind !== "none" && (
               <div>
-                <Label className="text-xs">连接级密钥（加密存储{form.id ? "，留空=保留原密钥" : ""}）</Label>
+                <Label className="text-xs">
+                  连接级密钥（加密存储{form.id ? "；留空=保留原密钥，保存时填写=轮换" : ""}）
+                </Label>
                 {form.kind === "api_key" || form.kind === "bearer" ? (
                   <div className="relative">
-                    <Input type={showSecret ? "text" : "password"} className="pr-9"
+                    <Input type={showSecret ? "text" : "password"} className="pr-9" autoComplete="new-password"
                       value={typeof form.secret === "string" ? form.secret : ""}
-                      onChange={(e) => set({ secret: e.target.value })} placeholder={form.id ? "••••••（已配置则留空）" : ""} />
+                      onChange={(e) => set({ secret: e.target.value })}
+                      placeholder={form.id ? "已保存的密钥不可回显；留空保留或填写新值轮换" : ""} />
+                    {/* SDD-12 B-01：仅切换本地可见性，不再从服务端回显明文 */}
                     <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
-                      onClick={async () => {
-                        if (!showSecret && form.id && !form.secret) {
-                          try {
-                            const r = await pagedApi.reveal(form.id)
-                            set({ secret: typeof r.secret === "string" ? r.secret : JSON.stringify(r.secret) })
-                          } catch { /* 忽略 */ }
-                        }
-                        setShowSecret((v) => !v)
-                      }} title={showSecret ? "隐藏" : "显示"}>
+                      onClick={() => setShowSecret((v) => !v)} title={showSecret ? "隐藏" : "显示"}>
                       {showSecret ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                     </button>
                   </div>

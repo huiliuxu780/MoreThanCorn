@@ -29,6 +29,11 @@ function Kv({ k, v }: { k: string; v: React.ReactNode }) {
   )
 }
 
+/** SDD-12 §11.2 健康度词表 → 展示文案 */
+const HEALTH_LABEL: Record<string, string> = {
+  untested: "未测试", healthy: "健康", degraded: "降级", failed: "失败", stale: "已过时",
+}
+
 export default function ResDetailPage() {
   const { type = "", id = "" } = useParams()
   const navigate = useNavigate()
@@ -97,7 +102,8 @@ export default function ResDetailPage() {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-lg font-semibold">{dto.name}</h1>
             <ResourceStatusBadge dto={dto} />
-            {dto.health !== "healthy" && dto.status === "enabled" && <Badge variant="neutral">Healthy</Badge>}
+            {/* SDD-12 §11.2：健康度独立展示（untested 不得显示 healthy） */}
+            <Badge variant="outline">{HEALTH_LABEL[dto.health] ?? dto.health}</Badge>
           </div>
           <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
             <span>{TYPE_LABEL[type]}{dto.metadata.kind ? ` · ${dto.metadata.kind}` : ""}{dto.metadata.transport ? ` · ${dto.metadata.transport}` : ""}</span>
@@ -114,9 +120,14 @@ export default function ResDetailPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={async () => {
-                await resApi.toggle(type, id, dto.status === "disabled")
-                toast.success(dto.status === "disabled" ? "已启用" : "已停用")
-                load()
+                // SDD-12 P0-04：启用受真实测试门禁约束；失败时展示原因（未测试/已过时）
+                try {
+                  await resApi.toggle(type, id, dto.status === "disabled")
+                  toast.success(dto.status === "disabled" ? "已启用" : "已停用")
+                  load()
+                } catch (e) {
+                  toast.error(`操作失败：${(e as Error).message}（启用需先通过测试）`)
+                }
               }}>{dto.status === "disabled" ? "启用" : "停用"}</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="text-destructive" onClick={() => setDelOpen(true)}>删除</DropdownMenuItem>
