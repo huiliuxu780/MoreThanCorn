@@ -7,6 +7,7 @@ import type { TaskVersionDTO } from "@/services/api-types"
 const base = (over: Partial<TaskFormState> = {}): TaskFormState => ({
   ...emptyTaskForm,
   name: " 每日弹幕质检 ",
+  targetType: "workflow",
   agentId: "wf_1",
   assetId: "asset_1",
   ...over,
@@ -42,6 +43,23 @@ describe("task-mapper（09 P0-B4 契约：表单 → §10.1 结构化提交体�
     const p = buildTaskPayload(base())
     expect(p.workflowVersionPolicy).toBe("latest_published")
     expect(p.pinnedWorkflowVersionId).toBeUndefined()
+  })
+
+  it("Agent 目标使用 executionTarget，不混入 Workflow 版本字段", () => {
+    const latest = buildTaskPayload(base({ targetType: "agent", agentId: "agent_1" }))
+    expect(latest.executionTarget).toEqual({
+      type: "agent", agentId: "agent_1", versionPolicy: "latest_sandbox_release",
+      pinnedAgentVersionId: null,
+    })
+    expect(latest.workflowId).toBeUndefined()
+    expect(latest.workflowVersionPolicy).toBeUndefined()
+
+    const fixed = buildTaskPayload(base({
+      targetType: "agent", agentId: "agent_1", versionPolicy: "Fixed", fixedVersion: "av_9",
+    }))
+    expect(fixed.executionTarget).toEqual({
+      type: "agent", agentId: "agent_1", versionPolicy: "pinned", pinnedAgentVersionId: "av_9",
+    })
   })
 
   it("随机抽样映射为 random/percent", () => {

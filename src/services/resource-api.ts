@@ -121,7 +121,7 @@ export interface ConnectionEnvDTO {
 export interface ConnectionDTO {
   id: string; name: string; kind: string; protocol: string; endpoint: Record<string, unknown>;
   status: string; secretConfigured: boolean; updatedAt: string;
-  environments?: ConnectionEnvDTO[]; defaultEnv?: string | null; authScript?: string;
+  providerHint?: string; environments?: ConnectionEnvDTO[]; defaultEnv?: string | null; authScript?: string;
 }
 export type ConnSecret = string | Record<string, string>
 export interface ConnectionBody {
