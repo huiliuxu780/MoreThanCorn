@@ -338,6 +338,8 @@ export interface ConnectionListItem {
   id: string; name: string; kind: string; protocol: string
   endpoint: Record<string, unknown>; status: string; secretConfigured: boolean
   providerHint?: string; updatedAt?: string
+  environments?: { code: string; label?: string; endpoint?: Record<string, unknown>; secretConfigured?: boolean }[]
+  defaultEnv?: string | null; authScript?: string
 }
 export interface ModelListItem {
   id?: string; modelKey: string; displayName?: string; providerId?: string
@@ -354,7 +356,7 @@ export const pagedApi = {
     req<Paged<ToolListItem>>(`/api/tools?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}&search=${encodeURIComponent(p.search ?? "")}`),
   connections: (p: { page?: number; pageSize?: number; search?: string }) =>
     req<Paged<ConnectionListItem>>(`/api/connections?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}&search=${encodeURIComponent(p.search ?? "")}`),
-  reveal: (cid: string) => req<{ secret: string }>(`/api/connections/${cid}/reveal`),
+  reveal: (cid: string) => req<{ secret: string | Record<string, string>; envSecrets?: Record<string, string | Record<string, string>> }>(`/api/connections/${cid}/reveal`),
   models: (p: { page?: number; pageSize?: number }) =>
     req<Paged<ModelListItem>>(`/api/registry/models?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}`),
   providers: (p: { page?: number; pageSize?: number }) =>

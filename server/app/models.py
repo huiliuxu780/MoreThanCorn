@@ -84,11 +84,14 @@ class Connection(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(64))
-    kind: Mapped[str] = mapped_column(String(16))  # api_key|basic|bearer
+    kind: Mapped[str] = mapped_column(String(16))  # none|api_key|bearer|basic|aksk|script
     protocol: Mapped[str] = mapped_column(String(16), default="http-api")  # http-api|mysql|postgresql|oss|mcp-http|llm
-    endpoint: Mapped[dict] = mapped_column(JSONB, default=dict)  # {base_url}|{host,port}|{bucket,region}
+    endpoint: Mapped[dict] = mapped_column(JSONB, default=dict)  # {base_url}|{host,port}|{bucket,region}（默认环境）
+    environments: Mapped[list] = mapped_column(JSONB, default=list)  # [{code,label,endpoint?,secret_ref?}] 按环境覆盖
+    default_env: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    auth_script: Mapped[str | None] = mapped_column(Text, nullable=True)  # kind=script 的 JS 鉴权脚本
     provider_hint: Mapped[str] = mapped_column(String(64), default="")
-    secret_ref: Mapped[str] = mapped_column(String(128))  # Secret Store 引用，不存明文
+    secret_ref: Mapped[str] = mapped_column(String(128))  # Secret Store 引用，不存明文（裸串或 JSON payload 密文）
     status: Mapped[str] = mapped_column(String(16), default="active")
     last_test_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

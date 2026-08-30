@@ -19,7 +19,7 @@ from .legacy_agent_archive import (LEGACY_ARCHIVED_CODE, LEGACY_ARCHIVED_MESSAGE
                                    assert_agent_executable, is_legacy_agent)
 from .models import (Agent, Connection, KnowledgeSource, Model, ModelProvider, Release, Run,
                      Tool, ToolVersion, Workflow, new_id)
-from .runner import RunError, _decrypt, create_run, emit, execute_run, exec_tool
+from .runner import RunError, create_run, emit, execute_run, exec_tool
 
 MAX_STEPS = 8
 MAX_SECONDS = 60
@@ -46,28 +46,39 @@ class _Ctx:
 
 # ---------- LLM（OpenAI 兼容 + mock 回落，支持 tools） ----------
 
-def _resolve_base_secret(db: Session, model_key: str) -> tuple[str, str]:
+def _resolve_base_headers(db: Session, model_key: str) -> tuple[str, dict]:
+    """R4：返回 (base, 鉴权请求头)。kind 真实生效（aksk/script 经签名层产出）。"""
     import os
+    from .auth_signers import AuthSignError, build_auth_headers
+    from .connection_runtime import resolve_for_request
     base = os.environ.get("WF_LLM_BASE_URL", "")
     secret = os.environ.get("WF_LLM_API_KEY", "")
+    conn = None
     if not base:
         for m in db.execute(select(Model).where(Model.model_key == model_key)).scalars().all():
             prov = db.get(ModelProvider, m.provider_id)
             if prov and prov.base_url.startswith(("http://", "https://")):
                 base = prov.base_url
-                if not secret and prov.auth_connection_id:
+                if prov.auth_connection_id:
                     conn = db.get(Connection, prov.auth_connection_id)
-                    if conn:
-                        secret = _decrypt(conn.secret_ref)
             break
-    return base, secret
+    if secret:
+        return base, {"Authorization": f"Bearer {secret}"}
+    if conn is not None:
+        _ep, payload, _code = resolve_for_request(conn)
+        try:
+            return base, build_auth_headers(conn.kind, payload, script=conn.auth_script,
+                                            env_vars=payload if isinstance(payload, dict) else None)
+        except AuthSignError as exc:
+            raise RunError(str(exc))
+    return base, {}
 
 
 def _chat_completion(db: Session, model_key: str, messages: list[dict], tools: list[dict],
                      on_delta=None, temperature: float = 0.7) -> dict:
     """返回 {"content": str|None, "tool_calls": [{"name","args"}]}。
     on_delta 提供时走流式（SDD B-08），逐块回调文本增量；mock 模式整段一次回调。"""
-    base, secret = _resolve_base_secret(db, model_key)
+    base, headers = _resolve_base_headers(db, model_key)
     if not base or not base.startswith(("http://", "https://")):
         from .config import is_production
         if is_production():
@@ -94,7 +105,7 @@ def _chat_completion(db: Session, model_key: str, messages: list[dict], tools: l
     if on_delta is None:
         with httpx.Client(timeout=60) as client:
             r = client.post(f"{base.rstrip('/')}/chat/completions",
-                            headers={"Authorization": f"Bearer {secret}"} if secret else {}, json=body)
+                            headers=headers, json=body)
             r.raise_for_status()
             j = r.json()
         msg = j["choices"][0]["message"]
@@ -108,7 +119,7 @@ def _chat_completion(db: Session, model_key: str, messages: list[dict], tools: l
     try:
         with httpx.Client(timeout=120) as client:
             with client.stream("POST", f"{base.rstrip('/')}/chat/completions",
-                               headers={"Authorization": f"Bearer {secret}"} if secret else {}, json=body) as r:
+                               headers=headers, json=body) as r:
                 r.raise_for_status()
                 for line in r.iter_lines():
                     if not line.startswith("data:"):

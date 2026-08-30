@@ -115,9 +115,19 @@ export const defApi = {
   remove: (id: string) => req<{ ok: boolean }>(`/api/data-definitions/${id}`, { method: "DELETE" }),
 }
 
+export interface ConnectionEnvDTO {
+  code: string; label?: string; endpoint?: Record<string, unknown>; secretConfigured?: boolean
+}
 export interface ConnectionDTO {
   id: string; name: string; kind: string; protocol: string; endpoint: Record<string, unknown>;
   status: string; secretConfigured: boolean; updatedAt: string;
+  environments?: ConnectionEnvDTO[]; defaultEnv?: string | null; authScript?: string;
+}
+export type ConnSecret = string | Record<string, string>
+export interface ConnectionBody {
+  name: string; protocol: string; endpoint: Record<string, unknown>; kind?: string;
+  providerHint?: string; secret?: ConnSecret; authScript?: string | null; default_env?: string | null;
+  environments?: { code: string; label?: string; endpoint?: Record<string, unknown>; secret?: ConnSecret | null }[];
 }
 
 export const connApi = {
@@ -127,11 +137,19 @@ export const connApi = {
     if (p.search) q.set("search", p.search)
     return req<Paged<ConnectionDTO>>(`/api/connections?${q}`)
   },
-  create: (body: { name: string; protocol: string; endpoint: Record<string, unknown>; kind?: string; providerHint?: string; secret?: string }) =>
+  create: (body: ConnectionBody) =>
     req<{ id: string; name: string }>("/api/connections", { method: "POST", body: JSON.stringify(body) }),
-  /** secret 留空=保留原密钥，填写=轮换 */
-  update: (id: string, body: { name?: string; protocol?: string; endpoint?: Record<string, unknown>; kind?: string; providerHint?: string; secret?: string }) =>
+  /** secret 缺省=保留原密钥，填写=轮换 */
+  update: (id: string, body: Partial<ConnectionBody>) =>
     req<{ id: string; name: string }>(`/api/connections/${id}`, { method: "PUT", body: JSON.stringify(body) }),
-  test: (id: string) => req<{ ok: boolean; error?: string }>("/api/connections/" + id + "/test", { method: "POST" }),
+  test: (id: string, env?: string) =>
+    req<{ ok: boolean; error?: string }>(`/api/connections/${id}/test`, {
+      method: "POST", body: JSON.stringify(env ? { env } : {}),
+    }),
+  /** 空跑鉴权（内置算法/脚本）：不落库、不打网络 */
+  dryRunSign: (body: { kind: string; secret?: ConnSecret | null; script?: string | null; envVars?: Record<string, string> }) =>
+    req<{ headers: Record<string, string>; logs: string[] }>("/api/connections/dry-run-sign", {
+      method: "POST", body: JSON.stringify(body),
+    }),
   remove: (id: string) => req<{ ok: boolean }>(`/api/connections/${id}`, { method: "DELETE" }),
 }

@@ -1,12 +1,13 @@
 /** Connections — 真 API + 卡片网格。路由 /settings/connections。
- * 用户报告修复：补编辑入口（PUT），创建/编辑表单支持多种鉴权（API Key/Bearer/Basic Auth）、
- * 协议与端点；统一走 connApi 服务层（SDD D-3）。 */
-import { Eye, EyeOff, KeyRound, Plus, Trash2 } from "lucide-react"
+ * R4：鉴权双层（内置算法 none/api_key/bearer/basic/aksk + 自定义脚本沙箱）、
+ * 多环境域名（预设四槽+自定义，按环境凭据覆盖）、空跑鉴权、按环境测试。 */
+import { Eye, EyeOff, KeyRound, Play, Plus, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { useListQuery } from "@/hooks/use-list-query"
 import { Pagination } from "@/components/app/pagination"
 import { pagedApi } from "@/services/wf-api"
-import { connApi } from "@/services/resource-api"
+import { connApi, type ConnSecret, type ConnectionDTO } from "@/services/resource-api"
+import { AKSK_TEMPLATE, ENV_PRESETS, KINDS, PROTOCOLS, isDb, isOss, kindLabel, protocolLabel } from "@/services/connection-auth"
 import { toast } from "sonner"
 
 import { FilterBar, SearchField } from "@/components/app/filters"
@@ -25,56 +26,117 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-interface ConnRow {
-  id: string; name: string; kind: string; protocol: string; status: string;
-  endpoint: Record<string, string>; providerHint: string; secretConfigured: boolean
-}
-
-const KINDS = [
-  { value: "api_key", label: "API Key" },
-  { value: "bearer", label: "Bearer Token" },
-  { value: "basic", label: "Basic Auth" },
-]
-const KIND_LABEL: Record<string, string> = Object.fromEntries(KINDS.map((k) => [k.value, k.label]))
-const kindLabel = (k: string) => KIND_LABEL[k] ?? KIND_LABEL[k.toLowerCase().replace(/\s+/g, "_")] ?? k
-
-const PROTOCOLS = [
-  { value: "http-api", label: "HTTP API" },
-  { value: "llm", label: "LLM" },
-  { value: "mcp-http", label: "MCP" },
-  { value: "mysql", label: "MySQL" },
-  { value: "postgresql", label: "PostgreSQL" },
-  { value: "oss", label: "OSS" },
-]
-const protocolLabel = (p: string) => PROTOCOLS.find((x) => x.value === p)?.label ?? p
-const isDb = (p: string) => p === "mysql" || p === "postgresql"
-const isOss = (p: string) => p === "oss"
-
-interface FormState {
+interface EpFields { baseUrl: string; host: string; port: string; user: string; database: string; bucket: string; region: string }
+interface EnvForm extends EpFields { code: string; label: string; hasSecret: boolean; secret: ConnSecret | "" }
+interface FormState extends EpFields {
   id: string | null; name: string; kind: string; protocol: string;
-  baseUrl: string; host: string; port: string; user: string; database: string;
-  bucket: string; region: string;
-  providerHint: string; secret: string
+  providerHint: string; secret: ConnSecret | ""; authScript: string;
+  environments: EnvForm[]; defaultEnv: string;
 }
+const EMPTY_EP: EpFields = { baseUrl: "", host: "", port: "", user: "", database: "", bucket: "", region: "" }
 const EMPTY_FORM: FormState = {
-  id: null, name: "", kind: "api_key", protocol: "http-api",
-  baseUrl: "", host: "", port: "", user: "", database: "", bucket: "", region: "", providerHint: "", secret: "",
+  id: null, name: "", kind: "api_key", protocol: "http-api", ...EMPTY_EP,
+  providerHint: "", secret: "", authScript: "", environments: [], defaultEnv: "",
 }
 
-function endpointOf(f: FormState): Record<string, string> {
-  // 09 闭环修复：DB 连接需提交用户名/库名，浏览器创建方可真实探测与读取
-  if (isDb(f.protocol)) return { host: f.host, port: f.port, user: f.user, database: f.database }
-  if (isOss(f.protocol)) return { bucket: f.bucket, region: f.region }
+function endpointOf(protocol: string, f: EpFields): Record<string, string> {
+  if (isDb(protocol)) return { host: f.host, port: f.port, user: f.user, database: f.database }
+  if (isOss(protocol)) return { bucket: f.bucket, region: f.region }
   return { base_url: f.baseUrl }
 }
 
+/** 按 kind 渲染密钥输入；script 为动态 KV 行（脚本 env 变量来源） */
+function SecretFields({ kind, value, onChange }: {
+  kind: string; value: ConnSecret | ""; onChange: (v: ConnSecret | "") => void
+}) {
+  if (kind === "none") return null
+  const rec = (typeof value === "object" ? value : {}) as Record<string, string>
+  const setRec = (k: string, v: string) => onChange({ ...rec, [k]: v })
+  if (kind === "basic") {
+    return (
+      <div className="grid grid-cols-2 gap-3">
+        <div><Label className="text-xs">用户名</Label><Input value={rec.username ?? ""} onChange={(e) => setRec("username", e.target.value)} /></div>
+        <div><Label className="text-xs">密码</Label><Input type="password" value={rec.password ?? ""} onChange={(e) => setRec("password", e.target.value)} /></div>
+      </div>
+    )
+  }
+  if (kind === "aksk") {
+    return (
+      <div className="grid grid-cols-1 gap-3">
+        <div><Label className="text-xs">AccessKey</Label><Input className="font-mono text-xs" value={rec.access_key ?? ""} onChange={(e) => setRec("access_key", e.target.value)} /></div>
+        <div><Label className="text-xs">SecretKey</Label><Input type="password" className="font-mono text-xs" value={rec.secret_key ?? ""} onChange={(e) => setRec("secret_key", e.target.value)} /></div>
+      </div>
+    )
+  }
+  if (kind === "script") {
+    const rows = Object.entries(rec)
+    return (
+      <div className="space-y-2">
+        <Label className="text-xs">脚本环境变量（pm.environment.get 可读；加密存储）</Label>
+        {rows.map(([k, v]) => (
+          <div key={k} className="grid grid-cols-[1fr_1fr_28px] gap-2">
+            <Input className="font-mono text-xs" value={k} readOnly />
+            <Input className="font-mono text-xs" type="password" value={v}
+              onChange={(e) => setRec(k, e.target.value)} />
+            <button type="button" className="text-neutral-400 hover:text-red-500"
+              onClick={() => { const n = { ...rec }; delete n[k]; onChange(n) }} title="删除"><Trash2 className="size-3.5" /></button>
+          </div>
+        ))}
+        <div className="grid grid-cols-[1fr_1fr_28px] gap-2">
+          <Input className="font-mono text-xs" placeholder="变量名，如 accesskey"
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return
+              const k = (e.target as HTMLInputElement).value.trim()
+              if (k) { onChange({ ...rec, [k]: "" }); (e.target as HTMLInputElement).value = "" }
+            }} />
+          <div className="text-xs leading-9 text-muted-foreground">回车添加变量</div>
+          <div />
+        </div>
+      </div>
+    )
+  }
+  // api_key / bearer：单串
+  return <Input type="password" value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} placeholder="加密存储，不回显" />
+}
+
+/** 端点字段（主表单与环境行共用） */
+function EndpointFields({ protocol, v, onChange }: {
+  protocol: string; v: EpFields; onChange: (p: Partial<EpFields>) => void
+}) {
+  if (isDb(protocol)) {
+    return (
+      <div className="space-y-2">
+        <div className="grid grid-cols-[1fr_90px] gap-2">
+          <Input value={v.host} onChange={(e) => onChange({ host: e.target.value })} placeholder="db.internal" />
+          <Input value={v.port} onChange={(e) => onChange({ port: e.target.value })} placeholder={protocol === "mysql" ? "3306" : "5432"} />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Input value={v.user} onChange={(e) => onChange({ user: e.target.value })} placeholder="用户名" />
+          <Input value={v.database} onChange={(e) => onChange({ database: e.target.value })} placeholder="数据库" />
+        </div>
+      </div>
+    )
+  }
+  if (isOss(protocol)) {
+    return (
+      <div className="grid grid-cols-2 gap-2">
+        <Input value={v.bucket} onChange={(e) => onChange({ bucket: e.target.value })} placeholder="Bucket" />
+        <Input value={v.region} onChange={(e) => onChange({ region: e.target.value })} placeholder="Region" />
+      </div>
+    )
+  }
+  return <Input value={v.baseUrl} onChange={(e) => onChange({ baseUrl: e.target.value })} placeholder="https://网关域名" />
+}
+
 export default function WfConnectionsPage() {
-  const [rows, setRows] = useState<ConnRow[]>([])
+  const [rows, setRows] = useState<ConnectionDTO[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [open, setOpen] = useState(false)
   const [showSecret, setShowSecret] = useState(false)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
+  const [dryRun, setDryRun] = useState<{ headers: Record<string, string>; logs: string[] } | null>(null)
+  const [testEnv, setTestEnv] = useState("")
   const set = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }))
 
   const { params, update } = useListQuery(12)
@@ -82,37 +144,63 @@ export default function WfConnectionsPage() {
   const load = useCallback(() => {
     setLoading(true)
     pagedApi.connections({ page: params.page, pageSize: params.pageSize, search: params.search ?? "" }).then((r) => {
-      setRows(r.items as unknown as ConnRow[]); setTotal(r.total); setLoading(false)
+      setRows(r.items as unknown as ConnectionDTO[]); setTotal(r.total); setLoading(false)
     }).catch(() => setLoading(false))
   }, [params.page, params.pageSize, params.search])
   useEffect(() => { load() }, [load])
 
-  const openCreate = () => { setForm(EMPTY_FORM); setShowSecret(false); setOpen(true) }
-  const openEdit = (c: ConnRow) => {
-    setForm({
-      id: c.id, name: c.name, kind: KIND_LABEL[c.kind] ? c.kind : "api_key",
-      protocol: c.protocol || "http-api",
-      baseUrl: c.endpoint?.base_url ?? "", host: c.endpoint?.host ?? "", port: c.endpoint?.port ?? "",
-      user: c.endpoint?.user ?? "", database: c.endpoint?.database ?? "",
-      bucket: c.endpoint?.bucket ?? "", region: c.endpoint?.region ?? "",
-      providerHint: c.providerHint ?? "", secret: "",
+  const openCreate = () => { setForm(EMPTY_FORM); setShowSecret(false); setDryRun(null); setOpen(true) }
+  const openEdit = (c: ConnectionDTO) => {
+    const ep = (c.endpoint ?? {}) as Record<string, string>
+    const envs: EnvForm[] = (c.environments ?? []).map((e) => {
+      const eep = (e.endpoint ?? {}) as Record<string, string>
+      return { code: e.code, label: e.label ?? "", hasSecret: !!e.secretConfigured, secret: "",
+               baseUrl: eep.base_url ?? "", host: eep.host ?? "", port: eep.port ?? "",
+               user: eep.user ?? "", database: eep.database ?? "", bucket: eep.bucket ?? "", region: eep.region ?? "" }
     })
-    setShowSecret(false)
+    setForm({
+      id: c.id, name: c.name, kind: c.kind || "api_key", protocol: c.protocol || "http-api",
+      baseUrl: ep.base_url ?? "", host: ep.host ?? "", port: ep.port ?? "",
+      user: ep.user ?? "", database: ep.database ?? "", bucket: ep.bucket ?? "", region: ep.region ?? "",
+      providerHint: c.providerHint ?? "", secret: "", authScript: c.authScript ?? "",
+      environments: envs, defaultEnv: c.defaultEnv ?? "",
+    })
+    setShowSecret(false); setDryRun(null); setTestEnv("")
     setOpen(true)
+    // 密钥回显（admin）；失败静默（viewer 无权限）
+    pagedApi.reveal(c.id).then((rv) => {
+      setForm((f) => ({
+        ...f,
+        secret: f.secret === "" ? (rv.secret ?? "") : f.secret,
+        environments: f.environments.map((e) => {
+          const s = rv.envSecrets?.[e.code]
+          return s ? { ...e, secret: s, hasSecret: true } : e
+        }),
+      }))
+    }).catch(() => undefined)
   }
 
   const submit = async () => {
+    const envs = form.environments.filter((e) => e.code.trim()).map((e) => ({
+      code: e.code.trim(), label: e.label.trim() || e.code.trim(),
+      endpoint: endpointOf(form.protocol, e),
+      ...(e.hasSecret && e.secret !== "" ? { secret: e.secret } : {}),
+    }))
     const body = {
       name: form.name.trim(), kind: form.kind, protocol: form.protocol,
-      endpoint: endpointOf(form), providerHint: form.providerHint.trim(),
-      ...(form.secret ? { secret: form.secret } : {}),
+      endpoint: endpointOf(form.protocol, form), providerHint: form.providerHint.trim(),
+      environments: envs, default_env: form.defaultEnv || null,
+      authScript: form.kind === "script" ? form.authScript : null,
+      ...(form.secret !== "" ? { secret: form.secret } : {}),
     }
     try {
       if (form.id) {
         await connApi.update(form.id, body)
         toast.success("连接已更新")
       } else {
-        if (!form.secret.trim()) { toast.error("创建连接需要填写 Secret"); return }
+        if (form.kind !== "none" && form.kind !== "script" && form.secret === "") {
+          toast.error("创建连接需要填写 Secret"); return
+        }
         await connApi.create(body)
         toast.success("连接已创建")
       }
@@ -125,18 +213,29 @@ export default function WfConnectionsPage() {
     catch (e) { toast.error((e as Error).message) }
   }
   const [searching, setSearching] = useState<string | null>(null)
-  const test = async (id: string) => {
+  const test = async (id: string, env?: string) => {
     setSearching(id)
     try {
-      const r = await connApi.test(id)
-      if (r.ok) toast.success("连接测试通过")
+      const r = await connApi.test(id, env || undefined)
+      if (r.ok) toast.success(env ? `连接测试通过（${env}）` : "连接测试通过")
       else toast.error(`测试失败：${r.error ?? "未知错误"}`)
       // 静默刷新该行状态，不触发整列表 loading 闪烁（修复"点测试列表会变"）
       pagedApi.connections({ page: params.page, pageSize: params.pageSize, search: params.search ?? "" })
-        .then((r2) => { setRows(r2.items as unknown as ConnRow[]); setTotal(r2.total) })
+        .then((r2) => { setRows(r2.items as unknown as ConnectionDTO[]); setTotal(r2.total) })
         .catch(() => undefined)
     } catch (e) { toast.error((e as Error).message) }
     finally { setSearching(null) }
+  }
+
+  const runDryRun = async () => {
+    try {
+      const r = await connApi.dryRunSign({
+        kind: form.kind, script: form.authScript,
+        secret: form.secret === "" ? null : form.secret,
+        envVars: typeof form.secret === "object" ? form.secret : undefined,
+      })
+      setDryRun(r)
+    } catch (e) { toast.error((e as Error).message); setDryRun(null) }
   }
 
   // 按协议分 tab（用户建议）
@@ -151,11 +250,14 @@ export default function WfConnectionsPage() {
     .filter((c) => !search || c.name.toLowerCase().includes(search.toLowerCase()))
     .filter((c) => protoFilter === "all" || (c.protocol || "http-api") === protoFilter)
 
+  const setEnv = (i: number, patch: Partial<EnvForm>) =>
+    set({ environments: form.environments.map((e, j) => (j === i ? { ...e, ...patch } : e)) })
+
   return (
     <PageContainer wide className="space-y-3">
       <PageHeader
         title="Connections"
-        description="凭证与外部系统连接（加密存储，Secret 不回显）"
+        description="凭证与外部系统连接（加密存储，Secret 不回显；支持多环境域名与自定义鉴权脚本）"
         actions={<Button className="bg-black text-white hover:bg-neutral-800" onClick={openCreate}><Plus className="size-4" /> 创建连接</Button>}
       />
       <FilterBar>
@@ -189,7 +291,9 @@ export default function WfConnectionsPage() {
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium">{c.name}</div>
                     <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                      {kindLabel(c.kind)} · {protocolLabel(c.protocol)}{c.providerHint ? ` · ${c.providerHint}` : ""} · {c.secretConfigured ? "••••••" : "未配置密钥"}
+                      {kindLabel(c.kind)} · {protocolLabel(c.protocol)}
+                      {(c.environments?.length ?? 0) > 0 ? ` · ${c.environments!.length} 环境` : ""}
+                      {c.providerHint ? ` · ${c.providerHint}` : ""} · {c.secretConfigured ? "••••••" : "未配置密钥"}
                     </div>
                   </div>
                 </div>
@@ -211,14 +315,14 @@ export default function WfConnectionsPage() {
         pageSizeOptions={[12, 24, 48]} onPageChange={(pg) => update({ page: pg })} onPageSizeChange={(n) => update({ pageSize: n }, true)} />
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader><DialogTitle>{form.id ? "编辑连接" : "创建连接"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label className="text-xs">名称</Label><Input value={form.name} onChange={(e) => set({ name: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">鉴权方式</Label>
-                <Select value={form.kind} onValueChange={(v) => set({ kind: v })}>
+                <Select value={form.kind} onValueChange={(v) => set({ kind: v, secret: "" })}>
                   <SelectTrigger className="h-9 w-full text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {KINDS.map((k) => <SelectItem key={k.value} value={k.value}>{k.label}</SelectItem>)}
@@ -235,50 +339,128 @@ export default function WfConnectionsPage() {
                 </Select>
               </div>
             </div>
-            {isDb(form.protocol) ? (
-              <div className="space-y-3">
-                <div className="grid grid-cols-[1fr_100px] gap-3">
-                  <div><Label className="text-xs">Host</Label><Input value={form.host} onChange={(e) => set({ host: e.target.value })} placeholder="db.internal" /></div>
-                  <div><Label className="text-xs">Port</Label><Input value={form.port} onChange={(e) => set({ port: e.target.value })} placeholder={form.protocol === "mysql" ? "3306" : "5432"} /></div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><Label className="text-xs">用户名</Label><Input value={form.user} onChange={(e) => set({ user: e.target.value })} placeholder="rivers" /></div>
-                  <div><Label className="text-xs">数据库</Label><Input value={form.database} onChange={(e) => set({ database: e.target.value })} placeholder="wf_accept" /></div>
-                </div>
-              </div>
-            ) : isOss(form.protocol) ? (
-              <div className="grid grid-cols-2 gap-3">
-                <div><Label className="text-xs">Bucket</Label><Input value={form.bucket} onChange={(e) => set({ bucket: e.target.value })} /></div>
-                <div><Label className="text-xs">Region</Label><Input value={form.region} onChange={(e) => set({ region: e.target.value })} placeholder="oss-cn-hangzhou" /></div>
-              </div>
-            ) : (
-              <div><Label className="text-xs">Base URL</Label><Input value={form.baseUrl} onChange={(e) => set({ baseUrl: e.target.value })} placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" /></div>
-            )}
-            <div><Label className="text-xs">提供方（可选）</Label><Input value={form.providerHint} onChange={(e) => set({ providerHint: e.target.value })} placeholder="如 阿里云百炼 / MySQL / MinIO" /></div>
+
             <div>
-              <Label className="text-xs">Secret（加密存储{form.id ? "，留空=保留原密钥" : ""}）</Label>
-              <div className="relative">
-                <Input type={showSecret ? "text" : "password"} className="pr-9" value={form.secret}
-                  onChange={(e) => set({ secret: e.target.value })} placeholder={form.id ? "••••••（已配置则留空）" : ""} />
-                <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
-                  onClick={async () => {
-                    // 08-27 用户反馈：编辑态眼睛真回显密钥（reveal 端点）
-                    if (!showSecret && form.id && !form.secret) {
-                      try {
-                        const r = await pagedApi.reveal(form.id)
-                        set({ secret: r.secret ?? "" })
-                      } catch { /* 忽略 */ }
-                    }
-                    setShowSecret((v) => !v)
-                  }} title={showSecret ? "隐藏" : "显示"}>
-                  {showSecret ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                </button>
-              </div>
+              <Label className="text-xs">默认端点</Label>
+              <EndpointFields protocol={form.protocol} v={form} onChange={(p) => set(p)} />
             </div>
+
+            {/* 多环境域名（R4） */}
+            <div className="space-y-2 rounded-md border p-2.5" style={{ borderColor: "#EDF0F4" }}>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">环境域名（可选；按环境覆盖端点/凭据）</Label>
+                <Button variant="outline" size="sm" type="button"
+                  onClick={() => set({ environments: [...form.environments, { ...EMPTY_EP, code: "", label: "", hasSecret: false, secret: "" }] })}>
+                  <Plus className="size-3" /> 添加环境
+                </Button>
+              </div>
+              {form.environments.map((e, i) => (
+                <div key={i} className="space-y-2 rounded border bg-muted/20 p-2">
+                  <div className="grid grid-cols-[110px_1fr_auto_auto] gap-2">
+                    <Select value={e.code ? (ENV_PRESETS.some((p) => p.code === e.code) ? e.code : "__custom") : undefined}
+                      onValueChange={(v) => {
+                        if (v === "__custom") { setEnv(i, { code: "" }); return }
+                        const p = ENV_PRESETS.find((x) => x.code === v)!
+                        setEnv(i, { code: p.code, label: p.label })
+                      }}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="环境" /></SelectTrigger>
+                      <SelectContent>
+                        {ENV_PRESETS.map((p) => <SelectItem key={p.code} value={p.code}>{p.code} · {p.label}</SelectItem>)}
+                        <SelectItem value="__custom">自定义…</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {ENV_PRESETS.some((p) => p.code === e.code) ? (
+                      <Input className="h-8" value={e.label} onChange={(ev) => setEnv(i, { label: ev.target.value })} placeholder="标签" />
+                    ) : (
+                      <Input className="h-8 font-mono text-xs" value={e.code} onChange={(ev) => setEnv(i, { code: ev.target.value.toLowerCase() })} placeholder="环境码，如 sandbox" />
+                    )}
+                    <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <input type="radio" name="default-env" checked={form.defaultEnv === e.code && e.code !== ""}
+                        onChange={() => set({ defaultEnv: e.code })} /> 默认
+                    </label>
+                    <button type="button" className="text-neutral-400 hover:text-red-500"
+                      onClick={() => set({ environments: form.environments.filter((_, j) => j !== i), defaultEnv: form.defaultEnv === e.code ? "" : form.defaultEnv })}>
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
+                  <EndpointFields protocol={form.protocol} v={e} onChange={(p) => setEnv(i, p)} />
+                  <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <input type="checkbox" checked={e.hasSecret} onChange={(ev) => setEnv(i, { hasSecret: ev.target.checked, secret: ev.target.checked ? (e.secret || (form.kind === "api_key" || form.kind === "bearer" ? "" : {})) : "" })} />
+                    该环境使用独立凭据（否则用连接级密钥）
+                  </label>
+                  {e.hasSecret && <SecretFields kind={form.kind} value={e.secret} onChange={(v) => setEnv(i, { secret: v })} />}
+                </div>
+              ))}
+            </div>
+
+            <div><Label className="text-xs">提供方（可选）</Label><Input value={form.providerHint} onChange={(e) => set({ providerHint: e.target.value })} placeholder="如 阿里云百炼 / MySQL / MinIO" /></div>
+
+            {form.kind === "script" && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">鉴权脚本（JS，沙箱执行；换算法改脚本不发版）</Label>
+                  <Button variant="outline" size="sm" type="button" onClick={() => set({ authScript: AKSK_TEMPLATE })}>填入 AkSk 模板</Button>
+                </div>
+                <textarea className="min-h-[160px] w-full rounded-md border bg-muted/30 p-2 font-mono text-xs"
+                  value={form.authScript} onChange={(e) => set({ authScript: e.target.value })}
+                  placeholder="pm.environment.get / pm.request.headers.add / CryptoJS / btoa 可用" />
+                <Button variant="outline" size="sm" type="button" onClick={runDryRun}><Play className="size-3" /> 空跑生成请求头</Button>
+                {dryRun && (
+                  <pre className="max-h-40 overflow-auto rounded-md bg-muted/40 p-2 text-[10px]">
+                    {JSON.stringify(dryRun.headers, null, 2)}{dryRun.logs.length ? `\n-- console --\n${dryRun.logs.join("\n")}` : ""}
+                  </pre>
+                )}
+              </div>
+            )}
+
+            {form.kind !== "none" && (
+              <div>
+                <Label className="text-xs">连接级密钥（加密存储{form.id ? "，留空=保留原密钥" : ""}）</Label>
+                {form.kind === "api_key" || form.kind === "bearer" ? (
+                  <div className="relative">
+                    <Input type={showSecret ? "text" : "password"} className="pr-9"
+                      value={typeof form.secret === "string" ? form.secret : ""}
+                      onChange={(e) => set({ secret: e.target.value })} placeholder={form.id ? "••••••（已配置则留空）" : ""} />
+                    <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+                      onClick={async () => {
+                        if (!showSecret && form.id && !form.secret) {
+                          try {
+                            const r = await pagedApi.reveal(form.id)
+                            set({ secret: typeof r.secret === "string" ? r.secret : JSON.stringify(r.secret) })
+                          } catch { /* 忽略 */ }
+                        }
+                        setShowSecret((v) => !v)
+                      }} title={showSecret ? "隐藏" : "显示"}>
+                      {showSecret ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
+                ) : (
+                  <SecretFields kind={form.kind} value={form.secret} onChange={(v) => set({ secret: v })} />
+                )}
+              </div>
+            )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
+            {form.id && (
+              <div className="mr-auto flex items-center gap-2">
+                {form.environments.length > 0 && (
+                  <Select value={testEnv || "__default"} onValueChange={(v) => setTestEnv(v === "__default" ? "" : v)}>
+                    <SelectTrigger className="h-8 w-[110px] text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__default">默认环境</SelectItem>
+                      {form.environments.filter((e) => e.code).map((e) => <SelectItem key={e.code} value={e.code}>{e.code}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                )}
+                <Button variant="outline" size="sm" disabled={searching === form.id} onClick={() => test(form.id!, testEnv || undefined)}>
+                  {searching === form.id ? "测试中…" : "测试连接"}
+                </Button>
+              </div>
+            )}
             <Button variant="outline" onClick={() => setOpen(false)}>取消</Button>
-            <Button className="bg-black text-white hover:bg-neutral-800" disabled={!form.name.trim() || (!form.id && !form.secret.trim())} onClick={submit}>
+            <Button className="bg-black text-white hover:bg-neutral-800"
+              disabled={!form.name.trim() || (!form.id && form.kind !== "none" && form.kind !== "script" && form.secret === "")}
+              onClick={submit}>
               {form.id ? "保存" : "创建"}
             </Button>
           </DialogFooter>

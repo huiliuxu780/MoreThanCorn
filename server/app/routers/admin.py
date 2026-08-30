@@ -1,6 +1,4 @@
 """P2 管理面：Connections / Models / Tools / Schedules / Run retry+export / metrics。"""
-import json
-import os
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -9,70 +7,81 @@ from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..auth import require_admin, require_operator
+from ..auth_sandbox import run_auth_script
+from ..auth_signers import AuthSignError, build_auth_headers, normalize_kind
+from ..connection_runtime import resolve_for_request
+from ..connection_schemas import ConnectionCreate, ConnectionUpdate, DryRunSign
 from ..db import get_db
 from ..models import (Connection, Model, ModelProvider, Run, Schedule, Tool,
                       ToolVersion)
 from ..runner import RunError, compute_next, create_run, exec_tool
+from ..secrets import decrypt_payload, encrypt_secret, serialize_secret
 
 router = APIRouter(tags=["admin"])
 
 
 def _encrypt(secret: str) -> str:
-    """09 P0-11：Secret 强制加密。生产环境缺/非法 WF_SECRET_KEY 一律失败关闭，
-    绝不回落明文（修复审计反例：无效 Fernet Key 退回明文）。"""
-    from ..config import is_production
-    from cryptography.fernet import Fernet
-    key = os.environ.get("WF_SECRET_KEY")
-    if is_production():
-        if not key:
-            raise HTTPException(500, "生产环境未配置 WF_SECRET_KEY，无法加密 Secret")
-        try:
-            return Fernet(key.encode()).encrypt(secret.encode()).decode()
-        except Exception as exc:  # noqa: BLE001
-            raise HTTPException(500, f"WF_SECRET_KEY 非合法 Fernet 密钥，无法加密：{exc}")
-    # 非生产：尽力加密，失败回落明文（开发便利）
-    if key:
-        try:
-            return Fernet(key.encode()).encrypt(secret.encode()).decode()
-        except Exception:  # noqa: BLE001
-            pass
-    return secret
+    """09 P0-11：Secret 强制加密（失败关闭语义统一归 secrets.encrypt_secret）。"""
+    try:
+        return encrypt_secret(secret)
+    except RuntimeError as exc:
+        raise HTTPException(500, str(exc))
+
+
+def _env_rows(envs) -> list[dict]:
+    """EnvEntry 列表 → 落库形态：secret 明文加密为 secret_ref，永不原样落库。"""
+    rows = []
+    for e in envs or []:
+        ref = None
+        if e.secret not in (None, "", {}):
+            ref = _encrypt(serialize_secret(e.secret))
+        rows.append({"code": e.code, "label": e.label or e.code,
+                     "endpoint": e.endpoint or {}, "secret_ref": ref})
+    return rows
 
 
 # ---------- Connections ----------
 
 @router.post("/api/connections", status_code=201)
-def create_connection(payload: dict, db: Session = Depends(get_db),
+def create_connection(payload: ConnectionCreate, db: Session = Depends(get_db),
                         _user: dict = Depends(require_admin)):
-    c = Connection(name=payload["name"], kind=payload.get("kind", "api_key"),
-                   protocol=payload.get("protocol", "http-api"),
-                   endpoint=payload.get("endpoint", {}),
-                   provider_hint=payload.get("providerHint", ""),
-                   secret_ref=_encrypt(payload.get("secret", "")))
+    c = Connection(name=payload.name, kind=payload.kind, protocol=payload.protocol,
+                   endpoint=payload.endpoint, environments=_env_rows(payload.environments),
+                   default_env=payload.default_env, auth_script=payload.auth_script,
+                   provider_hint=payload.providerHint,
+                   secret_ref=_encrypt(serialize_secret(payload.secret or "")))
     db.add(c)
     db.commit()
     return {"id": c.id, "name": c.name, "kind": c.kind, "protocol": c.protocol, "status": c.status}
 
 
 @router.put("/api/connections/{cid}")
-def update_connection(cid: str, payload: dict, db: Session = Depends(get_db),
+def update_connection(cid: str, payload: ConnectionUpdate, db: Session = Depends(get_db),
                         _user: dict = Depends(require_admin)):
-    """编辑连接：secret 留空=保留原密钥，填写=轮换（不回显明文）。"""
+    """编辑连接：secret=None 保留原密钥，填写=轮换（不回显明文）。"""
     c = db.get(Connection, cid)
     if not c:
         raise HTTPException(404, "connection not found")
-    if payload.get("name") is not None:
-        c.name = payload["name"]
-    if payload.get("kind") is not None:
-        c.kind = payload["kind"]
-    if payload.get("protocol") is not None:
-        c.protocol = payload["protocol"]
-    if payload.get("endpoint") is not None:
-        c.endpoint = payload["endpoint"]
-    if payload.get("providerHint") is not None:
-        c.provider_hint = payload["providerHint"]
-    if payload.get("secret"):
-        c.secret_ref = _encrypt(payload["secret"])
+    if payload.name is not None:
+        c.name = payload.name
+    if payload.kind is not None:
+        c.kind = payload.kind
+    if payload.protocol is not None:
+        c.protocol = payload.protocol
+    if payload.endpoint is not None:
+        c.endpoint = payload.endpoint
+    if payload.environments is not None:
+        c.environments = _env_rows(payload.environments)
+    if payload.default_env is not None or payload.environments is not None:
+        c.default_env = payload.default_env
+    if payload.auth_script is not None:
+        c.auth_script = payload.auth_script
+    if payload.providerHint is not None:
+        c.provider_hint = payload.providerHint
+    if payload.kind == "script" and not (c.auth_script or "").strip():
+        raise HTTPException(400, "script 鉴权必须提供鉴权脚本")
+    if payload.secret is not None:
+        c.secret_ref = _encrypt(serialize_secret(payload.secret))
     db.commit()
     return {"id": c.id, "name": c.name, "kind": c.kind, "protocol": c.protocol, "status": c.status}
 
@@ -91,6 +100,12 @@ def list_connections(page: int = 1, pageSize: int = 20, search: str = "", type: 
     return {"items": [{"id": c.id, "name": c.name, "kind": c.kind, "protocol": c.protocol,
                        "endpoint": c.endpoint, "status": c.status,
                        "secretConfigured": bool(c.secret_ref),
+                       "environments": [{"code": e.get("code"), "label": e.get("label"),
+                                         "endpoint": e.get("endpoint"),
+                                         "secretConfigured": bool(e.get("secret_ref"))}
+                                        for e in (c.environments or [])],
+                       "defaultEnv": c.default_env,
+                       "authScript": c.auth_script or "",
                        "providerHint": c.provider_hint,
                        "updatedAt": c.created_at.isoformat()} for c in rows],
             "total": total, "page": page, "pageSize": pageSize}
@@ -100,31 +115,48 @@ def list_connections(page: int = 1, pageSize: int = 20, search: str = "", type: 
 def reveal_connection(cid: str, db: Session = Depends(get_db),
                       _user: dict = Depends(require_admin)):
     """08-27 用户反馈：编辑页眼睛可回显密钥。09 P0：仅 admin 可读（修复审计反例：
-    viewer 可读密钥）。"""
+    viewer 可读密钥）。R4：含按环境覆盖的密钥。"""
     c = db.get(Connection, cid)
     if not c:
         raise HTTPException(404, "connection not found")
-    from ..runner import _decrypt
-    return {"secret": _decrypt(c.secret_ref) if c.secret_ref else ""}
+    env_secrets = {e.get("code"): decrypt_payload(e["secret_ref"])
+                   for e in (c.environments or []) if e.get("secret_ref")}
+    return {"secret": decrypt_payload(c.secret_ref) if c.secret_ref else "",
+            "envSecrets": env_secrets}
+
+
+@router.post("/api/connections/dry-run-sign")
+def dry_run_sign(body: DryRunSign, _user: dict = Depends(require_admin)):
+    """编辑器空跑：不落库、不打网络，仅返回鉴权产出头与脚本日志。"""
+    try:
+        kind = normalize_kind(body.kind)
+        if kind == "script":
+            headers, logs = run_auth_script(body.script or "", body.envVars)
+        else:
+            headers, logs = build_auth_headers(kind, body.secret if body.secret is not None else {}), []
+    except AuthSignError as exc:
+        raise HTTPException(400, str(exc))
+    return {"headers": headers, "logs": logs}
 
 
 @router.post("/api/connections/{cid}/test")
-def test_connection(cid: str, db: Session = Depends(get_db),
+def test_connection(cid: str, payload: dict | None = None, db: Session = Depends(get_db),
                  _user: dict = Depends(require_operator) ):
     c = db.get(Connection, cid)
     if not c:
         raise HTTPException(404, "connection not found")
-    ok, err = _probe_connection(c)
+    ok, err = _probe_connection(c, env=(payload or {}).get("env"))
     c.last_test_at = datetime.now(timezone.utc)
     c.status = "active" if ok else "failed"
     db.commit()
     return {"ok": ok, "error": err, "testedAt": c.last_test_at.isoformat()}
 
 
-def _probe_connection(c) -> tuple[bool, str]:
+def _probe_connection(c, env: str | None = None) -> tuple[bool, str]:
     """09 P0：连接探测必须真实验证；缺 endpoint / 无法连通一律失败关闭
-    （修复审计反例：空 endpoint 直接返回 True）。"""
-    ep = c.endpoint or {}
+    （修复审计反例：空 endpoint 直接返回 True）。R4：按环境解析 endpoint/凭据，
+    探测携带真实鉴权头，401/403 判失败（测试按钮能真正验出鉴权对错）。"""
+    ep, payload, _code = resolve_for_request(c, env)
     base = ep.get("base_url", "")
     host = ep.get("host", "")
     if c.protocol in ("mysql", "postgresql"):
@@ -135,16 +167,15 @@ def _probe_connection(c) -> tuple[bool, str]:
             mod = __import__(driver)
         except ImportError:
             return False, f"驱动 {driver} 未安装，无法真实探测"
-        from ..runner import _decrypt
-        secret = _decrypt(c.secret_ref) if c.secret_ref else ""
+        password = payload if isinstance(payload, str) else str((payload or {}).get("password", ""))
         try:
             if driver == "pymysql":
                 conn = mod.connect(host=host, port=int(ep.get("port", 3306)),
-                                   user=ep.get("user", ""), password=secret,
+                                   user=ep.get("user", ""), password=password,
                                    database=ep.get("database", ""), connect_timeout=5)
             else:
                 conn = mod.connect(host=host, port=int(ep.get("port", 5432)),
-                                   user=ep.get("user", ""), password=secret,
+                                   user=ep.get("user", ""), password=password,
                                    dbname=ep.get("database", ""))
             conn.close()
             return True, ""
@@ -157,8 +188,15 @@ def _probe_connection(c) -> tuple[bool, str]:
         except EgressError as exc:
             return False, str(exc)
         try:
+            headers = build_auth_headers(c.kind, payload, script=c.auth_script,
+                                         env_vars=payload if isinstance(payload, dict) else None)
+        except AuthSignError as exc:
+            return False, str(exc)
+        try:
             with httpx.Client(timeout=5, follow_redirects=False) as client:
-                r = client.get(base)
+                r = client.get(base, headers=headers)
+            if r.status_code in (401, 403):
+                return False, f"鉴权失败（HTTP {r.status_code}）"
             if r.status_code >= 500:
                 return False, f"HTTP {r.status_code}"
             return True, ""

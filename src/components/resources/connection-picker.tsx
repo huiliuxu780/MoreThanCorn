@@ -12,6 +12,7 @@ import {
   Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger,
 } from "@/components/ui/sheet"
 import { connApi, type ConnectionDTO } from "@/services/resource-api"
+import { KINDS } from "@/services/connection-auth"
 
 export const PROTOCOLS = ["http-api", "mysql", "postgresql", "oss", "mcp-http", "llm"] as const
 
@@ -23,7 +24,7 @@ export function ConnectionPicker({ value, onChange, protocols }: {
 }) {
   const [items, setItems] = useState<ConnectionDTO[]>([])
   const [open, setOpen] = useState(false)
-  const [form, setForm] = useState({ name: "", protocol: "http-api", kind: "API Key", base_url: "", host: "", port: "", user: "", database: "", secret: "" })
+  const [form, setForm] = useState({ name: "", protocol: "http-api", kind: "api_key", base_url: "", host: "", port: "", user: "", database: "", secret: "" })
 
   const load = () => connApi.list({}).then((r) => setItems(r.items)).catch(() => undefined)
   useEffect(() => { load() }, [])
@@ -94,10 +95,8 @@ export function ConnectionPicker({ value, onChange, protocols }: {
               <Select value={form.kind} onValueChange={(v) => setForm({ ...form, kind: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="None">None</SelectItem>
-                  <SelectItem value="API Key">API Key</SelectItem>
-                  <SelectItem value="Bearer Token">Bearer Token</SelectItem>
-                  <SelectItem value="Basic Auth">Basic Auth（AK/SK）</SelectItem>
+                  {/* R4：与 Connections 页共享规范枚举；多环境/脚本等高级配置在 Connections 页 */}
+                  {KINDS.map((k) => <SelectItem key={k.value} value={k.value}>{k.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

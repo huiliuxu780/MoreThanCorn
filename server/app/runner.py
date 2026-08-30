@@ -18,10 +18,13 @@ import httpx
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from .auth_signers import AuthSignError, build_auth_headers
+from .connection_runtime import resolve_for_request
 from .db import SessionLocal
 from .models import (Connection, JobQueue, Model, ModelProvider, NodeRun, Run, RunEvent,
-                     Schedule, ToolVersion, Workflow, WorkflowVersion)
+                     Schedule, Tool, ToolVersion, Workflow, WorkflowVersion)
 from .schemas import WorkflowDefinition
+from .secrets import decrypt_secret as _decrypt
 from .validator import validate
 
 REF = re.compile(r"\{\{\s*([A-Za-z0-9_-]+)\.(outputs|error)\.([A-Za-z0-9_.-]+)\s*\}\}")
@@ -213,15 +216,14 @@ def _call_model(db: Session, model_id: str, prompt: str) -> tuple[str, dict]:
     import os
     base = os.environ.get("WF_LLM_BASE_URL", "")
     secret = os.environ.get("WF_LLM_API_KEY", "")
+    conn = None
     if not base:
         for m in db.execute(select(Model).where(Model.model_key == model_id)).scalars().all():
             prov = db.get(ModelProvider, m.provider_id)
             if prov and prov.base_url.startswith(("http://", "https://")):
                 base = prov.base_url
-                if not secret and prov.auth_connection_id:
+                if prov.auth_connection_id:
                     conn = db.get(Connection, prov.auth_connection_id)
-                    if conn:
-                        secret = _decrypt(conn.secret_ref)
                 break
     if not base or not base.startswith(("http://", "https://")):
         from .config import is_production
@@ -236,9 +238,18 @@ def _call_model(db: Session, model_id: str, prompt: str) -> tuple[str, dict]:
         enforce_egress(base)
     except EgressError as exc:
         raise RunError(str(exc))
+    headers = {"Authorization": f"Bearer {secret}"} if secret else {}
+    if not secret and conn is not None:
+        # R4：kind 真实生效（aksk/script 等经签名层产出请求头，不再写死 Bearer）
+        _ep, payload, _code = resolve_for_request(conn)
+        try:
+            headers = build_auth_headers(conn.kind, payload, script=conn.auth_script,
+                                         env_vars=payload if isinstance(payload, dict) else None)
+        except AuthSignError as exc:
+            raise RunError(str(exc))
     with httpx.Client(timeout=60) as client:
         r = client.post(f"{base.rstrip('/')}/chat/completions",
-                        headers={"Authorization": f"Bearer {secret}"} if secret else {},
+                        headers=headers,
                         json={"model": model_id,
                               "messages": [{"role": "user", "content": prompt}]})
         r.raise_for_status()
@@ -249,24 +260,8 @@ def _call_model(db: Session, model_id: str, prompt: str) -> tuple[str, dict]:
              "completionTokens": usage.get("completion_tokens", 0)})
 
 
-def _decrypt(ref: str) -> str:
-    """09 P0-11：密钥解密（失败关闭，任何环境）。
-
-    - 形如 Fernet 密文：必须有合法 WF_SECRET_KEY 成功解密，否则抛错
-      （绝不回落明文/密文；无密钥或密钥非法都失败）。
-    - 非密文（历史明文）：生产理论上不应存在（_encrypt 恒加密）；原样返回仅为兼容遗留。
-    """
-    import os
-    key = os.environ.get("WF_SECRET_KEY")
-    if isinstance(ref, str) and ref.startswith("gAAAAA"):  # Fernet 密文特征前缀
-        if not key:
-            raise RuntimeError("WF_SECRET_KEY 缺失：无法解密 Secret（禁止明文模式）")
-        from cryptography.fernet import Fernet
-        try:
-            return Fernet(key.encode()).decrypt(ref.encode()).decode()
-        except Exception as exc:  # noqa: BLE001
-            raise RuntimeError(f"Secret 解密失败（密钥非法或密文损坏）：{exc}")
-    return ref  # 非密文：历史明文（生产由 _encrypt 恒加密保证不会出现）
+# _decrypt 语义（09 P0-11 失败关闭）统一归 secrets.decrypt_secret；
+# 文件顶部以旧名导入，兼容外部 `from .runner import _decrypt` 的既有引用。
 
 
 # ---------- schedule（P2） ----------
@@ -463,8 +458,21 @@ def exec_tool(node, ctx) -> dict:
             assert_safe_url(url)
         except EgressError as exc:
             raise RunError(str(exc)) from exc
+        # R4（存量缺口修复）：Tool 绑定的鉴权连接运行时装上（此前仅管理面绑定）
+        headers: dict = {}
+        tool = ctx.db.get(Tool, tv.tool_id)
+        if tool and tool.connection_id:
+            conn = ctx.db.get(Connection, tool.connection_id)
+            if conn:
+                _ep, payload, _code = resolve_for_request(conn)
+                try:
+                    headers = build_auth_headers(conn.kind, payload, script=conn.auth_script,
+                                                 env_vars=payload if isinstance(payload, dict) else None)
+                except AuthSignError as exc:
+                    raise RunError(str(exc))
         with httpx.Client(timeout=10, follow_redirects=False) as client:
-            r = client.request(req.get("method", "GET"), url, json=inputs if req.get("method", "GET") != "GET" else None)
+            r = client.request(req.get("method", "GET"), url, headers=headers,
+                               json=inputs if req.get("method", "GET") != "GET" else None)
         out = {"status": r.status_code, "body": r.text[:2000]}
     ctx.call("tool", tv.tool_id, {"toolVersionId": tv_id, "inputs": inputs}, out, int((time.time() - t0) * 1000), {})
     return out

@@ -12,10 +12,13 @@ import httpx
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from .auth_signers import AuthSignError, build_auth_headers
+from .connection_runtime import resolve_for_request
 from .models import (CallRecord, Connection, DataAsset, Datasource, KnowledgeSource,
                      McpServer, Model, Tool)
 from .resource_registry import CLS, log_change
-from .runner import RunError, _call_model, _decrypt, exec_tool
+from .runner import RunError, _call_model, exec_tool
+from .secrets import decrypt_payload
 
 _MOCK_MCP_TOOLS = [
     {"name": "search_docs", "description": "搜索文档", "inputSchema": {"type": "object", "properties": {"q": {"type": "string"}}}},
@@ -24,10 +27,29 @@ _MOCK_MCP_TOOLS = [
 
 
 def _conn_endpoint(db: Session, cid: str | None) -> dict:
+    """R4：经环境解析（default_env 覆盖），不再只读 connection 级 endpoint。"""
     if not cid:
         return {}
     c = db.get(Connection, cid)
-    return (c.endpoint or {}) if c else {}
+    if not c:
+        return {}
+    ep, _payload, _code = resolve_for_request(c)
+    return ep
+
+
+def _conn_auth(db: Session, cid: str | None) -> tuple[dict, str]:
+    """R4：connection 绑定的鉴权头（kind 真实生效）；返回 (headers, error)。"""
+    if not cid:
+        return {}, ""
+    c = db.get(Connection, cid)
+    if not c:
+        return {}, ""
+    _ep, payload, _code = resolve_for_request(c)
+    try:
+        return build_auth_headers(c.kind, payload, script=c.auth_script,
+                                  env_vars=payload if isinstance(payload, dict) else None), ""
+    except AuthSignError as exc:
+        return {}, str(exc)
 
 
 def _test_model(db: Session, obj: Model, _input: dict) -> dict:
@@ -57,9 +79,13 @@ def _test_mcp(db: Session, obj: McpServer, _input: dict) -> dict:
                 enforce_egress(base)
             except EgressError as exc:
                 return {"ok": False, "error": str(exc)}
+            headers, aerr = _conn_auth(db, obj.connection_id)
+            if aerr:
+                return {"ok": False, "error": aerr}
             try:
                 with httpx.Client(timeout=5) as client:
-                    r = client.post(base, json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+                    r = client.post(base, headers=headers,
+                                    json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
                     r.raise_for_status()
                 if is_production():
                     return {"ok": False,
@@ -158,11 +184,16 @@ def _test_datasource(db: Session, obj: Datasource, _input: dict) -> dict:
             enforce_egress(base)
         except EgressError as exc:
             return {"ok": False, "error": str(exc)}
+        headers, aerr = _conn_auth(db, obj.connection_id)
+        if aerr:
+            return {"ok": False, "error": aerr, "latencyMs": int((time.time() - t0) * 1000), "output": {}}
         try:
             with httpx.Client(timeout=5) as client:
-                r = client.get(base)
-                ok = r.status_code < 500
-            return {"ok": ok, "error": "" if ok else f"HTTP {r.status_code}",
+                r = client.get(base, headers=headers)
+                ok = r.status_code < 500 and r.status_code not in (401, 403)
+            err = "" if ok else (f"鉴权失败（HTTP {r.status_code}）" if r.status_code in (401, 403)
+                                 else f"HTTP {r.status_code}")
+            return {"ok": ok, "error": err,
                     "latencyMs": int((time.time() - t0) * 1000), "output": {"status": r.status_code}}
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": f"健康检查失败：{exc}"}
@@ -172,10 +203,14 @@ def _test_datasource(db: Session, obj: Datasource, _input: dict) -> dict:
 
 
 def _secret(db: Session, cid: str | None) -> str:
+    """R4：凭据 payload 兼容裸串（历史）与 {username,password} 结构。"""
     if not cid:
         return ""
     c = db.get(Connection, cid)
-    return _decrypt(c.secret_ref) if c else ""
+    if not c or not c.secret_ref:
+        return ""
+    p = decrypt_payload(c.secret_ref)
+    return p if isinstance(p, str) else str(p.get("password", ""))
 
 
 def _test_asset(db: Session, obj: DataAsset, _input: dict) -> dict:
@@ -250,10 +285,14 @@ def mcp_call_tool(db: Session, server_id: str, tool_name: str, args: dict) -> di
                 enforce_egress(base)
             except EgressError as exc:
                 raise RunError(str(exc))
+            headers, aerr = _conn_auth(db, obj.connection_id)
+            if aerr:
+                raise RunError(aerr)
             try:
                 with httpx.Client(timeout=10) as client:
-                    r = client.post(base, json={"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                                                "params": {"name": tool_name, "arguments": args or {}}})
+                    r = client.post(base, headers=headers,
+                                    json={"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                                          "params": {"name": tool_name, "arguments": args or {}}})
                     r.raise_for_status()
                 return r.json()
             except Exception as exc:  # noqa: BLE001
