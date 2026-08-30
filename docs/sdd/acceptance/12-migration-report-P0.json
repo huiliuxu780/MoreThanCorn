@@ -1,19 +1,19 @@
 {
-  "generatedAt": "2026-08-30T18:03:33.148754+00:00",
+  "generatedAt": "2026-08-30T18:16:27.887550+00:00",
   "sdd": "12-ai-resource-connection-refactor-sdd.md",
   "phase": "P0 完成（止血与契约冻结）；M1–M5 数据迁移未开始（P1–P4）",
   "inventory": {
     "connections": {
-      "total": 26,
+      "total": 32,
       "byLifecycle": {
-        "active": 19,
-        "archived": 3,
-        "draft": 4
+        "active": 20,
+        "archived": 5,
+        "draft": 7
       },
       "byProtocol": {
-        "http-api": 20,
+        "http-api": 25,
         "llm": 1,
-        "mysql": 5
+        "mysql": 6
       },
       "environments": 1,
       "envSecretsConfigured": 0,
@@ -42,37 +42,43 @@
         "2df06d36bbcf4d9d90d07b8307434856",
         "85c2529eefea47428616a0564b82d8d5",
         "0ff23f884f8240549002d600318ff8e8",
-        "89e218dd67a74717a5c7b363cd48759b"
+        "89e218dd67a74717a5c7b363cd48759b",
+        "64e5947841ad4ce697cee8dc0b91b440",
+        "99f212752c8b45b7acd60b44ce5e5d71",
+        "822dd6b09ce645dea0fcaff3b76a1629",
+        "ab5210538a244b0a853b0e8a81915ae6",
+        "232ea77fb8084fc49a658186c0dfeaba",
+        "d8a0a5b700ff488f8dd9ed30e12da979"
       ],
       "unmappedProtocolIds": []
     },
     "secretRevisions": {
-      "total": 4,
+      "total": 7,
       "byStatus": {
-        "retired": 2,
-        "active": 2
+        "retired": 4,
+        "active": 3
       }
     },
     "checkRuns": {
-      "total": 22,
+      "total": 36,
       "byScopeStatus": {
-        "connection:succeeded": 4,
-        "resource:succeeded": 5,
-        "resource:failed": 10,
-        "connection:failed": 3
+        "connection:succeeded": 7,
+        "resource:succeeded": 8,
+        "resource:failed": 16,
+        "connection:failed": 5
       }
     },
     "tools": {
-      "total": 43,
-      "versions": 46,
+      "total": 44,
+      "versions": 47,
       "withConnection": 1
     },
     "mcpServers": {
-      "total": 34,
+      "total": 36,
       "withConnection": 0
     },
     "knowledgeSources": {
-      "total": 33,
+      "total": 35,
       "inlineUrlNeedsM3Migration": []
     },
     "models": {
@@ -83,11 +89,11 @@
       "withAuthConnection": 1
     },
     "datasources": {
-      "total": 35,
-      "withConnection": 5
+      "total": 37,
+      "withConnection": 7
     },
     "callRecords": {
-      "total": 926
+      "total": 935
     }
   },
   "p0Evidence": {

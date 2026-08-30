@@ -160,7 +160,7 @@ node scripts/e2e-resource-runtime.mjs
 | 日期 | 状态 | 说明 |
 | --- | --- | --- |
 | 2026-08-31 | 清单建立 | 等待实施；所有条目保持未勾选 |
-| 2026-08-31 | P0 实施完成，交付待验收 | 分支 `feat/sdd12-p0-connection-refactor`；迁移 `g045sdd12p0001`；P0 证据见附录 M，全部条目仍保持未勾选，由验收人复跑 |
+| 2026-08-31 | P0 实施完成，交付待验收 | 分支 `feat/sdd12-p0-connection-refactor`（HEAD 97421f3）；迁移 `g045sdd12p0001`（wf_dev/wf_test 已 upgrade head）；12 项机器门禁全绿（见 M.1）；P0 证据见附录 M；全部 89 条目保持未勾选，由验收人复跑 |
 
 ---
 
