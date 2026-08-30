@@ -1,0 +1,115 @@
+{
+  "generatedAt": "2026-08-30T18:03:33.148754+00:00",
+  "sdd": "12-ai-resource-connection-refactor-sdd.md",
+  "phase": "P0 完成（止血与契约冻结）；M1–M5 数据迁移未开始（P1–P4）",
+  "inventory": {
+    "connections": {
+      "total": 26,
+      "byLifecycle": {
+        "active": 19,
+        "archived": 3,
+        "draft": 4
+      },
+      "byProtocol": {
+        "http-api": 20,
+        "llm": 1,
+        "mysql": 5
+      },
+      "environments": 1,
+      "envSecretsConfigured": 0,
+      "connectionsWithoutEnvironment": [
+        "c65f4b37c395484d963f145da0762c08",
+        "7ef165e149a0423e80b4b73bdf825f04",
+        "03713b4951284032a84188628f53af3b",
+        "16237fb4ed61499bbb819de73a437d4f",
+        "b689d951446844208f1ba0c822c4a481",
+        "0b1bff863aa04b88916a673d08277b0a",
+        "bf6e1f6c502b4a2e81a133ad66321853",
+        "ba46f3dc5fcf4a428ad7f103882d01b6",
+        "be42525dc5dc43f7aa20f0ed6330be34",
+        "1c6fabb3fc914859943af2e1934128c4",
+        "df794f731dae44f68815219ae0511929",
+        "737ed40142ca4116befa89d112019f27",
+        "f1fbc793eaff415684ddab317094b9e9",
+        "3c5b0769106e4ec89900a8fc48ba22a1",
+        "9544cdedb8804f2180eb619df63dfc4e",
+        "69e039aba3a34d6cbafe3a05d1014cd1",
+        "df7fd7ebb6ff4327b3c13b1c12867967",
+        "5768d55bfdbe4c629f9c147f3a7d4f92",
+        "02931f00790445f1a7d4cc7eacd0b199",
+        "070d77db7d7949139bbf83889ac64c6d",
+        "b1778f5020d04805bf16ea7cc519a209",
+        "2df06d36bbcf4d9d90d07b8307434856",
+        "85c2529eefea47428616a0564b82d8d5",
+        "0ff23f884f8240549002d600318ff8e8",
+        "89e218dd67a74717a5c7b363cd48759b"
+      ],
+      "unmappedProtocolIds": []
+    },
+    "secretRevisions": {
+      "total": 4,
+      "byStatus": {
+        "retired": 2,
+        "active": 2
+      }
+    },
+    "checkRuns": {
+      "total": 22,
+      "byScopeStatus": {
+        "connection:succeeded": 4,
+        "resource:succeeded": 5,
+        "resource:failed": 10,
+        "connection:failed": 3
+      }
+    },
+    "tools": {
+      "total": 43,
+      "versions": 46,
+      "withConnection": 1
+    },
+    "mcpServers": {
+      "total": 34,
+      "withConnection": 0
+    },
+    "knowledgeSources": {
+      "total": 33,
+      "inlineUrlNeedsM3Migration": []
+    },
+    "models": {
+      "total": 11
+    },
+    "modelProviders": {
+      "total": 4,
+      "withAuthConnection": 1
+    },
+    "datasources": {
+      "total": 35,
+      "withConnection": 5
+    },
+    "callRecords": {
+      "total": 926
+    }
+  },
+  "p0Evidence": {
+    "newTables": [
+      "connection_secret_revision",
+      "check_run"
+    ],
+    "connectionColumnsAdded": [
+      "lifecycle",
+      "archived_at",
+      "archived_by",
+      "revision"
+    ],
+    "migration": "g045sdd12p0001_secret_revision_check_run",
+    "reveal": "GET /api/connections/{id}/reveal → 410 SECRET_REVEAL_DISABLED",
+    "enableGate": "connection:enable / resource toggle 依赖当前指纹的成功 CheckRun",
+    "fixtureGate": "WF_TEST_FIXTURES=1 且非生产；否则 mock/echo 失败关闭"
+  },
+  "migrationReadiness": {
+    "M1_definition_mapping": "协议映射表已就绪；未映射连接数=0",
+    "M3_knowledge_url_extraction": "内联 URL 的 Knowledge 数=0（将生成 draft Connection，不猜测凭据）",
+    "needs_review_count": 0,
+    "needs_review_ids": []
+  }
+}

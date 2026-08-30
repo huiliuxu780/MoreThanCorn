@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-/** 09-SDD P0-01 机器门禁：生产路径 mock/fallback 可达性静态扫描。
+/** 09-SDD P0-01 / SDD-12 P0-05 机器门禁：生产路径 mock/fallback 可达性静态扫描。
  *
  * 规则：server/app 下每个包含 mock 字面量的函数体，必须同时包含
- * is_production() / code_node_enabled() 守卫（即生产分支失败关闭）。
+ * is_production() / code_node_enabled() / fixtures_enabled() 守卫
+ * （即生产分支失败关闭；fixtures_enabled() 在生产恒为 false）。
  * 模块级 `_MOCK_*` 常量允许存在（仅供已守卫函数引用），注释/文档串不计。
  *
  * 用法：node scripts/check-no-prod-mock.mjs   （违规 → 非零退出）
@@ -20,8 +21,9 @@ const MOCK_PATTERNS = [
   /"mock |'mock |mock 回落|mock：|（mock|\(mock/,
   /mock-\*|mock ok|mock 10|示例工具清单/,
 ];
-// 守卫标记
-const GUARD = /is_production\(|code_node_enabled\(/;
+// 守卫标记。SDD-12 P0-05：fixtures_enabled() 为新的失败关闭守卫
+//（生产恒返回 false，等价于生产分支失败关闭）。
+const GUARD = /is_production\(|code_node_enabled\(|fixtures_enabled\(/;
 
 function* pyFiles(dir) {
   for (const name of readdirSync(dir)) {

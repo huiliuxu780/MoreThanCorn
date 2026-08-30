@@ -1356,6 +1356,7 @@ scripts/report-resource-migration.py
 | 日期 | 版本 | 变更 | 原因 | 影响 |
 | --- | --- | --- | --- | --- |
 | 2026-08-31 | v1.0 | 建立并冻结 P0 实施基线；P1 部署选择见 §20.1 | Connection/Tool/MCP/Knowledge/LLM 专项审计与 Buddy 对比 | 可交付开发 |
+| 2026-08-31 | v1.0-P0 | P0（P0-01～P0-06）实施完成：`_env_rows` 掩码合并、reveal→410、rotate/clear + SecretRevision 账本、删除 409/归档、tested 废止 + CheckRun 启用门禁、fixture 显式门控、契约冻结、迁移 `g045sdd12p0001`、4 个门禁脚本。证据见验收清单附录 M。**注**：本实施以 §0 冻结基线取代 2026-08-27"连接始终可删（先解绑引用方再删）的决策——该决策造成审计 §1.2 的静默解绑问题，现行为 409+refs / 默认归档 / 硬删仅限无引用 draft（B-05～B-07）。Resource 侧"默认删除=归档"随 P2 Catalog lifecycle 落地（P0 保持 409 防护+审计）。 | P0 冻结范围落地 | 旧连接删除脚本/用例已同步更新（verify-fullstack S11-7、test_p2） |
 
 ---
 
