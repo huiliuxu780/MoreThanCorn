@@ -1,0 +1,21 @@
+[project]
+name = "quality-tool-service"
+version = "0.1.0"
+description = "Deterministic enterprise tool fixtures for Runtime Provider POC"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "fastapi>=0.141,<0.142",
+  "mcp==2.1.1",
+  "pydantic>=2.12,<3",
+  "uvicorn>=0.52,<0.53",
+]
+
+[project.optional-dependencies]
+test = [
+  "httpx>=0.28,<0.29",
+  "pytest>=9,<10",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
