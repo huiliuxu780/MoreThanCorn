@@ -493,6 +493,15 @@ export const agentApi = {
     req<(AgentVersionInfo & { frozenMembers: { ref: string; version: string | null }[] })[]>(`/api/agents/${id}/versions`),
   evalSamples: (id: string) =>
     req<{ items: { id: string; name: string; input: Record<string, unknown>; expected?: unknown }[] }>(`/api/agents/${id}/eval-samples`),
+  /* R8-UI-2：效果评测 Tab（Golden Set + 真实 Run 逐 criterion 聚合） */
+  evalSummary: (id: string) =>
+    req<{
+      goldenSet: { samples: number; source: string }; runCount: number; evaluatedRuns: number
+      criteria: {
+        criterion: string; total: number; byStatus: Record<string, number>; avgConfidence: number | null
+        byProvider: { provider: string; total: number; byStatus: Record<string, number> }[]
+      }[]
+    }>(`/api/agents/${id}/eval-summary`),
   /* ---------- SDD D-3：进化（只读历史） ---------- */
   evolutionList: (id: string) =>
     req<{ id: string; attribution: string; reason: string; status: string; createdAt: string }[]>(`/api/agents/${id}/evolution`),

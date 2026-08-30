@@ -519,6 +519,51 @@ def agent_metrics(aid: str, db: Session = Depends(get_db)):
             "totalTokens": total_tokens, "firstToken": ft}
 
 
+@router.get("/{aid}/eval-summary")
+def agent_eval_summary(aid: str, db: Session = Depends(get_db)):
+    """R8-UI-2：效果评测 Tab——Golden Set（Module Ground Truth）+ 真实 Run 逐 criterion 聚合（按 Provider 分组）。
+
+    只聚合既有 QualityResult findings，不造数据；无数据前端空态。
+    insufficient_evidence/not_applicable 属业务结论而非系统错误（§12.2）。"""
+    from ..models import QualityResult
+    agent = db.get(Agent, aid)
+    if not agent:
+        raise HTTPException(404, "agent not found")
+    golden: list[dict] = []
+    golden_source = ""
+    if agent.module_key == "quality-analysis":
+        from ..agent_modules.quality_analysis.evaluators import load_ground_truth
+        golden = load_ground_truth("smoke/ground_truth_v0.1.jsonl") + \
+            load_ground_truth("native_workflow/ground_truth_v0.2.json")
+        golden_source = "poc datasets: smoke/ground_truth_v0.1.jsonl + native_workflow/ground_truth_v0.2.json"
+    runs = db.query(Run).filter_by(agent_id=aid).all()
+    run_provider = {r.id: (r.runtime_snapshot or {}).get("providerKind") or "unknown" for r in runs}
+    qrs = db.query(QualityResult).filter(QualityResult.run_id.in_([r.id for r in runs])).all() if runs else []
+    stats: dict[str, dict] = {}
+    for qr in qrs:
+        prov = run_provider.get(qr.run_id or "", "unknown")
+        for f in ((qr.structured_output or {}).get("findings") or []):
+            key = f.get("criterion") or f.get("id") or "unknown"
+            s = stats.setdefault(key, {"criterion": key, "total": 0, "byStatus": {},
+                                       "confSum": 0.0, "confN": 0, "byProvider": {}})
+            s["total"] += 1
+            st = f.get("status") or "unknown"
+            s["byStatus"][st] = s["byStatus"].get(st, 0) + 1
+            if isinstance(f.get("confidence"), (int, float)):
+                s["confSum"] += float(f["confidence"])
+                s["confN"] += 1
+            bp = s["byProvider"].setdefault(prov, {"total": 0, "byStatus": {}})
+            bp["total"] += 1
+            bp["byStatus"][st] = bp["byStatus"].get(st, 0) + 1
+    criteria = [{"criterion": s["criterion"], "total": s["total"], "byStatus": s["byStatus"],
+                 "avgConfidence": round(s["confSum"] / s["confN"], 3) if s["confN"] else None,
+                 "byProvider": [{"provider": k, "total": v["total"], "byStatus": v["byStatus"]}
+                                for k, v in s["byProvider"].items()]}
+                for s in stats.values()]
+    return {"goldenSet": {"samples": len(golden), "source": golden_source},
+            "runCount": len(runs), "evaluatedRuns": len(qrs), "criteria": criteria}
+
+
 @router.post("/{aid}/eval-run", status_code=201)
 def agent_eval_run(aid: str, payload: dict | None = None, db: Session = Depends(get_db),
                  _user: dict = Depends(require_operator) ):

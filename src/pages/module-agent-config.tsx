@@ -54,7 +54,8 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
   const [versions, setVersions] = useState<AgentVersionInfo[]>([])
   const [releases, setReleases] = useState<ReleaseOpt[]>([])
   const [diffOpen, setDiffOpen] = useState(false)
-  const [tab, setTab] = useState<"overview" | "runs" | "versions">("overview")
+  const [tab, setTab] = useState<"overview" | "runs" | "versions" | "eval">("overview")
+  const [evalData, setEvalData] = useState<Awaited<ReturnType<typeof agentApi.evalSummary>> | null>(null)
   const [publishOpen, setPublishOpen] = useState(false)
   // 测试面板：环境=Release 绑定；草稿=Provider 必选（R3 语义）
   const [providers, setProviders] = useState<ProviderOpt[]>([])
@@ -120,6 +121,11 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
     } catch (e) { toast.error((e as Error).message) } finally { setRunning(false) }
   }
 
+  // R8-UI-2：效果评测懒加载
+  useEffect(() => {
+    if (tab === "eval" && !evalData) agentApi.evalSummary(agent.id).then(setEvalData).catch(() => setEvalData(null))
+  }, [tab, agent.id, evalData])
+
   const inputProps = Object.keys((meta?.inputSchema?.properties ?? {}) as object)
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col">
@@ -158,7 +164,7 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
       </div>
       {/* Tab */}
       <div className="flex gap-4 border-b bg-white px-4" style={{ borderColor: CARD }}>
-        {([["overview", "概览"], ["runs", "运行观测"], ["versions", "版本"]] as const).map(([k, label]) => (
+        {([["overview", "概览"], ["runs", "运行观测"], ["versions", "版本"], ["eval", "效果评测"]] as const).map(([k, label]) => (
           <button key={k} className="py-2 text-[13px]"
             style={tab === k ? { color: INK, fontWeight: 600, borderBottom: "2px solid #111" } : { color: INK2 }}
             onClick={() => setTab(k)}>{label}</button>
@@ -168,6 +174,70 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
       <div className="min-h-0 flex-1 overflow-y-auto p-4" style={{ background: "#F7F8FA" }}>
         {tab === "runs" && <AgentRunsPanel agentId={agent.id} />}
         {tab === "versions" && <AgentVersionsPanel agentId={agent.id} />}
+        {tab === "eval" && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Card no={1} title="Golden Set（Module Ground Truth）">
+                <div className="text-[12px]" style={{ color: INK2 }}>
+                  {evalData ? `${evalData.goldenSet.samples} 个样本` : "加载中…"}
+                </div>
+                <div className="pt-1 font-mono text-[10px]" style={{ color: INK3 }}>
+                  {evalData?.goldenSet.source || "—"}
+                </div>
+                <div className="pt-2 text-[11px]" style={{ color: INK3 }}>
+                  双 Provider 同 Ground Truth 对比以跨 Provider 历史 Run 聚合为准；insufficient_evidence/not_applicable 属业务结论而非系统错误。
+                </div>
+              </Card>
+              <Card no={2} title="真实 Run 聚合">
+                <div className="text-[12px]" style={{ color: INK2 }}>
+                  {evalData ? `Run ${evalData.runCount} 个 · 产出质检结果 ${evalData.evaluatedRuns} 个` : "加载中…"}
+                </div>
+                <div className="pt-2 text-[11px]" style={{ color: INK3 }}>
+                  逐 criterion 统计来自 QualityResult findings（规则派生评分口径一致）。
+                </div>
+              </Card>
+            </div>
+            {evalData && evalData.criteria.length === 0 && (
+              <div className="rounded-xl border bg-white p-6 text-center text-[12px]" style={{ borderColor: CARD, color: INK3 }}>
+                暂无评测数据（该 Agent 尚无产出质检结果的 Run）
+              </div>
+            )}
+            {evalData && evalData.criteria.length > 0 && (
+              <Card no={3} title="逐 criterion 聚合">
+                <div className="space-y-2">
+                  {evalData.criteria.map((c) => (
+                    <div key={c.criterion} className="rounded-lg border px-3 py-2" style={{ borderColor: CARD }}>
+                      <div className="flex items-center gap-3 text-[12px]">
+                        <span className="font-mono font-medium" style={{ color: INK }}>{c.criterion}</span>
+                        <span style={{ color: INK2 }}>核验 {c.total} 次</span>
+                        {c.avgConfidence != null && <span style={{ color: INK3 }}>平均 confidence {c.avgConfidence}</span>}
+                        <span className="ml-auto flex gap-2">
+                          {Object.entries(c.byStatus).map(([st, n]) => (
+                            <span key={st} className="rounded px-1.5 py-0.5 text-[10px]"
+                              style={st === "passed" || st === "accurate" || st === "fulfilled"
+                                ? { background: "#E8F7EE", color: "#16A34A" }
+                                : { background: "#F1F3F7", color: INK2 }}>
+                              {st} ×{n}
+                            </span>
+                          ))}
+                        </span>
+                      </div>
+                      {c.byProvider.length > 0 && (
+                        <div className="flex gap-4 pt-1 text-[10px]" style={{ color: INK3 }}>
+                          {c.byProvider.map((p) => (
+                            <span key={p.provider}>
+                              {p.provider}：{p.total} 次（{Object.entries(p.byStatus).map(([s, n]) => `${s}×${n}`).join("，")}）
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </div>
+        )}
         {tab === "overview" && (
           <div className="flex gap-4">
             <div className="flex min-w-0 flex-1 flex-col gap-4">

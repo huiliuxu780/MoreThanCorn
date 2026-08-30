@@ -10,15 +10,20 @@ from pathlib import Path
 
 _MODULE_DIR = Path(__file__).resolve().parent.parent  # quality_analysis/
 # 仓库内 POC 数据集（评估迁移白名单内，非结果数据）
-DATASETS_DIR = Path(__file__).resolve().parents[4] / "poc" / "agent_runtime_providers" / "datasets"
+# R8-UI-2 修：parents[4]=server/，仓库根=parents[5]（此前恒返回 []，Ground Truth 从未加载）
+DATASETS_DIR = Path(__file__).resolve().parents[5] / "poc" / "agent_runtime_providers" / "datasets"
 
 
-def load_ground_truth(name: str = "native_workflow/ground_truth_v0.2.jsonl") -> list[dict]:
+def load_ground_truth(name: str = "native_workflow/ground_truth_v0.2.json") -> list[dict]:
+    """加载 Ground Truth 样本。.jsonl 逐行解析；.json 为单对象/数组（v0.2 实为美化单样本）。"""
     path = DATASETS_DIR / name
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
-            if line.strip()]
+    text = path.read_text(encoding="utf-8")
+    if name.endswith(".json"):
+        d = json.loads(text)
+        return d if isinstance(d, list) else [d]
+    return [json.loads(line) for line in text.splitlines() if line.strip()]
 
 
 def evaluate(output: dict, expected: dict) -> dict:

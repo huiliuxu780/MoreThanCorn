@@ -47,8 +47,24 @@
 - [x] E-4 真机截图 /tmp/r8-ui-shots/（1-providers/2-rundetail-agent/3-wizard-target/4-config-page/5-connections），控制台错误零
 - [x] E-5 零假路径：新增按钮全接线；stages/质检卡/调用表无数据即隐藏
 
+## R8-UI-2 增量（08-30 用户指示：1+2 直接做、3 直接封存、4 暂缓）
+
+### F. 效果评测 Tab（配置页第四 Tab）
+- [x] F-1 Golden Set 卡：16 样本（smoke v0.1 jsonl 15 + native v0.2 单样本 1）+ 来源路径；修复加载器存量 bug（parents[4]→parents[5] 仓库根；.json 单对象兼容）——此前 Ground Truth 从未加载
+- [x] F-2 真实 Run 聚合卡 + 逐 criterion 表：核验次数/状态分布/平均 confidence/按 Provider 分组；数据仅来自既有 QualityResult findings；无数据空态真实
+- [x] F-3 后端 `/api/agents/{id}/eval-summary` 只读聚合端点（不造数据）
+
+### G. Providers 兼容矩阵
+- [x] G-1 编辑抽屉只读展示 compatibleModules（manifest 声明，key@version + implementation）
+
+### H. 数据封存（用户 08-30 授权）
+- [x] H-1 `run_legacy_agent_archive.py --apply`（actor=rivers-authorized-20260830）：wf_dev 29 个旧 Agent archived + 审计；幂等
+- [x] H-2 孤儿 CallRecord：28 条经 node_run 真链回填；307 条无 node_run 的旧直调历史**不删不造假链接**，留作封存历史
+- [x] H-3 **保留声明**：call_record.run_id NOT NULL 维持暂缓（307 行无法非破坏性收口）；wf_test/wf_accept 未执行封存
+
 ## 状态日志
 | 日期 | 状态 | 说明 |
 | --- | --- | --- |
 | 2026-08-30 | 清单建立 | 开工前冻结；逐屏确认结论见 11 §7 |
-| 2026-08-30 | **R8-UI 完成（待用户验收）** | 四屏补齐+清债；证据见上表；回滚点 `snapshot/pre-r8-ui-20260830`；未执行数据 --apply |
+| 2026-08-30 | **R8-UI 完成（待用户验收）** | 四屏补齐+清债；证据见上表；回滚点 `snapshot/pre-r8-ui-20260830` |
+| 2026-08-30 | **R8-UI-2 完成（待用户验收）** | 效果评测 Tab+兼容矩阵+数据封存；pytest 289/vitest 34/UI 门禁绿；真机 6-eval-tab/7-provider-drawer 零控制台错误 |

@@ -62,6 +62,8 @@ export function RuntimeProvidersPanel() {
   const [probing, setProbing] = useState<string | null>(null)
   const [disableTarget, setDisableTarget] = useState<RuntimeProviderDTO | null>(null)
   const [connections, setConnections] = useState<{ id: string; name: string }[]>([])
+  // R8-UI-2（11 §7-②）：Module 兼容矩阵只读展示
+  const [compat, setCompat] = useState<{ key: string; version: string; implementation: unknown }[]>([])
   const isAdmin = currentRole() === "admin"
 
   const load = useCallback(() => {
@@ -80,6 +82,7 @@ export function RuntimeProvidersPanel() {
         connectionId: d.connectionId ?? "", contractVersion: d.contractVersion,
         configText: JSON.stringify(d.config ?? {}, null, 2),
       })
+      setCompat(d.compatibleModules ?? [])
       setSheetOpen(true)
     }).catch((e) => toast.error((e as Error).message))
   }
@@ -227,6 +230,19 @@ export function RuntimeProvidersPanel() {
                 <pre className="max-h-40 overflow-auto rounded border bg-muted/40 p-2 text-[11px]">
                   {JSON.stringify(items?.find((x) => x.id === form.id)?.capabilities ?? {}, null, 1)}
                 </pre>
+              </div>
+            )}
+            {form.id && compat.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Module 兼容矩阵（manifest 声明，只读）</Label>
+                <div className="space-y-1">
+                  {compat.map((m) => (
+                    <div key={`${m.key}@${m.version}`} className="flex items-center justify-between rounded border px-2 py-1 text-[11px]">
+                      <span className="font-mono">{m.key}@{m.version}</span>
+                      <span className="text-muted-foreground">{typeof m.implementation === "string" ? m.implementation : JSON.stringify(m.implementation)}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
             <Button className="w-full bg-black text-white hover:bg-neutral-800" disabled={saving} onClick={submit}>
