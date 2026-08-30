@@ -8,6 +8,17 @@
 两个 builder 都直接接收同一份 canonical call，Agent 2 的函数签名不存在 Agent 1 输出参数，
 因此不会形成隐式串联。
 
+## DSH Tool 隔离
+
+实测当前通用 DSH Profile 会把全局 MCP 工具暴露给模型，即便 Runtime Request 的
+`agent.tools=[]`。Prompt 约束不足以充当权限控制：真实 Agent 2 首次成功结果中出现了
+7 次未声明工具调用，因此该次结果不作为最终验收。
+
+对 `tools=[]` 的 run 使用 `dsh_profiles/sdk_no_tools.package.json` 模板，只加载 DSH
+基础与 SDK bundle。真实 no-tools 复跑满足：10 条规则全部通过 Schema、`tool_calls=0`、
+输出无 score。若未来为个别规则声明知识或预约工具，Runtime 仍应增加请求级硬白名单，
+未声明工具必须在执行前阻止，不能只在执行后审计。
+
 `master_data/product_catalog_v1.json` 是从 `产品组名称与CODE.xlsx` 只读提取的品牌与
 产品组主数据。真实样本中的“西门子”可精确解析为品牌 `A02`，“洗碗机”可精确解析为
 产品组 `1201`；无法唯一对应时不得猜 CODE。
@@ -84,7 +95,11 @@ issueRules[]       系统根据 Agent 2 的 result_by_rule 派生问题和风险
 
 ## 录音接口
 
-`recording.resolve_recording()` 按以下合同调用：
+生产推荐把接口注册成 HTTP Tool，并绑定已有的 AK/SK Connection；
+`recording_tool.build_recording_tool_create_payload()` 生成创建载荷，Secret 只保存在
+Connection，运行时由平台签名层逐请求生成 `Authorization`。Agent 不读取 Secret。
+
+低层 `recording.resolve_recording()` 按以下合同调用：
 
 ```text
 POST https://gateway.lydaas.com/api/hsf/xspace-openapi-proxy/HotlineProxyService/listRecordV2
@@ -95,9 +110,10 @@ POST https://gateway.lydaas.com/api/hsf/xspace-openapi-proxy/HotlineProxyService
 `recordCreatedTime` 最新一条。签名 OSS URL 不写入普通结果，业务结果只保留 call_id、
 稳定引用和必要的音频时间区间。
 
-函数支持由调用方传入 `headers`，但不会把认证信息写死在代码中。使用当前本机环境、
-不带任何额外认证头直调真实接口返回 HTTP 403，因此部署方还需要提供该网关要求的
-服务身份或认证头；这不影响响应解析合同和本地 WAV 处理。
+函数支持由调用方传入 `headers`，但不会把认证信息写死在代码中。当前平台已创建
+`lydaas_recording_lookup_v2` Tool，并绑定现有 `browser-accept-gw` AK/SK Connection。
+本机代理会把两个网关域名解析到 `198.18.0.0/15` 保留段，因此生产 Egress Policy
+正确拒绝本地试调；不应为此放宽 SSRF 防护，部署网络应提供可验证的真实公网解析。
 
 当前 Runtime Contract 仍是 JSON-only，不能直接把 WAV 二进制作为模型消息。POC 已完成
 录音解析和 WAV 元数据处理；后续把 `audio_clip_transcribe` 接入质量 MCP 后，规则可以按
@@ -125,6 +141,10 @@ python -m independent_agents.sample_runner \
 ```
 
 输出 canonical call、两个彼此独立的 Runtime 请求和结构化运行摘要。
+
+Agent 2 真实样本在 300 秒内曾超时，因此 builder 默认将其超时设为 600 秒；
+`sample_runner` 可用 `--consumer-timeout`、`--quality-timeout` 和 `--run-suffix` 调整，
+`runtime_client` 默认每 2 秒轮询一次，避免对 Runtime 产生过密请求。
 
 如本机 DSH Runtime 已运行，可分别提交两个请求（两条命令互不依赖）：
 

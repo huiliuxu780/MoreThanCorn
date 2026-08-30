@@ -5,6 +5,10 @@ import wave
 import pytest
 
 from independent_agents.recording import inspect_wav, parse_recording_response
+from independent_agents.recording_tool import (
+    build_recording_tool_create_payload,
+    parse_platform_tool_result,
+)
 
 
 def test_recording_response_selects_latest_matching_https_record() -> None:
@@ -51,3 +55,20 @@ def test_wav_inspection(tmp_path) -> None:
         "sample_width_bytes": 2,
         "duration_ms": 1000,
     }
+
+
+def test_recording_tool_binds_connection_and_parses_response() -> None:
+    create = build_recording_tool_create_payload(connection_id="connection-1")
+    assert create["connectionId"] == "connection-1"
+    assert create["spec"]["request"]["method"] == "POST"
+    result = {
+        "ok": True,
+        "output": {
+            "status": 200,
+            "body": '{"success":true,"data":{"list":[{"callId":"A-1",'
+            '"recordCreatedTime":2,"url":"https://oss.example/a.wav?sig=secret"}]}}',
+        },
+    }
+    record = parse_platform_tool_result(result, "A-1")
+    assert record.metadata()["url_path"] == "/a.wav"
+    assert "url" not in record.metadata()

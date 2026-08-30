@@ -33,7 +33,7 @@ def execute_runtime_request(
     *,
     base_url: str,
     timeout_seconds: float = 360,
-    poll_interval_seconds: float = 0.5,
+    poll_interval_seconds: float = 2.0,
 ) -> dict[str, Any]:
     base = base_url.rstrip("/")
     accepted = _request_json(f"{base}/v1/runs", body=body)
@@ -53,10 +53,16 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--base-url", default="http://127.0.0.1:8302")
     parser.add_argument("--timeout", type=float, default=360)
+    parser.add_argument("--poll-interval", type=float, default=2.0)
     args = parser.parse_args()
 
     body = json.loads(args.request.read_text(encoding="utf-8"))
-    result = execute_runtime_request(body, base_url=args.base_url, timeout_seconds=args.timeout)
+    result = execute_runtime_request(
+        body,
+        base_url=args.base_url,
+        timeout_seconds=args.timeout,
+        poll_interval_seconds=args.poll_interval,
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"run_id": result.get("run_id"), "status": result.get("status")}))

@@ -128,7 +128,7 @@ def build_quality_rules_request(
     model_parameters: dict[str, Any] | None = None,
     run_id: str | None = None,
     available_tools: Iterable[str] = (),
-    timeout_seconds: int = 300,
+    timeout_seconds: int = 600,
 ) -> RuntimeExecuteRequest:
     """Build Agent 2 directly from the call and a frozen rule snapshot.
 

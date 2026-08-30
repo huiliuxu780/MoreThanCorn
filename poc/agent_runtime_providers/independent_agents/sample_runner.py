@@ -23,6 +23,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--model", default="poc-model")
     parser.add_argument("--rule-snapshot", type=Path)
+    parser.add_argument("--run-suffix", default="sample")
+    parser.add_argument("--consumer-timeout", type=int, default=300)
+    parser.add_argument("--quality-timeout", type=int, default=600)
     return parser.parse_args()
 
 
@@ -42,14 +45,16 @@ def main() -> int:
     consumer = build_consumer_analysis_request(
         call,
         model=args.model,
-        run_id=f"consumer-analysis-{acid}-sample",
+        run_id=f"consumer-analysis-{acid}-{args.run_suffix}",
+        timeout_seconds=args.consumer_timeout,
     )
     quality = build_quality_rules_request(
         call,
         rule_snapshot=rule_snapshot,
         model=args.model,
-        run_id=f"quality-rules-{acid}-sample",
+        run_id=f"quality-rules-{acid}-{args.run_suffix}",
         available_tools=(),
+        timeout_seconds=args.quality_timeout,
     )
     args.output_dir.mkdir(parents=True, exist_ok=True)
     _save(args.output_dir / "canonical_call.json", call)
