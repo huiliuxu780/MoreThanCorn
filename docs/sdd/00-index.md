@@ -28,6 +28,8 @@
 | [09](09-production-readiness-and-end-to-end-sdd.md) | 生产就绪、端到端闭环与 P0–P3 分级验收 | 可执行细节 + 上线门禁 | **待评审、待冻结** |
 | [10](10-domain-agent-runtime-provider-sdd.md) | 领域 Agent Module 与 Runtime Provider 集成 | 可执行架构 + 数据模型 + 分阶段验收 | **讨论稿（待评审、待冻结）** |
 | [10A](10-domain-agent-runtime-provider-implementation-prompt.md) | 领域 Agent Runtime 开工提示词 | 分支保护 + R-Archive～R4 实施指令 | **可用于开工** |
+| [12](12-ai-resource-connection-refactor-sdd.md) | AI Resources / Connections / Tools / MCP / Knowledge / LLM 重构 | 字段级实施规格 + 迁移 + 上线回滚 | **实施基线 v1.0（P0 已冻结）** |
+| [12A](acceptance/12-ai-resource-connection-acceptance.md) | AI Resources / Connections 重构验收 | 独立逐项验收清单 | **待实施、待验收** |
 
 > 生产上线判断统一以 09 为最高优先级门禁。01–08 的功能或节点验收通过，不自动等于具备生产上线条件。
 
