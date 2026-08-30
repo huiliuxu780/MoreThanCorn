@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "taxonomy_version": "dsh-consumer-taxonomy-v1",
+  "analysis_statuses": [
+    {"id": "in-scope", "name": "业务范围内"},
+    {"id": "partially-in-scope", "name": "部分在业务范围内"},
+    {"id": "out-of-scope", "name": "业务范围外"},
+    {"id": "insufficient-content", "name": "内容不足"}
+  ],
+  "scenarios": [
+    {"id": "fault-consultation", "name": "故障咨询", "description": "异常现象、错误码、原因或用户可执行排查；明确要求报修时不归此类。"},
+    {"id": "repair-and-appointment", "name": "报修与预约", "description": "请求报修、上门、安装预约、改期、取消或提交服务申请。"},
+    {"id": "human-handoff", "name": "转人工", "description": "明确要求人工客服、客服电话、投诉渠道或人工处理。"},
+    {"id": "service-progress-and-logistics", "name": "服务进度与物流", "description": "查询工单、服务进度、配件到货、寄送或物流状态。"},
+    {"id": "installation-consultation", "name": "安装咨询", "description": "咨询安装条件、接口、开孔、安装方法或安装过程问题；实际预约安装不归此类。"},
+    {"id": "policy-and-invoice-consultation", "name": "政策发票等咨询", "description": "咨询保修、三包、延保、退换、发票或服务范围。"},
+    {"id": "product-consultation", "name": "产品咨询", "description": "咨询单个产品概况、参数、功能、原理、卖点或宽泛品牌咨询。"},
+    {"id": "price-and-store-consultation", "name": "价格/门店咨询", "description": "咨询价格、补贴、促销、赠品、门店地址、联系方式或样机。"},
+    {"id": "purchase-recommendation", "name": "选购推荐", "description": "根据预算、空间、人数、用途或偏好请求产品推荐。"},
+    {"id": "model-comparison", "name": "型号对比", "description": "比较两个及以上具体型号、SKU 或明确产品选项。"},
+    {"id": "usage-guidance", "name": "使用指导", "description": "咨询正常使用、首次设置、程序切换、调节和效果优化。"},
+    {"id": "accessory-and-consumable", "name": "配件/耗材咨询", "description": "咨询部件、配件或耗材的选择、购买、更换和适配。"},
+    {"id": "routine-maintenance", "name": "日常维护保养", "description": "咨询清洁、除垢、保养周期、滤网清理和日常维护。"}
+  ],
+  "usefulness_values": [
+    {"id": "useful-basic", "name": "有用_基础回应", "description": "回答正确、相关，并提供足以解决或推进需求的基础信息。"},
+    {"id": "useful-high-quality", "name": "有用_高质量回应", "description": "在正确回应基础上提供完整步骤、关键边界、风险提示或恰当资料支持。"},
+    {"id": "useless-off-topic", "name": "无用_答非所问", "description": "回应偏离当前问题，未提供相关答案或有效推进。"},
+    {"id": "useless-wrong-or-harmful", "name": "无用_错误/有害", "description": "回应包含事实错误、不安全操作、误导性承诺或其他有害内容。"},
+    {"id": "useless-system-error", "name": "无用_系统异常", "description": "因系统错误、空响应、异常中断或工具故障未形成有效回应。"},
+    {"id": "useless-unresolved", "name": "无用_无法解决", "description": "仅表示无法处理或没有答案，且未提供合理后续路径。"},
+    {"id": "guidance-channel-handoff", "name": "引导_其他渠道转接", "description": "当前问题需要人工、售后或其他渠道，并给出明确合理的转接路径。"},
+    {"id": "guidance-clarification", "name": "引导_需求澄清", "description": "信息不足时提出必要且具体的澄清问题。"}
+  ]
+}

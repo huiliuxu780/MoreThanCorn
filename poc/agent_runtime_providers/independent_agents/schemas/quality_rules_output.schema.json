@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quality-platform://schemas/quality-rules-output/1.0",
+  "title": "Fixed Agent 2 quality item results; score is intentionally absent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["call_id", "rule_set_id", "rule_set_version", "results", "result_by_rule", "summary"],
+  "properties": {
+    "call_id": {"type": "string", "minLength": 1},
+    "rule_set_id": {"type": "string", "minLength": 1},
+    "rule_set_version": {"type": "integer", "minimum": 1},
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rule_id", "result", "confidence", "reason", "evidence"],
+        "properties": {
+          "rule_id": {"type": "string", "pattern": "^QA-[0-9]{3}$"},
+          "result": {
+            "type": "string",
+            "enum": ["passed", "failed", "not_applicable", "insufficient_evidence"]
+          },
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "reason": {"type": "string", "minLength": 1},
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["source", "message_indexes", "start_ms", "end_ms", "reference", "excerpt"],
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": ["transcript", "audio", "knowledge", "appointment", "ticket", "recording_metadata"]
+                },
+                "message_indexes": {
+                  "type": "array",
+                  "items": {"type": "integer", "minimum": 0},
+                  "uniqueItems": true
+                },
+                "start_ms": {"type": ["integer", "null"], "minimum": 0},
+                "end_ms": {"type": ["integer", "null"], "minimum": 0},
+                "reference": {"type": ["string", "null"]},
+                "excerpt": {"type": ["string", "null"]}
+              }
+            }
+          }
+        }
+      }
+    },
+    "result_by_rule": {
+      "type": "object",
+      "propertyNames": {"pattern": "^QA-[0-9]{3}$"},
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["passed", "failed", "not_applicable", "insufficient_evidence"]
+      }
+    },
+    "summary": {"type": "string", "maxLength": 2000}
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quality-platform://schemas/quality-rule-snapshot/1.0",
+  "title": "Published immutable rule snapshot consumed read-only by Agent 2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "ruleSetId", "ruleSetVersion", "status", "readOnlyAtRuntime",
+    "evaluationRules", "scoreRules", "issueRules"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "ruleSetId": {"type": "string", "minLength": 1},
+    "ruleSetVersion": {"type": "integer", "minimum": 1},
+    "status": {"const": "published"},
+    "readOnlyAtRuntime": {"const": true},
+    "evaluationRules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id", "name", "description", "appliesWhen", "passWhen", "failWhen",
+          "severity", "evidenceSources", "allowedTools"
+        ],
+        "properties": {
+          "id": {"type": "string", "pattern": "^QA-[0-9]{3}$"},
+          "name": {"type": "string", "minLength": 1},
+          "description": {"type": "string", "minLength": 1},
+          "appliesWhen": {"type": "string", "minLength": 1},
+          "passWhen": {"type": "string", "minLength": 1},
+          "failWhen": {"type": "string", "minLength": 1},
+          "severity": {"type": "string", "enum": ["Critical", "High", "Medium", "Low"]},
+          "evidenceSources": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "enum": ["transcript", "audio", "knowledge", "appointment", "ticket"]
+            },
+            "uniqueItems": true
+          },
+          "allowedTools": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["knowledge_search", "appointment_query", "ticket_query", "audio_clip_transcribe"]
+            },
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "scoreRules": {"type": "array", "items": {"type": "object"}},
+    "issueRules": {"type": "array", "items": {"type": "object"}}
+  }
+}

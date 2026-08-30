@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quality-platform://schemas/hotline-call-input/1.0",
+  "title": "Canonical hotline call input shared independently by both Agents",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "call", "messages", "source"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "call": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["acid", "started_at_ms", "ended_at_ms", "recording_lookup"],
+      "properties": {
+        "acid": {"type": "string", "minLength": 1},
+        "connid": {"type": ["string", "null"]},
+        "tenant_id": {"type": ["string", "null"]},
+        "started_at_ms": {"type": "integer", "minimum": 0},
+        "ended_at_ms": {"type": "integer", "minimum": 0},
+        "recording_lookup": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider", "lookup_field"],
+          "properties": {
+            "provider": {"const": "lydaas-list-record-v2"},
+            "lookup_field": {"const": "acid"}
+          }
+        }
+      }
+    },
+    "messages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "index", "message_id", "role", "speaker", "text",
+          "start_time_ms", "end_time_ms", "start_offset_ms", "end_offset_ms",
+          "need_split"
+        ],
+        "properties": {
+          "index": {"type": "integer", "minimum": 0},
+          "message_id": {"type": "string", "minLength": 1},
+          "role": {
+            "type": "string",
+            "enum": ["customer", "agent", "chatbot", "system", "unknown"]
+          },
+          "speaker": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source_type"],
+            "properties": {
+              "id": {"type": ["string", "null"]},
+              "name": {"type": ["string", "null"]},
+              "source_type": {"type": "string", "minLength": 1}
+            }
+          },
+          "text": {"type": "string"},
+          "start_time_ms": {"type": "integer", "minimum": 0},
+          "end_time_ms": {"type": "integer", "minimum": 0},
+          "start_offset_ms": {"type": "integer", "minimum": 0},
+          "end_offset_ms": {"type": "integer", "minimum": 0},
+          "need_split": {"type": "boolean"}
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format"],
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": ["lydaas-message-v2", "legacy-sender-type", "canonical"]
+        },
+        "trace_id": {"type": ["string", "null"]}
+      }
+    },
+    "recording_metadata": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["format", "channels", "sample_rate_hz", "sample_width_bytes", "duration_ms"],
+      "properties": {
+        "format": {"const": "wav"},
+        "channels": {"type": "integer", "minimum": 1},
+        "sample_rate_hz": {"type": "integer", "minimum": 1},
+        "sample_width_bytes": {"type": "integer", "minimum": 1},
+        "duration_ms": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}

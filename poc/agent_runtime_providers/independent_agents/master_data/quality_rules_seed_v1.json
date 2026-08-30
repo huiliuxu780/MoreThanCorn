@@ -1,0 +1,139 @@
+{
+  "schema_version": "1.0",
+  "ruleSetId": "dsh-hotline-quality-v1",
+  "ruleSetVersion": 1,
+  "status": "published",
+  "readOnlyAtRuntime": true,
+  "evaluationRules": [
+    {
+      "id": "QA-001",
+      "name": "机器人转人工执行有效",
+      "description": "消费者明确要求转人工时，机器人应确认并实际进入人工坐席阶段。",
+      "appliesWhen": "通话中存在消费者向机器人提出转人工、人工客服或人工处理的明确诉求。",
+      "passWhen": "机器人给出明确转接回应，且后续系统事件或人工坐席发言证明转接成功。",
+      "failWhen": "机器人拒绝、循环追问、错误结束，或没有证据证明进入人工阶段。",
+      "severity": "High",
+      "evidenceSources": ["transcript"],
+      "allowedTools": []
+    },
+    {
+      "id": "QA-002",
+      "name": "人工坐席规范开场",
+      "description": "人工接通后应完成问候、品牌或服务身份、工号等要求的开场信息。",
+      "appliesWhen": "通话实际接入人工坐席。",
+      "passWhen": "坐席在开场阶段完成规则要求的问候和身份信息。",
+      "failWhen": "缺失必需开场项，或开场信息明显错误。",
+      "severity": "Medium",
+      "evidenceSources": ["transcript", "audio"],
+      "allowedTools": ["audio_clip_transcribe"]
+    },
+    {
+      "id": "QA-003",
+      "name": "客户称呼准确",
+      "description": "坐席对客户姓名或姓氏的称呼应与客户提供的信息一致。",
+      "appliesWhen": "客户明确提供姓名或姓氏，且坐席后续使用了称呼。",
+      "passWhen": "坐席称呼与客户提供信息一致；同音但文本不确定时经录音核验一致。",
+      "failWhen": "坐席使用了与客户提供信息不一致的姓名、姓氏或性别称谓。",
+      "severity": "Medium",
+      "evidenceSources": ["transcript", "audio"],
+      "allowedTools": ["audio_clip_transcribe"]
+    },
+    {
+      "id": "QA-004",
+      "name": "服务意图确认准确",
+      "description": "坐席应正确确认消费者本次核心服务对象和办理意图。",
+      "appliesWhen": "消费者存在明确咨询、安装、维修、预约或其他服务意图。",
+      "passWhen": "坐席确认的产品与办理意图和消费者表达一致。",
+      "failWhen": "坐席误解产品或意图，且后续没有纠正。",
+      "severity": "High",
+      "evidenceSources": ["transcript"],
+      "allowedTools": []
+    },
+    {
+      "id": "QA-005",
+      "name": "安装预约必要信息采集",
+      "description": "洗碗机安装预约应采集可由业务规则定义的必要信息，并允许客户对未知信息明确说明。",
+      "appliesWhen": "消费者要求洗碗机安装或安装预约。",
+      "passWhen": "坐席采集或确认产品、送达状态、地址、安装方式及规则规定的其他必要信息；无法提供的型号被明确记录为未知。",
+      "failWhen": "坐席遗漏会阻断受理的必要信息，且未说明后续补充路径。",
+      "severity": "High",
+      "evidenceSources": ["transcript", "knowledge"],
+      "allowedTools": ["knowledge_search"]
+    },
+    {
+      "id": "QA-006",
+      "name": "安装条件说明准确",
+      "description": "坐席给出的橱柜、水路、水龙头等安装条件应与有效安装规范一致。",
+      "appliesWhen": "坐席陈述具体安装条件、规格、接口或现场要求。",
+      "passWhen": "所有实质安装条件陈述均有有效知识依据且无误导。",
+      "failWhen": "任一实质安装条件与有效知识不一致或遗漏关键安全边界。",
+      "severity": "High",
+      "evidenceSources": ["transcript", "knowledge"],
+      "allowedTools": ["knowledge_search"]
+    },
+    {
+      "id": "QA-007",
+      "name": "配件价格说明准确",
+      "description": "坐席陈述的水龙头等配件价格、类型和适用条件应与有效价格信息一致。",
+      "appliesWhen": "坐席向消费者提供具体配件价格或收费信息。",
+      "passWhen": "价格、配件类型和必要边界与有效知识或价格表一致。",
+      "failWhen": "价格或类型错误、口径混乱，或把不确定信息作为确定事实告知。",
+      "severity": "High",
+      "evidenceSources": ["transcript", "knowledge"],
+      "allowedTools": ["knowledge_search"]
+    },
+    {
+      "id": "QA-008",
+      "name": "配件选择确认完整",
+      "description": "消费者选择由师傅携带配件时，坐席应复述确认具体类型或价格档位。",
+      "appliesWhen": "消费者明确选择购买或让师傅携带某种配件。",
+      "passWhen": "坐席明确确认消费者选择，且选择内容没有歧义。",
+      "failWhen": "坐席未确认、确认错误，或选择信息存在歧义仍继续办理。",
+      "severity": "Medium",
+      "evidenceSources": ["transcript"],
+      "allowedTools": []
+    },
+    {
+      "id": "QA-009",
+      "name": "预约受理结果可验证",
+      "description": "坐席声称已提交或已登记安装预约时，必须有明确口头结果并可由预约系统事实验证。",
+      "appliesWhen": "本次通话目标包含创建安装预约或服务单。",
+      "passWhen": "坐席明确告知已受理或后续路径，且预约系统存在与本通话一致的有效记录。",
+      "failWhen": "坐席声称已完成但系统无记录，或通话结束前未形成明确受理结果且无合理后续路径。",
+      "severity": "Critical",
+      "evidenceSources": ["transcript", "appointment"],
+      "allowedTools": ["appointment_query"]
+    },
+    {
+      "id": "QA-010",
+      "name": "专业表达与规范结束",
+      "description": "坐席不得向客户暴露内部测试、操作指令或与服务无关的负面表达，并应完成清晰礼貌的结束。",
+      "appliesWhen": "通话存在人工坐席阶段。",
+      "passWhen": "坐席全程使用面向客户的专业表达，并在业务确认后规范结束通话。",
+      "failWhen": "出现明显内部话术、要求他人结束测试、抱怨环境、唐突结束或其他破坏服务体验的表达。",
+      "severity": "High",
+      "evidenceSources": ["transcript", "audio"],
+      "allowedTools": ["audio_clip_transcribe"]
+    }
+  ],
+  "scoreRules": [
+    {"id": "S-QA-001", "field": "result_by_rule.QA-001", "op": "neq", "value": "failed", "weight": 8},
+    {"id": "S-QA-002", "field": "result_by_rule.QA-002", "op": "neq", "value": "failed", "weight": 8},
+    {"id": "S-QA-003", "field": "result_by_rule.QA-003", "op": "neq", "value": "failed", "weight": 8},
+    {"id": "S-QA-004", "field": "result_by_rule.QA-004", "op": "neq", "value": "failed", "weight": 12},
+    {"id": "S-QA-005", "field": "result_by_rule.QA-005", "op": "neq", "value": "failed", "weight": 12},
+    {"id": "S-QA-006", "field": "result_by_rule.QA-006", "op": "neq", "value": "failed", "weight": 12},
+    {"id": "S-QA-007", "field": "result_by_rule.QA-007", "op": "neq", "value": "failed", "weight": 10},
+    {"id": "S-QA-008", "field": "result_by_rule.QA-008", "op": "neq", "value": "failed", "weight": 10},
+    {"id": "S-QA-009", "field": "result_by_rule.QA-009", "op": "neq", "value": "failed", "weight": 15},
+    {"id": "S-QA-010", "field": "result_by_rule.QA-010", "op": "neq", "value": "failed", "weight": 5}
+  ],
+  "issueRules": [
+    {"id": "I-QA-001", "criterion": "机器人转人工失败", "field": "result_by_rule.QA-001", "op": "eq", "value": "failed", "severity": "High"},
+    {"id": "I-QA-003", "criterion": "客户称呼错误", "field": "result_by_rule.QA-003", "op": "eq", "value": "failed", "severity": "Medium"},
+    {"id": "I-QA-006", "criterion": "安装条件说明错误", "field": "result_by_rule.QA-006", "op": "eq", "value": "failed", "severity": "High"},
+    {"id": "I-QA-007", "criterion": "配件价格说明错误", "field": "result_by_rule.QA-007", "op": "eq", "value": "failed", "severity": "High"},
+    {"id": "I-QA-009", "criterion": "预约受理结果不可验证", "field": "result_by_rule.QA-009", "op": "eq", "value": "failed", "severity": "Critical"},
+    {"id": "I-QA-010", "criterion": "非专业表达或不规范结束", "field": "result_by_rule.QA-010", "op": "eq", "value": "failed", "severity": "High"}
+  ]
+}
