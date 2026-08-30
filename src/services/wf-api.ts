@@ -493,6 +493,16 @@ export const agentApi = {
     req<(AgentVersionInfo & { frozenMembers: { ref: string; version: string | null }[] })[]>(`/api/agents/${id}/versions`),
   evalSamples: (id: string) =>
     req<{ items: { id: string; name: string; input: Record<string, unknown>; expected?: unknown }[] }>(`/api/agents/${id}/eval-samples`),
+  /* R8-UI-4：Golden Set 主动评测（真跑指定 Provider，逐 criterion 对比+违禁检查） */
+  goldenEval: (id: string, providerId: string, limit = 3) =>
+    req<{
+      providerId: string; providerKind: string; samples: number; passed: number; passRate: number
+      results: {
+        sampleId: string; runId: string | null; runStatus: string; passed: boolean
+        forbiddenViolations?: string[]; durationMs?: number | null; error?: string
+        detail: { criterion: string; expected: string; actual?: string }[]
+      }[]
+    }>(`/api/agents/${id}/golden-eval`, { method: "POST", body: JSON.stringify({ providerId, limit }) }),
   /* R8-UI-2：效果评测 Tab（Golden Set + 真实 Run 逐 criterion 聚合） */
   evalSummary: (id: string) =>
     req<{

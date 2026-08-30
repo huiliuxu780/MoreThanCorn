@@ -16,7 +16,8 @@ def now():
 
 
 def quality_output(sid):
-    return {"sample_id": sid, "call_id": sid, "conversation": "ok",
+    # R8-UI-4：对齐冻结 quality_output Schema（additionalProperties=false，仅四键）
+    return {"sample_id": sid,
             "findings": [{"criterion": "promise_fulfillment", "status": "passed",
                           "confidence": 0.9, "reason": "已履约（验收 fake）",
                           "evidence": [{"source": "tool", "reference": "ticket:T-1:event:3",

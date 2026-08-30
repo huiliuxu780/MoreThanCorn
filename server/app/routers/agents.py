@@ -564,6 +564,63 @@ def agent_eval_summary(aid: str, db: Session = Depends(get_db)):
             "runCount": len(runs), "evaluatedRuns": len(qrs), "criteria": criteria}
 
 
+@router.post("/{aid}/golden-eval")
+def agent_golden_eval(aid: str, payload: dict | None = None, db: Session = Depends(get_db),
+                      _user: dict = Depends(require_operator)):
+    """R8-UI-4：Golden Set 主动评测——对 Module Ground Truth 样本真跑指定 Provider，
+    逐 criterion 对比 expected_findings + forbidden_tools 违禁检查（CallRecord 直查）。
+
+    同步内联执行（enqueue=False）；结果不持久化（实时对比工具），Run 以 trigger=eval
+    落入运行历史。双 Provider 对比由前端对两个 Provider 各调一次。"""
+    from ..agent_runtime import RunError, run_agent
+    from ..models import CallRecord
+    from ..agent_modules.quality_analysis.evaluators import load_ground_truth
+    agent = db.get(Agent, aid)
+    if not agent:
+        raise HTTPException(404, "agent not found")
+    if agent.module_key != "quality-analysis":
+        raise HTTPException(422, "Golden Set 评测仅支持 quality-analysis Module")
+    provider_id = (payload or {}).get("providerId")
+    provider = db.get(AgentRuntimeProvider, provider_id or "")
+    if not provider:
+        raise HTTPException(422, "providerId 必填且必须存在")
+    if provider.status != "enabled":
+        raise HTTPException(422, f"Provider {provider.name} 非 enabled，不可评测")
+    limit = max(1, min(int((payload or {}).get("limit") or 3), 10))
+    samples = (load_ground_truth("smoke/ground_truth_v0.1.jsonl") +
+               load_ground_truth("native_workflow/ground_truth_v0.2.json"))[:limit]
+    results = []
+    for s in samples:
+        sid = s.get("sample_id") or "?"
+        try:
+            run_id = run_agent(db, agent, {"sample": s}, trigger="eval",
+                               enqueue=False, provider_id=provider_id)
+            r = db.get(Run, run_id)
+            output = r.output or {}
+            findings = {f.get("criterion"): f.get("status") for f in (output.get("findings") or [])}
+            expected = s.get("expected_findings") or {}
+            detail = [{"criterion": c, "expected": st, "actual": findings.get(c)}
+                      for c, st in expected.items()]
+            forbidden = s.get("forbidden_tools") or []
+            violated = [c.target_id for c in db.query(CallRecord).filter_by(run_id=run_id)
+                        if c.target_id in forbidden] if forbidden else []
+            results.append({
+                "sampleId": sid, "runId": run_id, "runStatus": r.status,
+                "passed": bool(expected) and all(findings.get(c) == st for c, st in expected.items())
+                and not violated,
+                "forbiddenViolations": violated, "detail": detail,
+                "durationMs": r.duration_ms,
+            })
+        except RunError as e:
+            results.append({"sampleId": sid, "runId": None, "runStatus": "error",
+                            "passed": False, "error": str(e), "detail": []})
+    ok = sum(1 for x in results if x.get("passed"))
+    return {"providerId": provider.id, "providerKind": provider.kind,
+            "samples": len(results), "passed": ok,
+            "passRate": round(ok / len(results), 3) if results else 0,
+            "results": results}
+
+
 @router.post("/{aid}/eval-run", status_code=201)
 def agent_eval_run(aid: str, payload: dict | None = None, db: Session = Depends(get_db),
                  _user: dict = Depends(require_operator) ):

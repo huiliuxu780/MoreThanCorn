@@ -13,6 +13,7 @@ import { AgentVersionDiffDialog } from "@/components/agent-version-diff"
 import { ModulePublishDialog } from "@/components/module-publish-dialog"
 import { useAgentVersionState } from "@/components/agent-publish-dialog"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -126,6 +127,22 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
     if (tab === "eval" && !evalData) agentApi.evalSummary(agent.id).then(setEvalData).catch(() => setEvalData(null))
   }, [tab, agent.id, evalData])
 
+  // R8-UI-4：Golden Set 主动评测（双 Provider 对比）
+  const [goldenSel, setGoldenSel] = useState<string[]>([])
+  const [goldenLimit, setGoldenLimit] = useState(3)
+  const [goldenRunning, setGoldenRunning] = useState(false)
+  const [goldenResults, setGoldenResults] = useState<Awaited<ReturnType<typeof agentApi.goldenEval>>[]>([])
+  const runGolden = async () => {
+    if (goldenSel.length === 0) { toast.error("至少选择一个 Provider"); return }
+    setGoldenRunning(true); setGoldenResults([])
+    const out: Awaited<ReturnType<typeof agentApi.goldenEval>>[] = []
+    for (const pid of goldenSel) {
+      try { out.push(await agentApi.goldenEval(agent.id, pid, goldenLimit)) }
+      catch (e) { toast.error((e as Error).message) }
+    }
+    setGoldenResults(out); setGoldenRunning(false)
+  }
+
   const inputProps = Object.keys((meta?.inputSchema?.properties ?? {}) as object)
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col">
@@ -236,6 +253,65 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
                 </div>
               </Card>
             )}
+            <Card no={4} title="Golden Set 主动评测（双 Provider 同 Ground Truth 对比）">
+              <div className="flex flex-wrap items-center gap-3">
+                {providers.map((p) => (
+                  <label key={p.id} className="flex items-center gap-1.5 text-[12px]" style={{ color: INK2 }}>
+                    <Checkbox checked={goldenSel.includes(p.id)}
+                      onCheckedChange={(c) => setGoldenSel((s) => c === true ? [...s, p.id] : s.filter((x) => x !== p.id))} />
+                    {p.name}（{p.kind}）
+                  </label>
+                ))}
+                <Select value={String(goldenLimit)} onValueChange={(v) => setGoldenLimit(Number(v))}>
+                  <SelectTrigger className="h-8 w-24 bg-white"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {[1, 3, 5, 10].map((n) => <SelectItem key={n} value={String(n)}>{n} 样本</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Button size="sm" className="bg-black text-white hover:bg-neutral-800" disabled={goldenRunning} onClick={runGolden}>
+                  {goldenRunning ? "评测中…" : "运行对比"}
+                </Button>
+                <span className="text-[11px]" style={{ color: INK3 }}>同步真跑；结果不持久化，Run 以 trigger=eval 入运行历史</span>
+              </div>
+              {goldenResults.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {goldenResults.map((g) => (
+                    <div key={g.providerId} className="rounded-lg border px-3 py-2" style={{ borderColor: CARD }}>
+                      <div className="flex items-center gap-3 text-[12px]">
+                        <span className="font-medium" style={{ color: INK }}>{g.providerKind}</span>
+                        <span style={{ color: INK2 }}>通过率 {Math.round(g.passRate * 100)}%（{g.passed}/{g.samples}）</span>
+                      </div>
+                      <div className="mt-1 space-y-1">
+                        {g.results.map((r) => (
+                          <div key={r.sampleId} className="flex flex-wrap items-center gap-2 text-[11px]">
+                            <span className="font-mono" style={{ color: INK2 }}>{r.sampleId}</span>
+                            <span className="rounded px-1.5 py-0.5 text-[10px]"
+                              style={r.passed ? { background: "#E8F7EE", color: "#16A34A" } : { background: "#FEECEC", color: "#DC2626" }}>
+                              {r.passed ? "passed" : "mismatch"}
+                            </span>
+                            {r.error && <span style={{ color: "#DC2626" }}>{r.error}</span>}
+                            {(r.forbiddenViolations?.length ?? 0) > 0 && (
+                              <span style={{ color: "#DC2626" }}>违禁工具：{r.forbiddenViolations!.join("、")}</span>
+                            )}
+                            <span className="flex gap-1.5">
+                              {r.detail.filter((d) => d.actual !== d.expected).map((d) => (
+                                <span key={d.criterion} className="rounded bg-neutral-100 px-1 py-0.5 text-[10px]" style={{ color: INK2 }}>
+                                  {d.criterion}：期望 {d.expected} → 实际 {d.actual ?? "—"}
+                                </span>
+                              ))}
+                            </span>
+                            {r.runId && (
+                              <button className="text-[10px] underline" style={{ color: INK3 }}
+                                onClick={() => navigate(`/config/agents/${agent.id}/runs/${r.runId}`)}>Run ↗</button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
           </div>
         )}
         {tab === "overview" && (
