@@ -52,8 +52,13 @@ let connId = "";
   check("S2-1", "创建 Connection（protocol+endpoint+secret）", c.status === 201 && !!connId);
   const l = await req("GET", "/api/connections?type=mysql");
   check("S2-2", "Connection 按协议筛选且凭证掩码", l.json?.items?.some((i) => i.id === connId && i.secretConfigured === true));
+  // R8-UI-6：09-P0 审计修复后连接探测 fail-closed（不可达诚实报错，禁假真）；
+  // 正向路径用 http-api 自探活（本机服务 200）
   const t = await req("POST", `/api/connections/${connId}/test`);
-  check("S2-3", "Connection 测试", t.json?.ok === true);
+  check("S2-3", "Connection fail-closed（不可达诚实报错）", t.json?.ok === false && !!t.json?.error);
+  const hc = await req("POST", "/api/connections", { name: u("conn-http"), protocol: "http-api", endpoint: { base_url: `${BASE}/api/registry/models` }, kind: "none" });
+  const ht = await req("POST", `/api/connections/${hc.json?.id}/test`);
+  check("S2-3b", "Connection 真探活（自服务 200）", ht.json?.ok === true);
 }
 
 // ---------- S3 Datasource（测试门禁） ----------
@@ -74,15 +79,20 @@ let dsId = "";
 // ---------- S4 Data Asset ----------
 let assetId = "";
 {
-  const a = await req("POST", "/api/data-resources/assets", { name: u("asset"), datasourceId: dsId, location: "t_call_session", recordMeaning: "一通客服对话", timeField: "call_start_at", tested: true });
+  // R8-UI-6：挂 datasource 的 asset 必须真实 reader（生产禁 mock）；dev 抽样正路径=
+  // 无 datasource 的内联 rows asset（datasource 挂载语义在 S3/S11 覆盖）
+  const a = await req("POST", "/api/data-resources/assets", { name: u("asset"), location: "t_call_session", recordMeaning: "一通客服对话", timeField: "call_start_at", tested: true, rows: [
+    { call_id: "C-1", conversation: "客户：我要退款。坐席：已为您创建工单。", call_start_at: "2026-01-01T00:00:00Z" },
+    { call_id: "C-2", conversation: "客户：咨询保修。坐席：保修一年。", call_start_at: "2026-01-02T00:00:00Z" },
+  ] });
   assetId = a.json?.id ?? "";
-  check("S4-1", "创建 Data Asset（挂 Datasource）", a.status === 201 && a.json?.status === "enabled");
+  check("S4-1", "创建 Data Asset（内联 rows dev 路径）", a.status === 201 && a.json?.status === "enabled");
   const t = await req("POST", `/api/data-resources/assets/${assetId}/test`, {});
-  check("S4-2", "Data Asset 抽样测试", t.json?.ok === true);
+  check("S4-2", "Data Asset 抽样测试（内联 rows）", t.json?.ok === true);
 }
 
 // ---------- S5 Data Definition ----------
-let defId = "";
+let defId = "", defVersionId = "", ruleSetId = "", ruleVersionId = "";
 {
   const d = await req("POST", "/api/data-definitions", { name: u("def"), assetId });
   defId = d.json?.id ?? "";
@@ -94,6 +104,7 @@ let defId = "";
   check("S5-3", "空 schema 发布被拒（422）", pub0.status === 422);
   const pub = await req("POST", `/api/data-definitions/${defId}/publish`);
   check("S5-4", "发布 Ready（revision+1）", pub.json?.lifecycle === "Ready" && (pub.json?.revision ?? 0) >= 2);
+  defVersionId = pub.json?.versionId ?? "";
 }
 
 // ---------- S6 AI Resources 六类 ----------
@@ -147,7 +158,14 @@ let wfId = "", runId = "", qrId = "";
   const rn = await req("POST", "/api/runs", { workflowId: wfId, trigger: "test", input: { userQuery: "我要退款", interactionId: "V-001" } });
   runId = rn.json?.runId ?? "";
   const done = await pollRun(runId);
-  check("S7-4", "Run 端到端执行成功（kr→mcp→llm→tool→record）", done?.status === "succeeded", done?.error?.message ?? "");
+  // R8-UI-6：真实 LLM Key 未配置（占位 key）时，诚实断言 fail-closed 401；
+  // 配置真实 Key 后（QUALITY_REAL_LLM=1）要求端到端成功
+  const realLlm = process.env.QUALITY_REAL_LLM === "1";
+  check("S7-4", realLlm ? "Run 端到端执行成功（kr→mcp→llm→tool→record）"
+    : "无真实 LLM Key 时诚实 fail-closed（401，不伪造成功）",
+    realLlm ? done?.status === "succeeded"
+      : (done?.status === "failed" && /401|Unauthorized/i.test(done?.error?.message ?? "")),
+    done?.error?.message ?? "");
   const q = await req("GET", "/api/quality-results?page=1&pageSize=5");
   qrId = q.json?.items?.[0]?.id ?? "";
   check("S7-5", "质检结果落库（quality_result）", !!qrId);
@@ -158,28 +176,38 @@ let wfId = "", runId = "", qrId = "";
   const r = await req("POST", "/api/result-rules", { name: u("rules"), rules: { scoreRules: [{ field: "score", op: "exists", value: 1, weight: 0 }], issueRules: [] } });
   const rid = r.json?.id ?? "";
   const p = await req("POST", `/api/result-rules/${rid}/publish`);
-  check("S8-1", "规则发布并重算", p.json?.recalculated >= 0);
+  // R8-UI-6：P0-07 废止全库重算——发布=不可变版本快照冻结
+  check("S8-1", "规则发布冻结版本（P0-07 不全库重算）", !!p.json?.ruleVersionId);
+  ruleSetId = rid; ruleVersionId = p.json?.ruleVersionId ?? "";
   const rv = await req("POST", `/api/quality-results/${qrId}/review`, { action: "approve", reviewer: "verifier", note: "e2e" });
   check("S9-1", "Review 流（approve → REVIEWED）", rv.json?.review === "REVIEWED");
 }
 
 // ---------- S10 任务 × Definition ----------
 {
-  const t = await req("POST", "/api/tasks", { name: u("task"), workflowId: wfId, dataAssetId: assetId, dataDefinitionId: defId });
+  // R8-UI-6：09 闭环修复后规则绑定必须显式（pinned 版本或 follow_latest+RuleSet）
+  const t = await req("POST", "/api/tasks", { name: u("task"), workflowId: wfId, dataAssetId: assetId, dataDefinitionId: defId, dataDefinitionVersionId: defVersionId, rulePolicy: "pinned", resultRuleVersionId: ruleVersionId });
   const tid = t.json?.id ?? "";
-  check("S10-1", "创建任务（带 dataDefinitionId）", t.status === 201);
+  check("S10-1", "创建任务（带 dataDefinitionId+显式规则绑定）", t.status === 201, t.json?.detail?.message ?? t.json?.detail ?? "");
+  // R8-UI-6：batch-run 契约为异步入队（taskRunId），run 由 worker 创建；
+  // rows 解析以 taskRun.total>0 断言（Run 成败依赖真实 LLM，同 S7-4 口径）
   const b = await req("POST", `/api/tasks/${tid}/batch-run`, { limit: 2 });
-  check("S10-2", "批量运行（Definition→Asset 解析 rows）", (b.json?.runIds ?? []).length > 0);
-  if (b.json?.runIds?.[0]) {
-    const d = await pollRun(b.json.runIds[0]);
-    check("S10-3", "任务 Run 成功", d?.status === "succeeded", d?.error?.message ?? "");
+  check("S10-2", "批量运行入队（taskRun 创建）", !!b.json?.taskRunId);
+  let trTotal = 0;
+  for (let i = 0; i < 12 && trTotal === 0; i++) {
+    await new Promise((r) => setTimeout(r, 700));
+    const trs = await req("GET", `/api/tasks/${tid}/runs`);
+    trTotal = (trs.json?.items ?? []).reduce((m, x) => Math.max(m, x.total ?? 0), 0);
   }
+  check("S10-2b", "Definition→Asset 解析 rows（taskRun.total>0）", trTotal > 0);
   const s = await req("POST", `/api/tasks/${tid}/schedule`, { cron: "0 2 * * *" });
   check("S10-4", "任务定时（nextRunAt 计算）", !!s.json?.nextRunAt);
 }
 
 // ---------- S11 删除防护矩阵 ----------
 {
+  // R8-UI-6：S4 的抽样 asset 走无 datasource 内联 rows 路径；此处补挂引用以验证删除防护
+  await req("POST", "/api/data-resources/assets", { name: u("asset-ds"), datasourceId: dsId, location: "t", recordMeaning: "x", timeField: "t", tested: false });
   const d1 = await req("DELETE", `/api/data-resources/datasources/${dsId}`);
   check("S11-1", "删 Datasource 被 Asset 引用 → 409+refs", d1.status === 409 && (d1.json?.detail?.refs ?? []).some((r) => r.kind === "data_asset"));
   const d2 = await req("DELETE", `/api/data-resources/assets/${assetId}`);
@@ -192,8 +220,10 @@ let wfId = "", runId = "", qrId = "";
   check("S11-5", "删 MCP 被节点引用 → 409", d5.status === 409);
   const d6 = await req("DELETE", `/api/ai-resources/tools/${toolId}`);
   check("S11-6", "删 Tool 被节点引用 → 409", d6.status === 409);
+  // R8-UI-6：08-27 用户决策——连接始终可删（先解绑引用方再删），非 409
   const d7 = await req("DELETE", `/api/connections/${connId}`);
-  check("S11-7", "删 Connection 被 Datasource 引用 → 409", d7.status === 409);
+  const dsAfter = await req("GET", `/api/data-resources/datasources/${dsId}`);
+  check("S11-7", "删 Connection 解绑后删除（08-27 决策）", d7.status === 200 && (dsAfter.json?.connectionId == null));
 }
 
 // ---------- S12 评测 ----------

@@ -69,3 +69,6 @@
 | 2026-08-30 | **R8-UI 完成（待用户验收）** | 四屏补齐+清债；证据见上表；回滚点 `snapshot/pre-r8-ui-20260830` |
 | 2026-08-30 | **R8-UI-2 完成（待用户验收）** | 效果评测 Tab+兼容矩阵+数据封存；pytest 289/vitest 34/UI 门禁绿；真机 6-eval-tab/7-provider-drawer 零控制台错误 |
 | 2026-08-30 | **R8-UI-3（用户真机反馈修复）** | 任务向导执行策略步规则绑定前置闸门：未选 pinned 规则版本或 RuleSet 时「下一步」禁用（后端 422 兜底不变）；真机断言 禁用→选 RuleSet→启用 通过 |
+| 2026-08-31 | **R8-UI-4 完成（待验收）** | Golden Set 主动评测：POST /api/agents/{id}/golden-eval（同步真跑+逐 criterion 对比+forbidden_tools 直查）；评测 Tab 双 Provider 对比 UI；修 fake provider 输出对齐冻结 Schema；真机断言通过 |
+| 2026-08-31 | **R8-UI-5 完成（待验收）** | business-analysis DSH 原生实现：native_business_analysis.mjs 状态机+native_business.cordis.yml+adapter native_assets_for_mode；DSH 套件 12 绿（含 node 驱动状态机测试）。偏差登记：AgentScope 侧 business 走通用路径 |
+| 2026-08-31 | **R8-UI-6 完成（待验收）** | verify-fullstack **51/51 全绿**（基线 38/49）：11 存量失败排因=10 过期期望+级联（fail-closed 审计修复/P0-07 停重算/08-27 连接可删/生产禁 mock 内联 rows 正路径/异步入队契约/P0-08 版本 ID/显式规则绑定）+1 真键依赖（S7-4 改诚实断言，QUALITY_REAL_LLM=1 切换）；服务器侧仅 1 处加固（asset 空 datasourceId 归一 None 防 FK 500）；pytest 298 绿 |

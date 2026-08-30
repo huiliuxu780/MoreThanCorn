@@ -104,7 +104,8 @@ def _create(db: Session, rtype: str, p: dict) -> dict:
                          status="enabled" if tested else "disabled")
     elif rtype == "asset":
         obj = DataAsset(name=p["name"], description=p.get("description", ""),
-                        datasource_id=p.get("datasourceId"), location=p.get("location", ""),
+                        # R8-UI-6：空串归一 None，防 FK 500（内联 rows dev 路径无 datasource）
+                        datasource_id=p.get("datasourceId") or None, location=p.get("location", ""),
                         record_meaning=p.get("recordMeaning", "一条业务记录"),
                         time_field=p.get("timeField", ""),
                         record_id_field=p.get("recordIdField", "interactionId"),
