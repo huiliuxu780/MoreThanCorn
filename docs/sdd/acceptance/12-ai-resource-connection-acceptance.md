@@ -214,7 +214,17 @@ server/.venv/bin/python scripts/report-resource-migration.py --out docs/sdd/acce
 | J-07 | 主链回归：verify-fullstack 63/63（S8/S9/S10/S12/S13/S14 均过）；pytest 327 全绿。 |
 | J-08 | lint/typecheck/vitest/build/pytest×3/全部脚本通过（M.1 命令与结果）。 |
 
-### M.3 明确不在 P0 范围（保持未勾选，后续阶段交付）
+### M.3 浏览器侧验证（实时栈 5173→8120，wf_dev）
+
+在 `http://localhost:5173/settings/connections` 真机复核（非截图走查）：
+- 生命周期与健康双徽章分离展示；未检查连接显示"未测试"，不显示"健康"（H-02）。
+- 轮换凭据为受控 Dialog（非原生 prompt）；提交后卡片版本 1→2、健康转"已过时"，
+  toast"凭据已轮换（版本 2）…请重新测试"（B-02/C-03）。
+- 对凭据已变化的 draft 连接点"启用"，toast 如实提示"配置或凭据已变化，最近检查结果失效；
+  请重新检查后再启用"（C-02/C-03 UI 表达）。
+- 编辑对话框密钥输入框为空、占位提示"已保存的密钥不可回显"，无任何明文回填（B-01 UI 侧）。
+
+### M.4 明确不在 P0 范围（保持未勾选，后续阶段交付）
 
 - A-01/A-02/A-04/A-05/A-06/A-08：Connector Definition、规范化 ConnectionEnvironment/Resource/ResourceVersion/Binding 表、ProjectionService —— P1/P2（§17）。
 - B-08～B-10：egress 负向用例补强、protected headers、stdio 安全 —— 部分已有基础（`egress.py`），完整负向矩阵随 P1/P2。
