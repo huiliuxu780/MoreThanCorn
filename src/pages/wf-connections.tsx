@@ -15,7 +15,10 @@ import { CardGridSkeleton, EmptyState } from "@/components/app/list-state"
 import { PageContainer, PageHeader } from "@/components/app/page"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,
@@ -354,6 +357,7 @@ export default function WfConnectionsPage() {
                   <Plus className="size-3" /> 添加环境
                 </Button>
               </div>
+              <RadioGroup value={form.defaultEnv} onValueChange={(v) => set({ defaultEnv: v })} className="space-y-2">
               {form.environments.map((e, i) => (
                 <div key={i} className="space-y-2 rounded border bg-muted/20 p-2">
                   <div className="grid grid-cols-[110px_1fr_auto_auto] gap-2">
@@ -375,8 +379,7 @@ export default function WfConnectionsPage() {
                       <Input className="h-8 font-mono text-xs" value={e.code} onChange={(ev) => setEnv(i, { code: ev.target.value.toLowerCase() })} placeholder="环境码，如 sandbox" />
                     )}
                     <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <input type="radio" name="default-env" checked={form.defaultEnv === e.code && e.code !== ""}
-                        onChange={() => set({ defaultEnv: e.code })} /> 默认
+                      <RadioGroupItem value={e.code || `__empty_${i}`} disabled={!e.code} id={`default-env-${i}`} /> 默认
                     </label>
                     <button type="button" className="text-neutral-400 hover:text-red-500"
                       onClick={() => set({ environments: form.environments.filter((_, j) => j !== i), defaultEnv: form.defaultEnv === e.code ? "" : form.defaultEnv })}>
@@ -385,12 +388,13 @@ export default function WfConnectionsPage() {
                   </div>
                   <EndpointFields protocol={form.protocol} v={e} onChange={(p) => setEnv(i, p)} />
                   <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                    <input type="checkbox" checked={e.hasSecret} onChange={(ev) => setEnv(i, { hasSecret: ev.target.checked, secret: ev.target.checked ? (e.secret || (form.kind === "api_key" || form.kind === "bearer" ? "" : {})) : "" })} />
+                    <Checkbox checked={e.hasSecret} onCheckedChange={(c) => setEnv(i, { hasSecret: c === true, secret: c === true ? (e.secret || (form.kind === "api_key" || form.kind === "bearer" ? "" : {})) : "" })} />
                     该环境使用独立凭据（否则用连接级密钥）
                   </label>
                   {e.hasSecret && <SecretFields kind={form.kind} value={e.secret} onChange={(v) => setEnv(i, { secret: v })} />}
                 </div>
               ))}
+              </RadioGroup>
             </div>
 
             <div><Label className="text-xs">提供方（可选）</Label><Input value={form.providerHint} onChange={(e) => set({ providerHint: e.target.value })} placeholder="如 阿里云百炼 / MySQL / MinIO" /></div>
@@ -401,7 +405,7 @@ export default function WfConnectionsPage() {
                   <Label className="text-xs">鉴权脚本（JS，沙箱执行；换算法改脚本不发版）</Label>
                   <Button variant="outline" size="sm" type="button" onClick={() => set({ authScript: AKSK_TEMPLATE })}>填入 AkSk 模板</Button>
                 </div>
-                <textarea className="min-h-[160px] w-full rounded-md border bg-muted/30 p-2 font-mono text-xs"
+                <Textarea className="min-h-[160px] bg-muted/30 font-mono text-xs"
                   value={form.authScript} onChange={(e) => set({ authScript: e.target.value })}
                   placeholder="pm.environment.get / pm.request.headers.add / CryptoJS / btoa 可用" />
                 <Button variant="outline" size="sm" type="button" onClick={runDryRun}><Play className="size-3" /> 空跑生成请求头</Button>

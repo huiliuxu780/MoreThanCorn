@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   ResourceCard, type ResourceAction,
 } from "@/components/resources/resource-card"
+import { RuntimeProvidersPanel } from "@/components/resources/runtime-providers-panel"
 import {
   ConfirmDeleteDialog, DeleteBlockedDialog, ResourceTestDialog,
 } from "@/components/resources/resource-dialogs"
@@ -26,6 +27,8 @@ const TABS = {
     { type: "tool", label: "Tools" },
     { type: "mcp", label: "MCP Servers" },
     { type: "knowledge", label: "Knowledge Sources" },
+    // R8-UI（11 §7-②）：Runtime Providers 管理（Agent 执行底座，独立面板）
+    { type: "providers", label: "Runtime Providers" },
   ],
   data: [
     { type: "datasource", label: "Datasources" },
@@ -40,6 +43,7 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
   const [params, setParams] = useSearchParams()
   const tabs = TABS[domain]
   const tab = params.get("tab") && tabs.some((t) => t.type === params.get("tab")) ? params.get("tab")! : tabs[0].type
+  const isProviders = tab === "providers"
   const highlight = params.get("new") ?? ""
 
   const [searchInput, setSearchInput] = useState(params.get("search") ?? "")
@@ -56,13 +60,14 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
   const [blocked, setBlocked] = useState<{ name: string; refs: RefInfo[] } | null>(null)
 
   const load = useCallback(() => {
+    if (isProviders) return  // R8-UI：providers 面板自取数
     setLoading(true)
     const search = params.get("search") ?? ""
     resApi.list(tab, { page, pageSize: 12, search, status, health, type: tab === "datasource" ? dsType : "" })
       .then((r) => { setData(r.items); setTotal(r.total) })
       .catch(() => setData([]))
       .finally(() => setLoading(false))
-  }, [tab, page, params, status, health, dsType])
+  }, [tab, page, params, status, health, dsType, isProviders])
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
@@ -123,13 +128,15 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
           ? "管理 Agent 执行过程中使用的 AI 能力资源。引用链：Agent → Workflow → Version → Node Config → Resource。"
           : "管理分析任务与 Evaluation Agent 使用的数据资源。数据链：Datasource → Data Asset → Data Definition → Analysis Task。"}
         actions={
-          <Button onClick={() => navigate(domain === "ai" ? "/config/ai-resources/new" : "/config/data-resources/new")}>
-            <Plus className="size-4" /> 创建资源
-          </Button>
+          isProviders ? undefined : (
+            <Button onClick={() => navigate(domain === "ai" ? "/config/ai-resources/new" : "/config/data-resources/new")}>
+              <Plus className="size-4" /> 创建资源
+            </Button>
+          )
         }
       />
 
-      <FilterBar>
+      {!isProviders && <FilterBar>
         <SearchField value={searchInput} onChange={setSearchInput} placeholder="搜索资源名称..." />
         {tab === "datasource" && (
           <Select value={dsType || "__all__"} onValueChange={(v) => { setDsType(v === "__all__" ? "" : v); setPage(1) }}>
@@ -158,7 +165,7 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
           </SelectContent>
         </Select>
         <span className="ml-auto text-xs text-muted-foreground">共 {total} 个资源</span>
-      </FilterBar>
+      </FilterBar>}
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
@@ -167,7 +174,7 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
           ))}
         </TabsList>
         <TabsContent value={tab}>
-          {loading ? (
+          {isProviders ? <RuntimeProvidersPanel /> : loading ? (
             <CardGridSkeleton count={8} />
           ) : data.length === 0 ? (
             filtered ? <FilteredEmptyState onClear={() => { setSearchInput(""); setStatus(""); setHealth(""); setDsType("") }} />
@@ -184,7 +191,7 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
         </TabsContent>
       </Tabs>
 
-      <Pagination page={page} pageSize={12} total={total} onPageChange={setPage} onPageSizeChange={() => undefined} />
+      {!isProviders && <Pagination page={page} pageSize={12} total={total} onPageChange={setPage} onPageSizeChange={() => undefined} />}
 
       <ResourceTestDialog open={!!testTarget} title={testTarget?.name ?? ""}
         desc="使用样例输入执行一次真实调用，验证连通性与响应。"

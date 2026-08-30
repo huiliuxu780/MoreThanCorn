@@ -10,6 +10,7 @@ import {
   DataTaskFields,
   emptyTaskForm,
   StrategyTaskFields,
+  TargetTaskFields,
   type TaskFormState,
 } from "@/components/tasks/task-form-sections"
 import { useAsyncData } from "@/hooks/use-async-data"
@@ -29,14 +30,20 @@ export default function TaskEditPage() {
     const v = task.taskVersion
     const sampling = v?.sampling
     const window = v?.dataWindow
+    // R8-UI：executionTarget 往返保真（agent|workflow + 三选策略 + 钉住版本）
+    const et = v?.executionTarget ?? task.executionTarget
+    const isAgent = et?.type === "agent"
     const OP_LABEL: Record<string, string> = { eq: "=", neq: "≠", gt: ">", lt: "<", contains: "IN", exists: "IS NOT NULL" }
     setForm({
       ...emptyTaskForm,
       name: task.name,
       description: task.description ?? "",
-      agentId: task.workflowId,
+      targetType: isAgent ? "agent" : "workflow",
+      agentId: isAgent ? (et?.agentId ?? "") : task.workflowId,
+      agentVersionPolicy: et?.versionPolicy === "pinned" ? "pinned"
+        : et?.versionPolicy === "latest_prod_release" ? "latest_prod" : "latest_sandbox",
       versionPolicy: (v?.workflowVersionPolicy ?? task.workflowVersionPolicy) === "pinned" ? "Fixed" : "Latest Published",
-      fixedVersion: v?.pinnedWorkflowVersionId ?? "",
+      fixedVersion: isAgent ? (et?.pinnedAgentVersionId ?? "") : (v?.pinnedWorkflowVersionId ?? ""),
       assetId: v?.dataAssetId ?? task.dataAssetId,
       definitionVersionId: v?.dataDefinitionVersionId ?? "",
       ruleVersionId: v?.resultRuleVersionId ?? "",
@@ -70,6 +77,8 @@ export default function TaskEditPage() {
 
       <div className="space-y-6 rounded-lg border bg-card p-5">
         <BasicTaskFields form={form} onChange={setForm} />
+        <Separator />
+        <TargetTaskFields form={form} onChange={setForm} />
         <Separator />
         <DataTaskFields form={form} onChange={setForm} />
         <Separator />

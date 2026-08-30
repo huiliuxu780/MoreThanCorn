@@ -80,6 +80,8 @@ export function App() {
 
           {/* 配置管理：Agents */}
           <Route path="/config/agents" element={<WfAgentsPage />} />
+          {/* R8-UI：agent 视角 Run Detail（测试面板试运行可达） */}
+          <Route path="/config/agents/:agentId/runs/:runId" element={<RunDetailPage />} />
           <Route path="/config/agents/:agentId" element={<WfAgentEditorPage />} />
 
           {/* 配置管理：工作流 */}

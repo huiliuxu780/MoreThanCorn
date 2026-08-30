@@ -47,3 +47,22 @@
 3. 预览调试首期=发样例输入→结构化输出+调用记录（无流式打字机）。
 4. 发布对话框灰度比例**两类 Provider 都展示**（DSH 默认 0 且提示"实验通道"）。
 5. Run Detail 阶段表中文文案：识别/计划/执行/屏障/总结（两 Provider 统一）。
+
+## 7. 交互确认记录（08-30 逐屏过原型，R8-UI 开工依据）
+
+确认方式：三份原型渲染 10 张截图（scripts/shot-prototypes.mjs → /tmp/proto-shots/），逐屏与代码现状对账。回滚快照 `snapshot/pre-r8-ui-20260830`。验收清单 `acceptance/11-r8-ui-acceptance.md`。
+
+| 屏 | 结论 |
+| --- | --- |
+| ① Catalog | R4 已实现（列表+Module/封存徽标+封存筛选+创建对话框含选 Module/基本信息/模型/Spec 知会），本轮不动 |
+| ② Providers | 本轮新建，放资源中心新 Tab（§6-2 默认）。列表列=名称/Kind/Endpoint/Contract/健康(真探测+时间)/状态；行操作 探测｜停用｜编辑（停用后徽标"已停用，历史可查"）；注册/编辑抽屉凭据仅引用 Connection 下拉、config 禁密钥；停用=admin+审计（后端 R1 已备）；capabilities probe 后只读 |
+| ③ RunDetail | 本轮增强。run 维度 `/api/runs/{id}` 双视角复用 + 新增 agent 视角路由 `/config/agents/:agentId/runs/:runId`（测试面板试运行可达）。三卡（执行目标/Runtime 版本束/耗时 Token）+ 阶段表（中文文案 §6-5）+ CallRecord 表（详情脱敏）+ 派生质检卡（仅产 QualityResult 的目标展示，标注"规则派生，非 Agent 给分"+复核状态）+ evidence |
+| ④ 任务向导 | 本轮插入「执行目标」步：Workflow（现状保位）/领域 Agent 二选一；Agent 仅列 Module，无发布版本草稿禁选并示原因；版本策略三选（默认最新沙箱发布 §6-1），钉住列版本+hash 前 8；数据步在 Agent 目标下=输入映射（R7-3 必填校验，422 中文展示）；确认页用服务端返回 taskVersion 快照渲染冻结值（09 §5.2 既有机制）；edit 页 executionTarget 往返保真 |
+| ⑤ 配置页 | 现状三 Tab（概览/运行观测/版本）**保持并增强**——R4 验收（08-30）已确认该 IA，优先于 §2 四 Tab 与 §5-1 六 Tab 的早期记录；六 Tab 信息收进编号分区卡（1 身份可编辑/2 模型可选/3 指令只读+业务定位/4 资源冻结 2×2）。头部加 Draft vs Last-published 对照卡+对比按钮（复用 agent-version-diff）。右测试面板：环境=Release 绑定选择，草稿预览须显式 Provider（§5-3）；运行→结构化输出+工具调用/Trace 折叠+usage 行，无流式（§6-3）。发布对话框维持 R4 |
+
+壳与导航：用平台现有浅色 rail 导航（v2 同），**不实现 v3 的 AgentHub 深色导航**——参考图形态让位于平台一致性（用户常设要求）。
+效果评测：本轮**不建占位 Tab**（零假路径），待评测功能落地再加。
+
+自主决策登记（08-30 用户离线，AskUserQuestion 未应答，按 §6"如无异议即按此开发"默认值推进，改口随时调）：
+1. Tab 体系=三 Tab 增强（理由：R4 验收为最新信号；零假路径；平台 IA 一致）。
+2. Providers=资源中心新 Tab（§6-2 默认值）。

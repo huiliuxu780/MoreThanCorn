@@ -44,7 +44,8 @@ for (const p of walk(SRC)) {
 }
 
 // 台账：components/wf 只允许登记文件（新增须先更新 SDD §6.2 与本清单）
-const WF_ALLOWED = new Set(["controls.tsx", "sections.tsx", "field-controls.tsx", "form-renderer.tsx"]);
+// wf-icons.tsx：9d70647 工作流自有图标组（10 色 lucide），用户验收后补登记（R8-UI 清债）
+const WF_ALLOWED = new Set(["controls.tsx", "sections.tsx", "field-controls.tsx", "form-renderer.tsx", "wf-icons.tsx"]);
 const wfDir = join(SRC, "components/wf");
 const wfFiles = existsSync(wfDir) ? readdirSync(wfDir).filter((f) => f.endsWith(".tsx")) : [];
 const ledgerViol = wfFiles.filter((f) => !WF_ALLOWED.has(f));

@@ -24,6 +24,9 @@ def append_provider_events(db: Session, run, trace: list[TraceEvent], snapshot: 
             payload["name"] = event.name
         if event.error is not None:
             payload["error"] = {"code": str(event.error.code), "message": event.error.message}
+        # R8-UI：阶段语义透传（Provider metadata.workflow_stage），RunDetail 阶段表按此聚合
+        if isinstance(event.metadata, dict) and event.metadata.get("workflow_stage"):
+            payload["workflowStage"] = str(event.metadata["workflow_stage"])
         emit(db, run.id, "runtime_trace", payload=payload)
         snapshot["lastTraceSequence"] = event.sequence
         added += 1

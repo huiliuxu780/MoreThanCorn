@@ -54,12 +54,16 @@ describe("task-mapper（09 P0-B4 契约：表单 → §10.1 结构化提交体�
     expect(latest.workflowId).toBeUndefined()
     expect(latest.workflowVersionPolicy).toBeUndefined()
 
+    // R8-UI：Agent 钉住走三选策略 agentVersionPolicy（不再复用 workflow 的 versionPolicy）
     const fixed = buildTaskPayload(base({
-      targetType: "agent", agentId: "agent_1", versionPolicy: "Fixed", fixedVersion: "av_9",
+      targetType: "agent", agentId: "agent_1", agentVersionPolicy: "pinned", fixedVersion: "av_9",
     }))
     expect(fixed.executionTarget).toEqual({
       type: "agent", agentId: "agent_1", versionPolicy: "pinned", pinnedAgentVersionId: "av_9",
     })
+
+    const prod = buildTaskPayload(base({ targetType: "agent", agentId: "agent_1", agentVersionPolicy: "latest_prod" }))
+    expect(prod.executionTarget).toMatchObject({ type: "agent", versionPolicy: "latest_prod_release" })
   })
 
   it("随机抽样映射为 random/percent", () => {

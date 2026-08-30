@@ -13,6 +13,7 @@ import {
   emptyTaskForm,
   mappingIssues,
   StrategyTaskFields,
+  TargetTaskFields,
   type TaskFormState,
 } from "@/components/tasks/task-form-sections"
 import { cn } from "@/lib/utils"
@@ -20,7 +21,8 @@ import { buildTaskPayload, buildTaskSchedule, samplingLabelOf, windowLabelOf } f
 import { bizApi } from "@/services/wf-api"
 import type { TaskVersionDTO } from "@/services/api-types"
 
-const STEPS = ["基本设置", "分析数据", "执行策略", "确认并创建"] as const
+/* R8-UI（11 §7-④ / 原型 v1-④）：插入「执行目标」步 */
+const STEPS = ["基本设置", "执行目标", "分析数据", "执行策略", "确认并创建"] as const
 
 export default function TaskWizardPage() {
   const navigate = useNavigate()
@@ -37,7 +39,10 @@ export default function TaskWizardPage() {
   }, [form])
 
   const stepValid = [
-    form.name.trim().length > 0 && form.agentId !== "" && (form.versionPolicy === "Latest Published" || form.fixedVersion !== ""),
+    form.name.trim().length > 0,
+    form.agentId !== "" && (form.targetType === "agent"
+      ? (form.agentVersionPolicy !== "pinned" || form.fixedVersion !== "")
+      : (form.versionPolicy === "Latest Published" || form.fixedVersion !== "")),
     form.assetId !== "" && mappingOk,
     form.scheduleType === "一次性" ? form.dataWindowStart !== "" && form.dataWindowEnd !== "" : true,
     true,
@@ -85,7 +90,8 @@ export default function TaskWizardPage() {
 
       <div className="rounded-lg border bg-card p-5">
         {step === 0 ? <BasicTaskFields form={form} onChange={setForm} /> : null}
-        {step === 1 ? (
+        {step === 1 ? <TargetTaskFields form={form} onChange={setForm} /> : null}
+        {step === 2 ? (
           <DataTaskFields
             form={form}
             onChange={(next) => {
@@ -94,12 +100,19 @@ export default function TaskWizardPage() {
             }}
           />
         ) : null}
-        {step === 2 ? <StrategyTaskFields form={form} onChange={setForm} /> : null}
-        {step === 3 ? (
+        {step === 3 ? <StrategyTaskFields form={form} onChange={setForm} /> : null}
+        {step === 4 ? (
           <div className="space-y-1 text-sm">
             <p className="mb-3 text-muted-foreground">该任务将：</p>
+            <DefinitionRow label="执行目标">
+              {form.targetType === "agent"
+                ? `领域 Agent · ${agentOf(form)?.name ?? "—"} · ${form.agentVersionPolicy === "pinned" ? `钉住 ${(form.fixedVersion || "").slice(0, 8)}` : form.agentVersionPolicy === "latest_prod" ? "最新线上发布" : "最新沙箱发布"}`
+                : `工作流 · ${agentOf(form)?.name ?? "—"} · ${form.versionPolicy === "Latest Published" ? "Latest Published" : `Fixed ${(form.fixedVersion || "").slice(0, 8)}`}`}
+            </DefinitionRow>
             <DefinitionRow label="使用">
-              {agentOf(form)?.name ?? "—"} · {form.versionPolicy === "Latest Published" ? "Latest Published" : `Fixed ${(form.fixedVersion || "").slice(0, 8)}`}
+              {agentOf(form)?.name ?? "—"} · {form.targetType === "agent"
+                ? (form.agentVersionPolicy === "pinned" ? `钉住 ${(form.fixedVersion || "").slice(0, 8)}` : form.agentVersionPolicy === "latest_prod" ? "最新线上发布" : "最新沙箱发布")
+                : (form.versionPolicy === "Latest Published" ? "Latest Published" : `Fixed ${(form.fixedVersion || "").slice(0, 8)}`)}
             </DefinitionRow>
             <DefinitionRow label="分析">
               {assetOf(form)?.name ?? "—"} 中符合 Eligibility 的数据
@@ -123,7 +136,7 @@ export default function TaskWizardPage() {
         <Button variant="outline" disabled={step === 0} onClick={() => setStep((s) => s - 1)}>
           上一步
         </Button>
-        {step < 3 ? (
+        {step < 4 ? (
           <Button disabled={!stepValid} onClick={() => setStep((s) => s + 1)}>
             下一步 <ArrowRight className="size-4" />
           </Button>

@@ -2,6 +2,7 @@
  *  R-Archive（SDD 10）：旧 Agent 封存后本组面板全部只读——
  *  移除添加样本/运行评测/人评/进化候选生成与应用等写入口，保留历史查看。 */
 import { useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { agentApi, runEventsList } from "@/services/wf-api"
@@ -10,6 +11,7 @@ const INK = "#1F2329"; const INK2 = "#5A6472"; const INK3 = "#B9C2CF"; const CAR
 
 /* ---------- 运行观测 ---------- */
 export function AgentRunsPanel({ agentId }: { agentId: string }) {
+  const navigate = useNavigate()
   const [metrics, setMetrics] = useState<{ total: number; succeeded: number; failed: number; successRate: number; avgDurationMs: number; maxDurationMs: number; totalTokens?: number; firstToken?: { avgMs: number | null; p50Ms: number | null; samples: number } } | null>(null)
   const [runs, setRuns] = useState<{ runId: string; status: string; trigger: string; startedAt: string | null; durationMs: number | null; error?: { message?: string } | null }[]>([])
   const [selected, setSelected] = useState<string | null>(null)
@@ -64,7 +66,12 @@ export function AgentRunsPanel({ agentId }: { agentId: string }) {
       </div>
       {selected && (
         <div className="rounded-lg border bg-white p-4" style={{ borderColor: CARD }}>
-          <div className="pb-2 text-[13px] font-medium" style={{ color: INK }}>事件时间线（span 按 run 聚合）</div>
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-[13px] font-medium" style={{ color: INK }}>事件时间线（span 按 run 聚合）</span>
+            {/* R8-UI：跳转 agent 视角 Run Detail（三卡/阶段/CallRecord/质检卡） */}
+            <Button variant="outline" size="sm" className="h-7 text-xs"
+              onClick={() => navigate(`/config/agents/${agentId}/runs/${selected}`)}>Run 详情 ↗</Button>
+          </div>
           <div className="space-y-1">
             {events.map((e, i) => (
               <div key={i} className="flex items-start gap-2 text-[11px]">

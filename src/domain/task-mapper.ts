@@ -23,8 +23,11 @@ export function windowLabelOf(form: TaskFormState): string {
 /** 表单 → 结构化提交体（09 §10.1 / R7-1）。所有公开字段进入请求，不静默丢弃。 */
 export function buildTaskPayload(form: TaskFormState): CreateTaskPayload {
   const isAgent = form.targetType === "agent"
-  const policy = form.versionPolicy === "Fixed" ? "pinned"
-    : isAgent ? "latest_sandbox_release" : "latest_published"
+  // R8-UI：Agent 三选策略（默认最新沙箱发布）；Workflow 维持二选
+  const policy = isAgent
+    ? (form.agentVersionPolicy === "pinned" ? "pinned"
+      : form.agentVersionPolicy === "latest_prod" ? "latest_prod_release" : "latest_sandbox_release")
+    : (form.versionPolicy === "Fixed" ? "pinned" : "latest_published")
   const payload: CreateTaskPayload = {
     name: form.name.trim(),
     description: form.description,
@@ -58,7 +61,7 @@ export function buildTaskPayload(form: TaskFormState): CreateTaskPayload {
   if (isAgent) {
     payload.executionTarget = {
       type: "agent", agentId: form.agentId, versionPolicy: policy,
-      pinnedAgentVersionId: form.versionPolicy === "Fixed" ? form.fixedVersion : null,
+      pinnedAgentVersionId: form.agentVersionPolicy === "pinned" ? form.fixedVersion : null,
     }
   } else {
     payload.workflowId = form.agentId
@@ -101,8 +104,16 @@ export function taskVersionSummary(v: TaskVersionDTO): { label: string; value: s
     : v.dataWindow?.mode === "fixed" ? `${v.dataWindow.start ?? ""} → ${v.dataWindow.end ?? ""}`
     : "全量"
   const conds: { field: string; op: string; value: unknown }[] = v.scope?.conditions ?? []
+  // R8-UI：确认页展示统一执行目标冻结值（服务端快照，非本地提交态）
+  const et = v.executionTarget
+  const etLabel = et?.type === "agent"
+    ? `领域 Agent · ${et.versionPolicy === "pinned"
+      ? `钉住 ${(et.pinnedAgentVersionId ?? "").slice(0, 8) || "?"}`
+      : et.versionPolicy === "latest_prod_release" ? "最新线上发布" : "最新沙箱发布"}`
+    : `工作流 · ${policy}`
   return [
     { label: "配置版本", value: `V${v.versionNo}` },
+    { label: "执行目标", value: etLabel },
     { label: "版本策略", value: policy },
     { label: "输入映射", value: Object.keys(v.inputMapping ?? {}).length ? Object.entries(v.inputMapping).map(([k, s]) => `${k}←${s}`).join("；") : "默认同名" },
     { label: "范围", value: conds.length ? conds.map((c) => `${c.field} ${c.op} ${String(c.value)}`).join(" 且 ") : "全部" },

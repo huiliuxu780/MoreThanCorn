@@ -157,7 +157,7 @@ export const wfApi = {
   migrate: (wid: string) => req<{ migrated: boolean; draftRevision: number }>(`/api/workflows/${wid}/migrate`, { method: "POST" }),
   resume: (rid: string, payload: Record<string, unknown>) =>
     req<{ status: string; nodeId: string }>(`/api/runs/${rid}/resume`, { method: "POST", body: JSON.stringify(payload) }),
-  models: () => req<{ modelKey: string; capabilities: string[] }[]>("/api/registry/models"),
+  models: () => req<{ items: { modelKey: string; capabilities: string[] }[] }>("/api/registry/models").then((r) => r.items ?? []),
 }
 
 export const wfEnabled = () => import.meta.env.VITE_WF_API === "1"
@@ -260,9 +260,36 @@ interface RunDetailRaw {
     nodeRunId: string; nodeId: string; nodeType: string; status: string
     durationMs: number | null; attempt?: number; error?: { message?: string } | null
   }[]
+  /* R8-UI：Agent Run 增强块（SDD 10 §15.4 / 11 §7-③） */
+  runtime?: {
+    providerId?: string | null; provider?: string | null; runtimeVersion?: string | null
+    adapterVersion?: string | null; contractVersion?: string | null
+    moduleImplementationVersion?: string | null; module?: { key: string; version: string } | null
+  } | null
+  stages?: { sequence: number; stage: string; name?: string | null; events?: number; durationMs?: number | null }[]
+  calls?: {
+    kind: string; targetType?: string | null; targetId?: string | null; status?: string | null
+    latencyMs?: number | null; tokenUsage?: Record<string, unknown> | null; request?: Record<string, unknown> | null
+  }[]
+  usage?: Record<string, unknown>
+  evidence?: { kind?: string; locator?: string | Record<string, unknown>; text?: string; sourceRef?: string }[]
+  quality?: {
+    id: string; score: number | null; risk: string | null; critical?: boolean
+    issueSummary?: string | null; review?: string | null; structuredOutput?: Record<string, unknown>
+  } | null
 }
 
-export async function realRunDetail(runId: string): Promise<{ run: Run; executions: { items: InteractionExecution[]; total: number; page: number; pageSize: number } }> {
+/** R8-UI：Agent Run 增强块透传（RunDetail 三卡/阶段表/CallRecord/派生质检卡）。 */
+export interface AgentRunExtras {
+  runtime: NonNullable<RunDetailRaw["runtime"]> | null
+  stages: NonNullable<RunDetailRaw["stages"]>
+  calls: NonNullable<RunDetailRaw["calls"]>
+  usage: Record<string, unknown>
+  evidence: NonNullable<RunDetailRaw["evidence"]>
+  quality: NonNullable<RunDetailRaw["quality"]> | null
+}
+
+export async function realRunDetail(runId: string): Promise<{ run: Run; executions: { items: InteractionExecution[]; total: number; page: number; pageSize: number }; agent: AgentRunExtras | null }> {
   const d = await req<RunDetailRaw>(`/api/runs/${runId}`)
   const nodeRuns = d.nodeRuns ?? []
   // 09 P0-08：任务主链 Run 用真实 TaskRun/DataSnapshot 填充，不再占位
@@ -321,7 +348,17 @@ export async function realRunDetail(runId: string): Promise<{ run: Run; executio
     duration: n.durationMs != null ? `${n.durationMs}ms` : undefined,
     errorType: n.error?.message, attempts: [{ no: n.attempt ?? 1, status: EX_STATUS[n.status] ?? "SKIPPED", error: n.error?.message }],
   }))
-  return { run, executions: { items: executions, total: executions.length, page: 1, pageSize: 50 } }
+  const agent: AgentRunExtras | null = d.runtime || (d.stages ?? []).length || (d.calls ?? []).length || d.quality
+    ? {
+      runtime: d.runtime ?? null,
+      stages: d.stages ?? [],
+      calls: d.calls ?? [],
+      usage: d.usage ?? {},
+      evidence: d.evidence ?? [],
+      quality: d.quality ?? null,
+    }
+    : null
+  return { run, executions: { items: executions, total: executions.length, page: 1, pageSize: 50 }, agent }
 }
 
 export interface Paged<T> { items: T[]; total: number; page: number; pageSize: number }
@@ -459,6 +496,33 @@ export const agentApi = {
   /* ---------- SDD D-3：进化（只读历史） ---------- */
   evolutionList: (id: string) =>
     req<{ id: string; attribution: string; reason: string; status: string; createdAt: string }[]>(`/api/agents/${id}/evolution`),
+}
+
+/* ---------- R8-UI：Runtime Providers 管理（SDD 10 §15.1 / 11 §7-②） ----------
+ * 凭据仅经 connectionId 引用 Connection；config 禁密钥（服务端 422 兜底）；
+ * RBAC：写=operator，disable=admin（前端门控+服务端强制）。 */
+export interface RuntimeProviderDTO {
+  id: string; name: string; kind: string; baseUrl: string; status: string
+  contractVersion: string; capabilities: Record<string, unknown>
+  healthStatus: string | null; lastHealthAt: string | null; connectionId: string | null
+  createdAt: string
+  config?: Record<string, unknown>
+  compatibleModules?: { key: string; version: string; implementation: unknown }[]
+}
+export const runtimeProviderApi = {
+  list: () => req<{ items: RuntimeProviderDTO[]; total: number }>("/api/runtime-providers"),
+  get: (id: string) => req<RuntimeProviderDTO>(`/api/runtime-providers/${id}`),
+  create: (body: Record<string, unknown>) =>
+    req<RuntimeProviderDTO>("/api/runtime-providers", { method: "POST", body: JSON.stringify(body) }),
+  update: (id: string, body: Record<string, unknown>) =>
+    req<RuntimeProviderDTO>(`/api/runtime-providers/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  probe: (id: string) =>
+    req<{ ok?: boolean; healthStatus?: string; capabilities?: Record<string, unknown> }>(
+      `/api/runtime-providers/${id}/probe`, { method: "POST" }),
+  disable: (id: string) =>
+    req<RuntimeProviderDTO>(`/api/runtime-providers/${id}/disable`, { method: "POST" }),
+  enable: (id: string) =>
+    req<RuntimeProviderDTO>(`/api/runtime-providers/${id}`, { method: "PUT", body: JSON.stringify({ status: "enabled" }) }),
 }
 
 /** SSE 事件流消费（SDD B-08 / 09 P0-13）：fetch + ReadableStream 解析。

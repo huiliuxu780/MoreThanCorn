@@ -50,6 +50,14 @@ function loadCatalog() {
         versions: [],
       } as unknown as AgentDetail)
     }
+    // R8-UI：钉住版本策略需要真实版本列表+artifactHash 前 8 位
+    await Promise.all(out.map(async (d) => {
+      const vs = await agentApi.versions(d.id).catch(() => [])
+      d.versions = vs.map((v) => ({
+        version: `v${v.versionNo}`, status: "Published" as const, versionId: v.versionId,
+        publishedAt: v.createdAt, artifactHash: v.artifactHash,
+      } as unknown as AgentDetail["versions"][number] & { artifactHash?: string }))
+    }))
     agents = [...out, ...agents.filter((x) => !(x as { moduleKey?: string }).moduleKey)]
     for (const a of agents) agentDetails[a.id] = a
     subs.forEach((f) => f())
@@ -110,6 +118,8 @@ export interface TaskFormState {
   /** 09 P0-02：任务直接绑定 Workflow（历史命名沿用字段名，语义=工作流） */
   agentId: string
   versionPolicy: "Latest Published" | "Fixed"
+  /** R8-UI（11 §7-④ / §6-1）：Agent 版本策略三选，默认最新沙箱发布 */
+  agentVersionPolicy: "latest_sandbox" | "latest_prod" | "pinned"
   /** Fixed 策略选中的工作流版本 ID（pinnedWorkflowVersionId） */
   fixedVersion: string
   assetId: string
@@ -138,6 +148,7 @@ export const emptyTaskForm: TaskFormState = {
   targetType: "agent",
   agentId: "",
   versionPolicy: "Latest Published",
+  agentVersionPolicy: "latest_sandbox",
   fixedVersion: "",
   assetId: "",
   definitionId: "",
@@ -222,59 +233,143 @@ export function BasicTaskFields({
       <FormField label="描述">
         <Textarea value={form.description} className="min-h-16" placeholder="任务用途说明（可选）" onChange={(e) => set({ description: e.target.value })} />
       </FormField>
-      <FormField label="执行目标（默认 Module Agent）" required>
-        <Select
-          value={form.agentId || undefined}
-          onValueChange={(agentId) => {
-            const agent = (agentDetails[agentId] ?? null) as (AgentDetail & { moduleKey?: string }) | null
-            onChange({ ...form, agentId,
-              targetType: agent?.moduleKey ? "agent" : "workflow",
-              mapping: autoMapping(agent, assetOf(form)) })
-          }}
-        >
-          <SelectTrigger><SelectValue placeholder="选择 Module Agent / 工作流" /></SelectTrigger>
+    </div>
+  )
+}
+
+/** R8-UI（11 §7-④ / 原型 v1-④）：执行目标步——Workflow 保位 / 领域 Agent 二选一；
+ *  Agent 仅列 Module，无发布版本草稿禁选并示原因；版本策略三选（默认最新沙箱发布）。 */
+export function TargetTaskFields({
+  form,
+  onChange,
+}: {
+  form: TaskFormState
+  onChange: (next: TaskFormState) => void
+}) {
+  useCatalog()
+  const set = (patch: Partial<TaskFormState>) => onChange({ ...form, ...patch })
+  const isAgent = form.targetType === "agent"
+  const moduleAgents = agents.filter((a) => (a as { moduleKey?: string }).moduleKey)
+  const workflows = agents.filter((a) => !(a as { moduleKey?: string }).moduleKey)
+  const list = isAgent ? moduleAgents : workflows
+  const pick = (agentId: string) => {
+    const agent = (agentDetails[agentId] ?? null) as (AgentDetail & { moduleKey?: string }) | null
+    onChange({ ...form, agentId, mapping: autoMapping(agent, assetOf(form)) })
+  }
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">执行目标类型</Label>
+        <div className="grid grid-cols-2 gap-3">
+          <button type="button"
+            className={`rounded-lg border px-3 py-2.5 text-left ${!isAgent ? "border-primary bg-primary/5" : ""}`}
+            onClick={() => onChange({ ...form, targetType: "workflow", agentId: "", fixedVersion: "" })}>
+            <div className="text-sm font-medium">工作流 Workflow</div>
+            <p className="pt-0.5 text-xs text-muted-foreground">选择工作流与版本策略（现状能力）</p>
+          </button>
+          <button type="button"
+            className={`rounded-lg border px-3 py-2.5 text-left ${isAgent ? "border-primary bg-primary/5" : ""}`}
+            onClick={() => onChange({ ...form, targetType: "agent", agentId: "", fixedVersion: "" })}>
+            <div className="text-sm font-medium">领域 Agent</div>
+            <p className="pt-0.5 text-xs text-muted-foreground">直接对 Agent 跑质检（无需编排工作流）</p>
+          </button>
+        </div>
+      </div>
+
+      <FormField label={isAgent ? "选择 Agent（仅列 Module Agent；旧三类不可选）" : "选择工作流"} required>
+        <Select value={form.agentId || undefined} onValueChange={pick}>
+          <SelectTrigger><SelectValue placeholder={isAgent ? "选择 Module Agent" : "选择工作流"} /></SelectTrigger>
           <SelectContent>
-            {agents.filter((a) => a.status !== "Deprecated").map((a) => (
-              <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-            ))}
+            {list.map((a) => {
+              const noPub = isAgent && a.status !== "Published"
+              return (
+                <SelectItem key={a.id} value={a.id} disabled={noPub}>
+                  {a.name}{noPub ? "（草稿：无发布版本，不可选）" : ""}
+                </SelectItem>
+              )
+            })}
           </SelectContent>
         </Select>
       </FormField>
+
       <div className="space-y-2">
-        <Label className="text-sm font-medium">Agent Version Policy</Label>
-        <RadioGroup
-          value={form.versionPolicy}
-          onValueChange={(v) => set({ versionPolicy: v as TaskFormState["versionPolicy"] })}
-          className="gap-2"
-        >
-          <div className="flex items-start gap-2 rounded-md border px-3 py-2">
-            <RadioGroupItem value="Latest Published" id="vp-latest" />
-            <label htmlFor="vp-latest" className="space-y-0.5 text-sm">
-              <div className="font-medium">Latest Published</div>
-              <p className="text-xs text-muted-foreground">
-                每次创建新 Run 时使用当时最新的 Published Version；已经创建或运行中的 Run 不受后续 Agent 发布影响。
-              </p>
-            </label>
-          </div>
-          <div className="flex items-start gap-2 rounded-md border px-3 py-2">
-            <RadioGroupItem value="Fixed" id="vp-fixed" />
-            <label htmlFor="vp-fixed" className="flex-1 space-y-1 text-sm">
-              <div className="font-medium">Fixed Published Version</div>
-              {form.versionPolicy === "Fixed" ? (
-                <Select value={form.fixedVersion || undefined} onValueChange={(v) => set({ fixedVersion: v })}>
-                  <SelectTrigger className="h-8 w-32"><SelectValue placeholder="固定版本" /></SelectTrigger>
-                  <SelectContent>
-                    {(agentOf(form)?.versions ?? []).filter((v) => v.status === "Published").map((v) => (
-                      <SelectItem key={v.versionId ?? v.version} value={v.versionId ?? v.version}>{v.version}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <p className="text-xs text-muted-foreground">锁定某个已发布版本，不随发布变化。</p>
-              )}
-            </label>
-          </div>
-        </RadioGroup>
+        <Label className="text-sm font-medium">{isAgent ? "Agent 版本策略" : "工作流版本策略"}</Label>
+        {isAgent ? (
+          <RadioGroup
+            value={form.agentVersionPolicy}
+            onValueChange={(v) => set({ agentVersionPolicy: v as TaskFormState["agentVersionPolicy"] })}
+            className="gap-2"
+          >
+            <div className="flex items-start gap-2 rounded-md border px-3 py-2">
+              <RadioGroupItem value="latest_sandbox" id="avp-sandbox" />
+              <label htmlFor="avp-sandbox" className="space-y-0.5 text-sm">
+                <div className="font-medium">最新沙箱发布（默认）</div>
+                <p className="text-xs text-muted-foreground">批次启动即冻结；批次期间新发布不影响已开始批次（重试亦不漂移）。</p>
+              </label>
+            </div>
+            <div className="flex items-start gap-2 rounded-md border px-3 py-2">
+              <RadioGroupItem value="latest_prod" id="avp-prod" />
+              <label htmlFor="avp-prod" className="space-y-0.5 text-sm">
+                <div className="font-medium">最新线上发布</div>
+                <p className="text-xs text-muted-foreground">使用当前线上生效版本。</p>
+              </label>
+            </div>
+            <div className="flex items-start gap-2 rounded-md border px-3 py-2">
+              <RadioGroupItem value="pinned" id="avp-pinned" />
+              <label htmlFor="avp-pinned" className="flex-1 space-y-1 text-sm">
+                <div className="font-medium">钉住版本</div>
+                {form.agentVersionPolicy === "pinned" ? (
+                  <Select value={form.fixedVersion || undefined} onValueChange={(v) => set({ fixedVersion: v })}>
+                    <SelectTrigger className="h-8 w-56"><SelectValue placeholder="选择版本" /></SelectTrigger>
+                    <SelectContent>
+                      {(agentOf(form)?.versions ?? []).filter((v) => v.status === "Published").map((v) => (
+                        <SelectItem key={v.versionId ?? v.version} value={v.versionId ?? v.version}>
+                          {v.version}{(v as { artifactHash?: string }).artifactHash ? ` · ${(v as { artifactHash?: string }).artifactHash!.slice(0, 8)}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="text-xs text-muted-foreground">下拉列该 Agent 版本 + artifactHash 前 8 位。</p>
+                )}
+              </label>
+            </div>
+          </RadioGroup>
+        ) : (
+          <RadioGroup
+            value={form.versionPolicy}
+            onValueChange={(v) => set({ versionPolicy: v as TaskFormState["versionPolicy"] })}
+            className="gap-2"
+          >
+            <div className="flex items-start gap-2 rounded-md border px-3 py-2">
+              <RadioGroupItem value="Latest Published" id="vp-latest" />
+              <label htmlFor="vp-latest" className="space-y-0.5 text-sm">
+                <div className="font-medium">Latest Published</div>
+                <p className="text-xs text-muted-foreground">
+                  每次创建新 Run 时使用当时最新的 Published Version；已经创建或运行中的 Run 不受后续发布影响。
+                </p>
+              </label>
+            </div>
+            <div className="flex items-start gap-2 rounded-md border px-3 py-2">
+              <RadioGroupItem value="Fixed" id="vp-fixed" />
+              <label htmlFor="vp-fixed" className="flex-1 space-y-1 text-sm">
+                <div className="font-medium">Fixed Published Version</div>
+                {form.versionPolicy === "Fixed" ? (
+                  <Select value={form.fixedVersion || undefined} onValueChange={(v) => set({ fixedVersion: v })}>
+                    <SelectTrigger className="h-8 w-32"><SelectValue placeholder="固定版本" /></SelectTrigger>
+                    <SelectContent>
+                      {(agentOf(form)?.versions ?? []).filter((v) => v.status === "Published").map((v) => (
+                        <SelectItem key={v.versionId ?? v.version} value={v.versionId ?? v.version}>{v.version}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="text-xs text-muted-foreground">锁定某个已发布版本，不随发布变化。</p>
+                )}
+              </label>
+            </div>
+          </RadioGroup>
+        )}
       </div>
     </div>
   )

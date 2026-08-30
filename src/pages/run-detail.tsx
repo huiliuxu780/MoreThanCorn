@@ -46,13 +46,23 @@ import { useAsyncData } from "@/hooks/use-async-data"
 import { useListQuery } from "@/hooks/use-list-query"
 import { formatDateTime } from "@/lib/time"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
-import { realRunDetail, runCancel, runEventsList, runRetry, runTrace, wfApi } from "@/services/wf-api"
+import { realRunDetail, runCancel, runEventsList, runRetry, runTrace, wfApi, type AgentRunExtras } from "@/services/wf-api"
 import type { InteractionExecution } from "@/domain/types"
 
+/** R8-UI（11 §6-5）：阶段中文文案，两 Provider 统一。 */
+const STAGE_ZH: Record<string, string> = {
+  identify: "识别", plan: "计划", execute: "执行", barrier: "屏障", synthesize: "总结",
+}
+
+/** R8-UI：双视角路由——任务视角 /config/tasks/:taskId/runs/:runId 与
+ *  agent 视角 /config/agents/:agentId/runs/:runId（测试面板试运行可达）。 */
 export default function RunDetailPage() {
-  const { taskId = "", runId = "" } = useParams()
+  const { taskId = "", runId = "", agentId = "" } = useParams()
   const navigate = useNavigate()
-  const { data: run, loading, error, retry } = useAsyncData(() => realRunDetail(runId).then((r) => r.run), [runId])
+  const { data: detail, loading, error, retry } = useAsyncData(() => realRunDetail(runId), [runId])
+  const run = detail?.run ?? null
+  const agentExtras = detail?.agent ?? null
+  const runPath = (rid: string) => agentId ? `/config/agents/${agentId}/runs/${rid}` : `/config/tasks/${taskId}/runs/${rid}`
   const { params, update } = useListQuery(50)
   const filters = useMemo(() => parseListFilters(params.filters), [params.filters])
   const [events, setEvents] = useState<TraceEvent[]>([])
@@ -90,6 +100,8 @@ export default function RunDetailPage() {
   const [rerunOpen, setRerunOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [selectedExecution, setSelectedExecution] = useState<InteractionExecution | null>(null)
+  // R8-UI：CallRecord 脱敏详情
+  const [callDetail, setCallDetail] = useState<NonNullable<AgentRunExtras["calls"]>[number] | null>(null)
 
   if (error) return <PageContainer><ErrorState title="Run 加载失败" onRetry={retry} /></PageContainer>
   if (loading || !run) return <PageContainer><TableSkeleton rows={8} columns={6} /></PageContainer>
@@ -99,8 +111,9 @@ export default function RunDetailPage() {
   return (
     <PageContainer wide className="space-y-5">
       <div>
-        <Button variant="ghost" size="sm" className="gap-1 px-2" onClick={() => navigate(`/config/tasks/${taskId}`)}>
-          <ArrowLeft className="size-4" /> {run.taskName}
+        <Button variant="ghost" size="sm" className="gap-1 px-2"
+          onClick={() => navigate(agentId ? "/config/agents" : `/config/tasks/${taskId}`)}>
+          <ArrowLeft className="size-4" /> {agentId ? "返回 Agents" : run.taskName}
         </Button>
         <PageHeader
           className="mt-2"
@@ -169,7 +182,7 @@ export default function RunDetailPage() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(run.id); toast.success("已复制 Run ID") }}>复制 Run ID</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate(`/config/tasks/${taskId}`)}>查看 Task</DropdownMenuItem>
+                  {!agentId && <DropdownMenuItem onClick={() => navigate(`/config/tasks/${taskId}`)}>查看 Task</DropdownMenuItem>}
                   <DropdownMenuItem onClick={() => setTab("trace")}>查看运行 Trace</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -182,14 +195,14 @@ export default function RunDetailPage() {
             <span>重试谱系：</span>
             {run.originRunId && (
               <button className="rounded border px-1.5 py-0.5 hover:bg-muted"
-                onClick={() => navigate(`/config/tasks/${taskId}/runs/${run.originRunId}`)}>
+                onClick={() => navigate(runPath(run.originRunId!))}>
                 ← 源自 #{run.originRunId.slice(0, 8)}
               </button>
             )}
             <span className="rounded border px-1.5 py-0.5">#{run.id.slice(0, 8)}</span>
             {(run.retryChildren ?? []).map((c) => (
               <button key={c.runId} className="rounded border px-1.5 py-0.5 hover:bg-muted"
-                onClick={() => navigate(`/config/tasks/${taskId}/runs/${c.runId}`)}>
+                onClick={() => navigate(runPath(c.runId))}>
                 重试 → #{c.runId.slice(0, 8)}（{c.status}）
               </button>
             ))}
@@ -243,6 +256,146 @@ export default function RunDetailPage() {
           <div className="mt-1 text-xl font-semibold tabular-nums">{trace ? trace.modelCalls : "—"}</div>
         </div>
       </div>
+
+      {/* R8-UI：Agent Run 增强（11 §7-③，仅 Agent Run 有数据时展示，不造假） */}
+      {agentExtras && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="rounded-lg border bg-card px-4 py-3">
+              <div className="text-xs text-muted-foreground">执行目标</div>
+              <div className="mt-1 text-sm font-medium">
+                Agent {run.snapshot.agentVersion !== "-" ? run.snapshot.agentVersion : ""}
+                {agentExtras.runtime?.module ? ` · ${agentExtras.runtime.module.key}@${agentExtras.runtime.module.version}` : ""}
+              </div>
+              <div className="mt-0.5 text-xs text-muted-foreground">来源：{run.taskName}</div>
+            </div>
+            <div className="rounded-lg border bg-card px-4 py-3">
+              <div className="text-xs text-muted-foreground">Runtime</div>
+              <div className="mt-1 text-sm font-medium">{agentExtras.runtime?.provider ?? "—"}</div>
+              <div className="mt-0.5 text-xs text-muted-foreground">
+                runtime {agentExtras.runtime?.runtimeVersion ?? "—"} · adapter {agentExtras.runtime?.adapterVersion ?? "—"} · contract {agentExtras.runtime?.contractVersion ?? "—"} · impl {agentExtras.runtime?.moduleImplementationVersion ?? "—"}
+              </div>
+            </div>
+            <div className="rounded-lg border bg-card px-4 py-3">
+              <div className="text-xs text-muted-foreground">耗时 / Token</div>
+              <div className="mt-1 text-sm font-medium tabular-nums">
+                {run.duration ?? "—"} ｜ total {String(agentExtras.usage?.total ?? "—")}
+              </div>
+              <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                in {String(agentExtras.usage?.input ?? "—")} · out {String(agentExtras.usage?.output ?? "—")}（模型 {String(agentExtras.usage?.modelCalls ?? "—")} 次 / 工具 {String(agentExtras.usage?.toolCalls ?? "—")} 次）
+              </div>
+            </div>
+          </div>
+
+          {agentExtras.stages.length > 0 && (
+            <div className="space-y-2">
+              <SectionHeader title="阶段" description="Provider Trace → CONTROL 事件（按 workflowStage 聚合）" />
+              <TableFrame>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">#</TableHead>
+                      <TableHead>阶段</TableHead>
+                      <TableHead>名称</TableHead>
+                      <TableHead className="text-right">事件</TableHead>
+                      <TableHead className="text-right">耗时</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {agentExtras.stages.map((s) => (
+                      <TableRow key={`${s.stage}-${s.sequence}`}>
+                        <TableCell className="font-mono text-xs text-muted-foreground">{s.sequence}</TableCell>
+                        <TableCell className="text-sm">{STAGE_ZH[s.stage] ?? s.stage}<span className="ml-1 font-mono text-xs text-muted-foreground">{s.stage}</span></TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{s.name ?? "—"}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{s.events ?? 1}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{s.durationMs != null ? `${(s.durationMs / 1000).toFixed(1)}s` : "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableFrame>
+            </div>
+          )}
+
+          {agentExtras.calls.length > 0 && (
+            <div className="space-y-2">
+              <SectionHeader title="调用记录" description="CallRecord，按 run 直查；详情为脱敏 req/resp" />
+              <TableFrame>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Kind</TableHead>
+                      <TableHead>目标</TableHead>
+                      <TableHead className="text-right">Token</TableHead>
+                      <TableHead>状态</TableHead>
+                      <TableHead className="text-right">耗时</TableHead>
+                      <TableHead className="w-16" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {agentExtras.calls.map((c, i) => (
+                      <TableRow key={i}>
+                        <TableCell className="text-sm">{c.kind}</TableCell>
+                        <TableCell className="font-mono text-xs">{c.targetId ?? c.targetType ?? "—"}</TableCell>
+                        <TableCell className="text-right font-mono text-xs tabular-nums">
+                          {c.tokenUsage ? String((c.tokenUsage as { total?: number }).total ?? "—") : "—"}
+                        </TableCell>
+                        <TableCell className="text-sm">{c.status ?? "—"}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{c.latencyMs != null ? `${c.latencyMs}ms` : "—"}</TableCell>
+                        <TableCell>
+                          <Button variant="outline" size="sm" className="h-7" onClick={() => setCallDetail(c)}>详情</Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableFrame>
+            </div>
+          )}
+
+          {agentExtras.quality && (
+            <div className="rounded-lg border bg-card px-4 py-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">质检结果（派生）</span>
+                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">规则派生，非 Agent 给分</span>
+                <span className="ml-auto rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{agentExtras.quality.review ?? "AI"} · 复核</span>
+              </div>
+              <div className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1 text-sm md:grid-cols-2">
+                <div>评分：<b className="tabular-nums">{agentExtras.quality.score ?? "—"}</b> / Risk {agentExtras.quality.risk ?? "—"}</div>
+                {agentExtras.quality.issueSummary && <div className="text-muted-foreground">{agentExtras.quality.issueSummary}</div>}
+              </div>
+              {(() => {
+                // 两 Provider 输出形态兼容：findings（criterion）/ criteria（id）；status 可能为对象
+                const so = (agentExtras.quality?.structuredOutput ?? {}) as {
+                  criteria?: { id?: string; criterion?: string; status?: string | { status?: string }; confidence?: number }[]
+                  findings?: { id?: string; criterion?: string; status?: string | { status?: string }; confidence?: number }[]
+                }
+                const rows = so.findings ?? so.criteria ?? []
+                if (!rows.length) return null
+                return (
+                  <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                    {rows.map((c, i) => (
+                      <div key={i}>
+                        {c.criterion ?? c.id}：{typeof c.status === "string" ? c.status : (c.status?.status ?? JSON.stringify(c.status ?? ""))}
+                        {c.confidence != null ? `（confidence ${c.confidence}）` : ""}
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+              {agentExtras.evidence.length > 0 && (
+                <div className="mt-2 space-y-0.5 border-t pt-2 text-xs" style={{ borderColor: "#EDF0F4" }}>
+                  {agentExtras.evidence.map((ev, i) => (
+                    <div key={i} className="font-mono text-muted-foreground">
+                      {ev.kind ?? "evidence"}:{typeof ev.locator === "string" ? ev.locator : JSON.stringify(ev.locator ?? "")}{ev.text ? `「${ev.text}」` : ""}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Error / Blocked summary */}
       {run.status === "BLOCKED" && run.blockedReason ? (
@@ -512,6 +665,19 @@ export default function RunDetailPage() {
           ) : null}
         </SheetContent>
       </Sheet>
+
+      {/* R8-UI：CallRecord 脱敏详情 */}
+      <Dialog open={callDetail !== null} onOpenChange={(o) => !o && setCallDetail(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>调用详情（{callDetail?.kind} · {callDetail?.targetId ?? callDetail?.targetType ?? ""}）</DialogTitle>
+            <DialogDescription>request 为服务端脱敏后的记录。</DialogDescription>
+          </DialogHeader>
+          <pre className="max-h-96 overflow-auto rounded-md bg-muted/60 p-3 text-[11px] leading-5">
+            {JSON.stringify(callDetail ?? {}, null, 2)}
+          </pre>
+        </DialogContent>
+      </Dialog>
 
       {/* Rerun Dialog */}
       <Dialog open={rerunOpen} onOpenChange={setRerunOpen}>

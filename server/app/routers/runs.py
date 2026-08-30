@@ -98,11 +98,25 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
                          "moduleImplementationVersion": snapshot.get("moduleImplementationVersion"),
                          "module": snapshot.get("moduleKey") and
                          {"key": snapshot.get("moduleKey"), "version": snapshot.get("moduleVersion")}}
-    stages = [{"sequence": e.sequence, "type": e.type,
-               "stage": (e.payload or {}).get("workflowStage") or (e.payload or {}).get("stage"),
-               "name": (e.payload or {}).get("name")}
-              for e in db.query(RunEvent).filter_by(run_id=run_id, type="runtime_trace")
-              .order_by(RunEvent.sequence).all()]
+    # R8-UI：阶段表按 workflowStage 聚合（耗时=阶段首末事件间隔；无阶段语义的 Provider 返回空列表，前端隐藏整块）
+    _stage_rows: dict[str, dict] = {}
+    for e in db.query(RunEvent).filter_by(run_id=run_id, type="runtime_trace") \
+            .order_by(RunEvent.sequence).all():
+        st = (e.payload or {}).get("workflowStage") or (e.payload or {}).get("stage")
+        if not st:
+            continue
+        row = _stage_rows.setdefault(st, {"stage": st, "sequence": e.sequence,
+                                          "name": (e.payload or {}).get("name") or st,
+                                          "first": e.created_at, "last": e.created_at, "events": 0})
+        row["last"] = e.created_at
+        row["events"] += 1
+        if (e.payload or {}).get("name"):
+            row["name"] = (e.payload or {})["name"]
+    stages = [{"sequence": r["sequence"], "stage": r["stage"], "name": r["name"],
+               "events": r["events"],
+               "durationMs": int((r["last"] - r["first"]).total_seconds() * 1000)
+               if r["first"] and r["last"] else None}
+              for r in _stage_rows.values()]
     calls = [{"kind": c.kind, "targetType": c.target_type, "targetId": c.target_id,
               "status": c.status, "latencyMs": c.latency_ms, "tokenUsage": c.token_usage,
               "request": c.request}
@@ -112,6 +126,16 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
         for ev in db.query(Evidence).filter_by(result_id=qr.id).all():
             evidence.append({"kind": ev.kind, "locator": ev.locator, "text": ev.text,
                              "sourceRef": ev.source_ref})
+    # R8-UI：RunDetail 派生质检卡（评分由平台规则派生，非 Agent 给分；复核状态直读）
+    qr_latest = db.query(QualityResult).filter_by(run_id=run_id, is_latest=True).first() \
+        or db.query(QualityResult).filter_by(run_id=run_id) \
+            .order_by(QualityResult.created_at.desc()).first()
+    quality = None
+    if qr_latest:
+        quality = {"id": qr_latest.id, "score": qr_latest.score, "risk": qr_latest.risk,
+                   "critical": qr_latest.critical, "issueSummary": qr_latest.issue_summary,
+                   "review": qr_latest.review_status,
+                   "structuredOutput": qr_latest.structured_output or {}}
     return {
         "runId": run.id, "status": run.status, "trigger": run.trigger,
         "input": run.input, "output": run.output, "error": run.error,
@@ -126,6 +150,7 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
         "calls": calls,
         "usage": run.token_usage or {},
         "evidence": evidence,
+        "quality": quality,
         "originRunId": run.origin_run_id,
         "retryChildren": retry_children,
         "nodeRuns": [{

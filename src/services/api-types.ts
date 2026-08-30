@@ -35,12 +35,23 @@ export interface TaskWindowDTO {
   expr?: string
 }
 
+/** R7-1/R8-UI：统一执行目标契约（agent|workflow）。 */
+export interface ExecutionTargetDTO {
+  type: "agent" | "workflow"
+  agentId?: string | null
+  workflowId?: string | null
+  versionPolicy?: string | null
+  pinnedAgentVersionId?: string | null
+  pinnedWorkflowVersionId?: string | null
+}
+
 export interface TaskVersionDTO {
   id: string
   versionNo: number
   workflowId: string
   workflowVersionPolicy: WorkflowVersionPolicy
   pinnedWorkflowVersionId: string | null
+  executionTarget?: ExecutionTargetDTO | null
   dataAssetId: string
   dataDefinitionVersionId: string | null
   resultRuleVersionId: string | null
@@ -65,6 +76,7 @@ export interface AnalysisTaskDTO {
   dataDefinitionId: string | null
   status: TaskStatus | string
   taskVersion: TaskVersionDTO | null
+  executionTarget?: ExecutionTargetDTO | null
 }
 
 export interface TaskRunDTO {
