@@ -183,9 +183,27 @@ def test_api_crud_environments_and_reveal():
         assert row["environments"][1]["secretConfigured"] is True
         assert "secret_ref" not in row["environments"][0]
 
-        rv = client.get(f"/api/connections/{cid}/reveal").json()
-        assert rv["secret"] == {"access_key": AK, "secret_key": SK}
-        assert rv["envSecrets"]["prod"] == {"access_key": "AK2", "secret_key": "SK2"}
+        rv = client.get(f"/api/connections/{cid}/reveal")
+        # SDD-12 §5.3 / B-01：Secret 回显已永久关闭（410），只可轮换
+        assert rv.status_code == 410
+        assert rv.json()["detail"]["code"] == "SECRET_REVEAL_DISABLED"
+        # 列表只暴露 configured 状态与版本信息，不回明文
+        assert row["secretConfigured"] is True
+        assert row["secretRevision"]["configured"] is True
+        assert row["secretRevision"]["versionNo"] == 1
+
+        # SDD-12 P0-01：只改 label/endpoint 的普通更新不得丢环境 Secret
+        upd = client.put(f"/api/connections/{cid}", json={
+            "environments": [
+                {"code": "dev", "label": "日常-改",
+                 "endpoint": {"base_url": "https://gw.dev-corn.bshg.com.cn/v2"}},
+                {"code": "prod", "label": "生产"},
+            ], "default_env": "dev"})
+        assert upd.status_code == 200, upd.text
+        row2 = client.get("/api/connections", params={"search": "r4-gw"}).json()["items"][0]
+        assert row2["environments"][1]["secretConfigured"] is True  # prod 密钥未丢
+        assert row2["environments"][1]["secretRevision"]["versionNo"] == 1  # 未产生新 revision
+        assert row2["secretConfigured"] is True  # 根密钥未丢
 
         # 校验：default_env 必须已配置；script 必须带脚本
         bad = client.post("/api/connections", json={"name": "r4-bad", "kind": "aksk",

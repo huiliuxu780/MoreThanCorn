@@ -3,21 +3,29 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..auth import data_scope_members, require_admin, require_operator, require_role
 from ..auth_sandbox import run_auth_script
 from ..auth_signers import AuthSignError, build_auth_headers, normalize_kind
+from ..check_runs import (connection_current_fingerprint, connection_env_fingerprint,
+                          connection_env_health, connection_health, record_check)
 from ..connection_runtime import resolve_for_request
 from ..connection_schemas import ConnectionCreate, ConnectionUpdate, DryRunSign
+from ..contracts import error_detail
 from ..db import get_db
-from ..models import (Connection, Model, ModelProvider, Run, Schedule, Tool,
-                      ToolVersion)
+from ..models import (Connection, ConnectionSecretRevision, Model, ModelProvider, Run,
+                      Schedule, Tool, ToolVersion)
 from ..runner import RunError, compute_next, create_run, exec_tool
-from ..secrets import decrypt_payload, encrypt_secret, serialize_secret
+from ..secrets import encrypt_secret, serialize_secret
+from .. import secret_ledger
 
 router = APIRouter(tags=["admin"])
+
+# SDD-12 §5.3：清除凭据的二次确认口令（B-03）
+CLEAR_CONFIRM_TOKEN = "CLEAR_SECRET"
 
 
 def _encrypt(secret: str) -> str:
@@ -28,40 +36,107 @@ def _encrypt(secret: str) -> str:
         raise HTTPException(500, str(exc))
 
 
-def _env_rows(envs) -> list[dict]:
-    """EnvEntry 列表 → 落库形态：secret 明文加密为 secret_ref，永不原样落库。"""
+def _is_masked(secret) -> bool:
+    """SDD-12 §5.4：缺省/空串/{}/'******' 均视为掩码=保留旧 secret_ref。"""
+    return secret in (None, "", {}, "******")
+
+
+def _env_rows_create(envs) -> list[dict]:
+    """创建路径：EnvEntry 列表 → 落库形态（secret 明文加密为 secret_ref）。"""
     rows = []
     for e in envs or []:
         ref = None
-        if e.secret not in (None, "", {}):
+        if not _is_masked(e.secret):
             ref = _encrypt(serialize_secret(e.secret))
         rows.append({"code": e.code, "label": e.label or e.code,
                      "endpoint": e.endpoint or {}, "secret_ref": ref})
     return rows
 
 
+def _env_rows_merge(conn, envs) -> tuple[list[dict], dict]:
+    """SDD-12 P0-01（§5.4 止血）：按 env.code 合并，掩码保留旧 secret_ref。
+
+    普通更新（改 label/endpoint）绝不触碰未提交环境的密钥；仅两种情况改动：
+    显式提交新 secret（=轮换）或显式 clearSecret=true（=清除）。
+    返回 (新 rows, {code: "rotated"|"cleared"|None}) 供审计与账本同步。
+    """
+    old = {e.get("code"): e for e in (conn.environments or [])}
+    rows, changed = [], {}
+    for e in envs or []:
+        prev = old.get(e.code) or {}
+        ref = prev.get("secret_ref")
+        action = None
+        if getattr(e, "clearSecret", False):
+            ref, action = None, "cleared"
+        elif not _is_masked(e.secret):
+            ref, action = _encrypt(serialize_secret(e.secret)), "rotated"
+        rows.append({"code": e.code, "label": e.label or e.code,
+                     "endpoint": e.endpoint or {}, "secret_ref": ref})
+        changed[e.code] = action
+    return rows, changed
+
+
 # ---------- Connections ----------
+
+def _actor(user: dict | None) -> str:
+    from ..auth import actor_of
+    return actor_of(user)
+
+
+def _get_conn(db: Session, cid: str) -> Connection:
+    c = db.get(Connection, cid)
+    if not c:
+        raise HTTPException(404, error_detail("CONNECTION_NOT_FOUND", "connection not found"))
+    return c
+
 
 @router.post("/api/connections", status_code=201)
 def create_connection(payload: ConnectionCreate, db: Session = Depends(get_db),
-                        _user: dict = Depends(require_admin)):
+                        user: dict = Depends(require_admin)):
+    """SDD-12 C-01：新建默认 Draft，不需要客户端自报 tested；启用走 :enable 门禁。"""
+    root_ref = "" if _is_masked(payload.secret) else _encrypt(serialize_secret(payload.secret))
     c = Connection(name=payload.name, kind=payload.kind, protocol=payload.protocol,
-                   endpoint=payload.endpoint, environments=_env_rows(payload.environments),
+                   endpoint=payload.endpoint, environments=_env_rows_create(payload.environments),
                    default_env=payload.default_env, auth_script=payload.auth_script,
                    provider_hint=payload.providerHint,
-                   secret_ref=_encrypt(serialize_secret(payload.secret or "")))
+                   secret_ref=root_ref,
+                   lifecycle="draft", status="draft")
     db.add(c)
+    db.flush()
+    actor = _actor(user)
+    # Secret 账本：根级与每个环境的初始 revision（v1）
+    if not _is_masked(payload.secret):
+        secret_ledger.record_initial(db, c, "", c.secret_ref, payload.secret, actor)
+    for e in c.environments:
+        if e.get("secret_ref"):
+            src = next((x for x in payload.environments if x.code == e.get("code")), None)
+            if src is not None and not _is_masked(src.secret):
+                secret_ledger.record_initial(db, c, e["code"], e["secret_ref"], src.secret, actor)
+    audit(db, actor, "connection.created", "connection", c.id,
+          {"name": c.name, "protocol": c.protocol, "lifecycle": "draft"})
     db.commit()
-    return {"id": c.id, "name": c.name, "kind": c.kind, "protocol": c.protocol, "status": c.status}
+    return {"id": c.id, "name": c.name, "kind": c.kind, "protocol": c.protocol,
+            "status": c.status, "lifecycle": c.lifecycle, "revision": c.revision}
 
 
 @router.put("/api/connections/{cid}")
 def update_connection(cid: str, payload: ConnectionUpdate, db: Session = Depends(get_db),
-                        _user: dict = Depends(require_admin)):
-    """编辑连接：secret=None 保留原密钥，填写=轮换（不回显明文）。"""
-    c = db.get(Connection, cid)
-    if not c:
-        raise HTTPException(404, "connection not found")
+                        user: dict = Depends(require_admin)):
+    """编辑连接（SDD-12 P0-01/§5.4）：
+
+    - environments 按 code 合并；未提交/掩码的 secret 一律保留旧 secret_ref，
+      只有显式新值=轮换、显式 clearSecret=清除（账本同步）；
+    - 普通 config 更新不创建、不替换、不清空 SecretRevision（B-02/A-03）；
+    - 根级 secret 变更一律走 /secret:rotate（PUT 不再接受根密钥写入）。
+    """
+    c = _get_conn(db, cid)
+    if c.lifecycle == "archived":
+        raise HTTPException(409, error_detail("VALIDATION_FAILED", "已归档连接不可编辑"))
+    if payload.secret is not None:
+        raise HTTPException(422, error_detail(
+            "VALIDATION_FAILED", "Secret 变更必须走专用轮换接口：POST /api/connections/{id}/secret:rotate",
+            path="secret"))
+    actor = _actor(user)
     if payload.name is not None:
         c.name = payload.name
     if payload.kind is not None:
@@ -71,7 +146,19 @@ def update_connection(cid: str, payload: ConnectionUpdate, db: Session = Depends
     if payload.endpoint is not None:
         c.endpoint = payload.endpoint
     if payload.environments is not None:
-        c.environments = _env_rows(payload.environments)
+        rows, changed = _env_rows_merge(c, payload.environments)
+        c.environments = rows
+        for code, action in changed.items():
+            if action == "rotated":
+                entry = next(e for e in c.environments if e.get("code") == code)
+                src = next(e for e in payload.environments if e.code == code)
+                secret_ledger.rotate(db, c, code, entry["secret_ref"], src.secret, actor)
+                audit(db, actor, "secret.rotated", "connection", c.id,
+                      {"envCode": code, "via": "update"})
+            elif action == "cleared":
+                secret_ledger.clear(db, c, code, actor)
+                audit(db, actor, "secret.cleared", "connection", c.id,
+                      {"envCode": code, "via": "update"})
     if payload.default_env is not None or payload.environments is not None:
         c.default_env = payload.default_env
     if payload.auth_script is not None:
@@ -79,50 +166,160 @@ def update_connection(cid: str, payload: ConnectionUpdate, db: Session = Depends
     if payload.providerHint is not None:
         c.provider_hint = payload.providerHint
     if payload.kind == "script" and not (c.auth_script or "").strip():
-        raise HTTPException(400, "script 鉴权必须提供鉴权脚本")
-    if payload.secret is not None:
-        c.secret_ref = _encrypt(serialize_secret(payload.secret))
+        raise HTTPException(422, error_detail("VALIDATION_FAILED", "script 鉴权必须提供鉴权脚本"))
+    c.revision += 1  # 乐观锁推进（P1 PATCH If-Match 基座）
+    audit(db, actor, "connection.updated", "connection", c.id,
+          {"revision": c.revision, "envSecretActions": {k: v for k, v in
+           (changed.items() if payload.environments is not None else []) if v}})
     db.commit()
-    return {"id": c.id, "name": c.name, "kind": c.kind, "protocol": c.protocol, "status": c.status}
+    return {"id": c.id, "name": c.name, "kind": c.kind, "protocol": c.protocol,
+            "status": c.status, "lifecycle": c.lifecycle, "revision": c.revision}
 
 
 @router.get("/api/connections")
 def list_connections(page: int = 1, pageSize: int = 20, search: str = "", type: str = "",
-                     db: Session = Depends(get_db)):
+                     lifecycle: str = "", db: Session = Depends(get_db)):
     # 确定性排序：否则测试连接更新行后物理位置漂移，前端"静默刷新"会看到列表重排（用户实测回归）
     q = db.query(Connection).order_by(Connection.created_at.desc())
     if search:
         q = q.filter(Connection.name.ilike(f"%{search}%"))
     if type:
         q = q.filter(Connection.protocol == type)
+    if lifecycle:
+        q = q.filter(Connection.lifecycle == lifecycle)
     total = q.count()
     rows = q.offset((page - 1) * pageSize).limit(pageSize).all()
     return {"items": [{"id": c.id, "name": c.name, "kind": c.kind, "protocol": c.protocol,
                        "endpoint": c.endpoint, "status": c.status,
+                       "lifecycle": c.lifecycle, "health": connection_health(db, c),
                        "secretConfigured": bool(c.secret_ref),
+                       "secretRevision": secret_ledger.revision_info(db, c.id, ""),
                        "environments": [{"code": e.get("code"), "label": e.get("label"),
                                          "endpoint": e.get("endpoint"),
-                                         "secretConfigured": bool(e.get("secret_ref"))}
+                                         "secretConfigured": bool(e.get("secret_ref")),
+                                         "secretRevision": secret_ledger.revision_info(db, c.id, e.get("code") or ""),
+                                         "health": connection_env_health(db, c, e.get("code") or "")}
                                         for e in (c.environments or [])],
                        "defaultEnv": c.default_env,
                        "authScript": c.auth_script or "",
                        "providerHint": c.provider_hint,
+                       "revision": c.revision,
+                       "archivedAt": c.archived_at.isoformat() if c.archived_at else None,
                        "updatedAt": c.created_at.isoformat()} for c in rows],
             "total": total, "page": page, "pageSize": pageSize}
+
+
+@router.get("/api/connections/{cid}")
+def get_connection(cid: str, db: Session = Depends(get_db)):
+    """SDD-12 §5.3：只返回凭据字段状态（configured/版本/轮换时间），永不回明文。"""
+    c = _get_conn(db, cid)
+    return {"id": c.id, "name": c.name, "kind": c.kind, "protocol": c.protocol,
+            "endpoint": c.endpoint, "lifecycle": c.lifecycle,
+            "health": connection_health(db, c), "status": c.status,
+            "secretConfigured": bool(c.secret_ref),
+            "secretRevision": secret_ledger.revision_info(db, c.id, ""),
+            "environments": [{"code": e.get("code"), "label": e.get("label"),
+                              "endpoint": e.get("endpoint"),
+                              "secretConfigured": bool(e.get("secret_ref")),
+                              "secretRevision": secret_ledger.revision_info(db, c.id, e.get("code") or ""),
+                              "health": connection_env_health(db, c, e.get("code") or "")}
+                             for e in (c.environments or [])],
+            "defaultEnv": c.default_env, "authScript": c.auth_script or "",
+            "providerHint": c.provider_hint, "revision": c.revision,
+            "lastTestAt": c.last_test_at.isoformat() if c.last_test_at else None}
 
 
 @router.get("/api/connections/{cid}/reveal")
 def reveal_connection(cid: str, db: Session = Depends(get_db),
                       _user: dict = Depends(require_admin)):
-    """08-27 用户反馈：编辑页眼睛可回显密钥。09 P0：仅 admin 可读（修复审计反例：
-    viewer 可读密钥）。R4：含按环境覆盖的密钥。"""
-    c = db.get(Connection, cid)
-    if not c:
-        raise HTTPException(404, "connection not found")
-    env_secrets = {e.get("code"): decrypt_payload(e["secret_ref"])
-                   for e in (c.environments or []) if e.get("secret_ref")}
-    return {"secret": decrypt_payload(c.secret_ref) if c.secret_ref else "",
-            "envSecrets": env_secrets}
+    """SDD-12 §5.3 / B-01：产品面永久关闭 Secret 回显；兼容期路由恒 410。"""
+    _ = db.get(Connection, cid)
+    raise HTTPException(410, error_detail(
+        "SECRET_REVEAL_DISABLED", "已保存的 Secret 不可回显；请通过轮换（rotate）更新凭据"))
+
+
+class SecretRotatePayload(BaseModel):
+    secret: str | dict = Field(description="新凭据明文（仅本请求传输，落库即加密）")
+    envCode: str | None = Field(default=None, description="缺省=连接级根凭据")
+
+
+@router.post("/api/connections/{cid}/secret:rotate")
+def rotate_connection_secret(cid: str, payload: SecretRotatePayload,
+                             db: Session = Depends(get_db),
+                             user: dict = Depends(require_admin)):
+    """SDD-12 §5.3：唯一写 Secret 的常规入口。旧 revision 退役，新 revision 生效。"""
+    c = _get_conn(db, cid)
+    if c.lifecycle == "archived":
+        raise HTTPException(409, error_detail("VALIDATION_FAILED", "已归档连接不可轮换凭据"))
+    if _is_masked(payload.secret):
+        raise HTTPException(422, error_detail("SECRET_REQUIRED", "轮换必须提供新凭据"))
+    actor = _actor(user)
+    env_code = payload.envCode or ""
+    new_ref = _encrypt(serialize_secret(payload.secret))
+    if env_code:
+        if not _set_env_ref(c, env_code, new_ref):
+            raise HTTPException(404, error_detail("VALIDATION_FAILED",
+                                f"环境不存在：{env_code}", path="envCode"))
+    else:
+        c.secret_ref = new_ref
+    rev = secret_ledger.rotate(db, c, env_code, new_ref, payload.secret, actor)
+    c.revision += 1
+    audit(db, actor, "secret.rotated", "connection", c.id,
+          {"envCode": env_code, "versionNo": rev.version_no})
+    db.commit()
+    return {"ok": True, "envCode": env_code, "versionNo": rev.version_no,
+            "rotatedAt": rev.created_at.isoformat()}
+
+
+class SecretClearPayload(BaseModel):
+    envCode: str | None = None
+    confirm: str = Field(description=f"必须填写 {CLEAR_CONFIRM_TOKEN}（二次确认）")
+    force: bool = Field(default=False, description="存在引用时强制清除（审计留痕）")
+
+
+@router.post("/api/connections/{cid}/secret:clear")
+def clear_connection_secret(cid: str, payload: SecretClearPayload,
+                            db: Session = Depends(get_db),
+                            user: dict = Depends(require_admin)):
+    """SDD-12 §5.3 / B-03：admin + 二次确认 + 依赖检查 + 审计。"""
+    from ..resource_registry import references
+    c = _get_conn(db, cid)
+    if payload.confirm != CLEAR_CONFIRM_TOKEN:
+        raise HTTPException(422, error_detail(
+            "VALIDATION_FAILED", f"清除凭据为高危操作：confirm 必须为 {CLEAR_CONFIRM_TOKEN}",
+            path="confirm"))
+    refs = references(db, "connection", cid)
+    if refs and not payload.force:
+        raise HTTPException(409, error_detail(
+            "REFERENCE_CONFLICT", "该连接仍被资源引用，清除凭据将导致其鉴权失败；"
+                                   "确认影响后携带 force=true 重试",
+            details={"refs": refs}) | {"refs": refs})
+    actor = _actor(user)
+    env_code = payload.envCode or ""
+    if env_code:
+        if not _set_env_ref(c, env_code, None):
+            raise HTTPException(404, error_detail("VALIDATION_FAILED",
+                                f"环境不存在：{env_code}", path="envCode"))
+    else:
+        c.secret_ref = ""
+    retired = secret_ledger.clear(db, c, env_code, actor)
+    c.revision += 1
+    audit(db, actor, "secret.cleared", "connection", c.id,
+          {"envCode": env_code, "retired": retired, "refCount": len(refs),
+           "forced": bool(refs and payload.force)})
+    db.commit()
+    return {"ok": True, "envCode": env_code, "retired": retired}
+
+
+def _set_env_ref(conn, env_code: str, ref: str | None) -> bool:
+    rows = list(conn.environments or [])
+    hit = False
+    for e in rows:
+        if e.get("code") == env_code:
+            e["secret_ref"] = ref
+            hit = True
+    conn.environments = rows
+    return hit
 
 
 @router.post("/api/connections/dry-run-sign")
@@ -141,32 +338,47 @@ def dry_run_sign(body: DryRunSign, _user: dict = Depends(require_admin)):
 
 @router.post("/api/connections/{cid}/test")
 def test_connection(cid: str, payload: dict | None = None, db: Session = Depends(get_db),
-                 _user: dict = Depends(require_operator) ):
-    c = db.get(Connection, cid)
-    if not c:
-        raise HTTPException(404, "connection not found")
-    ok, err = _probe_connection(c, env=(payload or {}).get("env"))
+                 user: dict = Depends(require_operator)):
+    """真实探测并写 CheckRun（SDD-12 P0-04）：启用门禁与健康度只信这条记录。
+
+    探测不再改写生命周期（AR-07 生命周期/健康分离）；健康度由 CheckRun 派生。
+    """
+    c = _get_conn(db, cid)
+    env = (payload or {}).get("env")
+    fp = connection_env_fingerprint(c, env)
+    t0 = datetime.now(timezone.utc)
+    ok, err, diag = _probe_connection(c, env=env)
+    latency = int((datetime.now(timezone.utc) - t0).total_seconds() * 1000)
+    code = c.default_env or ((c.environments or [{}])[0].get("code") if c.environments else "")
+    run = record_check(db, scope="connection", target_id=c.id, env_code=env or code or "",
+                       purpose="connectivity", ok=ok, fingerprint=fp, latency_ms=latency,
+                       error={"message": err, "stage": diag.get("stage", "")} if err else None,
+                       diagnostics=diag, actor=_actor(user))
     c.last_test_at = datetime.now(timezone.utc)
-    c.status = "active" if ok else "failed"
     db.commit()
-    return {"ok": ok, "error": err, "testedAt": c.last_test_at.isoformat()}
+    return {"ok": ok, "error": err, "testedAt": c.last_test_at.isoformat(),
+            "checkRunId": run.id, "traceId": run.trace_id, "envCode": run.env_code,
+            "latencyMs": latency, "configFingerprint": fp[:16],
+            "diagnostics": run.diagnostics}
 
 
-def _probe_connection(c, env: str | None = None) -> tuple[bool, str]:
-    """09 P0：连接探测必须真实验证；缺 endpoint / 无法连通一律失败关闭
-    （修复审计反例：空 endpoint 直接返回 True）。R4：按环境解析 endpoint/凭据，
-    探测携带真实鉴权头，401/403 判失败（测试按钮能真正验出鉴权对错）。"""
+def _probe_connection(c, env: str | None = None) -> tuple[bool, str, dict]:
+    """09 P0：连接探测必须真实验证；缺 endpoint / 无法连通一律失败关闭。
+
+    SDD-12 C-06：返回 (ok, error, diagnostics)；diagnostics 只含脱敏阶段信息
+    （stage/statusCode/driver），不含凭据与完整报文。
+    """
     ep, payload, _code = resolve_for_request(c, env)
     base = ep.get("base_url", "")
     host = ep.get("host", "")
     if c.protocol in ("mysql", "postgresql"):
         if not host:
-            return False, "缺少 host 配置"
+            return False, "缺少 host 配置", {"stage": "config"}
         driver = {"mysql": "pymysql", "postgresql": "psycopg"}[c.protocol]
         try:
             mod = __import__(driver)
         except ImportError:
-            return False, f"驱动 {driver} 未安装，无法真实探测"
+            return False, f"驱动 {driver} 未安装，无法真实探测", {"stage": "driver", "driver": driver}
         password = payload if isinstance(payload, str) else str((payload or {}).get("password", ""))
         try:
             if driver == "pymysql":
@@ -178,54 +390,103 @@ def _probe_connection(c, env: str | None = None) -> tuple[bool, str]:
                                    user=ep.get("user", ""), password=password,
                                    dbname=ep.get("database", ""))
             conn.close()
-            return True, ""
+            return True, "", {"stage": "connected", "driver": driver}
         except Exception as exc:  # noqa: BLE001
-            return False, f"连接失败：{exc}"
+            msg = str(exc)
+            stage = "auth" if any(k in msg.lower() for k in ("access denied", "password", "authentication")) else "connect"
+            return False, f"连接失败：{msg}", {"stage": stage, "driver": driver}
     if base.startswith(("http://", "https://")):
         from ..egress import EgressError, enforce_egress
         try:
             enforce_egress(base)
         except EgressError as exc:
-            return False, str(exc)
+            return False, str(exc), {"stage": "egress"}
         try:
             headers = build_auth_headers(c.kind, payload, script=c.auth_script,
                                          env_vars=payload if isinstance(payload, dict) else None)
         except AuthSignError as exc:
-            return False, str(exc)
+            return False, str(exc), {"stage": "auth-build"}
         try:
             with httpx.Client(timeout=5, follow_redirects=False) as client:
                 r = client.get(base, headers=headers)
             if r.status_code in (401, 403):
-                return False, f"鉴权失败（HTTP {r.status_code}）"
+                return False, f"鉴权失败（HTTP {r.status_code}）", \
+                    {"stage": "auth", "statusCode": r.status_code}
             if r.status_code >= 500:
-                return False, f"HTTP {r.status_code}"
-            return True, ""
+                return False, f"HTTP {r.status_code}", \
+                    {"stage": "capability", "statusCode": r.status_code}
+            return True, "", {"stage": "capability", "statusCode": r.status_code}
         except Exception as exc:  # noqa: BLE001
-            return False, str(exc)
-    return False, "缺少可用 endpoint（无 host/base_url），无法探测"
+            return False, str(exc), {"stage": "connect"}
+    return False, "缺少可用 endpoint（无 host/base_url），无法探测", {"stage": "config"}
+
+
+@router.post("/api/connections/{cid}:enable")
+def enable_connection(cid: str, db: Session = Depends(get_db),
+                      user: dict = Depends(require_admin)):
+    """SDD-12 C-02：启用必须依赖当前配置指纹的真实成功 CheckRun。"""
+    from ..check_runs import assert_check_gate
+    c = _get_conn(db, cid)
+    if c.lifecycle == "archived":
+        raise HTTPException(409, error_detail("VALIDATION_FAILED", "已归档连接不可启用"))
+    env_code = c.default_env or ((c.environments or [{}])[0].get("code") if c.environments else "") or ""
+    assert_check_gate(db, scope="connection", target_id=c.id,
+                      fingerprint=connection_env_fingerprint(c, env_code or None),
+                      env_code=env_code, unchecked_code="CONNECTION_UNCHECKED")
+    c.lifecycle = "active"
+    c.status = "active"
+    audit(db, _actor(user), "connection.enabled", "connection", c.id, {"envCode": env_code})
+    db.commit()
+    return {"id": c.id, "lifecycle": c.lifecycle}
+
+
+@router.post("/api/connections/{cid}:disable")
+def disable_connection(cid: str, db: Session = Depends(get_db),
+                       user: dict = Depends(require_admin)):
+    c = _get_conn(db, cid)
+    if c.lifecycle == "archived":
+        raise HTTPException(409, error_detail("VALIDATION_FAILED", "已归档连接不可停用"))
+    c.lifecycle = "disabled"
+    c.status = "disabled"
+    audit(db, _actor(user), "connection.disabled", "connection", c.id, {})
+    db.commit()
+    return {"id": c.id, "lifecycle": c.lifecycle}
 
 
 @router.delete("/api/connections/{cid}")
-def delete_connection(cid: str, db: Session = Depends(get_db),
-                        _user: dict = Depends(require_admin)):
-    from ..resource_registry import assert_deletable
-    if not db.get(Connection, cid):
-        raise HTTPException(404, "connection not found")
-    # 08-27 用户反馈：连接始终可删——先解绑全部引用方（provider/tool/mcp/datasource）再删
-    from ..models import Datasource, McpServer, ModelProvider, Tool
-    for prov in db.query(ModelProvider).filter_by(auth_connection_id=cid).all():
-        prov.auth_connection_id = None
-    for t in db.query(Tool).filter_by(connection_id=cid).all():
-        t.connection_id = None
-    for m in db.query(McpServer).filter_by(connection_id=cid).all():
-        m.connection_id = None
-    for d in db.query(Datasource).filter_by(connection_id=cid).all():
-        d.connection_id = None
-    db.flush()
-    assert_deletable(db, "connection", cid)
-    db.delete(db.get(Connection, cid))
+def delete_connection(cid: str, hard: bool = False, db: Session = Depends(get_db),
+                        user: dict = Depends(require_admin)):
+    """SDD-12 P0-03 / B-05～B-07：不再静默解绑。
+
+    - 有引用 → 409 + 完整 refs（引用方不被改动）；
+    - 默认执行归档（软删除，历史可查）；
+    - 硬删除仅限无引用的 draft，并留审计。
+    """
+    from ..resource_registry import references
+    c = _get_conn(db, cid)
+    refs = references(db, "connection", cid)
+    if refs:
+        raise HTTPException(409, error_detail(
+            "REFERENCE_CONFLICT", "该连接仍被以下资源引用，不允许删除；请先处理引用或改用停用/归档",
+            details={"refs": refs}) | {"refs": refs})
+    actor = _actor(user)
+    if hard:
+        if c.lifecycle != "draft":
+            raise HTTPException(422, error_detail(
+                "VALIDATION_FAILED", "硬删除仅限无引用的 draft 连接；其余一律归档",
+                details={"lifecycle": c.lifecycle}))
+        db.query(ConnectionSecretRevision).filter_by(connection_id=cid).delete()
+        db.delete(c)
+        audit(db, actor, "connection.hard_deleted", "connection", cid, {"name": c.name})
+        db.commit()
+        return {"ok": True, "hardDeleted": True}
+    c.lifecycle = "archived"
+    c.status = "archived"
+    c.archived_at = datetime.now(timezone.utc)
+    c.archived_by = actor
+    audit(db, actor, "connection.archived", "connection", cid, {"name": c.name})
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "lifecycle": "archived"}
 
 
 @router.get("/api/connections/{cid}/usage")
@@ -293,6 +554,8 @@ def list_models(page: int = 1, pageSize: int = 20, db: Session = Depends(get_db)
 @router.post("/api/tools", status_code=201)
 def create_tool(payload: dict, db: Session = Depends(get_db),
                         _user: dict = Depends(require_admin)):
+    from .resources import _assert_not_echo_spec
+    _assert_not_echo_spec(payload.get("spec", {"kind": "echo"}), payload)
     t = Tool(name=payload["name"], kind=payload.get("kind", "builtin"),
              connection_id=payload.get("connectionId"),
              description=payload.get("description", ""))
@@ -326,9 +589,20 @@ def list_tools(page: int = 1, pageSize: int = 20, search: str = "", db: Session 
 @router.put("/api/tools/{tid}")
 def update_tool(tid: str, payload: dict, db: Session = Depends(get_db),
                         _user: dict = Depends(require_admin)):
+    from .resources import _assert_not_echo_spec
     t = db.get(Tool, tid)
     if not t:
         raise HTTPException(404, "工具不存在")
+    if payload.get("connectionId") is not None:
+        t.connection_id = payload.get("connectionId")
+    if payload.get("name") is not None:
+        t.name = payload["name"]
+    if payload.get("description") is not None:
+        t.description = payload["description"]
+    if not any(k in payload for k in ("spec", "inputSchema", "outputSchema")):
+        db.commit()  # 审计 P0-6：元数据更新不生成空版本
+        return {"id": tid}
+    _assert_not_echo_spec(payload.get("spec", {}), payload)
     last = db.query(ToolVersion).filter_by(tool_id=tid).order_by(ToolVersion.version_no.desc()).first()
     db.add(ToolVersion(tool_id=tid, version_no=(last.version_no if last else 0) + 1,
                        input_schema=payload.get("inputSchema", {}),

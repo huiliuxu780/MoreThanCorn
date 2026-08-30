@@ -41,7 +41,11 @@ def _mk_user(admin_token: str, role: str) -> dict:
 
 
 def test_viewer_cannot_reveal_secret(auth_on):
-    """审计反例 1：viewer 不得读取连接密钥。"""
+    """审计反例 1：viewer 不得读取连接密钥。
+
+    SDD-12 §5.3 / B-01：reveal 产品入口已永久关闭——
+    viewer 403（权限先行），admin 410 SECRET_REVEAL_DISABLED（任何人不得回显明文）。
+    """
     admin = _login("admin", "admin")["token"]
     rev = _login(_mk_user(admin, "viewer")["username"], "pass12345")["token"]
     conn = client.post("/api/connections", json={"name": "neg-conn", "secret": "sk-x"},
@@ -49,10 +53,11 @@ def test_viewer_cannot_reveal_secret(auth_on):
     r = client.get(f"/api/connections/{conn['id']}/reveal",
                    headers={"Authorization": f"Bearer {rev}"})
     assert r.status_code == 403, f"viewer 读密钥应 403（实际 {r.status_code}）"
-    # admin 可读
+    # admin 也不可读：reveal 恒 410（SECRET_REVEAL_DISABLED）
     ra = client.get(f"/api/connections/{conn['id']}/reveal",
                     headers={"Authorization": f"Bearer {admin}"})
-    assert ra.status_code == 200
+    assert ra.status_code == 410, f"reveal 应恒 410（实际 {ra.status_code}）"
+    assert ra.json()["detail"]["code"] == "SECRET_REVEAL_DISABLED"
 
 
 def test_viewer_cannot_write_resources(auth_on):

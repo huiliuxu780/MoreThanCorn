@@ -92,8 +92,62 @@ class Connection(Base):
     auth_script: Mapped[str | None] = mapped_column(Text, nullable=True)  # kind=script 的 JS 鉴权脚本
     provider_hint: Mapped[str] = mapped_column(String(64), default="")
     secret_ref: Mapped[str] = mapped_column(String(128))  # Secret Store 引用，不存明文（裸串或 JSON payload 密文）
-    status: Mapped[str] = mapped_column(String(16), default="active")
+    status: Mapped[str] = mapped_column(String(16), default="active")  # 兼容读：与 lifecycle 同步；健康度走 check_run 派生
+    # SDD-12 P0（AR-07 生命周期与健康分离）：存量行由迁移回填 active；新建默认 draft（C-01）。
+    lifecycle: Mapped[str] = mapped_column(String(16), default="draft")  # draft|active|disabled|archived
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1)  # 乐观锁（P1 PATCH If-Match 基座）
     last_test_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ConnectionSecretRevision(Base):
+    """SDD-12 §5.3（P0 止血形态）：Secret 轮换账本。
+
+    一行=一次写入。legacy `connection.secret_ref` / `environments[].secret_ref`
+    仍是运行时读取位置（P1 规范化表落地前），本账本提供版本、退役与审计语义：
+    rotate 新增一行并退役旧行；普通 config 更新不产生行（B-02）。
+    env_code 空串=连接级根 Secret。encrypted_payload 不得出现在任何 API 响应。
+    """
+    __tablename__ = "connection_secret_revision"
+    __table_args__ = (UniqueConstraint("connection_id", "env_code", "version_no",
+                                       name="uq_conn_secret_revision"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    connection_id: Mapped[str] = mapped_column(ForeignKey("connection.id"), index=True)
+    env_code: Mapped[str] = mapped_column(String(16), default="")
+    version_no: Mapped[int] = mapped_column(Integer)
+    encrypted_payload: Mapped[str] = mapped_column(Text)
+    payload_fingerprint: Mapped[str] = mapped_column(String(64), default="")  # 不可逆指纹，仅判变化
+    status: Mapped[str] = mapped_column(String(16), default="active")  # active|retired|compromised
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retired_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class CheckRun(Base):
+    """SDD-12 §11.3（P0 统一形态）：Connection/Resource 的真实检查记录。
+
+    启用门禁与健康度从这里派生：最近一次检查的 config_fingerprint 与当前配置
+    指纹不一致 → stale（C-03）；无记录 → untested（H-02 不得显示 healthy）。
+    diagnostics 只允许脱敏字段（状态码等），禁止明文凭据/完整报文（§11.3）。
+    """
+    __tablename__ = "check_run"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    scope: Mapped[str] = mapped_column(String(16))  # connection|resource
+    target_id: Mapped[str] = mapped_column(String(32), index=True)
+    env_code: Mapped[str] = mapped_column(String(16), default="")
+    purpose: Mapped[str] = mapped_column(String(16))  # connectivity|auth|discover|inference|query|execute
+    status: Mapped[str] = mapped_column(String(16))  # succeeded|failed|partial
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    diagnostics: Mapped[dict] = mapped_column(JSONB, default=dict)
+    config_fingerprint: Mapped[str] = mapped_column(String(64), default="")
+    trace_id: Mapped[str] = mapped_column(String(64), default="")
+    actor: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

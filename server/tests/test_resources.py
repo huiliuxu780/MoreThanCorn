@@ -42,9 +42,20 @@ def test_datasource_type_filter_and_toggle():
                      json={"name": a, "type": "mysql", "location": "db_a", "tested": True})
     rb = client.post("/api/data-resources/datasources",
                      json={"name": b, "type": "oss", "location": "oss://b", "tested": True})
-    assert ra.json()["status"] == "enabled" and rb.json()["status"] == "enabled"
+    # SDD-12 P0-04：payload.tested 不再被信任——创建一律 disabled，启用须真实测试
+    assert ra.json()["status"] == "disabled" and rb.json()["status"] == "disabled"
+    gate = client.post(f"/api/data-resources/datasources/{ra.json()['id']}/toggle",
+                       json={"enabled": True})
+    assert gate.status_code == 422  # 未测试不得启用
     items = client.get("/api/data-resources/datasources", params={"type": "mysql", "search": a}).json()["items"]
     assert len(items) == 1 and items[0]["metadata"]["dsType"] == "mysql"
+    # 真实测试通过后启用（fixture profile：测试执行器显式标记）
+    tt = client.post(f"/api/data-resources/datasources/{ra.json()['id']}/test", json={}).json()
+    assert tt["ok"] is True, tt
+    en = client.post(f"/api/data-resources/datasources/{ra.json()['id']}/toggle",
+                     json={"enabled": True})
+    assert en.status_code == 200
+    assert client.get(f"/api/data-resources/datasources/{ra.json()['id']}").json()["status"] == "enabled"
     # toggle
     t = client.post(f"/api/data-resources/datasources/{rb.json()['id']}/toggle", json={"enabled": False})
     assert t.json()["enabled"] is False

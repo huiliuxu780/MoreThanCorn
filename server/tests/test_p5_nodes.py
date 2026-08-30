@@ -14,6 +14,13 @@ def u(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:6]}"
 
 
+def _enable(coll: str, rid: str) -> None:
+    """SDD-12 P0-04：tested 不再被信任——创建即 disabled，须真实测试通过后启用。"""
+    t = client.post(f"/api/ai-resources/{coll}/{rid}/test", json={}).json()
+    assert t.get("ok"), t
+    client.post(f"/api/ai-resources/{coll}/{rid}/toggle", json={"enabled": True})
+
+
 def _build_wf(ks_id: str, mcp_id: str, tool_name: str) -> str:
     wf = client.post("/api/workflows", json={"name": u("wf"), "description": ""}).json()
     detail = client.get(f"/api/workflows/{wf['id']}").json()
@@ -39,12 +46,13 @@ def _build_wf(ks_id: str, mcp_id: str, tool_name: str) -> str:
 
 def test_knowledge_mcp_end_to_end():
     ks = client.post("/api/ai-resources/knowledge-sources",
-                     json={"name": u("ks"), "kind": "vector", "tested": True}).json()
+                     json={"name": u("ks"), "kind": "vector"}).json()
     mcp = client.post("/api/ai-resources/mcp-servers",
-                      json={"name": u("mcp"), "transport": "stdio", "command": "npx -y x",
-                            "tested": True}).json()
+                      json={"name": u("mcp"), "transport": "stdio", "command": "npx -y x"}).json()
     t = client.post(f"/api/ai-resources/mcp-servers/{mcp['id']}/test", json={}).json()
     tool_name = t["output"]["tools"][0]
+    _enable("mcp-servers", mcp["id"])
+    _enable("knowledge-sources", ks["id"])
 
     wid = _build_wf(ks["id"], mcp["id"], tool_name)
     rep = client.get(f"/api/workflows/{wid}/validation").json()
@@ -75,11 +83,12 @@ def test_knowledge_mcp_end_to_end():
 
 def test_validator_blocks_disabled_resource():
     ks = client.post("/api/ai-resources/knowledge-sources",
-                     json={"name": u("ks"), "kind": "vector", "tested": True}).json()
+                     json={"name": u("ks"), "kind": "vector"}).json()
     mcp = client.post("/api/ai-resources/mcp-servers",
-                      json={"name": u("mcp"), "transport": "stdio", "command": "npx -y x",
-                            "tested": True}).json()
+                      json={"name": u("mcp"), "transport": "stdio", "command": "npx -y x"}).json()
     client.post(f"/api/ai-resources/mcp-servers/{mcp['id']}/test", json={})
+    _enable("mcp-servers", mcp["id"])
+    _enable("knowledge-sources", ks["id"])
     wid = _build_wf(ks["id"], mcp["id"], "search_docs")
     # 停用 knowledge source 后校验应报 dependency
     client.post(f"/api/ai-resources/knowledge-sources/{ks['id']}/toggle", json={"enabled": False})

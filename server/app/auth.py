@@ -116,6 +116,11 @@ def resolve_actor(request: Request | None) -> str:
     return user["username"] if user else ("dev" if not auth_enforced_now() else "")
 
 
+def actor_of(user: dict | None) -> str:
+    """从依赖注入的用户字典取审计行为人（SDD-12 §15.3 审计基座；开发透传=dev）。"""
+    return (user or {}).get("username") or "质量管理员"
+
+
 def auth_enforced_now() -> bool:
     from .config import auth_enforced
     return auth_enforced()

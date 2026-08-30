@@ -21,6 +21,8 @@ class EnvEntry(BaseModel):
     label: str = ""
     endpoint: dict = Field(default_factory=dict)
     secret: str | dict | None = None  # 明文入参；服务端加密为 secret_ref，永不原样落库/回显
+    # SDD-12 P0-01：secret 缺省/空串/{} = 保留旧 secret_ref；仅显式 clearSecret=true 清除
+    clearSecret: bool = False
 
 
 class ConnectionBase(BaseModel):

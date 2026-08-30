@@ -28,14 +28,18 @@ def _status_of(obj) -> str:
     if isinstance(obj, Model):
         return "enabled" if obj.enabled else "disabled"
     if isinstance(obj, DataAsset):
-        return "disabled" if obj.lifecycle == "Deprecated" else "enabled"
+        # SDD-12：Draft/Deprecated 均不可被选用，仅 Ready=enabled
+        return "enabled" if obj.lifecycle == "Ready" else "disabled"
     raw = obj.status or "enabled"
     # 工具/知识等资源用 ready 表示可用，统一归一为 enabled（修复 picker enabledOnly 过滤为空）
     return "enabled" if raw == "ready" else raw
 
 
-def _health_of(obj) -> str:
-    return getattr(obj, "health", "healthy") or "healthy"
+def _health_of(db: Session, rtype: str, obj) -> str:
+    """SDD-12 §11.2 / H-02：健康度从 CheckRun 派生——无记录=untested（不得显示
+    healthy），配置/凭据变化=stale，不再使用对象上的旧绿灯字段。"""
+    from .check_runs import resource_health
+    return resource_health(db, rtype, obj)
 
 
 def calls_7d(db: Session, target_id: str) -> int:
@@ -125,9 +129,16 @@ def change_log(db: Session, rtype: str, rid: str) -> list[dict]:
 
 
 def set_status(db: Session, rtype: str, rid: str, enabled: bool, actor: str = "") -> None:
+    """启停资源。SDD-12 P0-04：启用必须依据当前配置指纹的真实成功 CheckRun，
+    不再信任任何客户端自报字段（`tested` 已废止）。停用不受限。"""
     obj = db.get(CLS[rtype], rid)
     if not obj:
         raise HTTPException(404, "资源不存在")
+    if enabled:
+        from .check_runs import assert_check_gate, resource_fingerprint
+        assert_check_gate(db, scope="resource", target_id=rid,
+                          fingerprint=resource_fingerprint(db, rtype, obj),
+                          unchecked_code="VALIDATION_FAILED")
     if isinstance(obj, Model):
         obj.enabled = enabled
     elif isinstance(obj, DataAsset):
@@ -153,7 +164,7 @@ def to_dto(db: Session, rtype: str, obj) -> dict:
     ts = getattr(obj, "updated_at", None) or getattr(obj, "created_at", None)
     base = {"id": obj.id, "type": rtype, "name": _name_of(obj),
             "description": getattr(obj, "description", "") or "",
-            "status": _status_of(obj), "health": _health_of(obj),
+            "status": _status_of(obj), "health": _health_of(db, rtype, obj),
             "updatedAt": ts.isoformat() if ts else ""}
     meta: dict = {}
     usage: dict = {"refCount": len(references(db, rtype, obj.id)), "calls7d": 0}

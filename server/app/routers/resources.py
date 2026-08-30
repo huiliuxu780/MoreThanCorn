@@ -29,7 +29,28 @@ def _rtype(coll: str) -> str:
 
 
 def _check_tested(payload: dict) -> bool:
-    return bool(payload.get("tested"))
+    """SDD-12 P0-04：服务端**不再信任**客户端自报 `tested`。
+
+    保留函数只为显式记录该反模式已被废止：恒返回 False。启用/转正一律依据
+    服务端写下的真实 CheckRun（`check_runs.assert_check_gate`），见 toggle。
+    """
+    return False
+
+
+def _assert_not_echo_spec(spec: dict, p: dict) -> None:
+    """SDD-12 D-07：普通新建 Tool 不再默认 echo。
+
+    echo/无 request 的 spec 属测试 fixture：仅当显式 fixture profile
+    （WF_TEST_FIXTURES=1，非生产）或显式 `fixture: true` 标记时允许。
+    """
+    from ..config import fixtures_enabled
+    if not isinstance(spec, dict):
+        return
+    is_echo = spec.get("kind") == "echo" or not spec.get("request")
+    if is_echo and not fixtures_enabled() and not p.get("fixture"):
+        raise HTTPException(422, {"code": "VALIDATION_FAILED",
+                                  "message": "Tool spec 不能默认 echo/空请求；请提供真实请求配方，"
+                                             "或显式标记 fixture（仅测试 profile 可用）"})
 
 
 # ---------- 列表 / 创建 ----------
@@ -70,6 +91,8 @@ def _create(db: Session, rtype: str, p: dict) -> dict:
                     capabilities=p.get("capabilities", ["text"]),
                     default_params=p.get("defaultParams", {}), enabled=tested)
     elif rtype == "tool":
+        spec = p.get("spec", {"kind": "echo"})
+        _assert_not_echo_spec(spec, p)
         obj = Tool(name=p["name"], kind=p.get("kind", "builtin"),
                    connection_id=p.get("connectionId"), description=p.get("description", ""),
                    status="ready" if tested else "disabled")
@@ -78,7 +101,7 @@ def _create(db: Session, rtype: str, p: dict) -> dict:
         db.add(ToolVersion(tool_id=obj.id, version_no=1,
                            input_schema=p.get("inputSchema", {}),
                            output_schema=p.get("outputSchema", {}),
-                           spec=p.get("spec", {"kind": "echo"})))
+                           spec=spec))
         db.commit()
         log_change(db, rtype, obj.id, "create", detail={"tested": tested})
         return {"id": obj.id, "name": obj.name, "status": obj.status}
@@ -177,13 +200,24 @@ def update_resource(coll: str, rid: str, payload: dict, db: Session = Depends(ge
     rtype = _rtype(coll)
     obj = _get_obj(db, rtype, rid)
     if rtype == "tool":
+        has_version_content = any(k in payload for k in ("spec", "inputSchema", "outputSchema"))
+        if payload.get("connectionId") is not None:
+            obj.connection_id = payload.get("connectionId")
+        if payload.get("name") is not None:
+            obj.name = payload["name"]
+        if payload.get("description") is not None:
+            obj.description = payload["description"]
+        if not has_version_content:
+            # 审计 P0-6：仅改名称/描述/绑定的元数据更新不得生成空版本
+            db.commit()
+            log_change(db, rtype, rid, "update", detail={"metadataOnly": True})
+            return {"id": rid}
+        _assert_not_echo_spec(payload.get("spec", {}), payload)
         last = db.query(ToolVersion).filter_by(tool_id=rid).order_by(ToolVersion.version_no.desc()).first()
         db.add(ToolVersion(tool_id=rid, version_no=(last.version_no if last else 0) + 1,
                            input_schema=payload.get("inputSchema", {}),
                            output_schema=payload.get("outputSchema", {}),
                            spec=payload.get("spec", {})))
-        if payload.get("connectionId") is not None:
-            obj.connection_id = payload.get("connectionId")
         db.commit()
         log_change(db, rtype, rid, "update", detail={"newVersion": (last.version_no if last else 0) + 1})
         return {"id": rid, "newVersion": (last.version_no if last else 0) + 1}
@@ -241,16 +275,18 @@ def _cls(rtype: str):
 @router.post("/api/ai-resources/{coll}/{rid}/toggle")
 @router.post("/api/data-resources/{coll}/{rid}/toggle")
 def toggle_resource(coll: str, rid: str, payload: dict, db: Session = Depends(get_db),
-                    _user: dict = Depends(require_operator)):
-    set_status(db, _rtype(coll), rid, bool(payload.get("enabled")))
+                    user: dict = Depends(require_operator)):
+    from ..auth import actor_of
+    set_status(db, _rtype(coll), rid, bool(payload.get("enabled")), actor=actor_of(user))
     return {"id": rid, "enabled": bool(payload.get("enabled"))}
 
 
 @router.post("/api/ai-resources/{coll}/{rid}/test")
 @router.post("/api/data-resources/{coll}/{rid}/test")
 def test_resource(coll: str, rid: str, payload: dict | None = None, db: Session = Depends(get_db),
-                  _user: dict = Depends(require_operator)):
-    return run_test(db, _rtype(coll), rid, payload or {})
+                  user: dict = Depends(require_operator)):
+    from ..auth import actor_of
+    return run_test(db, _rtype(coll), rid, payload or {}, actor=actor_of(user))
 
 
 @router.get("/api/ai-resources/{coll}/{rid}/usage")

@@ -226,12 +226,14 @@ def _call_model(db: Session, model_id: str, prompt: str) -> tuple[str, dict]:
                     conn = db.get(Connection, prov.auth_connection_id)
                 break
     if not base or not base.startswith(("http://", "https://")):
-        from .config import is_production
-        if is_production():
-            # 09 §12 / M-02：生产缺真实 Provider 必须失败，不得假成功
-            raise RunError("MODEL_UNAVAILABLE：生产环境未配置真实模型 Provider（禁止 mock）")
+        # SDD-12 P0-05（AR-09）：缺真实 Provider 一律失败关闭；
+        # mock 应答仅在显式 WF_TEST_FIXTURES=1（非生产）可达，且带 fixture 标记。
+        from .config import fixtures_enabled
+        if not fixtures_enabled():
+            raise RunError("MODEL_UNAVAILABLE：未配置真实模型 Provider（禁止自动 mock；"
+                           "测试 fixture 需显式 WF_TEST_FIXTURES=1）")
         return f"[mock:{model_id}] 已处理：{prompt[:120]}", {
-            "promptTokens": len(prompt) // 2, "completionTokens": 60}
+            "promptTokens": len(prompt) // 2, "completionTokens": 60, "fixture": True}
     # 09 P0（审计反例 4）：模型调用出站统一过 Egress（生产拦截私网/元数据）
     from .egress import EgressError, enforce_egress
     try:
@@ -475,7 +477,13 @@ def exec_tool(node, ctx) -> dict:
     spec = tv.spec or {}
     t0 = time.time()
     if spec.get("kind") == "echo" or not spec.get("request"):
-        out = {"result": json.dumps(inputs, ensure_ascii=False)[:500]}
+        # SDD-12 P0-05 / D-07：echo/无 request 的 spec 属测试 fixture，
+        # 非显式 fixture profile 一律失败关闭（不再默认假成功）。
+        from .config import fixtures_enabled
+        if not fixtures_enabled():
+            raise RunError(f"工具 {tv.tool_id} 的 spec 为 echo/无 request（测试 fixture）："
+                           "普通与生产运行失败关闭；请绑定真实请求配方")
+        out = {"result": json.dumps(inputs, ensure_ascii=False)[:500], "fixture": True}
     else:
         req = spec["request"]
         url = render_refs(req.get("url", ""), ctx.outputs, ctx.run_input)

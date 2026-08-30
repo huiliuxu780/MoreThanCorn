@@ -61,29 +61,43 @@ def test_tool_version_increment():
     assert u["newVersion"] == 2
 
 
-def test_connection_referenced_delete_unbinds_then_deletes():
-    """08-27 用户决策（7e00f17/9d1765c）：连接始终可删——先解绑全部引用方再删。
-    断言新语义：删除成功 + 引用方真解绑（原 409 阻断语义已废弃）。"""
+def test_connection_referenced_delete_blocked_with_refs():
+    """SDD-12 P0-03 / B-05（取代 08-27"先解绑再删"决策，见规格 §0/§1.2）：
+    有引用 Connection 删除 → 409 + 完整 refs；引用方不被静默解绑。"""
     from app.models import Connection, Tool
     c = client.post("/api/connections", json={"name": "conn1", "secret": "sk"}).json()
     t = client.post("/api/tools", json={"name": "bound-tool", "connectionId": c["id"],
                                         "spec": {"kind": "echo"}}).json()
     r = client.delete(f"/api/connections/{c['id']}")
-    assert r.status_code == 200
+    assert r.status_code == 409, r.text
+    detail = r.json()["detail"]
+    assert detail["code"] == "REFERENCE_CONFLICT"
+    assert any(ref.get("kind") == "tool" and ref.get("id") == t["id"] for ref in detail["refs"])
     db = SessionLocal()
     try:
-        assert db.get(Connection, c["id"]) is None  # 连接真删除
-        assert db.get(Tool, t["id"]).connection_id is None  # 工具真解绑
+        assert db.get(Connection, c["id"]) is not None  # 连接仍在
+        assert db.get(Tool, t["id"]).connection_id == c["id"]  # 未被解绑
     finally:
         db.close()
 
 
-def test_connection_free_delete_ok():
-    """09 P0：无可用 endpoint 的连接测试失败关闭；删除不受影响。"""
+def test_connection_free_delete_archives():
+    """SDD-12 B-07：无引用连接默认删除=归档（软删除），不做物理删除。"""
     c = client.post("/api/connections", json={"name": "free", "secret": "x"}).json()
     t = client.post(f"/api/connections/{c['id']}/test").json()
     assert t["ok"] is False, "缺 endpoint 的连接测试应失败关闭"
-    assert client.delete(f"/api/connections/{c['id']}").status_code == 200
+    r = client.delete(f"/api/connections/{c['id']}")
+    assert r.status_code == 200 and r.json().get("lifecycle") == "archived"
+    g = client.get(f"/api/connections/{c['id']}").json()
+    assert g["lifecycle"] == "archived"
+    # 硬删除仅限无引用 draft：draft 连接可硬删
+    c2 = client.post("/api/connections", json={"name": "draft-hard", "secret": "x"}).json()
+    r2 = client.delete(f"/api/connections/{c2['id']}?hard=true")
+    assert r2.status_code == 200 and r2.json().get("hardDeleted") is True
+    assert client.get(f"/api/connections/{c2['id']}").status_code == 404
+    # 归档连接不可硬删
+    r3 = client.delete(f"/api/connections/{c['id']}?hard=true")
+    assert r3.status_code == 422
 
 
 def test_run_retry_creates_origin_link():

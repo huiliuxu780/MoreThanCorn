@@ -1,7 +1,8 @@
 """Resource Test Executors — 六类资源的连通性/可用性测试 + 健康度回写。
 
-真实路径优先（配置了真实 endpoint/驱动时），否则 mock 回落 —— 与 LLM/Tool 现有策略一致。
-测试失败只降健康度（error），不自动停用。
+SDD-12 P0-05（AR-09）：真实路径优先；缺真实配置时**失败关闭**。
+示例/mock 仅在显式 `WF_TEST_FIXTURES=1`（非生产）可用，且输出带 `fixture` 标记；
+普通 dev 与生产一律不自动回退假成功。测试失败只降健康度，不自动停用。
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ from .resource_registry import CLS, log_change
 from .runner import RunError, _call_model, exec_tool
 from .secrets import decrypt_payload
 
+# 仅 fixture profile 可达（fixtures_enabled() 门控；生产恒不可达）
 _MOCK_MCP_TOOLS = [
     {"name": "search_docs", "description": "搜索文档", "inputSchema": {"type": "object", "properties": {"q": {"type": "string"}}}},
     {"name": "read_doc", "description": "读取文档", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}}},
@@ -68,9 +70,11 @@ def _test_tool(db: Session, obj: Tool, payload: dict) -> dict:
 
 
 def _test_mcp(db: Session, obj: McpServer, _input: dict) -> dict:
-    """09 P0-01：生产禁止固定工具列表假发现；真协议发现落地前失败关闭（M-07）。"""
-    from .config import is_production
+    """09 P0-01 / SDD-12 P0-05：MCP 测试必须真协议。官方 SDK 发现落地（P2）前失败关闭；
+    示例工具清单仅在显式 fixture profile 可达，且输出带 fixture 标记（不得写健康假象）。"""
+    from .config import fixtures_enabled
     t0 = time.time()
+    fixture = False
     if obj.transport == "http":
         base = _conn_endpoint(db, obj.connection_id).get("base_url", "")
         if base.startswith(("http://", "https://")):
@@ -87,30 +91,34 @@ def _test_mcp(db: Session, obj: McpServer, _input: dict) -> dict:
                     r = client.post(base, headers=headers,
                                     json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
                     r.raise_for_status()
-                if is_production():
+                # 真握手成功也仍需真 tools/list（P2）；无真发现则按环境门控
+                if not fixtures_enabled():
                     return {"ok": False,
-                            "error": "MCP tools/list 真实发现未实现，生产禁止示例工具清单"}
-                tools = _MOCK_MCP_TOOLS  # 非生产：握手成功后的示例清单
+                            "error": "MCP tools/list 真实发现未实现（官方 SDK 为 P2），失败关闭"}
+                tools = _MOCK_MCP_TOOLS  # fixture profile：显式标记
+                fixture = True
             except Exception as exc:  # noqa: BLE001
                 return {"ok": False, "error": f"MCP 握手失败：{exc}"}
         else:
-            if is_production():
-                return {"ok": False, "error": "缺少真实 MCP endpoint，生产禁止 mock 发现"}
+            if not fixtures_enabled():
+                return {"ok": False, "error": "缺少真实 MCP endpoint，失败关闭（无 fixture）"}
             tools = _MOCK_MCP_TOOLS
+            fixture = True
     else:
         if not obj.command:
             return {"ok": False, "error": "缺少 stdio 启动命令"}
-        if is_production():
-            return {"ok": False, "error": "MCP stdio 未真实启动，生产禁止 mock 发现"}
+        if not fixtures_enabled():
+            return {"ok": False, "error": "MCP stdio 未真实拉起进程（官方 SDK 为 P2），失败关闭"}
         tools = _MOCK_MCP_TOOLS
+        fixture = True
     obj.discovered_tools = tools
     db.commit()
     return {"ok": True, "latencyMs": int((time.time() - t0) * 1000),
-            "output": {"tools": [t["name"] for t in tools]}}
+            "output": {"tools": [t["name"] for t in tools], "fixture": fixture}}
 
 
 def _test_knowledge(db: Session, obj: KnowledgeSource, payload: dict) -> dict:
-    from .config import is_production
+    from .config import fixtures_enabled
     t0 = time.time()
     q = (payload or {}).get("query", "样例查询")
     url = (obj.source_config or {}).get("url", "")
@@ -125,19 +133,22 @@ def _test_knowledge(db: Session, obj: KnowledgeSource, payload: dict) -> dict:
                 r = client.post(url, json={"query": q, "topK": 3})
                 r.raise_for_status()
             slices = (r.json() or {}).get("slices", [])
+            fixture = False
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": f"检索失败：{exc}"}
     else:
-        if is_production():
-            return {"ok": False, "error": "知识库无真实后端，生产禁止 mock 切片（M-06）"}
+        if not fixtures_enabled():
+            return {"ok": False, "error": "知识库无真实后端，失败关闭（无 fixture，M-06）"}
         slices = [{"text": f"[mock] 与「{q}」相关的切片 #{i}", "score": round(0.9 - i * 0.1, 2)} for i in range(3)]
+        fixture = True
     return {"ok": True, "latencyMs": int((time.time() - t0) * 1000),
-            "output": {"slices": len(slices)}}
+            "output": {"slices": len(slices), "fixture": fixture}}
 
 
 def _test_datasource(db: Session, obj: Datasource, _input: dict) -> dict:
-    """09 P0-01/M-09：连接测试必须执行真实最小查询；缺配置/驱动失败关闭。"""
-    from .config import is_production
+    """09 P0-01/M-09 / SDD-12 P0-05：连接测试必须执行真实最小查询；
+    缺配置/驱动一律失败关闭，mock 仅显式 fixture profile 可达（带标记）。"""
+    from .config import fixtures_enabled
     t0 = time.time()
     ep = _conn_endpoint(db, obj.connection_id)
     if obj.type in ("mysql", "postgresql"):
@@ -158,24 +169,25 @@ def _test_datasource(db: Session, obj: Datasource, _input: dict) -> dict:
                     conn.close()
                 return {"ok": True, "latencyMs": int((time.time() - t0) * 1000), "output": {"check": "SELECT 1"}}
             except ImportError:
-                if is_production():
-                    return {"ok": False, "error": f"驱动 {driver} 未安装，生产禁止 mock 通过"}
+                if not fixtures_enabled():
+                    return {"ok": False, "error": f"驱动 {driver} 未安装，失败关闭（无 fixture）"}
             except Exception as exc:  # noqa: BLE001
                 return {"ok": False, "error": f"连接失败：{exc}"}
-        if is_production():
-            return {"ok": False, "error": "缺少数据库主机配置，生产禁止 mock 通过"}
-        return {"ok": True, "latencyMs": 21, "output": {"check": "SELECT 1 (mock)"}}
+        if not fixtures_enabled():
+            return {"ok": False, "error": "缺少数据库主机配置，失败关闭（无 fixture）"}
+        return {"ok": True, "latencyMs": 21, "output": {"check": "SELECT 1 (fixture)", "fixture": True}}
     if obj.type == "oss":
         bucket = ep.get("bucket", obj.location)
         if not bucket:
             return {"ok": False, "error": "缺少 bucket 配置",
                     "latencyMs": int((time.time() - t0) * 1000), "output": {}}
-        if is_production():
-            # P1 落 OSS SDK 前的诚实状态：配置存在但未做真实对象探测
-            return {"ok": False, "error": "OSS 真实对象探测未实现（P1 交付），生产不声称健康",
+        if not fixtures_enabled():
+            # P1 落 OSS SDK 前的诚实状态：配置存在但未做真实对象探测（生产恒走此分支）
+            return {"ok": False, "error": "OSS 真实对象探测未实现（P1 交付），失败关闭",
                     "latencyMs": int((time.time() - t0) * 1000), "output": {"bucket": bucket}}
         return {"ok": True, "error": "",
-                "latencyMs": int((time.time() - t0) * 1000), "output": {"list": "mock 10 objects"}}
+                "latencyMs": int((time.time() - t0) * 1000),
+                "output": {"list": "10 objects (fixture)", "fixture": True}}
     # http
     base = ep.get("base_url", "")
     if base.startswith(("http://", "https://")):
@@ -197,9 +209,9 @@ def _test_datasource(db: Session, obj: Datasource, _input: dict) -> dict:
                     "latencyMs": int((time.time() - t0) * 1000), "output": {"status": r.status_code}}
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": f"健康检查失败：{exc}"}
-    if is_production():
-        return {"ok": False, "error": "缺少真实 endpoint，生产禁止 mock 健康"}
-    return {"ok": True, "latencyMs": 18, "output": {"health": "mock ok"}}
+    if not fixtures_enabled():
+        return {"ok": False, "error": "缺少真实 endpoint，失败关闭（无 fixture）"}
+    return {"ok": True, "latencyMs": 18, "output": {"health": "ok (fixture)", "fixture": True}}
 
 
 def _secret(db: Session, cid: str | None) -> str:
@@ -245,7 +257,10 @@ _EXEC = {"model": _test_model, "tool": _test_tool, "mcp": _test_mcp,
 
 
 def search_knowledge(db: Session, ks_id: str, query: str, top_k: int = 5, mode: str = "HYBRID") -> list[dict]:
-    """knowledge-retrieval 节点与测试共用的检索入口；无真实后端时 mock 切片。"""
+    """knowledge-retrieval 节点与测试共用的检索入口。
+
+    SDD-12 P0-05：无真实后端时失败关闭；fixture 切片仅在显式 fixture profile 可达。
+    """
     obj = db.get(KnowledgeSource, ks_id)
     if not obj:
         raise RunError(f"knowledge source {ks_id} not found")
@@ -263,15 +278,20 @@ def search_knowledge(db: Session, ks_id: str, query: str, top_k: int = 5, mode: 
             return (r.json() or {}).get("slices", [])
         except Exception as exc:  # noqa: BLE001
             raise RunError(f"知识检索失败：{exc}") from exc
-    from .config import is_production
-    if is_production():
-        raise RunError(f"知识库 {obj.name} 无真实后端，生产禁止 mock 切片（M-06）")
-    return [{"text": f"[mock:{obj.name}] 与「{query}」相关切片 #{i}", "score": round(0.9 - i * 0.1, 2)}
+    from .config import fixtures_enabled
+    if not fixtures_enabled():
+        raise RunError(f"知识库 {obj.name} 无真实后端，失败关闭（无 fixture，M-06）")
+    return [{"text": f"[mock:{obj.name}] 与「{query}」相关切片 #{i}", "score": round(0.9 - i * 0.1, 2),
+             "fixture": True}
             for i in range(min(top_k, 3))]
 
 
 def mcp_call_tool(db: Session, server_id: str, tool_name: str, args: dict) -> dict:
-    """mcp-call 节点执行入口；无真实 endpoint 时 mock 结果。"""
+    """mcp-call 节点执行入口。
+
+    SDD-12 P0-05：无真实 endpoint 一律失败关闭；mock 仅显式 fixture profile 可达。
+    （手写 JSON-RPC 由 P2 官方 SDK 替换，见验收 E-09。）
+    """
     obj = db.get(McpServer, server_id)
     if not obj:
         raise RunError(f"mcp server {server_id} not found")
@@ -297,16 +317,19 @@ def mcp_call_tool(db: Session, server_id: str, tool_name: str, args: dict) -> di
                 return r.json()
             except Exception as exc:  # noqa: BLE001
                 raise RunError(f"MCP 调用失败：{exc}") from exc
-    from .config import is_production
-    if is_production():
-        raise RunError(f"MCP {obj.name} 无真实端点，生产禁止 mock 调用（M-08）")
-    return {"result": f"[mock mcp:{obj.name}] {tool_name} 执行成功", "args": args or {}}
+    from .config import fixtures_enabled
+    if not fixtures_enabled():
+        raise RunError(f"MCP {obj.name} 无真实端点，失败关闭（无 fixture，M-08）")
+    return {"result": f"[mock mcp:{obj.name}] {tool_name} 执行成功", "args": args or {},
+            "fixture": True}
 
 
 def run_test(db: Session, rtype: str, rid: str, payload: dict | None = None, actor: str = "") -> dict:
+    from .check_runs import record_check, resource_fingerprint
     obj = db.get(CLS[rtype], rid)
     if not obj:
         raise HTTPException(404, "资源不存在")
+    fp = resource_fingerprint(db, rtype, obj)
     result = _EXEC[rtype](db, obj, payload or {})
     now = datetime.now(timezone.utc)
     if hasattr(obj, "health"):
@@ -315,6 +338,16 @@ def run_test(db: Session, rtype: str, rid: str, payload: dict | None = None, act
         obj.last_test_at = now
     if hasattr(obj, "last_check_at"):
         obj.last_check_at = now
+    # SDD-12 P0-04：真实测试结果落 CheckRun（带配置指纹），供启用门禁与健康度派生。
+    purpose = {"mcp": "discover", "knowledge": "query", "model": "inference"}.get(rtype, "execute")
+    run = record_check(db, scope="resource", target_id=rid, purpose=purpose,
+                       ok=bool(result.get("ok")), fingerprint=fp,
+                       latency_ms=result.get("latencyMs"),
+                       error={"message": result["error"]} if result.get("error") else None,
+                       diagnostics={"fixture": bool((result.get("output") or {}).get("fixture")),
+                                    **({"sampled": (result.get("output") or {}).get("sampled")}
+                                       if (result.get("output") or {}).get("sampled") is not None else {})},
+                       actor=actor)
     db.add(CallRecord(kind=rtype, target_type=rtype, target_id=rid,
                       request={"summary": str(payload or {})[:500]},
                       response={"summary": str(result.get("output", ""))[:500]},
@@ -324,4 +357,6 @@ def run_test(db: Session, rtype: str, rid: str, payload: dict | None = None, act
     db.commit()
     log_change(db, rtype, rid, "test" if result.get("ok") else "test_fail", actor,
                {"latencyMs": result.get("latencyMs"), "error": result.get("error", "")})
+    result["checkRunId"] = run.id
+    result["configFingerprint"] = fp[:16]
     return result
