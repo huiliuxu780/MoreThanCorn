@@ -13,6 +13,11 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 
+# 原始通话输入仅本地保存；审核后的样本再进入 smoke/golden。
+poc/agent_runtime_providers/datasets/incoming/*
+!poc/agent_runtime_providers/datasets/incoming/README.md
+!poc/agent_runtime_providers/datasets/incoming/.gitkeep
+
 # Runtime Provider local state and POC-only outputs.
 poc/agent_runtime_providers/evaluation/results/
 poc/agent_runtime_providers/.artifacts/
@@ -22,3 +27,8 @@ runtimes/**/.workspaces/
 
 # 自动生成的 harness/repowiki 知识库（非源码，不入库）
 .qoder/
+.qoder-cn/
+
+# 本地接口文档与一次性验收截图脚本。
+.tmp-docs/
+scripts/view-final.mjs
