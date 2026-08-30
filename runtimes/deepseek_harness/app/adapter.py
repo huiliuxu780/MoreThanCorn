@@ -31,6 +31,22 @@ SOURCE_RUNTIME_ROOT = (
     REPO_ROOT / "poc" / "agent_runtime_providers" / ".artifacts" / "dsh-source"
 )
 NATIVE_BUNDLE = "morethancorn-dsh-native-quality-workflow"
+# R8-UI-5：business-analysis DSH 原生实现 bundle（manifest implementations.deepseek-harness）
+BUSINESS_BUNDLE = "morethancorn-dsh-business-analysis"
+
+
+def native_assets_for_mode(workflow_mode: str | None) -> dict:
+    """R8-UI-5：workflow_mode → (cordis 配置, 原生插件, 必需 bundle)。纯函数可测。"""
+    if workflow_mode == "business_analysis_v1":
+        return {"config": "native_business.cordis.yml",
+                "plugin": "native_business_analysis.mjs",
+                "bundle": BUSINESS_BUNDLE, "native": True}
+    if workflow_mode == "native_quality_v0.2":
+        return {"config": "native_quality.cordis.yml",
+                "plugin": "native_quality_workflow.mjs",
+                "bundle": NATIVE_BUNDLE, "native": True}
+    return {"config": "quality.cordis.yml", "plugin": "native_quality_workflow.mjs",
+            "bundle": None, "native": False}
 
 
 def installed_dsh_version() -> str:
@@ -218,11 +234,12 @@ class DeepSeekHarnessAdapter:
         root = Path(os.environ.get("QUALITY_DSH_WORK_ROOT", tempfile.gettempdir())) / "quality-runtime"
         root.mkdir(parents=True, exist_ok=True)
         safe_run_id = re.sub(r"[^A-Za-z0-9_.-]", "_", request.run_id)[:80] or "run"
-        native_workflow = request.context.metadata.get("workflow_mode") == "native_quality_v0.2"
+        # R8-UI-5：模式→资产选择收敛到 native_assets_for_mode（quality/business/通用）
+        assets = native_assets_for_mode(request.context.metadata.get("workflow_mode"))
+        native_workflow = assets["native"]
         profile_runtime = supports_profile_runtime(DeepSeekHarnessConfig)
         config_root = Path(__file__).resolve().parents[1] / "config"
-        config_name = "native_quality.cordis.yml" if native_workflow else "quality.cordis.yml"
-        cordis = config_root / config_name
+        cordis = config_root / assets["config"]
         dsh_home = configured_dsh_home()
         dsh_profile = os.environ.get("QUALITY_DSH_PROFILE", "sdk")
         if profile_runtime:
@@ -235,19 +252,15 @@ class DeepSeekHarnessAdapter:
                         details={"profile": dsh_profile, "dsh_home": str(dsh_home)},
                     )
                 )
-            if native_workflow and NATIVE_BUNDLE not in bundles:
+            if assets["bundle"] and assets["bundle"] not in bundles:
                 raise AdapterExecutionError(
                     RuntimeError(
                         code=ErrorCode.PROVIDER_UNAVAILABLE,
-                        message="DSH native quality bundle is not installed",
-                        details={"profile": dsh_profile, "bundle": NATIVE_BUNDLE},
+                        message="DSH native bundle is not installed",
+                        details={"profile": dsh_profile, "bundle": assets["bundle"]},
                     )
                 )
-        native_plugin = (
-            Path(__file__).resolve().parents[1]
-            / "plugins"
-            / "native_quality_workflow.mjs"
-        )
+        native_plugin = Path(__file__).resolve().parents[1] / "plugins" / assets["plugin"]
         tool_mapping = {
             tool.name: f"mcp__quality__{tool.name}"
             for tool in request.agent.tools
