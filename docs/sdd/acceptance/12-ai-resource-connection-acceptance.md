@@ -287,7 +287,7 @@ server/.venv/bin/python scripts/report-resource-migration.py --out docs/sdd/acce
    - 证据：`test_rotate_validates_basic_structure`、`test_rotate_validates_aksk_structure`、`test_rotate_api_key_accepts_string`、`test_create_validates_structured_secret`；E2E R9-5/R9-5b；浏览器复核（prod 环境结构化轮换 → 版本 2，根凭据版本不变）。
 6. **顺带修复的潜在缺陷**：`_set_env_ref` 原实现原地改动 JSONB 缓存对象，SQLAlchemy 比较不出差异 → 环境级轮换/清除**静默不落库**。已改为不可变重建；`test_rotate_env_scoped` 强化为断言"轮换后环境密文变化且与账本一致"。
 
-**门禁覆盖补强（防复发）**：新增 `server/tests/test_sdd12_acceptance_negatives.py`（10 用例）与 `e2e-resource-runtime.mjs` R9 段（7 断言），上述阻断路径全部进入机器门禁。
+**门禁覆盖补强（防复发）**：新增 `server/tests/test_sdd12_acceptance_negatives.py`（9 用例）与 `e2e-resource-runtime.mjs` R9 段（7 断言），上述阻断路径全部进入机器门禁。
 
 **复验结果（修复后）**：`pytest server/tests` 336 passed；`tool_service` 7 passed；`verify-fullstack` 63/63；`e2e-resource-runtime` 41/41；`check-no-prod-mock` / `check-no-secret-leak`（9 响应面）/ `check-resource-v2-cutover` / `check-ui-standard` PASS；lint/typecheck/vitest(34)/build 通过。迁移无变化（仍 `g045sdd12p0001 (head)`）。
 
