@@ -1,6 +1,6 @@
 # AI Resources / Connections 重构验收清单
 
-状态：**待实施、待独立验收**  
+状态：**P0 独立验收不通过（A-03、B-03、C-04 阻断；其余阶段待实施）**
 规格：`docs/sdd/12-ai-resource-connection-refactor-sdd.md`  
 验收规则：实现者填写证据，验收人复跑并勾选；无证据不得标通过。
 
@@ -22,34 +22,34 @@
 
 - [ ] A-01 Connector Definition 有不可变 key/version、config schema、credential schema、operations、handler key 和 checksum。
 - [ ] A-02 Connection、ConnectionEnvironment、SecretRevision、CheckRun 之间是明确 FK，不再依赖 environments JSONB 作为新路径事实源。
-- [ ] A-03 普通 Connection config 更新不创建、不替换、不清空 SecretRevision。
+- [ ] A-03 普通 Connection config 更新不创建、不替换、不清空 SecretRevision。**P0 验收不通过：部分环境更新会删除未提交环境及其 Secret 事实记录。**
 - [ ] A-04 Resource、ResourceVersion、ResourceVersionBinding 已落库；发布版本不可修改。
 - [ ] A-05 RuntimeProjection 由版本、绑定和运行环境确定性产生，不读取 Resource latest 草稿。
 - [ ] A-06 Tool/MCP/Knowledge/Model 的 application service 不依赖 Router 函数。
-- [ ] A-07 生命周期与健康字段分离，状态词表与规格一致。
+- [x] A-07 生命周期与健康字段分离，状态词表与规格一致。
 - [ ] A-08 新增/修改表具备唯一约束、FK、索引、created/updated/actor 和 revision。
 
 ## B. Secret、安全与删除
 
-- [ ] B-01 `GET /api/connections/{id}/reveal` 不再返回明文；新 API 无 reveal 能力。
-- [ ] B-02 Secret rotate 创建新 revision，旧 revision retired；普通更新 revision 不变。
-- [ ] B-03 Secret clear 需要 admin、明确确认、依赖检查和审计。
-- [ ] B-04 API、日志、异常、CallRecord、RunEvent、审计中无测试 Secret 明文；静态与动态泄漏扫描通过。
-- [ ] B-05 删除有引用 Connection 返回 409 + 完整 refs，不改变任何引用方。
-- [ ] B-06 删除有引用 Resource 返回 409 + 完整 refs；历史 Run/Release 不受影响。
-- [ ] B-07 默认 DELETE 执行 archive；硬删除仅限无引用 draft，并有 admin 审计。
+- [x] B-01 `GET /api/connections/{id}/reveal` 不再返回明文；新 API 无 reveal 能力。
+- [x] B-02 Secret rotate 创建新 revision，旧 revision retired；普通更新 revision 不变。
+- [ ] B-03 Secret clear 需要 admin、明确确认、依赖检查和审计。**P0 验收不通过：`PUT environments[].clearSecret=true` 可绕过确认和依赖检查。**
+- [x] B-04 API、日志、异常、CallRecord、RunEvent、审计中无测试 Secret 明文；静态与动态泄漏扫描通过。
+- [x] B-05 删除有引用 Connection 返回 409 + 完整 refs，不改变任何引用方。
+- [x] B-06 删除有引用 Resource 返回 409 + 完整 refs；历史 Run/Release 不受影响。
+- [x] B-07 默认 DELETE 执行 archive；硬删除仅限无引用 draft，并有 admin 审计。
 - [ ] B-08 HTTP egress 能阻断私网、metadata、DNS rebinding、IPv6/link-local、重定向绕过。
 - [ ] B-09 Tool mapping 无法覆盖 Host/Authorization/Cookie 等 protected headers。
 - [ ] B-10 stdio MCP 无 shell 注入、无完整环境继承、命令受 allowlist 和资源限制。
 
 ## C. Connection 行为
 
-- [ ] C-01 新建 Connection 可保存 Draft，不需要客户端传 `tested=true`。
-- [ ] C-02 启用必须依赖当前 config fingerprint 的真实成功 CheckRun。
-- [ ] C-03 config/Secret/Definition 变化后健康度从 healthy 变 stale。
-- [ ] C-04 默认环境不存在、停用或未检查时，发布/执行被明确错误码阻止。
+- [x] C-01 新建 Connection 可保存 Draft，不需要客户端传 `tested=true`。
+- [x] C-02 启用必须依赖当前 config fingerprint 的真实成功 CheckRun。
+- [x] C-03 config/Secret/Definition 变化后健康度从 healthy 变 stale。
+- [ ] C-04 默认环境不存在、停用或未检查时，发布/执行被明确错误码阻止。**P0 验收不通过：更新可把 `default_env` 设为不存在的 code 并返回 200。**
 - [ ] C-05 generic HTTP、LLM、MCP、PostgreSQL/MySQL、OSS 分别使用 definition-specific check。
-- [ ] C-06 Check 结果包含阶段、耗时、脱敏诊断、fingerprint 和 traceId。
+- [x] C-06 Check 结果包含阶段、耗时、脱敏诊断、fingerprint 和 traceId。
 - [ ] C-07 revision 冲突返回 409，不能静默覆盖并行编辑。
 - [ ] C-08 环境 code 创建后不可改名；迁移通过新增/切绑定/归档完成。
 
@@ -61,7 +61,7 @@
 - [ ] D-04 Tool 发布后 spec/binding 不可改；编辑创建新草稿版本。
 - [ ] D-05 destructive 或非幂等 Tool 不发生自动 failover。
 - [ ] D-06 幂等 Tool 只对规格允许的 transport/429/5xx 错误 failover，并记录多个 Attempt。
-- [ ] D-07 普通新建 Tool 不再默认 `echo`；fixture Tool 明确标识 test-only。
+- [x] D-07 普通新建 Tool 不再默认 `echo`；fixture Tool 明确标识 test-only。
 - [ ] D-08 CallRecord 可定位 ResourceVersion、Binding、ConnectionEnvironment、SecretRevision 和实际 attempt。
 
 ## E. MCP
@@ -128,14 +128,14 @@
 
 ## J. 零假路径、可观测与回归
 
-- [ ] J-01 production profile 下所有 Tool/MCP/Knowledge/LLM 缺真实配置时失败关闭。
-- [ ] J-02 普通 dev profile 不会因为缺配置自动返回成功 mock；fixture 必须显式开启。
-- [ ] J-03 `check-no-prod-mock`、`check-no-secret-leak`、`check-resource-v2-cutover` 全部通过。
+- [x] J-01 production profile 下所有 Tool/MCP/Knowledge/LLM 缺真实配置时失败关闭。
+- [x] J-02 普通 dev profile 不会因为缺配置自动返回成功 mock；fixture 必须显式开启。
+- [x] J-03 `check-no-prod-mock`、`check-no-secret-leak`、`check-resource-v2-cutover` 全部通过。
 - [ ] J-04 每次 check/discover/test/runtime call 均有 trace/CallRecord/Attempt。
 - [ ] J-05 指标能按 connector/resource/operation 查看成功率、P95、错误和 stale 数量。
 - [ ] J-06 新旧 Runtime 灰度期可对比，出现异常可 feature flag 回滚。
-- [ ] J-07 既有 Agent、Workflow、Task、Run、Resource 列表与发布主链无回归。
-- [ ] J-08 lint/typecheck/vitest/build/全量 pytest/Tool Service pytest/全栈 E2E 全绿。
+- [x] J-07 既有 Agent、Workflow、Task、Run、Resource 列表与发布主链无回归。
+- [x] J-08 lint/typecheck/vitest/build/全量 pytest/Tool Service pytest/全栈 E2E 全绿。
 
 ## K. 必跑命令
 
@@ -160,7 +160,9 @@ node scripts/e2e-resource-runtime.mjs
 | 日期 | 状态 | 说明 |
 | --- | --- | --- |
 | 2026-08-31 | 清单建立 | 等待实施；所有条目保持未勾选 |
-| 2026-08-31 | P0 实施完成，交付待验收 | 分支 `feat/sdd12-p0-connection-refactor`（HEAD 97421f3）；迁移 `g045sdd12p0001`（wf_dev/wf_test 已 upgrade head）；12 项机器门禁全绿（见 M.1）；P0 证据见附录 M；全部 89 条目保持未勾选，由验收人复跑 |
+| 2026-08-31 | P0 实施完成，交付待验收 | 分支 `feat/sdd12-p0-connection-refactor`（HEAD f9e4149）；迁移 `g045sdd12p0001`（wf_dev/wf_test 已 upgrade head）；12 项机器门禁全绿（见 M.1）；P0 证据见附录 M；全部条目保持未勾选，由验收人复跑 |
+| 2026-08-31 | P0 独立验收不通过 | 验收人复跑既有机器门禁全部通过；新增负向探针命中 A-03、B-03、C-04 三个 P0 阻断项。通过的 P0 条目已勾选，失败项保持未勾选；详情见 M.5。 |
+| 2026-08-31 | 阻断项修复完成，二次待验收 | 修复与证据见 M.6：A-03 环境 patch 化、B-03 EnvPatch 禁 Secret 写入、C-04 default_env 合并后校验，另修复归档门禁/轮换结构校验/_set_env_ref 落库缺陷；后端 336 tests、E2E 41/41、verify-fullstack 63/63、全部静态度门禁复验通过。失败项保持未勾选，由验收人二次复跑 |
 
 ---
 
@@ -231,6 +233,62 @@ server/.venv/bin/python scripts/report-resource-migration.py --out docs/sdd/acce
 - C-05/C-07/C-08：definition-specific check、PATCH If-Match、环境改名规则 —— P1。
 - D-01～D-06、E-01～E-10、F-01～F-07、G-01～G-08：Tool/MCP/Knowledge/LLM 运行时重构 —— P2/P3。
 - H-01～H-13：Connections/Resource Center 新 IA 属 P1-06/P2；本阶段仅最小 UI 止血（去 reveal、启用/轮换/清除、生命周期+健康徽章、409 引用提示）。
-- I-01～I-09：M1–M5 数据迁移 —— P1 起；当前存量盘点见 `12-migration-report-P0.json`（needs_review=0，26 个存量连接协议均可映射）。
+- I-01～I-09：M1–M5 数据迁移 —— P1 起；交付时存量盘点见 `12-migration-report-P0.json`（needs_review=0，32 个存量连接协议均可映射）。
 - J-04～J-06：全链路 trace/指标/灰度 —— P2/P4。
 
+### M.5 P0 独立验收记录（2026-08-31）
+
+验收人：Codex（独立复跑）
+
+验收 commit：`f9e41497b04dae56e798436767404a45aa298ab4`
+
+结论：**不通过**。既有 12 项机器门禁全部通过，但新增负向探针发现 3 个 P0 明示不变量未实现；机器门禁缺少对应覆盖。
+
+机器门禁复跑摘要：
+
+- `npm run lint`、`npm run typecheck`、`npm test -- --run`（34 passed）、`npm run build`：退出码 0。
+- `server/.venv/bin/pytest server/tests -q`：327 passed，5 warnings，退出码 0。
+- `services/tool_service/.venv/bin/pytest services/tool_service/tests -q`：7 passed，退出码 0。
+- `check-no-prod-mock`、`check-no-secret-leak`（9 个动态响应面）、`check-resource-v2-cutover`：PASS。
+- `verify-fullstack.mjs`：63/63 PASS；`e2e-resource-runtime.mjs`：34/34 PASS。
+- `wf_dev` / `wf_test` 的 Alembic current 均为 `g045sdd12p0001 (head)`。
+
+阻断复现（探针文件位于 `/tmp/sdd12_acceptance_negatives.py`，每条均在 `finally` 清理自产生数据）：
+
+1. **A-03：部分环境更新不是按 code 合并。** 新建 `dev`/`prod` 两环境后，仅 PUT `dev`，接口返回 200；再次 GET 只剩 `dev`，未提交的 `prod` 及其 Secret 事实记录被删除。
+2. **B-03：环境 Secret 可绕过专用 clear 门禁。** Connection 被 Tool 引用时，PUT `environments[].clearSecret=true` 返回 200 并清除；未要求 `CLEAR_SECRET`，也未返回 `409 REFERENCE_CONFLICT`。
+3. **C-04：不存在的默认环境未被阻止。** 对仅有 `dev` 的 Connection PUT `default_env=ghost` 返回 200；未返回明确校验错误。
+
+附加缺口（不单独映射本轮 P0 勾选项，但须与阻断项一并修复/补测）：
+
+- 已归档 Connection 的 `/test` 仍返回 200 并写入新 CheckRun；真机卡片上的“编辑 / 测试 / 轮换凭据”也均保持可用。
+- Basic/AKSK 等结构化凭据的卡片快捷轮换 Dialog 只有单字符串输入，服务端 rotate 又未按 `kind` 校验 payload 结构，可能把有效结构化凭据轮换为不可用字符串。
+- 交付报告记录 32 条 Connection；本轮 `verify-fullstack` / runtime E2E 会向 `wf_dev` 写入验收数据，复跑后的临时盘点为 38 条、`needs_review=0`。该数量变化来自门禁脚本写入，不是迁移丢数。
+- 分支与当前 `main` 各自包含内容相同的 dev-stack 提交，SHA 历史分叉但三方 `merge-tree` 未见冲突标记；合并前仍建议 rebase/整理重复提交。
+
+### M.6 阻断项修复记录（实现者，2026-08-31；验收人复跑后在对应条目勾选）
+
+修复分支：`feat/sdd12-p0-connection-refactor`（本轮修复提交见状态日志；`main` 已含相同内容的 dev-stack 提交，分支已 rebase 去重）。
+
+**三个 P0 阻断项的修复与复现验证：**
+
+1. **A-03（部分环境更新丢环境）**：更新路径改为按 code 的 patch——`_env_rows_patch` 以存量集合为基底，未提交环境（含 `secret_ref`）整体保留；仅显式 `remove: true` 删除（被删环境若带凭据，同步退役其 SecretRevision 并审计 `connection.env_removed`）。
+   - 证据：`test_sdd12_secret_lifecycle.py::test_update_omitted_envs_are_preserved`（仅提交 dev，prod 含密钥保留；显式 remove 才删）；`test_sdd12_acceptance_negatives.py::test_c04_removing_default_env_without_repoint_rejected`；E2E R9-1。
+2. **B-03（PUT 绕过清除门禁）**：更新路径环境模型改为 `EnvPatch`（pydantic `extra="forbid"`）——PUT 携带 `secret`/`clearSecret` 一律 422；凭据写入/清除唯一入口为 `secret:rotate` / `secret:clear`（后者保留 `CLEAR_SECRET` 确认词 + 引用检查 + `force` 审计）。根级 `secret` 仍显式 422 并指向轮换接口。
+   - 证据：`test_update_rejects_any_secret_field`（掩码/新值/清除四类 payload 全 422，存量密钥不变；环境清除走专用端点）；E2E R9-2/R9-2b。
+3. **C-04（ghost default_env 落库）**：`default_env` 校验从 pydantic（只见请求内集合）移至服务端——在 patch 合并存量环境**之后**校验 `default_env ∈ 合并后 codes`；删除当前默认环境且未改指 → 422。创建路径维持原有同请求校验。
+   - 证据：`test_c04_ghost_default_env_rejected`、`test_c04_valid_default_env_switch_ok`、`test_c04_removing_default_env_without_repoint_rejected`、`test_c04_create_with_ghost_default_env_rejected`；E2E R9-3。
+
+**附加缺口修复：**
+
+4. **归档连接写入门禁**：`/test`、`secret:rotate`、`secret:clear`、`PUT`、`:enable`、`:disable` 对 `lifecycle=archived` 一律 `409 CONNECTION_DISABLED`（不再写 CheckRun/last_test_at）。前端归档卡片只渲染"已归档 · 只读"，无操作按钮。
+   - 证据：`test_archived_connection_rejects_test_rotate_clear`；E2E R9-4；浏览器复核（归档卡片无按钮）。
+5. **轮换凭据结构校验**：`validate_secret_structure(kind, secret)` 为创建与轮换同源校验（aksk 必须 access_key+secret_key；basic 必须 username）；rotate 端点调用之，非法结构 422。创建路径同步收紧。前端轮换 Dialog 增加"轮换范围"选择（根凭据/各环境）并按 `kind` 渲染结构化输入（用户名/密码、AK/SK）。
+   - 证据：`test_rotate_validates_basic_structure`、`test_rotate_validates_aksk_structure`、`test_rotate_api_key_accepts_string`、`test_create_validates_structured_secret`；E2E R9-5/R9-5b；浏览器复核（prod 环境结构化轮换 → 版本 2，根凭据版本不变）。
+6. **顺带修复的潜在缺陷**：`_set_env_ref` 原实现原地改动 JSONB 缓存对象，SQLAlchemy 比较不出差异 → 环境级轮换/清除**静默不落库**。已改为不可变重建；`test_rotate_env_scoped` 强化为断言"轮换后环境密文变化且与账本一致"。
+
+**门禁覆盖补强（防复发）**：新增 `server/tests/test_sdd12_acceptance_negatives.py`（10 用例）与 `e2e-resource-runtime.mjs` R9 段（7 断言），上述阻断路径全部进入机器门禁。
+
+**复验结果（修复后）**：`pytest server/tests` 336 passed；`tool_service` 7 passed；`verify-fullstack` 63/63；`e2e-resource-runtime` 41/41；`check-no-prod-mock` / `check-no-secret-leak`（9 响应面）/ `check-resource-v2-cutover` / `check-ui-standard` PASS；lint/typecheck/vitest(34)/build 通过。迁移无变化（仍 `g045sdd12p0001 (head)`）。
+
+**遗留说明**：门禁脚本复跑仍会向 `wf_dev` 写入验收连接；被引用的残留连接按删除防护返回 409（预期行为），无引用 draft 已批量硬删清理；归档连接按 B-07 设计保留。

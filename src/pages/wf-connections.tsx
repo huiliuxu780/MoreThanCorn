@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useListQuery } from "@/hooks/use-list-query"
 import { Pagination } from "@/components/app/pagination"
 import { pagedApi } from "@/services/wf-api"
-import { connApi, type ConnSecret, type ConnectionDTO } from "@/services/resource-api"
+import { connApi, type ConnSecret, type ConnectionDTO, type ConnectionEnvPatch } from "@/services/resource-api"
 import { AKSK_TEMPLATE, ENV_PRESETS, KINDS, PROTOCOLS, isDb, isOss, kindLabel, protocolLabel } from "@/services/connection-auth"
 import { toast } from "sonner"
 
@@ -15,7 +15,6 @@ import { CardGridSkeleton, EmptyState } from "@/components/app/list-state"
 import { PageContainer, PageHeader } from "@/components/app/page"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
@@ -30,7 +29,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 interface EpFields { baseUrl: string; host: string; port: string; user: string; database: string; bucket: string; region: string }
-interface EnvForm extends EpFields { code: string; label: string; hasSecret: boolean; secret: ConnSecret | "" }
+/** SDD-12 修复轮：环境表单不再携带密钥输入（凭据只走轮换/清除）；
+ * configured/versionNo 为只读展示；isNew=本次对话框新增（尚未落库）。 */
+interface EnvForm extends EpFields { code: string; label: string; configured: boolean; versionNo?: number; isNew?: boolean }
 interface FormState extends EpFields {
   id: string | null; name: string; kind: string; protocol: string;
   providerHint: string; secret: ConnSecret | ""; authScript: string;
@@ -152,12 +153,16 @@ export default function WfConnectionsPage() {
   }, [params.page, params.pageSize, params.search])
   useEffect(() => { load() }, [load])
 
-  const openCreate = () => { setForm(EMPTY_FORM); setShowSecret(false); setDryRun(null); setOpen(true) }
+  // SDD-12 修复轮：被显式移除的存量环境码（提交时发 remove:true；未提交环境服务端整体保留）
+  const [removedEnvCodes, setRemovedEnvCodes] = useState<string[]>([])
+
+  const openCreate = () => { setForm(EMPTY_FORM); setShowSecret(false); setDryRun(null); setRemovedEnvCodes([]); setOpen(true) }
   const openEdit = (c: ConnectionDTO) => {
     const ep = (c.endpoint ?? {}) as Record<string, string>
     const envs: EnvForm[] = (c.environments ?? []).map((e) => {
       const eep = (e.endpoint ?? {}) as Record<string, string>
-      return { code: e.code, label: e.label ?? "", hasSecret: !!e.secretConfigured, secret: "",
+      return { code: e.code, label: e.label ?? "",
+               configured: !!e.secretConfigured, versionNo: e.secretRevision?.versionNo,
                baseUrl: eep.base_url ?? "", host: eep.host ?? "", port: eep.port ?? "",
                user: eep.user ?? "", database: eep.database ?? "", bucket: eep.bucket ?? "", region: eep.region ?? "" }
     })
@@ -168,18 +173,20 @@ export default function WfConnectionsPage() {
       providerHint: c.providerHint ?? "", secret: "", authScript: c.authScript ?? "",
       environments: envs, defaultEnv: c.defaultEnv ?? "",
     })
-    setShowSecret(false); setDryRun(null); setTestEnv("")
+    setShowSecret(false); setDryRun(null); setTestEnv(""); setRemovedEnvCodes([])
     setOpen(true)
-    // SDD-12 B-01：Secret 永不回显。编辑时密钥字段留空=保留原值；
-    // 需更新凭据请使用"轮换"（独立操作），不再自动加载明文。
+    // SDD-12 B-01：Secret 永不回显。编辑时不提供任何密钥输入；
+    // 凭据变更一律走"轮换凭据 / 清除凭据"（独立高危操作）。
   }
 
   const submit = async () => {
-    const envs = form.environments.filter((e) => e.code.trim()).map((e) => ({
+    // SDD-12 修复轮 B-03：更新路径环境为纯 patch（不含 secret 字段），
+    // 未提交的环境由服务端整体保留；显式删除的环境发 remove:true。
+    const envs: ConnectionEnvPatch[] = form.environments.filter((e) => e.code.trim()).map((e) => ({
       code: e.code.trim(), label: e.label.trim() || e.code.trim(),
       endpoint: endpointOf(form.protocol, e),
-      ...(e.hasSecret && e.secret !== "" ? { secret: e.secret } : {}),
     }))
+    for (const code of removedEnvCodes) envs.push({ code, remove: true })
     // SDD-12 §5.3：PUT 不接受根级 secret；根密钥变更走独立的轮换接口
     const body = {
       name: form.name.trim(), kind: form.kind, protocol: form.protocol,
@@ -194,7 +201,7 @@ export default function WfConnectionsPage() {
           await connApi.rotateSecret(form.id, form.secret)
           toast.success("连接已更新，根凭据已轮换")
         } else {
-          toast.success("连接已更新（未填写的凭据保持原值）")
+          toast.success("连接已更新（凭据保持原值）")
         }
       } else {
         if (form.kind !== "none" && form.kind !== "script" && form.secret === "") {
@@ -207,15 +214,19 @@ export default function WfConnectionsPage() {
     } catch (e) { toast.error((e as Error).message) }
   }
 
-  /** SDD-12 §5.3/B-02：轮换=新 revision 生效、旧 revision 退役（Dialog 交互，不用原生 prompt） */
+  /** SDD-12 §5.3/B-02：轮换=新 revision 生效、旧 revision 退役（Dialog 交互，不用原生 prompt）。
+   * 修复轮：支持选择根凭据或具体环境；按 kind 渲染结构化输入（服务端同创建接口校验结构）。 */
   const [rotateTarget, setRotateTarget] = useState<ConnectionDTO | null>(null)
-  const [rotateValue, setRotateValue] = useState("")
-  const openRotate = (c: ConnectionDTO) => { setRotateTarget(c); setRotateValue("") }
+  const [rotateEnv, setRotateEnv] = useState("")
+  const [rotateValue, setRotateValue] = useState<ConnSecret | "">("")
+  const openRotate = (c: ConnectionDTO) => { setRotateTarget(c); setRotateEnv(""); setRotateValue("") }
+  const rotateFilled = rotateValue !== "" && JSON.stringify(rotateValue) !== "{}" &&
+    !(typeof rotateValue === "object" && Object.values(rotateValue).every((v) => !v))
   const submitRotate = async () => {
-    if (!rotateTarget || rotateValue === "") return
+    if (!rotateTarget || !rotateFilled) return
     try {
-      const r = await connApi.rotateSecret(rotateTarget.id, rotateValue)
-      toast.success(`凭据已轮换（版本 ${r.versionNo}），健康度转为 Stale，请重新测试`)
+      const r = await connApi.rotateSecret(rotateTarget.id, rotateValue, rotateEnv || undefined)
+      toast.success(`凭据已轮换（版本 ${r.versionNo}${rotateEnv ? ` · 环境 ${rotateEnv}` : ""}），健康度转为 Stale，请重新测试`)
       setRotateTarget(null); load()
     } catch (e) { toast.error((e as Error).message) }
   }
@@ -362,21 +373,28 @@ export default function WfConnectionsPage() {
                   : "未配置密钥"}
               </div>
               <div className="mt-auto flex flex-wrap items-center justify-end gap-2 pt-2 text-[11px]">
-                <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => openEdit(c)}>编辑</button>
-                <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100 disabled:opacity-50" disabled={searching === c.id} onClick={() => test(c.id)}>{searching === c.id ? "测试中…" : "测试"}</button>
-                {lifecycle === "draft" && (
-                  <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => enable(c)}>启用</button>
+                {lifecycle === "archived" ? (
+                  // SDD-12 修复轮：归档连接只读——服务端同步拒绝 test/rotate/clear/编辑
+                  <span className="text-muted-foreground">已归档 · 只读</span>
+                ) : (
+                  <>
+                    <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => openEdit(c)}>编辑</button>
+                    <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100 disabled:opacity-50" disabled={searching === c.id} onClick={() => test(c.id)}>{searching === c.id ? "测试中…" : "测试"}</button>
+                    {lifecycle === "draft" && (
+                      <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => enable(c)}>启用</button>
+                    )}
+                    {lifecycle === "active" && (
+                      <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => disable(c)}>停用</button>
+                    )}
+                    <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => openRotate(c)}>轮换凭据</button>
+                    {c.secretConfigured && (
+                      <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => openClear(c)}>清除凭据</button>
+                    )}
+                    <button aria-label={`删除连接 ${c.name}`} className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => del(c)}>
+                      <Trash2 className="size-3" />
+                    </button>
+                  </>
                 )}
-                {lifecycle === "active" && (
-                  <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => disable(c)}>停用</button>
-                )}
-                <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => openRotate(c)}>轮换凭据</button>
-                {c.secretConfigured && (
-                  <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => openClear(c)}>清除凭据</button>
-                )}
-                <button aria-label={`删除连接 ${c.name}`} className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => del(c)}>
-                  <Trash2 className="size-3" />
-                </button>
               </div>
             </div>
             )
@@ -423,7 +441,7 @@ export default function WfConnectionsPage() {
               <div className="flex items-center justify-between">
                 <Label className="text-xs">环境域名（可选；按环境覆盖端点/凭据）</Label>
                 <Button variant="outline" size="sm" type="button"
-                  onClick={() => set({ environments: [...form.environments, { ...EMPTY_EP, code: "", label: "", hasSecret: false, secret: "" }] })}>
+                  onClick={() => set({ environments: [...form.environments, { ...EMPTY_EP, code: "", label: "", configured: false, isNew: true }] })}>
                   <Plus className="size-3" /> 添加环境
                 </Button>
               </div>
@@ -452,16 +470,22 @@ export default function WfConnectionsPage() {
                       <RadioGroupItem value={e.code || `__empty_${i}`} disabled={!e.code} id={`default-env-${i}`} /> 默认
                     </label>
                     <button type="button" className="text-neutral-400 hover:text-red-500"
-                      onClick={() => set({ environments: form.environments.filter((_, j) => j !== i), defaultEnv: form.defaultEnv === e.code ? "" : form.defaultEnv })}>
+                      onClick={() => {
+                        // SDD-12 修复轮 A-03：存量环境显式删除→记入 removed（发 remove:true）；
+                        // 仅本次新增（isNew）的环境直接从表单移除。
+                        if (!e.isNew && e.code) setRemovedEnvCodes((r) => [...r, e.code])
+                        set({ environments: form.environments.filter((_, j) => j !== i), defaultEnv: form.defaultEnv === e.code ? "" : form.defaultEnv })
+                      }}>
                       <Trash2 className="size-3.5" />
                     </button>
                   </div>
                   <EndpointFields protocol={form.protocol} v={e} onChange={(p) => setEnv(i, p)} />
-                  <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                    <Checkbox checked={e.hasSecret} onCheckedChange={(c) => setEnv(i, { hasSecret: c === true, secret: c === true ? (e.secret || (form.kind === "api_key" || form.kind === "bearer" ? "" : {})) : "" })} />
-                    该环境使用独立凭据（否则用连接级密钥）
-                  </label>
-                  {e.hasSecret && <SecretFields kind={form.kind} value={e.secret} onChange={(v) => setEnv(i, { secret: v })} />}
+                  {/* SDD-12 B-01/B-03：环境凭据只读展示；变更走"轮换凭据"（可选环境），不提供内联输入 */}
+                  <div className="text-[11px] text-muted-foreground">
+                    {e.configured
+                      ? `该环境凭据已配置 · 版本 ${e.versionNo ?? 1}（如需更换请使用「轮换凭据」）`
+                      : "该环境未配置独立凭据（使用连接级密钥；可在「轮换凭据」中为此环境配置）"}
+                  </div>
                 </div>
               ))}
               </RadioGroup>
@@ -537,19 +561,32 @@ export default function WfConnectionsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* SDD-12 §5.3：轮换凭据对话框（新凭据仅在本请求传输，落库即加密） */}
+      {/* SDD-12 §5.3：轮换凭据对话框（根或指定环境；结构化输入，服务端按 kind 校验） */}
       <Dialog open={!!rotateTarget} onOpenChange={(v) => !v && setRotateTarget(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>轮换凭据 · {rotateTarget?.name}</DialogTitle></DialogHeader>
           <div className="space-y-2 text-xs text-muted-foreground">
             <p>已保存的凭据不可回显。提交新凭据后旧版本立即退役，健康度转为 Stale，需重新测试。</p>
+            {(rotateTarget?.environments?.length ?? 0) > 0 && (
+              <>
+                <Label className="text-xs text-foreground">轮换范围</Label>
+                <Select value={rotateEnv || "__root"} onValueChange={(v) => { setRotateEnv(v === "__root" ? "" : v); setRotateValue("") }}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__root">连接级（根凭据）</SelectItem>
+                    {(rotateTarget?.environments ?? []).map((e) => (
+                      <SelectItem key={e.code} value={e.code}>环境 {e.code}{e.label && e.label !== e.code ? ` · ${e.label}` : ""}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
             <Label className="text-xs text-foreground">新凭据</Label>
-            <Input type="password" autoComplete="new-password" value={rotateValue}
-              onChange={(e) => setRotateValue(e.target.value)} placeholder="输入新凭据" />
+            <SecretFields kind={rotateTarget?.kind || "api_key"} value={rotateValue} onChange={setRotateValue} />
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setRotateTarget(null)}>取消</Button>
-            <Button className="bg-black text-white hover:bg-neutral-800" disabled={rotateValue === ""} onClick={submitRotate}>轮换</Button>
+            <Button className="bg-black text-white hover:bg-neutral-800" disabled={!rotateFilled} onClick={submitRotate}>轮换</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -190,6 +190,74 @@ let secCid = "";
         kt.json?.ok === false && !!kt.json?.error);
 }
 
+// ---------- R9 验收阻断项回归（A-03 / B-03 / C-04 + 归档门禁 + 轮换结构校验） ----------
+{
+  const c = await req("POST", "/api/connections", {
+    name: u("e2e-r9"), protocol: "http-api", kind: "basic",
+    endpoint: { base_url: "https://invalid.example/" },
+    secret: { username: "u0", password: "p0" },
+    environments: [
+      { code: "dev", label: "日常", endpoint: { base_url: "https://dev.example/" } },
+      { code: "prod", label: "生产", endpoint: { base_url: "https://prod.example/" }, secret: { username: "up", password: "pp" } },
+    ],
+    default_env: "dev",
+  });
+  const id = c.json?.id ?? "";
+
+  // A-03：仅提交 dev，prod（含密钥）必须整体保留
+  const p1 = await req("PUT", `/api/connections/${id}`, {
+    environments: [{ code: "dev", label: "日常-改", endpoint: { base_url: "https://dev2.example/" } }],
+    default_env: "dev",
+  });
+  const g1 = await req("GET", `/api/connections/${id}`);
+  const codes1 = (g1.json?.environments ?? []).map((e) => e.code);
+  check("R9-1", "A-03：未提交的环境 prod 整体保留（含密钥）",
+        p1.status === 200 && codes1.includes("prod")
+        && g1.json.environments.find((e) => e.code === "prod")?.secretConfigured === true);
+
+  // B-03：PUT 环境条目携带 secret/clearSecret 一律 422（不得绕过清除门禁）
+  const b1 = await req("PUT", `/api/connections/${id}`, {
+    environments: [{ code: "prod", label: "生产", clearSecret: true }], default_env: "dev",
+  });
+  const b2 = await req("PUT", `/api/connections/${id}`, {
+    environments: [{ code: "prod", label: "生产", secret: "x" }], default_env: "dev",
+  });
+  check("R9-2", "B-03：PUT 不得写/清环境 Secret（422）", b1.status === 422 && b2.status === 422);
+  const g2 = await req("GET", `/api/connections/${id}`);
+  check("R9-2b", "B-03：被拒请求不改变存量密钥",
+        g2.json.environments.find((e) => e.code === "prod")?.secretConfigured === true);
+
+  // C-04：ghost default_env 拒绝落库
+  const c4 = await req("PUT", `/api/connections/${id}`, { default_env: "ghost" });
+  check("R9-3", "C-04：不存在的 default_env 被拒（422）",
+        c4.status === 422 && code(c4) === "VALIDATION_FAILED");
+
+  // 附加：归档后拒绝 test / rotate / clear
+  await req("DELETE", `/api/connections/${id}`); // 归档
+  const at = await req("POST", `/api/connections/${id}/test`, {});
+  const ar = await req("POST", `/api/connections/${id}/secret:rotate`, { secret: { username: "u1", password: "p1" } });
+  const ac = await req("POST", `/api/connections/${id}/secret:clear`, { confirm: "CLEAR_SECRET" });
+  check("R9-4", "附加：归档连接拒绝 test/rotate/clear（CONNECTION_DISABLED）",
+        at.status === 409 && code(at) === "CONNECTION_DISABLED"
+        && ar.status === 409 && code(ar) === "CONNECTION_DISABLED"
+        && ac.status === 409 && code(ac) === "CONNECTION_DISABLED");
+
+  // 附加：rotate 按 kind 结构校验
+  const c5 = await req("POST", "/api/connections", {
+    name: u("e2e-r9b"), protocol: "http-api", kind: "basic",
+    endpoint: { base_url: "https://invalid.example/" },
+    secret: { username: "u0", password: "p0" },
+  });
+  const id5 = c5.json?.id ?? "";
+  const bad = await req("POST", `/api/connections/${id5}/secret:rotate`, { secret: "plain-string" });
+  check("R9-5", "附加：basic 凭据不得被轮换为普通字符串（422）", bad.status === 422);
+  const good = await req("POST", `/api/connections/${id5}/secret:rotate`, { secret: { username: "u1", password: "p1" } });
+  check("R9-5b", "附加：结构化凭据轮换成功（版本 2）", good.status === 200 && good.json?.versionNo === 2);
+
+  // 清理自产生数据（归档的 r9 保留归档态；r9b 未测试仍 draft → 硬删）
+  await req("DELETE", `/api/connections/${id5}?hard=true`);
+}
+
 // ---------- 汇总 ----------
 const failed = results.filter((r) => !r.pass);
 console.log(`\n==== ${results.length - failed.length}/${results.length} PASS ====`);

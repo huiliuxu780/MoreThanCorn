@@ -140,10 +140,15 @@ export interface ConnectionDTO {
   providerHint?: string; environments?: ConnectionEnvDTO[]; defaultEnv?: string | null; authScript?: string;
 }
 export type ConnSecret = string | Record<string, string>
+/** 更新路径的环境条目=纯 patch（SDD-12 修复轮 B-03）：不接受任何 secret 字段，
+ * 凭据写入一律走 rotateSecret/clearSecret。 */
+export interface ConnectionEnvPatch {
+  code: string; label?: string; endpoint?: Record<string, unknown>; remove?: boolean
+}
 export interface ConnectionBody {
   name: string; protocol: string; endpoint: Record<string, unknown>; kind?: string;
   providerHint?: string; secret?: ConnSecret; authScript?: string | null; default_env?: string | null;
-  environments?: { code: string; label?: string; endpoint?: Record<string, unknown>; secret?: ConnSecret | null; clearSecret?: boolean }[];
+  environments?: ConnectionEnvPatch[];
 }
 
 export const connApi = {

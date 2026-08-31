@@ -47,7 +47,8 @@ async function pollRun(runId, timeoutMs = 20000) {
 // ---------- S2 Connections（SDD-12 P0：Draft/启用门禁/真实检查） ----------
 let connId = "";
 {
-  const c = await req("POST", "/api/connections", { name: u("conn"), protocol: "mysql", endpoint: { host: "rm.internal", port: 3306 }, kind: "Basic Auth", secret: "ak-sk" });
+  // SDD-12 修复轮：basic 凭据必须结构化（含 username）
+  const c = await req("POST", "/api/connections", { name: u("conn"), protocol: "mysql", endpoint: { host: "rm.internal", port: 3306 }, kind: "Basic Auth", secret: { username: "app", password: "ak-sk" } });
   connId = c.json?.id ?? "";
   check("S2-1", "创建 Connection（protocol+endpoint+secret）", c.status === 201 && !!connId);
   check("S2-1b", "新建连接默认 Draft（C-01）", c.json?.lifecycle === "draft");
