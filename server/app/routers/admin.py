@@ -57,8 +57,10 @@ def _env_rows_patch(conn, patches) -> tuple[list[dict], list[str]]:
     """SDD-12 修复轮 A-03：环境按 code 做 **patch**，不是整体替换。
 
     - 未提交的环境整体保留（含 endpoint 与 secret_ref），绝不因"没出现在请求里"被删；
-    - 提交的环境按 code 更新 label/endpoint，secret_ref 永不在此路径变化（B-03：
-      EnvPatch 已拒绝 secret/clearSecret 字段，凭据写入只走专用高危端点）;
+    - 字段级缺省（二次验收修复）：仅覆盖请求实际携带的字段（`model_fields_set`）——
+      只改 label 不清空 endpoint，只改 endpoint 不覆盖 label；
+    - 提交的环境在此路径绝不触碰 secret_ref（B-03：EnvPatch 已拒绝 secret/clearSecret
+      字段，凭据写入只走专用高危端点）;
     - 仅显式 `remove=true` 删除环境（返回被删 codes，供账本退役与审计）。
     保持原顺序，新增环境追加末尾。返回 (新 rows, 被删 codes)。
     """
@@ -70,9 +72,19 @@ def _env_rows_patch(conn, patches) -> tuple[list[dict], list[str]]:
                 removed.append(p.code)
             continue
         prev = merged.get(p.code) or {}
-        merged[p.code] = {"code": p.code, "label": p.label or p.code,
-                          "endpoint": p.endpoint or {},
-                          "secret_ref": prev.get("secret_ref")}
+        submitted = p.model_fields_set
+        row = {
+            "code": p.code,
+            # 缺省保留存量；新增环境 label 落到 code、endpoint 空
+            "label": prev.get("label") or p.code,
+            "endpoint": dict(prev.get("endpoint") or {}),
+            "secret_ref": prev.get("secret_ref"),
+        }
+        if "label" in submitted:
+            row["label"] = p.label or p.code
+        if "endpoint" in submitted:
+            row["endpoint"] = p.endpoint or {}
+        merged[p.code] = row
     for code in removed:
         merged.pop(code, None)
     rows, seen = [], set()
@@ -150,6 +162,18 @@ def update_connection(cid: str, payload: ConnectionUpdate, db: Session = Depends
             "VALIDATION_FAILED", "Secret 变更必须走专用轮换接口：POST /api/connections/{id}/secret:rotate",
             path="secret"))
     actor = _actor(user)
+    # 二次验收修复：存在任何凭据（根级或任一环境）时拒绝非原子 kind 变更——
+    # 旧凭据结构可能与新鉴权方式不兼容（如字符串 api_key → 需对象的 basic），
+    # 会留下签名器无法使用的坏状态。需先按目标结构轮换/清除凭据，或新建连接。
+    if payload.kind is not None and payload.kind != c.kind:
+        has_secret = bool(c.secret_ref) or any(
+            e.get("secret_ref") for e in (c.environments or []))
+        if has_secret:
+            raise HTTPException(422, error_detail(
+                "VALIDATION_FAILED",
+                "已配置凭据时不允许变更鉴权方式（kind）：存量凭据结构可能与新方式不兼容。"
+                "请先清除凭据或按目标结构轮换，或新建连接",
+                path="kind"))
     removed: list[str] = []
     if payload.environments is not None:
         rows, removed = _env_rows_patch(c, payload.environments)

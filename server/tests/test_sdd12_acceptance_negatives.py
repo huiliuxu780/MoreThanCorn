@@ -136,6 +136,85 @@ def test_rotate_api_key_accepts_string():
     assert good.status_code == 200
 
 
+# ---------- 二次验收阻断 1：字段级 EnvPatch 不得丢配置 ----------
+
+def test_a03_field_level_patch_preserves_omitted_fields():
+    """只改 label 不得清空 endpoint；只改 endpoint 不得覆盖 label（M.7）。"""
+    c = _mk(envs=[{"code": "dev", "label": "日常",
+                   "endpoint": {"base_url": "https://dev.example/v1"}}])
+    cid = c["id"]
+
+    # 仅提交 label：endpoint 必须保留
+    r = client.put(f"/api/connections/{cid}",
+                   json={"environments": [{"code": "dev", "label": "Dev renamed"}]})
+    assert r.status_code == 200, r.text
+    env = client.get(f"/api/connections/{cid}").json()["environments"][0]
+    assert env["label"] == "Dev renamed"
+    assert env["endpoint"] == {"base_url": "https://dev.example/v1"}, "只改 label 不得清空 endpoint"
+
+    # 仅提交 endpoint：label 必须保留
+    r2 = client.put(f"/api/connections/{cid}",
+                    json={"environments": [{"code": "dev", "endpoint": {"base_url": "https://dev.example/v2"}}]})
+    assert r2.status_code == 200, r2.text
+    env2 = client.get(f"/api/connections/{cid}").json()["environments"][0]
+    assert env2["label"] == "Dev renamed", "只改 endpoint 不得覆盖 label"
+    assert env2["endpoint"] == {"base_url": "https://dev.example/v2"}
+
+    # 显式清空 endpoint（提交空对象）才允许
+    r3 = client.put(f"/api/connections/{cid}",
+                    json={"environments": [{"code": "dev", "endpoint": {}}]})
+    assert r3.status_code == 200
+    env3 = client.get(f"/api/connections/{cid}").json()["environments"][0]
+    assert env3["endpoint"] == {}
+
+
+def test_a03_field_level_patch_new_env_defaults():
+    c = _mk()
+    r = client.put(f"/api/connections/{c['id']}",
+                   json={"environments": [{"code": "staging"}], "default_env": "staging"})
+    assert r.status_code == 200, r.text
+    env = client.get(f"/api/connections/{c['id']}").json()["environments"][0]
+    assert env["code"] == "staging" and env["label"] == "staging" and env["endpoint"] == {}
+
+
+# ---------- 二次验收阻断 2：存在凭据时拒绝非原子 kind 变更 ----------
+
+def test_kind_change_rejected_when_root_secret_exists():
+    """字符串 api_key 凭据不得直接改成需要对象结构的 basic（M.7）。"""
+    c = _mk(kind="api_key", secret="plain-key")
+    r = client.put(f"/api/connections/{c['id']}", json={"kind": "basic"})
+    assert r.status_code == 422, f"存在凭据时 kind 变更必须拒绝，实际 {r.status_code}"
+    assert r.json()["detail"]["code"] == "VALIDATION_FAILED"
+    assert r.json()["detail"]["path"] == "kind"
+    # 未被污染
+    assert client.get(f"/api/connections/{c['id']}").json()["kind"] == "api_key"
+
+
+def test_kind_change_rejected_when_env_secret_exists():
+    c = _mk(envs=[{"code": "dev", "label": "日常",
+                   "endpoint": {"base_url": "https://dev.example/"},
+                   "secret": {"username": "u", "password": "p"}}])
+    r = client.put(f"/api/connections/{c['id']}", json={"kind": "aksk"})
+    assert r.status_code == 422, "环境凭据存在时 kind 变更必须拒绝"
+    assert client.get(f"/api/connections/{c['id']}").json()["kind"] == "api_key"
+
+
+def test_kind_change_allowed_without_secrets():
+    # 无任何凭据 → 允许变更
+    c = _mk(kind="none")
+    r = client.put(f"/api/connections/{c['id']}", json={"kind": "api_key"})
+    assert r.status_code == 200, r.text
+    assert client.get(f"/api/connections/{c['id']}").json()["kind"] == "api_key"
+    # 提交同值（未变化）不受限
+    r2 = client.put(f"/api/connections/{c['id']}", json={"kind": "api_key"})
+    assert r2.status_code == 200
+    # 清除凭据后允许变更
+    c2 = _mk(kind="api_key", secret="plain-key")
+    client.post(f"/api/connections/{c2['id']}/secret:clear", json={"confirm": "CLEAR_SECRET"})
+    r3 = client.put(f"/api/connections/{c2['id']}", json={"kind": "basic"})
+    assert r3.status_code == 200, r3.text
+
+
 def test_create_validates_structured_secret():
     """创建与轮换同源校验：aksk/basic 不得用普通字符串创建。"""
     r = client.post("/api/connections", json={

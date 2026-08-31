@@ -57,15 +57,19 @@ class EnvEntry(BaseModel):
 class EnvPatch(BaseModel):
     """更新路径的环境条目（SDD-12 修复轮 / B-03）。
 
-    仅 patch 语义：按 code 更新 label/endpoint，`remove=true` 删除该环境。
+    仅 patch 语义：按 code 更新，`remove=true` 删除该环境。
     未提交的环境整体保留（含密钥，A-03）；secret/clearSecret 等字段一律拒绝
     （extra=forbid），凭据写入/清除只能走 secret:rotate / secret:clear。
+
+    字段级缺省（二次验收修复）：`label` / `endpoint` 为 `None` 表示**未提交**，
+    服务端保留存量值；只有请求实际携带（命中 `model_fields_set`）的字段才覆盖。
+    这样"只改 label"不会把省略的 endpoint 清空为 `{}`。
     """
     model_config = ConfigDict(extra="forbid")
 
     code: str
-    label: str = ""
-    endpoint: dict = Field(default_factory=dict)
+    label: str | None = None
+    endpoint: dict | None = None
     remove: bool = False
 
 
