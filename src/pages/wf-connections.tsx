@@ -36,11 +36,13 @@ interface FormState extends EpFields {
   id: string | null; name: string; kind: string; protocol: string;
   providerHint: string; secret: ConnSecret | ""; authScript: string;
   environments: EnvForm[]; defaultEnv: string;
+  /** 二次验收修复：已配置任何凭据时锁定鉴权方式（服务端拒绝非原子 kind 变更） */
+  kindLocked: boolean;
 }
 const EMPTY_EP: EpFields = { baseUrl: "", host: "", port: "", user: "", database: "", bucket: "", region: "" }
 const EMPTY_FORM: FormState = {
   id: null, name: "", kind: "api_key", protocol: "http-api", ...EMPTY_EP,
-  providerHint: "", secret: "", authScript: "", environments: [], defaultEnv: "",
+  providerHint: "", secret: "", authScript: "", environments: [], defaultEnv: "", kindLocked: false,
 }
 
 function endpointOf(protocol: string, f: EpFields): Record<string, string> {
@@ -172,6 +174,8 @@ export default function WfConnectionsPage() {
       user: ep.user ?? "", database: ep.database ?? "", bucket: ep.bucket ?? "", region: ep.region ?? "",
       providerHint: c.providerHint ?? "", secret: "", authScript: c.authScript ?? "",
       environments: envs, defaultEnv: c.defaultEnv ?? "",
+      // 二次验收修复：存在任何凭据（根级或环境）时锁定鉴权方式，避免非原子 kind 变更
+      kindLocked: !!c.secretConfigured || envs.some((e) => e.configured),
     })
     setShowSecret(false); setDryRun(null); setTestEnv(""); setRemovedEnvCodes([])
     setOpen(true)
@@ -412,13 +416,16 @@ export default function WfConnectionsPage() {
             <div><Label className="text-xs">名称</Label><Input value={form.name} onChange={(e) => set({ name: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs">鉴权方式</Label>
-                <Select value={form.kind} onValueChange={(v) => set({ kind: v, secret: "" })}>
+                <Label className="text-xs">鉴权方式{form.kindLocked && "（已锁定）"}</Label>
+                <Select value={form.kind} disabled={form.kindLocked} onValueChange={(v) => set({ kind: v, secret: "" })}>
                   <SelectTrigger className="h-9 w-full text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {KINDS.map((k) => <SelectItem key={k.value} value={k.value}>{k.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                {form.kindLocked && (
+                  <p className="mt-1 text-[10px] text-muted-foreground">已配置凭据：如需变更鉴权方式，请先清除凭据或新建连接</p>
+                )}
               </div>
               <div>
                 <Label className="text-xs">协议</Label>

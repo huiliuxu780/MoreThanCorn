@@ -1,6 +1,6 @@
 # AI Resources / Connections 重构验收清单
 
-状态：**P0 独立验收不通过（A-03、B-03、C-04 阻断；其余阶段待实施）**
+状态：**P0 二次独立验收不通过（A-03 字段级 patch 数据丢失、kind/Secret 一致性阻断；其余阶段待实施）**
 规格：`docs/sdd/12-ai-resource-connection-refactor-sdd.md`  
 验收规则：实现者填写证据，验收人复跑并勾选；无证据不得标通过。
 
@@ -22,7 +22,7 @@
 
 - [ ] A-01 Connector Definition 有不可变 key/version、config schema、credential schema、operations、handler key 和 checksum。
 - [ ] A-02 Connection、ConnectionEnvironment、SecretRevision、CheckRun 之间是明确 FK，不再依赖 environments JSONB 作为新路径事实源。
-- [ ] A-03 普通 Connection config 更新不创建、不替换、不清空 SecretRevision。**P0 验收不通过：部分环境更新会删除未提交环境及其 Secret 事实记录。**
+- [ ] A-03 普通 Connection config 更新不创建、不替换、不清空 SecretRevision。**二次验收仍不通过：未提交环境已能保留，但对已提交环境只改 `label` 会把省略的 `endpoint` 覆盖为 `{}`，字段级 patch 仍有配置数据丢失。**
 - [ ] A-04 Resource、ResourceVersion、ResourceVersionBinding 已落库；发布版本不可修改。
 - [ ] A-05 RuntimeProjection 由版本、绑定和运行环境确定性产生，不读取 Resource latest 草稿。
 - [ ] A-06 Tool/MCP/Knowledge/Model 的 application service 不依赖 Router 函数。
@@ -33,7 +33,7 @@
 
 - [x] B-01 `GET /api/connections/{id}/reveal` 不再返回明文；新 API 无 reveal 能力。
 - [x] B-02 Secret rotate 创建新 revision，旧 revision retired；普通更新 revision 不变。
-- [ ] B-03 Secret clear 需要 admin、明确确认、依赖检查和审计。**P0 验收不通过：`PUT environments[].clearSecret=true` 可绕过确认和依赖检查。**
+- [x] B-03 Secret clear 需要 admin、明确确认、依赖检查和审计。
 - [x] B-04 API、日志、异常、CallRecord、RunEvent、审计中无测试 Secret 明文；静态与动态泄漏扫描通过。
 - [x] B-05 删除有引用 Connection 返回 409 + 完整 refs，不改变任何引用方。
 - [x] B-06 删除有引用 Resource 返回 409 + 完整 refs；历史 Run/Release 不受影响。
@@ -47,7 +47,7 @@
 - [x] C-01 新建 Connection 可保存 Draft，不需要客户端传 `tested=true`。
 - [x] C-02 启用必须依赖当前 config fingerprint 的真实成功 CheckRun。
 - [x] C-03 config/Secret/Definition 变化后健康度从 healthy 变 stale。
-- [ ] C-04 默认环境不存在、停用或未检查时，发布/执行被明确错误码阻止。**P0 验收不通过：更新可把 `default_env` 设为不存在的 code 并返回 200。**
+- [x] C-04 默认环境不存在、停用或未检查时，发布/执行被明确错误码阻止。
 - [ ] C-05 generic HTTP、LLM、MCP、PostgreSQL/MySQL、OSS 分别使用 definition-specific check。
 - [x] C-06 Check 结果包含阶段、耗时、脱敏诊断、fingerprint 和 traceId。
 - [ ] C-07 revision 冲突返回 409，不能静默覆盖并行编辑。
@@ -163,6 +163,8 @@ node scripts/e2e-resource-runtime.mjs
 | 2026-08-31 | P0 实施完成，交付待验收 | 分支 `feat/sdd12-p0-connection-refactor`（HEAD f9e4149）；迁移 `g045sdd12p0001`（wf_dev/wf_test 已 upgrade head）；12 项机器门禁全绿（见 M.1）；P0 证据见附录 M；全部条目保持未勾选，由验收人复跑 |
 | 2026-08-31 | P0 独立验收不通过 | 验收人复跑既有机器门禁全部通过；新增负向探针命中 A-03、B-03、C-04 三个 P0 阻断项。通过的 P0 条目已勾选，失败项保持未勾选；详情见 M.5。 |
 | 2026-08-31 | 阻断项修复完成，二次待验收 | 修复与证据见 M.6：A-03 环境 patch 化、B-03 EnvPatch 禁 Secret 写入、C-04 default_env 合并后校验，另修复归档门禁/轮换结构校验/_set_env_ref 落库缺陷；后端 336 tests、E2E 41/41、verify-fullstack 63/63、全部静态度门禁复验通过。失败项保持未勾选，由验收人二次复跑 |
+| 2026-09-01 | P0 二次独立验收不通过 | 原 B-03、C-04 与归档/rotate/JSONB 修复复跑通过；原 A-03 的”未提交环境丢失”已修复，但新增独立探针发现字段级 EnvPatch 会清空省略的 endpoint，且 kind 更新可保留不兼容的旧 Secret。既有 12 项门禁全部通过，覆盖仍缺两条边界；详情见 M.7。 |
+| 2026-09-01 | 二次阻断修复完成，三次待验收 | 修复与证据见 M.8：EnvPatch 字段级缺省（model_fields_set 只覆盖实际提交字段）、存在凭据时拒绝非原子 kind 变更（422, path=kind）、前端已配凭据锁定鉴权方式。后端 341 tests、E2E 45/45、typecheck/lint/ui-standard 通过；迁移无变化仍 `g045sdd12p0001 (head)`。失败项保持未勾选，由验收人三次复跑 |
 
 ---
 
@@ -292,3 +294,44 @@ server/.venv/bin/python scripts/report-resource-migration.py --out docs/sdd/acce
 **复验结果（修复后）**：`pytest server/tests` 336 passed；`tool_service` 7 passed；`verify-fullstack` 63/63；`e2e-resource-runtime` 41/41；`check-no-prod-mock` / `check-no-secret-leak`（9 响应面）/ `check-resource-v2-cutover` / `check-ui-standard` PASS；lint/typecheck/vitest(34)/build 通过。迁移无变化（仍 `g045sdd12p0001 (head)`）。
 
 **遗留说明**：门禁脚本复跑仍会向 `wf_dev` 写入验收连接；被引用的残留连接按删除防护返回 409（预期行为），无引用 draft 已批量硬删清理；归档连接按 B-07 设计保留。
+
+### M.7 P0 二次独立验收记录（验收人，2026-09-01）
+
+验收人：Codex（独立复跑）
+
+验收 commit：`b06ca260d8a6d9778f3f55f691569cbb553abf71`
+
+结论：**不通过**。M.5 的 B-03、C-04 与两个附加缺口已关闭；A-03 的环境集合级丢失已关闭，但字段级 patch 仍会丢配置，同时发现 kind 更新可旁路凭据结构一致性。
+
+已确认通过：
+
+- 分支已 rebase：`main` 为祖先，`main...HEAD = 0 behind / 10 ahead`，工作树验收前干净。
+- 实现方专项测试：`test_sdd12_acceptance_negatives.py` + `test_sdd12_secret_lifecycle.py` 共 18 passed。
+- 原始独立探针：未提交环境保留、PUT `clearSecret` 拒绝且密钥不变、ghost `default_env` 拒绝、归档 `/test` 拒绝，4 条均通过。
+- 环境级 rotate/clear 使用不可变 JSONB 重建，现有测试已验证活引用密文与 SecretRevision 账本一致。
+- 浏览器真机：归档卡片只显示“已归档 · 只读”且无按钮；Basic 轮换 Dialog 为用户名/密码结构化输入；控制台无 error/warning。
+- 12 项门禁：lint、typecheck、Vitest 34、build、后端 pytest 336、Tool Service pytest 7、prod-mock、secret-leak、cutover、UI-standard、fullstack 63/63、runtime E2E 41/41 全部通过。
+- `wf_dev` / `wf_test` Alembic current 均为 `g045sdd12p0001 (head)`；独立探针自产生的 `accept-*` Connection/Tool 残留均为 0。
+
+二次阻断复现（`/tmp/sdd12_acceptance_negatives.py`，4 passed / 2 failed，测试数据均在 `finally` 清理）：
+
+1. **A-03 / P0-01：字段级 EnvPatch 会丢 endpoint。** 创建 `dev` 环境并保存 `endpoint.base_url` 后，仅 PUT `{code: "dev", label: "Dev renamed"}`；接口返回 200，但再次 GET 得到 `endpoint={}`。`ConnectionEnvPatch` 的 `label/endpoint` 在前端契约中为可选字段，服务端 `EnvPatch` 却用默认 `""/{}` 无法区分“省略”和“显式清空”。
+2. **kind/Secret 一致性：配置更新可旁路结构校验。** API Key Connection 先配置字符串 Secret，再 PUT `kind=basic`；接口返回 200 并保留旧字符串密钥。创建与 rotate 虽会校验 basic 对象结构，但普通更新可留下签名器无法使用的坏状态；真机编辑 Dialog 同时允许修改鉴权方式、留空保留旧凭据并直接保存。
+
+修复门禁建议：
+
+- 将 `EnvPatch.label/endpoint` 改为真正可缺省的字段，并用 `model_fields_set`（或等价显式字段集合）只覆盖请求实际携带的字段；增加"只改 label 保留 endpoint / 只改 endpoint 保留 label"的回归测试与 E2E。
+- kind 变化且存在根级或任一环境 Secret 时，必须拒绝并提示先清除/按新 kind 轮换，或设计一个原子"改 kind + 新 Secret"专用操作；不得先改 kind、后轮换形成中间坏状态。增加 api_key→basic、basic→aksk 及环境 Secret 场景的负向测试。
+
+### M.8 二次阻断修复记录（实现者，2026-09-01；验收人复跑后在对应条目勾选）
+
+**两个二次阻断项的修复与复现验证：**
+
+1. **字段级 EnvPatch 丢配置（A-03 延伸）**：`EnvPatch.label/endpoint` 改为真正可缺省（`None`=未提交，不再用 `""/{}` 默认值）；`_env_rows_patch` 依据 `model_fields_set` 只覆盖请求实际携带的字段——只改 label 保留 endpoint，只改 endpoint 保留 label，仅显式提交空值才清空。新增环境缺省仍为 `label=code、endpoint={}`。
+   - 证据：`test_sdd12_acceptance_negatives.py::test_a03_field_level_patch_preserves_omitted_fields`（label-only / endpoint-only / 显式清空三态）、`test_a03_field_level_patch_new_env_defaults`；E2E R10-1/R10-1b。
+2. **kind 变更旁路凭据结构校验**：`update_connection` 在应用任何变更前检查——`kind` 发生变化且存在任何凭据（根级或任一环境 `secret_ref`）时，返回 `422 VALIDATION_FAILED（path=kind）`，提示先清除/按目标结构轮换或新建连接；无凭据时允许变更（含同值提交）。前端编辑对话框对已配凭据的连接锁定"鉴权方式"选择（标签显示"已锁定"并附引导文案）。
+   - 证据：`test_kind_change_rejected_when_root_secret_exists`（字符串 api_key→basic 拒绝且 kind 未被污染）、`test_kind_change_rejected_when_env_secret_exists`（环境凭据场景）、`test_kind_change_allowed_without_secrets`（无凭据允许/清除后允许/同值允许）；E2E R10-2/R10-2b；浏览器复核（kind 选择禁用 + 锁定提示）。
+
+**门禁覆盖补强**：`test_sdd12_acceptance_negatives.py` 增至 14 用例；`e2e-resource-runtime.mjs` 新增 R10 段（4 断言）。
+
+**复验结果（修复后）**：`pytest server/tests` 341 passed；`e2e-resource-runtime` 45/45；typecheck/lint/ui-standard 通过；其余门禁（vitest/build/prod-mock/secret-leak/cutover/verify-fullstack/tool_service）见状态日志终验记录。迁移无变化（仍 `g045sdd12p0001 (head)`）。

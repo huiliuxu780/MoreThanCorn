@@ -258,6 +258,50 @@ let secCid = "";
   await req("DELETE", `/api/connections/${id5}?hard=true`);
 }
 
+// ---------- R10 二次验收阻断项回归（字段级 patch / kind 变更原子性） ----------
+{
+  const c = await req("POST", "/api/connections", {
+    name: u("e2e-r10"), protocol: "http-api", kind: "api_key",
+    endpoint: { base_url: "https://invalid.example/" }, secret: "plain-key",
+    environments: [{ code: "dev", label: "日常", endpoint: { base_url: "https://dev.example/v1" } }],
+    default_env: "dev",
+  });
+  const id = c.json?.id ?? "";
+
+  // 阻断 1：只改 label 不得清空 endpoint
+  const p1 = await req("PUT", `/api/connections/${id}`, {
+    environments: [{ code: "dev", label: "Dev renamed" }],
+  });
+  const g1 = await req("GET", `/api/connections/${id}`);
+  const env1 = g1.json?.environments?.[0] ?? {};
+  check("R10-1", "字段级 patch：只改 label 保留 endpoint",
+        p1.status === 200 && env1.label === "Dev renamed"
+        && env1.endpoint?.base_url === "https://dev.example/v1");
+
+  // 阻断 1b：只改 endpoint 不得覆盖 label
+  const p2 = await req("PUT", `/api/connections/${id}`, {
+    environments: [{ code: "dev", endpoint: { base_url: "https://dev.example/v2" } }],
+  });
+  const g2 = await req("GET", `/api/connections/${id}`);
+  const env2 = g2.json?.environments?.[0] ?? {};
+  check("R10-1b", "字段级 patch：只改 endpoint 保留 label",
+        p2.status === 200 && env2.label === "Dev renamed"
+        && env2.endpoint?.base_url === "https://dev.example/v2");
+
+  // 阻断 2：存在凭据时拒绝非原子 kind 变更
+  const k1 = await req("PUT", `/api/connections/${id}`, { kind: "basic" });
+  check("R10-2", "存在根凭据时 kind 变更被拒（422，path=kind）",
+        k1.status === 422 && code(k1) === "VALIDATION_FAILED" && k1.json?.detail?.path === "kind");
+
+  // 清除凭据后允许变更
+  await req("POST", `/api/connections/${id}/secret:clear`, { confirm: "CLEAR_SECRET" });
+  const k2 = await req("PUT", `/api/connections/${id}`, { kind: "basic" });
+  check("R10-2b", "清除凭据后 kind 变更允许", k2.status === 200 && k2.json?.kind === "basic");
+
+  // 清理：draft 无引用 → 硬删
+  await req("DELETE", `/api/connections/${id}?hard=true`);
+}
+
 // ---------- 汇总 ----------
 const failed = results.filter((r) => !r.pass);
 console.log(`\n==== ${results.length - failed.length}/${results.length} PASS ====`);
