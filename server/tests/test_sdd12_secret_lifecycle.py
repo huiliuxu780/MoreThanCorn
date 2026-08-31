@@ -94,41 +94,57 @@ def test_a03_update_without_secret_preserves_all_refs():
     assert row["environments"][1]["secretConfigured"] is True
 
 
-def test_update_masked_variants_preserve():
-    """§5.4：secret 缺省 / 空串 / '******' 均视为保留。"""
+def test_update_omitted_envs_are_preserved():
+    """修复轮 A-03 回归：环境更新是按 code 的 patch——未提交的环境整体保留
+    （含密钥绑定），不得因"未出现在请求里"被删除。"""
     c = _mk_conn()
     _, envs0 = _db_secret_refs(c["id"])
-    for masked in (None, "", "******"):
-        r = client.put(f"/api/connections/{c['id']}", json={
-            "environments": [
-                {"code": "dev", "label": "日常"},
-                {"code": "prod", "label": "生产", "secret": masked},
-            ], "default_env": "dev"})
-        assert r.status_code == 200, r.text
-        _, envs = _db_secret_refs(c["id"])
-        assert envs["prod"] == envs0["prod"], f"掩码 {masked!r} 必须保留旧密钥"
+    assert envs0["prod"], "前置：prod 环境已配置密钥"
 
-
-def test_update_clear_secret_flag_only_way_to_clear():
-    """§5.4：仅显式 clearSecret=true 清除环境密钥。"""
-    c = _mk_conn()
+    # 仅提交 dev：prod 未提交 → 必须原样保留
     r = client.put(f"/api/connections/{c['id']}", json={
-        "environments": [
-            {"code": "dev", "label": "日常"},
-            {"code": "prod", "label": "生产", "clearSecret": True},
-        ], "default_env": "dev"})
+        "environments": [{"code": "dev", "label": "日常-改名",
+                          "endpoint": {"base_url": "https://dev2.example/"}}],
+        "default_env": "dev"})
     assert r.status_code == 200, r.text
+    g = client.get(f"/api/connections/{c['id']}").json()
+    codes = [e["code"] for e in g["environments"]]
+    assert codes == ["dev", "prod"], f"未提交的 prod 不得被删除，实际 {codes}"
+    _, envs1 = _db_secret_refs(c["id"])
+    assert envs1["prod"] == envs0["prod"], "prod 的 secret_ref 不得丢失"
+
+    # 显式 remove=true 才删除环境
+    r2 = client.put(f"/api/connections/{c['id']}", json={
+        "environments": [{"code": "prod", "remove": True}], "default_env": "dev"})
+    assert r2.status_code == 200, r2.text
+    g2 = client.get(f"/api/connections/{c['id']}").json()
+    assert [e["code"] for e in g2["environments"]] == ["dev"]
+
+
+def test_update_rejects_any_secret_field():
+    """修复轮 B-03 回归：PUT 环境条目不接受任何 secret 字段（掩码值/新值/清除），
+    一律 422 并指向专用 rotate/clear 端点（确认词+依赖检查不可绕过）。"""
+    c = _mk_conn()
+    for env_payload in (
+        [{"code": "prod", "label": "生产", "secret": ""}],
+        [{"code": "prod", "label": "生产", "secret": "******"}],
+        [{"code": "prod", "label": "生产", "secret": "new-value"}],
+        [{"code": "prod", "label": "生产", "clearSecret": True}],
+    ):
+        r = client.put(f"/api/connections/{c['id']}", json={"environments": env_payload})
+        assert r.status_code == 422, f"应拒绝 {env_payload}，实际 {r.status_code}"
+    # 原密钥不受影响
     _, envs = _db_secret_refs(c["id"])
-    assert envs["prod"] is None
-    db = SessionLocal()
-    try:
-        active = db.query(ConnectionSecretRevision).filter_by(
-            connection_id=c["id"], env_code="prod", status="active").count()
-        retired = db.query(ConnectionSecretRevision).filter_by(
-            connection_id=c["id"], env_code="prod", status="retired").count()
-        assert active == 0 and retired == 1, "clearSecret 应退役旧 revision 且无新增"
-    finally:
-        db.close()
+    assert envs["prod"], "拒绝请求不得改动存量密钥"
+    # 环境级清除只能走专用端点（需确认词）
+    bad = client.post(f"/api/connections/{c['id']}/secret:clear",
+                      json={"envCode": "prod", "confirm": "WRONG"})
+    assert bad.status_code == 422
+    ok = client.post(f"/api/connections/{c['id']}/secret:clear",
+                     json={"envCode": "prod", "confirm": "CLEAR_SECRET"})
+    assert ok.status_code == 200
+    _, envs2 = _db_secret_refs(c["id"])
+    assert envs2["prod"] in ("", None)
 
 
 def test_put_root_secret_rejected_use_rotate():
@@ -183,22 +199,29 @@ def test_b02_rotate_creates_new_revision_retires_old():
 
 def test_rotate_env_scoped():
     c = _mk_conn()
+    _, envs0 = _db_secret_refs(c["id"])
+    prod_ref0 = envs0["prod"]
+    assert prod_ref0, "前置：prod 已配置密钥"
     r = client.post(f"/api/connections/{c['id']}/secret:rotate",
                     json={"secret": "env-new", "envCode": "prod"})
     assert r.status_code == 200 and r.json()["envCode"] == "prod"
     root, envs = _db_secret_refs(c["id"])
+    # 环境级轮换必须真实落库：prod 密文变化（防 JSONB 原地改动导致的静默不持久化）
+    assert envs["prod"], "prod 保持已配置"
+    assert envs["prod"] != prod_ref0, "环境轮换后密文必须变化（变更需持久化）"
     db = SessionLocal()
     try:
         prod_active = db.query(ConnectionSecretRevision).filter_by(
             connection_id=c["id"], env_code="prod", status="active").first()
         assert prod_active.version_no == 2
+        assert prod_active.encrypted_payload == envs["prod"], "账本与活引用一致"
         # 根级 revision 不受影响
         root_active = db.query(ConnectionSecretRevision).filter_by(
             connection_id=c["id"], env_code="", status="active").first()
         assert root_active.version_no == 1
     finally:
         db.close()
-    assert root and envs["prod"], "根与 prod 均保持已配置"
+    assert root, "根密钥保持已配置"
 
 
 def test_b03_clear_requires_admin_confirm_and_refs_check():

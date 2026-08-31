@@ -53,27 +53,39 @@ def _env_rows_create(envs) -> list[dict]:
     return rows
 
 
-def _env_rows_merge(conn, envs) -> tuple[list[dict], dict]:
-    """SDD-12 P0-01（§5.4 止血）：按 env.code 合并，掩码保留旧 secret_ref。
+def _env_rows_patch(conn, patches) -> tuple[list[dict], list[str]]:
+    """SDD-12 修复轮 A-03：环境按 code 做 **patch**，不是整体替换。
 
-    普通更新（改 label/endpoint）绝不触碰未提交环境的密钥；仅两种情况改动：
-    显式提交新 secret（=轮换）或显式 clearSecret=true（=清除）。
-    返回 (新 rows, {code: "rotated"|"cleared"|None}) 供审计与账本同步。
+    - 未提交的环境整体保留（含 endpoint 与 secret_ref），绝不因"没出现在请求里"被删；
+    - 提交的环境按 code 更新 label/endpoint，secret_ref 永不在此路径变化（B-03：
+      EnvPatch 已拒绝 secret/clearSecret 字段，凭据写入只走专用高危端点）;
+    - 仅显式 `remove=true` 删除环境（返回被删 codes，供账本退役与审计）。
+    保持原顺序，新增环境追加末尾。返回 (新 rows, 被删 codes)。
     """
-    old = {e.get("code"): e for e in (conn.environments or [])}
-    rows, changed = [], {}
-    for e in envs or []:
-        prev = old.get(e.code) or {}
-        ref = prev.get("secret_ref")
-        action = None
-        if getattr(e, "clearSecret", False):
-            ref, action = None, "cleared"
-        elif not _is_masked(e.secret):
-            ref, action = _encrypt(serialize_secret(e.secret)), "rotated"
-        rows.append({"code": e.code, "label": e.label or e.code,
-                     "endpoint": e.endpoint or {}, "secret_ref": ref})
-        changed[e.code] = action
-    return rows, changed
+    merged = {e.get("code"): dict(e) for e in (conn.environments or [])}
+    removed: list[str] = []
+    for p in patches or []:
+        if p.remove:
+            if p.code in merged:
+                removed.append(p.code)
+            continue
+        prev = merged.get(p.code) or {}
+        merged[p.code] = {"code": p.code, "label": p.label or p.code,
+                          "endpoint": p.endpoint or {},
+                          "secret_ref": prev.get("secret_ref")}
+    for code in removed:
+        merged.pop(code, None)
+    rows, seen = [], set()
+    for e in (conn.environments or []):  # 原顺序优先
+        code = e.get("code")
+        if code in merged and code not in seen:
+            rows.append(merged[code])
+            seen.add(code)
+    for code, row in merged.items():  # 新增环境追加
+        if code not in seen:
+            rows.append(row)
+            seen.add(code)
+    return rows, removed
 
 
 # ---------- Connections ----------
@@ -122,21 +134,39 @@ def create_connection(payload: ConnectionCreate, db: Session = Depends(get_db),
 @router.put("/api/connections/{cid}")
 def update_connection(cid: str, payload: ConnectionUpdate, db: Session = Depends(get_db),
                         user: dict = Depends(require_admin)):
-    """编辑连接（SDD-12 P0-01/§5.4）：
+    """编辑连接（SDD-12 P0-01/§5.4 + 修复轮 A-03/B-03/C-04）：
 
-    - environments 按 code 合并；未提交/掩码的 secret 一律保留旧 secret_ref，
-      只有显式新值=轮换、显式 clearSecret=清除（账本同步）；
-    - 普通 config 更新不创建、不替换、不清空 SecretRevision（B-02/A-03）；
-    - 根级 secret 变更一律走 /secret:rotate（PUT 不再接受根密钥写入）。
+    - environments 为按 code 的 patch：未提交环境整体保留（含密钥）；
+      仅显式 remove=true 删除；
+    - PUT 不接受任何 Secret 写入/清除：根级显式拒绝，环境级由 EnvPatch
+      （extra=forbid）拒绝；凭据变更一律走 /secret:rotate、/secret:clear（B-03）；
+    - default_env 必须存在于合并后的环境集合，ghost 码拒绝落库（C-04）。
     """
     c = _get_conn(db, cid)
     if c.lifecycle == "archived":
-        raise HTTPException(409, error_detail("VALIDATION_FAILED", "已归档连接不可编辑"))
+        raise HTTPException(409, error_detail("CONNECTION_DISABLED", "已归档连接不可编辑"))
     if payload.secret is not None:
         raise HTTPException(422, error_detail(
             "VALIDATION_FAILED", "Secret 变更必须走专用轮换接口：POST /api/connections/{id}/secret:rotate",
             path="secret"))
     actor = _actor(user)
+    removed: list[str] = []
+    if payload.environments is not None:
+        rows, removed = _env_rows_patch(c, payload.environments)
+        c.environments = rows
+        for code in removed:
+            # 被删环境若带凭据：退役其账本（引用指向连接级，环境码本身无外部引用）
+            secret_ledger.clear(db, c, code, actor)
+            audit(db, actor, "connection.env_removed", "connection", c.id, {"envCode": code})
+    # C-04：default_env 对合并后的环境集合校验（未提交=保持不变）
+    new_default = payload.default_env if payload.default_env is not None else c.default_env
+    if payload.default_env is not None or payload.environments is not None:
+        codes = [e.get("code") for e in (c.environments or [])]
+        if new_default and new_default not in codes:
+            raise HTTPException(422, error_detail(
+                "VALIDATION_FAILED", f"default_env 必须是已配置的环境：{new_default}",
+                path="default_env"))
+        c.default_env = new_default
     if payload.name is not None:
         c.name = payload.name
     if payload.kind is not None:
@@ -145,22 +175,6 @@ def update_connection(cid: str, payload: ConnectionUpdate, db: Session = Depends
         c.protocol = payload.protocol
     if payload.endpoint is not None:
         c.endpoint = payload.endpoint
-    if payload.environments is not None:
-        rows, changed = _env_rows_merge(c, payload.environments)
-        c.environments = rows
-        for code, action in changed.items():
-            if action == "rotated":
-                entry = next(e for e in c.environments if e.get("code") == code)
-                src = next(e for e in payload.environments if e.code == code)
-                secret_ledger.rotate(db, c, code, entry["secret_ref"], src.secret, actor)
-                audit(db, actor, "secret.rotated", "connection", c.id,
-                      {"envCode": code, "via": "update"})
-            elif action == "cleared":
-                secret_ledger.clear(db, c, code, actor)
-                audit(db, actor, "secret.cleared", "connection", c.id,
-                      {"envCode": code, "via": "update"})
-    if payload.default_env is not None or payload.environments is not None:
-        c.default_env = payload.default_env
     if payload.auth_script is not None:
         c.auth_script = payload.auth_script
     if payload.providerHint is not None:
@@ -169,8 +183,7 @@ def update_connection(cid: str, payload: ConnectionUpdate, db: Session = Depends
         raise HTTPException(422, error_detail("VALIDATION_FAILED", "script 鉴权必须提供鉴权脚本"))
     c.revision += 1  # 乐观锁推进（P1 PATCH If-Match 基座）
     audit(db, actor, "connection.updated", "connection", c.id,
-          {"revision": c.revision, "envSecretActions": {k: v for k, v in
-           (changed.items() if payload.environments is not None else []) if v}})
+          {"revision": c.revision, "envRemoved": removed})
     db.commit()
     return {"id": c.id, "name": c.name, "kind": c.kind, "protocol": c.protocol,
             "status": c.status, "lifecycle": c.lifecycle, "revision": c.revision}
@@ -247,12 +260,21 @@ class SecretRotatePayload(BaseModel):
 def rotate_connection_secret(cid: str, payload: SecretRotatePayload,
                              db: Session = Depends(get_db),
                              user: dict = Depends(require_admin)):
-    """SDD-12 §5.3：唯一写 Secret 的常规入口。旧 revision 退役，新 revision 生效。"""
+    """SDD-12 §5.3：唯一写 Secret 的常规入口。旧 revision 退役，新 revision 生效。
+
+    修复轮：按 Connection.kind 做与创建同源的凭据结构校验（禁止把结构化
+    凭据轮换为普通字符串）；归档连接拒绝。
+    """
+    from ..connection_schemas import validate_secret_structure
     c = _get_conn(db, cid)
     if c.lifecycle == "archived":
-        raise HTTPException(409, error_detail("VALIDATION_FAILED", "已归档连接不可轮换凭据"))
+        raise HTTPException(409, error_detail("CONNECTION_DISABLED", "已归档连接不可轮换凭据"))
     if _is_masked(payload.secret):
         raise HTTPException(422, error_detail("SECRET_REQUIRED", "轮换必须提供新凭据"))
+    try:
+        validate_secret_structure(c.kind, payload.secret)
+    except ValueError as exc:
+        raise HTTPException(422, error_detail("VALIDATION_FAILED", str(exc), path="secret")) from exc
     actor = _actor(user)
     env_code = payload.envCode or ""
     new_ref = _encrypt(serialize_secret(payload.secret))
@@ -281,9 +303,11 @@ class SecretClearPayload(BaseModel):
 def clear_connection_secret(cid: str, payload: SecretClearPayload,
                             db: Session = Depends(get_db),
                             user: dict = Depends(require_admin)):
-    """SDD-12 §5.3 / B-03：admin + 二次确认 + 依赖检查 + 审计。"""
+    """SDD-12 §5.3 / B-03：admin + 二次确认 + 依赖检查 + 审计。归档连接拒绝。"""
     from ..resource_registry import references
     c = _get_conn(db, cid)
+    if c.lifecycle == "archived":
+        raise HTTPException(409, error_detail("CONNECTION_DISABLED", "已归档连接不可清除凭据"))
     if payload.confirm != CLEAR_CONFIRM_TOKEN:
         raise HTTPException(422, error_detail(
             "VALIDATION_FAILED", f"清除凭据为高危操作：confirm 必须为 {CLEAR_CONFIRM_TOKEN}",
@@ -312,12 +336,18 @@ def clear_connection_secret(cid: str, payload: SecretClearPayload,
 
 
 def _set_env_ref(conn, env_code: str, ref: str | None) -> bool:
-    rows = list(conn.environments or [])
-    hit = False
-    for e in rows:
+    """替换某环境的 secret_ref。
+
+    注意：必须构造全新 dict 列表——原地改动 JSONB 缓存对象会让 SQLAlchemy
+    比较不出差异、变更不落库（环境级轮换/清除静默丢失）。
+    """
+    rows, hit = [], False
+    for e in (conn.environments or []):
         if e.get("code") == env_code:
-            e["secret_ref"] = ref
+            rows.append({**e, "secret_ref": ref})
             hit = True
+        else:
+            rows.append(dict(e))
     conn.environments = rows
     return hit
 
@@ -344,6 +374,9 @@ def test_connection(cid: str, payload: dict | None = None, db: Session = Depends
     探测不再改写生命周期（AR-07 生命周期/健康分离）；健康度由 CheckRun 派生。
     """
     c = _get_conn(db, cid)
+    # SDD-12 修复轮（附加缺口）：归档连接不得再探测/写 CheckRun
+    if c.lifecycle == "archived":
+        raise HTTPException(409, error_detail("CONNECTION_DISABLED", "已归档连接不可测试"))
     env = (payload or {}).get("env")
     fp = connection_env_fingerprint(c, env)
     t0 = datetime.now(timezone.utc)
@@ -428,7 +461,7 @@ def enable_connection(cid: str, db: Session = Depends(get_db),
     from ..check_runs import assert_check_gate
     c = _get_conn(db, cid)
     if c.lifecycle == "archived":
-        raise HTTPException(409, error_detail("VALIDATION_FAILED", "已归档连接不可启用"))
+        raise HTTPException(409, error_detail("CONNECTION_DISABLED", "已归档连接不可启用"))
     env_code = c.default_env or ((c.environments or [{}])[0].get("code") if c.environments else "") or ""
     assert_check_gate(db, scope="connection", target_id=c.id,
                       fingerprint=connection_env_fingerprint(c, env_code or None),
@@ -445,7 +478,7 @@ def disable_connection(cid: str, db: Session = Depends(get_db),
                        user: dict = Depends(require_admin)):
     c = _get_conn(db, cid)
     if c.lifecycle == "archived":
-        raise HTTPException(409, error_detail("VALIDATION_FAILED", "已归档连接不可停用"))
+        raise HTTPException(409, error_detail("CONNECTION_DISABLED", "已归档连接不可停用"))
     c.lifecycle = "disabled"
     c.status = "disabled"
     audit(db, _actor(user), "connection.disabled", "connection", c.id, {})

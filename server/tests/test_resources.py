@@ -14,9 +14,11 @@ def u(prefix: str) -> str:
 
 def test_connection_protocol_endpoint():
     name = u("conn")
+    # SDD-12 修复轮：basic 凭据必须为结构化对象（含 username）
     r = client.post("/api/connections", json={"name": name, "protocol": "mysql",
                                               "endpoint": {"host": "db.internal", "port": 3306},
-                                              "kind": "basic", "secret": "pw"})
+                                              "kind": "basic",
+                                              "secret": {"username": "app", "password": "pw"}})
     assert r.status_code == 201, r.text
     cid = r.json()["id"]
     items = client.get("/api/connections", params={"type": "mysql", "pageSize": 200}).json()["items"]
