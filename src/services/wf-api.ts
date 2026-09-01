@@ -256,6 +256,10 @@ interface RunDetailRaw {
   taskId?: string | null
   taskVersionId?: string | null
   interactionRef?: string
+  /* SDD 13 §8.5：delivery 与领域链接 */
+  delivery?: RunDeliveryInfo | null
+  domainLinks?: DomainLink[]
+  output?: Record<string, unknown> | null
   nodeRuns?: {
     nodeRunId: string; nodeId: string; nodeType: string; status: string
     durationMs: number | null; attempt?: number; error?: { message?: string } | null
@@ -289,7 +293,22 @@ export interface AgentRunExtras {
   quality: NonNullable<RunDetailRaw["quality"]> | null
 }
 
-export async function realRunDetail(runId: string): Promise<{ run: Run; executions: { items: InteractionExecution[]; total: number; page: number; pageSize: number }; agent: AgentRunExtras | null }> {
+export interface RunDeliveryInfo {
+  id: string
+  status: string
+  attempts: number
+  maxAttempts: number
+  writeMode: string
+  error: { code?: string; message?: string } | null
+  targetReference: { assetId?: string; schema?: string; table?: string; key?: Record<string, unknown> } | null
+  payloadSha256: string
+  nextAttemptAt: string | null
+  outputAssetId: string | null
+}
+
+export interface DomainLink { rel: string; id: string; interactionRef?: string }
+
+export async function realRunDetail(runId: string): Promise<{ run: Run; executions: { items: InteractionExecution[]; total: number; page: number; pageSize: number }; agent: AgentRunExtras | null; delivery: RunDeliveryInfo | null; domainLinks: DomainLink[]; rawOutput: Record<string, unknown> | null }> {
   const d = await req<RunDetailRaw>(`/api/runs/${runId}`)
   const nodeRuns = d.nodeRuns ?? []
   // 09 P0-08：任务主链 Run 用真实 TaskRun/DataSnapshot 填充，不再占位
@@ -348,17 +367,23 @@ export async function realRunDetail(runId: string): Promise<{ run: Run; executio
     duration: n.durationMs != null ? `${n.durationMs}ms` : undefined,
     errorType: n.error?.message, attempts: [{ no: n.attempt ?? 1, status: EX_STATUS[n.status] ?? "SKIPPED", error: n.error?.message }],
   }))
-  const agent: AgentRunExtras | null = d.runtime || (d.stages ?? []).length || (d.calls ?? []).length || d.quality
+  const agent: AgentRunExtras | null = d.runtime || (d.stages ?? []).length || (d.calls ?? []).length
     ? {
       runtime: d.runtime ?? null,
       stages: d.stages ?? [],
       calls: d.calls ?? [],
       usage: d.usage ?? {},
       evidence: d.evidence ?? [],
-      quality: d.quality ?? null,
+      quality: null,  // SDD 13 PR6：Task Core 不再内嵌领域 DTO
     }
     : null
-  return { run, executions: { items: executions, total: executions.length, page: 1, pageSize: 50 }, agent }
+  // SDD 13 §8.5/§11：delivery 详情 + 领域链接 + 原始输出（通用 viewer 消费）
+  return {
+    run, executions: { items: executions, total: executions.length, page: 1, pageSize: 50 }, agent,
+    delivery: d.delivery ?? null,
+    domainLinks: d.domainLinks ?? [],
+    rawOutput: d.output ?? null,
+  }
 }
 
 export interface Paged<T> { items: T[]; total: number; page: number; pageSize: number }

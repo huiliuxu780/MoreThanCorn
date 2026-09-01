@@ -466,28 +466,10 @@ def execute_task_run(task_run_id: str) -> None:
                 db.add(run)
                 db.commit()
                 _dispatch_interaction_run(db, run, agent_version)
-                # 09 P0 不变量（成功必须恰好一条生效 QualityResult）仅对"产出质检结果"的
-                # 目标强制：Workflow 目标 或 quality-analysis Module；其余只读 Module 的领域
-                # 结果走各自 Mapper（R5+），不强制 QualityResult。
-                enforce_qr = (not agent_target) or \
-                    (getattr(target_agent, "module_key", None) == "quality-analysis")
+                # SDD 13 PR6：Task Core 不再普遍性假设 QualityResult——领域结果由领域
+                # 消费者/投影器负责（create-record 节点 / Module Mapper），核心只认 Run 终态。
                 if run.status == "succeeded":
-                    if not enforce_qr:
-                        ok += 1
-                    else:
-                        from .models import QualityResult
-                        n_res = db.execute(select(func.count(QualityResult.id)).where(
-                            QualityResult.run_id == run.id,
-                            QualityResult.is_latest.is_(True))).scalar() or 0
-                        if n_res != 1:
-                            run.status = "failed"
-                            run.error = {"message": f"MISSING_QUALITY_RESULT：成功但结果数={n_res}（应=1）"}
-                            db.commit()
-                            fail += 1
-                            errors.append({"interactionRef": ref,
-                                           "error": run.error["message"]})
-                        else:
-                            ok += 1
+                    ok += 1
                 else:
                     fail += 1
                     errors.append({"interactionRef": ref,
@@ -532,7 +514,6 @@ def execute_task_run(task_run_id: str) -> None:
 def reaggregate_task_run(db: Session, tr: TaskRun) -> None:
     """09 P1-06（审计：父批次永久 partial）：按每 Interaction 的最新 attempt 重汇
     TaskRun 的 succeeded/failed 与终态。"""
-    from .models import QualityResult
     runs = db.query(Run).filter(Run.task_run_id == tr.id).all()
     latest_by_ref: dict[str, Run] = {}
     for r in runs:
@@ -542,20 +523,9 @@ def reaggregate_task_run(db: Session, tr: TaskRun) -> None:
     ok = fail = 0
     errors: list[dict] = []
     for ref, r in latest_by_ref.items():
+        # SDD 13 PR6：重汇只认 Run 终态，不假设 QualityResult（领域结果归领域层）
         if r.status == "succeeded":
-            agent = db.get(Agent, r.agent_id) if r.agent_id else None
-            enforce_qr = (agent is None) or (agent.module_key == "quality-analysis")
-            if not enforce_qr:
-                ok += 1
-                continue
-            n_res = db.execute(select(func.count(QualityResult.id)).where(
-                QualityResult.run_id == r.id,
-                QualityResult.is_latest.is_(True))).scalar() or 0
-            if n_res == 1:
-                ok += 1
-            else:
-                fail += 1
-                errors.append({"interactionRef": ref, "error": "MISSING_QUALITY_RESULT"})
+            ok += 1
         elif r.status in ("failed", "cancelled"):
             fail += 1
             errors.append({"interactionRef": ref,

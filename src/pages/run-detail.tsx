@@ -62,6 +62,10 @@ export default function RunDetailPage() {
   const { data: detail, loading, error, retry } = useAsyncData(() => realRunDetail(runId), [runId])
   const run = detail?.run ?? null
   const agentExtras = detail?.agent ?? null
+  // SDD 13 §8.5/§11：delivery 详情 / 领域链接 / 原始输出通用 viewer
+  const delivery = detail?.delivery ?? null
+  const domainLinks = detail?.domainLinks ?? []
+  const rawOutput = detail?.rawOutput ?? null
   const runPath = (rid: string) => agentId ? `/config/agents/${agentId}/runs/${rid}` : `/config/tasks/${taskId}/runs/${rid}`
   const { params, update } = useListQuery(50)
   const filters = useMemo(() => parseListFilters(params.filters), [params.filters])
@@ -394,6 +398,62 @@ export default function RunDetailPage() {
               )}
             </div>
           )}
+
+          {/* SDD 13 §11：原始结构化输出通用 JSON viewer（不按 moduleKey 写专用分支） */}
+          {rawOutput && Object.keys(rawOutput).length > 0 ? (
+            <div className="rounded-lg border bg-card px-4 py-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">原始结构化输出（Run.output）</span>
+                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">Output Schema 校验后不可变事实</span>
+                <Button variant="ghost" size="sm" className="ml-auto h-7 px-2 text-xs"
+                  onClick={() => { void navigator.clipboard.writeText(JSON.stringify(rawOutput, null, 2)) }}>
+                  复制 JSON
+                </Button>
+              </div>
+              <pre className="mt-2 max-h-72 overflow-auto rounded bg-muted/40 p-2 text-[11px] leading-relaxed">
+                {JSON.stringify(rawOutput, null, 2)}
+              </pre>
+            </div>
+          ) : null}
+
+          {/* SDD 13 §11：结果投递区块（执行状态与投递状态分离） */}
+          {delivery ? (
+            <div className="rounded-lg border bg-card px-4 py-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">结果投递</span>
+                <span className="rounded border px-1.5 py-0.5 text-[11px]">{delivery.status}</span>
+                <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                  attempts {delivery.attempts}/{delivery.maxAttempts}
+                </span>
+              </div>
+              <div className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1 text-sm md:grid-cols-2">
+                <div>写入模式：{delivery.writeMode}</div>
+                <div>目标：{delivery.targetReference ? `${delivery.targetReference.schema ?? ""}.${delivery.targetReference.table ?? ""}` : "—"}</div>
+                <div className="font-mono text-xs text-muted-foreground">payload sha256：{(delivery.payloadSha256 ?? "").slice(0, 16)}…</div>
+                <div className="text-xs text-muted-foreground">下次重试：{delivery.nextAttemptAt ?? "—"}</div>
+              </div>
+              {delivery.error ? (
+                <div className="mt-2 rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">
+                  {delivery.error.code}：{delivery.error.message}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* SDD 13 §8.5：领域结果链接（解析来自领域服务，不猜路径） */}
+          {domainLinks.length > 0 ? (
+            <div className="rounded-lg border bg-card px-4 py-3">
+              <div className="text-sm font-medium">领域结果</div>
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                {domainLinks.map((l) => (
+                  <Button key={l.id} variant="outline" size="sm" className="h-7 text-xs"
+                    onClick={() => navigate(`/quality/results/${l.interactionRef ?? l.id}`)}>
+                    查看{l.rel === "quality-result" ? "质检结果" : l.rel}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
 

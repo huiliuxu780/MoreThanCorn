@@ -1148,18 +1148,19 @@ def get_task_run_snapshot(trid: str, db: Session = Depends(get_db)):
 
 @router.get("/api/task-runs/{trid}/results")
 def list_task_run_results(trid: str, db: Session = Depends(get_db)):
-    from ..models import QualityResult, TaskRun
+    """SDD 13 PR6（Phase C）：Task 批次 API 不再查询 QualityResult 判断输出情况；
+    本端点迁移为通用 deliveries 兼容面（deprecated），领域结果走 /api/quality-results。"""
     if not db.get(TaskRun, trid):
         raise HTTPException(404, "TaskRun 不存在")
-    rows = db.query(QualityResult).filter_by(task_run_id=trid)\
-        .order_by(QualityResult.created_at.asc()).all()
-    return {"items": [{"id": q.id, "runId": q.run_id, "interactionRef": q.interaction_ref,
-                       "taskId": q.task_id, "taskRunId": q.task_run_id,
-                       "workflowVersionId": q.workflow_version_id,
-                       "ruleVersionId": q.rule_version_id,
-                       "outputSchemaVersionId": q.output_schema_version_id,
-                       "score": q.score, "risk": q.risk, "review": q.review_status,
-                       "isLatest": q.is_latest} for q in rows]}
+    rows = db.query(ResultDelivery).filter_by(task_run_id=trid)\
+        .order_by(ResultDelivery.created_at.asc()).all()
+    return {"deprecated": True,
+            "hint": "领域结果请查询 /api/quality-results 等领域 API",
+            "items": [{"id": d.id, "runId": d.run_id, "interactionRef": d.interaction_ref,
+                       "taskId": d.task_id, "taskRunId": d.task_run_id,
+                       "status": d.status, "attempts": d.attempts,
+                       "targetReference": d.target_reference,
+                       "error": d.error} for d in rows]}
 
 
 @router.post("/api/tasks/{tid}/runs/{trid}/retry-failed", status_code=202)
