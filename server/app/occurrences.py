@@ -15,7 +15,7 @@ from croniter import croniter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Schedule, ScheduleOccurrence, TaskRun
+from .models import Schedule, ScheduleOccurrence, TaskRun, new_id
 
 HORIZON_HOURS = 48
 MISS_GRACE_MINUTES = 5
@@ -63,18 +63,18 @@ def materialize_occurrences(db: Session, now: datetime | None = None) -> int:
                 break
             if nxt <= now - timedelta(minutes=MISS_GRACE_MINUTES):
                 continue  # 已过期窗口不补计划
-            exists = db.execute(select(ScheduleOccurrence.id).where(
-                ScheduleOccurrence.schedule_id == sch.id,
-                ScheduleOccurrence.planned_at == nxt)).first()
-            if exists:
-                continue
-            db.add(ScheduleOccurrence(
-                schedule_id=sch.id, task_id=sch.task_id, planned_at=nxt,
+            # 与并发 materializer（scheduler 线程/测试直调）竞态安全：DB 侧去重
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
+            stmt = pg_insert(ScheduleOccurrence).values(
+                id=new_id(), schedule_id=sch.id, task_id=sch.task_id, planned_at=nxt,
                 timezone=sch.timezone or "Asia/Shanghai",
                 fire_key=fire_key_for(sch.id, nxt), status="planned",
                 schedule_snapshot={"cron": sch.cron_expr, "timezone": sch.timezone,
-                                   "taskId": sch.task_id}))
-            created += 1
+                                   "taskId": sch.task_id},
+                created_at=now, updated_at=now)
+            res = db.execute(stmt.on_conflict_do_nothing(
+                constraint="uq_occurrence_schedule_planned"))
+            created += res.rowcount
     if created or cancelled:
         db.commit()
     return created
