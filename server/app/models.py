@@ -725,6 +725,16 @@ class AnalysisTaskVersion(Base):
     sampling: Mapped[dict] = mapped_column(JSONB, default=dict)   # {mode: all|count|random, count, percent, seed}
     data_window: Mapped[dict] = mapped_column(JSONB, default=dict)  # {mode: all|relative|fixed, value, timezone, start, end}
     output_schema_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # SDD 13 §4.2：输出配置（OutputBinding）。output_contract_snapshot 冻结执行目标
+    # Output Schema 本体/ref/version/sha256/来源；legacy 质检引用只留 output_schema_version_id。
+    output_contract_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    output_mode: Mapped[str] = mapped_column(String(16), default="platform_only")  # platform_only|target_table
+    output_asset_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # target_table 时必填
+    output_definition_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    output_write_mode: Mapped[str] = mapped_column(String(16), default="upsert")  # append|upsert
+    output_key_fields: Mapped[list] = mapped_column(JSONB, default=list)  # 至少覆盖目标表唯一键
+    output_mapping: Mapped[dict] = mapped_column(JSONB, default=dict)  # 目标列 -> 受限表达式
+    output_failure_policy: Mapped[str] = mapped_column(String(32), default="separate_delivery_status")
     note: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -817,10 +827,79 @@ class TaskRun(Base):
     failed_count: Mapped[int] = mapped_column(Integer, default=0)
     skipped_count: Mapped[int] = mapped_column(Integer, default=0)
     cancelled_count: Mapped[int] = mapped_column(Integer, default=0)
+    # SDD 13 §4.3：投递快照与聚合。delivery_status 单独表示目标表投递聚合，
+    # 禁止以 status=succeeded 推导目标表已有全部结果。
+    output_binding_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    delivery_status: Mapped[str] = mapped_column(
+        String(16), default="not_configured", index=True)  # not_configured|pending|running|succeeded|partial|failed
+    delivery_pending_count: Mapped[int] = mapped_column(Integer, default=0)
+    delivery_succeeded_count: Mapped[int] = mapped_column(Integer, default=0)
+    delivery_failed_count: Mapped[int] = mapped_column(Integer, default=0)
     error_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ResultDelivery(Base):
+    """SDD 13 §4.4：Run 输出到目标表的投递 Outbox 行。
+
+    平台 Outbox exactly-once creation（UNIQUE(run_id)/UNIQUE(idempotency_key)）；
+    外部投递 at-least-once attempt，目标表效果靠唯一键+upsert 幂等。
+    record_payload 为映射后冻结记录（数据级别继承 Run.output），重试不得改写。"""
+    __tablename__ = "result_delivery"
+    __table_args__ = (
+        UniqueConstraint("run_id", name="uq_result_delivery_run"),
+        UniqueConstraint("idempotency_key", name="uq_result_delivery_idem"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), index=True)
+    task_run_id: Mapped[str | None] = mapped_column(ForeignKey("task_run.id", ondelete="SET NULL"), nullable=True, index=True)
+    task_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    task_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    interaction_ref: Mapped[str] = mapped_column(String(128), default="", index=True)
+    output_asset_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    output_definition_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)  # pending|running|succeeded|retrying|failed|dead_letter
+    write_mode: Mapped[str] = mapped_column(String(16), default="upsert")  # append|upsert
+    idempotency_key: Mapped[str] = mapped_column(String(128), default="")  # result-delivery:{run_id}
+    record_payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    payload_sha256: Mapped[str] = mapped_column(String(64), default="")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=5)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # 结构化、脱敏错误
+    target_reference: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # 成功后的表与键，不存 Secret
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ScheduleOccurrence(Base):
+    """SDD 13 §4.6：当日调度事实（计划发生项持久化）。
+
+    调度器滚动 48 小时预生成；UNIQUE(schedule_id, planned_at) 防重复计划；
+    到点以 fire_key 幂等创建 TaskRun 并回填 task_run_id；超宽限未触发=missed；
+    暂停后未触发=cancelled（不静默删除）。前端不得仅凭 cron 推算历史计划。"""
+    __tablename__ = "schedule_occurrence"
+    __table_args__ = (
+        UniqueConstraint("fire_key", name="uq_occurrence_fire_key"),
+        UniqueConstraint("schedule_id", "planned_at", name="uq_occurrence_schedule_planned"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    schedule_id: Mapped[str] = mapped_column(ForeignKey("schedule.id", ondelete="CASCADE"), index=True)
+    task_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    planned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    timezone: Mapped[str] = mapped_column(String(48), default="Asia/Shanghai")
+    fire_key: Mapped[str] = mapped_column(String(128), default="")  # 与 TaskRun.schedule_fire_key 对齐
+    status: Mapped[str] = mapped_column(String(16), default="planned", index=True)  # planned|firing|started|missed|skipped|cancelled
+    task_run_id: Mapped[str | None] = mapped_column(ForeignKey("task_run.id", ondelete="SET NULL"), nullable=True, unique=True)
+    schedule_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict)
+    error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 class ReviewRevision(Base):
