@@ -1361,6 +1361,10 @@ def execute_run(run_id: str, call_chain: list[str] | None = None, resume: dict |
         run.ended_at = datetime.now(timezone.utc)
         if run.started_at:
             run.duration_ms = int((run.ended_at - run.started_at).total_seconds() * 1000)
+        if run.status == "succeeded":
+            # SDD 13 §7.1：Run.output 与 ResultDelivery 同一平台事务创建
+            from .delivery import settle_run_success
+            settle_run_success(db, run)
         db.commit()
     except _Paused:
         # 07-SDD：wait-review 挂起——Run 置 paused，等待 resume 端点续跑
@@ -1604,6 +1608,9 @@ def _dispatch_job(jtype: str, payload: dict) -> None:
     elif jtype == "agent-runtime-cancel":  # SDD 10 R1-4：请求 Provider 取消并按实际终态收尾
         from .runtime_providers.worker import cancel_agent_runtime
         cancel_agent_runtime(payload)
+    elif jtype == "result-delivery":  # SDD 13 §7.2：目标表投递 Outbox worker
+        from .delivery import process_result_delivery
+        process_result_delivery(payload)
     else:
         execute_run(payload["run_id"], resume=payload.get("resume"))
 

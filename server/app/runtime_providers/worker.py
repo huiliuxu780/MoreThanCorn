@@ -450,6 +450,8 @@ def _settle_module_result(db: Session, run: Run, state) -> None:
     # SDD 10 §5.9：仅 quality-analysis 映射到 QualityResult；其余 Module 的领域结果
     # （ticket/business）走各自 Result Mapper，R5+ 落地，此处不落 QualityResult。
     if mod.key != "quality-analysis":
+        from ..delivery import settle_run_success
+        settle_run_success(db, run)  # SDD 13 §7.1：与 Run.output 同事务创建 Delivery
         db.commit()
         return
     # QualityResult 恰好一条（INV-03；重复轮询安全）
@@ -482,4 +484,6 @@ def _settle_module_result(db: Session, run: Run, state) -> None:
         # 评分由平台冻结规则派生（SDD §9.1：不由 Agent 计算质检分数）
         from ..routers.business import apply_rules_to_result
         apply_rules_to_result(db, qr, run.rule_version_id)
+    from ..delivery import settle_run_success
+    settle_run_success(db, run)  # SDD 13 §7.1：与 Run.output 同事务创建 Delivery
     db.commit()
