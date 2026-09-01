@@ -82,7 +82,7 @@
   前端断线降级 5s 轮询并在页头明示。
 
 ### G 组 自动化门槛
-- `cd server && .venv/bin/python -m pytest tests -q` → 见本次运行输出（含 SDD13 新增 16 用例）。
+- `cd server && .venv/bin/python -m pytest tests -q` → **359 passed, 0 failed**（13:00，含 SDD13 新增 16 用例与适配用例）。
 - `npm run typecheck` / `npm run lint` / `npm run build` → 0 错误（构建产物 dist/）。
 - 真实 PG 集成：`tests/test_sdd13_delivery.py` 9/9（wf_test）+ `scripts/verify-sdd13-delivery.py`（wf_dev）。
 
