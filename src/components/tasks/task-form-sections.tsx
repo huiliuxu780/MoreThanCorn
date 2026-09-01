@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { FormField } from "@/components/app/form-field"
 import { SectionHeader } from "@/components/app/page"
+import { useAsyncData } from "@/hooks/use-async-data"
 import { defApi, type DefinitionDTO } from "@/services/resource-api"
 import { agentApi, bizApi, formsApi, listDataAssets, wfApi } from "@/services/wf-api"
 import type { AgentDetail, DataAsset, DataAssetField } from "@/domain/types"
@@ -140,6 +141,13 @@ export interface TaskFormState {
   dataWindowTemplate: string
   dataWindowStart: string
   dataWindowEnd: string
+  /** SDD 13 §9.1：结果输出（目标表投递 / 仅平台保存） */
+  outputMode: "platform_only" | "target_table"
+  outputAssetId: string
+  outputDefinitionVersionId: string
+  outputWriteMode: "append" | "upsert"
+  outputKeyFields: string
+  outputMappingRows: { column: string; expr: string }[]
 }
 
 export const emptyTaskForm: TaskFormState = {
@@ -165,6 +173,23 @@ export const emptyTaskForm: TaskFormState = {
   dataWindowTemplate: "上一自然日",
   dataWindowStart: "",
   dataWindowEnd: "",
+  outputMode: "platform_only",
+  outputAssetId: "",
+  outputDefinitionVersionId: "",
+  outputWriteMode: "upsert",
+  outputKeyFields: "_run_id",
+  outputMappingRows: [],
+}
+
+/** SDD 13 §4.5：目标表最小系统列的默认来源表达式。 */
+export const SYSTEM_MAPPING_DEFAULTS: Record<string, string> = {
+  _run_id: "$run.id",
+  _task_run_id: "$run.taskRunId",
+  _task_id: "$run.taskId",
+  _task_version_id: "$run.taskVersionId",
+  _interaction_ref: "$run.interactionRef",
+  _output_schema_ref: "$schema.ref",
+  _written_at: "$system.completedAt",
 }
 
 export function agentOf(form: TaskFormState): AgentDetail | null {
@@ -668,6 +693,227 @@ export function StrategyTaskFields({
         )}
         <p className="text-xs text-muted-foreground">Schedule 与 Data Window 分离：执行周期 ≠ 分析的数据范围。窗口语义为 [start, end)。</p>
       </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* SDD 13 §9.1：结果输出区块（OutputBinding 配置 + 服务端预检）          */
+/* ------------------------------------------------------------------ */
+
+export function OutputBindingFields({
+  form,
+  onChange,
+}: {
+  form: TaskFormState
+  onChange: (next: TaskFormState) => void
+}) {
+  const set = (patch: Partial<TaskFormState>) => onChange({ ...form, ...patch })
+  const { data: writable } = useAsyncData(() => bizApi.writableAssets(), [])
+  const { data: meta, retry: retryMeta } = useAsyncData(
+    () => (form.outputAssetId ? bizApi.targetMeta(form.outputAssetId) : Promise.resolve(null)),
+    [form.outputAssetId],
+  )
+  const [issues, setIssues] = useState<{ code: string; message: string; path: (string | number)[] }[] | null>(null)
+  const [validating, setValidating] = useState(false)
+  const [resolved, setResolved] = useState<string | null>(null)
+
+  const asset = (writable ?? []).find((a) => a.id === form.outputAssetId)
+  const columns = meta?.columns ?? []
+  const setRow = (i: number, patch: Partial<{ column: string; expr: string }>) =>
+    set({ outputMappingRows: form.outputMappingRows.map((r, j) => (j === i ? { ...r, ...patch } : r)) })
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader title="结果输出" description="SDD 13：执行结果与业务页面解耦；目标表必须预先接入并验证" />
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">输出方式</Label>
+        <RadioGroup value={form.outputMode} onValueChange={(v) => set({ outputMode: v as TaskFormState["outputMode"] })} className="flex gap-4">
+          <div className="flex items-center gap-2">
+            <RadioGroupItem value="platform_only" id="ob-platform" />
+            <Label htmlFor="ob-platform" className="text-sm">仅保存在平台（sandbox/manual）</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <RadioGroupItem value="target_table" id="ob-table" />
+            <Label htmlFor="ob-table" className="text-sm">投递到目标表（生产默认）</Label>
+          </div>
+        </RadioGroup>
+      </div>
+
+      {form.outputMode === "target_table" ? (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">目标 DataAsset（可写 table）</Label>
+              <Select value={form.outputAssetId} onValueChange={(v) => set({ outputAssetId: v, outputDefinitionVersionId: "", outputMappingRows: [] })}>
+                <SelectTrigger className="h-8"><SelectValue placeholder="选择目标表资产" /></SelectTrigger>
+                <SelectContent>
+                  {(writable ?? []).map((a) => (
+                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">DataDefinitionVersion</Label>
+              <Select value={form.outputDefinitionVersionId} onValueChange={(v) => set({ outputDefinitionVersionId: v })}>
+                <SelectTrigger className="h-8"><SelectValue placeholder="默认最新已发布" /></SelectTrigger>
+                <SelectContent>
+                  {(meta?.definitions ?? []).map((d) => (
+                    <SelectItem key={d.id} value={d.id}>{d.name} V{d.versionNo}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+            物理表：{asset?.location ?? "—"} · Connection：{asset?.connectionName ?? "—"}（只读；写入经服务端参数化 SQL）
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">写入模式</Label>
+              <Select value={form.outputWriteMode} onValueChange={(v) => set({ outputWriteMode: v as "append" | "upsert" })}>
+                <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="upsert">upsert（按唯一键更新）</SelectItem>
+                  <SelectItem value="append">append（冲突跳过）</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">唯一键（覆盖目标表唯一约束）</Label>
+              <Input className="h-8" value={form.outputKeyFields} onChange={(e) => set({ outputKeyFields: e.target.value })} placeholder="_run_id" />
+              {(meta?.uniqueConstraints ?? []).length > 0 ? (
+                <p className="text-[11px] text-muted-foreground">
+                  目标唯一约束：{(meta?.uniqueConstraints ?? []).map((u) => u.join("+")).join("；")}
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">字段映射（目标列 ← 受限表达式）</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button" variant="outline" size="sm"
+                  onClick={() => {
+                    const rows = [...form.outputMappingRows]
+                    const have = new Set(rows.map((r) => r.column))
+                    for (const [col, expr] of Object.entries(SYSTEM_MAPPING_DEFAULTS)) {
+                      if (columns.length === 0 || columns.some((c) => c.name === col)) {
+                        if (!have.has(col)) rows.push({ column: col, expr })
+                      }
+                    }
+                    for (const c of columns) {
+                      if (!have.has(c.name) && !SYSTEM_MAPPING_DEFAULTS[c.name]) {
+                        rows.push({ column: c.name, expr: `$output.${c.name}` })
+                      }
+                    }
+                    set({ outputMappingRows: rows })
+                  }}
+                >
+                  生成默认映射
+                </Button>
+                <Button type="button" variant="outline" size="sm"
+                  onClick={() => set({ outputMappingRows: [...form.outputMappingRows, { column: "", expr: "" }] })}>
+                  <Plus className="size-3.5" /> 添加行
+                </Button>
+              </div>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>目标列</TableHead>
+                  <TableHead>类型</TableHead>
+                  <TableHead>必填</TableHead>
+                  <TableHead>来源表达式</TableHead>
+                  <TableHead className="w-8" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {form.outputMappingRows.length === 0 ? (
+                  <TableRow><TableCell colSpan={5} className="py-4 text-center text-xs text-muted-foreground">尚未配置映射；可点击“生成默认映射”</TableCell></TableRow>
+                ) : form.outputMappingRows.map((row, i) => {
+                  const col = columns.find((c) => c.name === row.column)
+                  return (
+                    <TableRow key={i}>
+                      <TableCell>
+                        <Select value={row.column} onValueChange={(v) => setRow(i, { column: v })}>
+                          <SelectTrigger className="h-8 w-44"><SelectValue placeholder="目标列" /></SelectTrigger>
+                          <SelectContent>
+                            {columns.map((c) => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{col?.type ?? "—"}</TableCell>
+                      <TableCell className="text-xs">{col && !col.nullable && !col.hasDefault ? "是" : "否"}</TableCell>
+                      <TableCell>
+                        <Input className="h-8 font-mono text-xs" value={row.expr} onChange={(e) => setRow(i, { expr: e.target.value })} placeholder="$output.title / $run.id" />
+                      </TableCell>
+                      <TableCell>
+                        <Button type="button" variant="ghost" size="icon" className="size-7"
+                          onClick={() => set({ outputMappingRows: form.outputMappingRows.filter((_, j) => j !== i) })}>
+                          <X className="size-3.5" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Button
+              type="button" variant="outline" size="sm" disabled={validating || !form.outputAssetId}
+              onClick={async () => {
+                setValidating(true)
+                setIssues(null)
+                setResolved(null)
+                try {
+                  const rep = await bizApi.validateOutputBinding({
+                    executionTarget: { type: form.targetType, agentId: form.agentId,
+                      workflowId: form.targetType === "workflow" ? form.agentId : undefined },
+                    inputAssetId: form.assetId || undefined,
+                    outputBinding: {
+                      mode: "target_table", assetId: form.outputAssetId,
+                      definitionVersionId: form.outputDefinitionVersionId || undefined,
+                      writeMode: form.outputWriteMode,
+                      keyFields: form.outputKeyFields.split(",").map((s) => s.trim()).filter(Boolean),
+                      mapping: Object.fromEntries(form.outputMappingRows.filter((r) => r.column).map((r) => [r.column, r.expr])),
+                    },
+                  })
+                  if (rep.valid) setResolved(`校验通过${rep.resolved?.targetTable ? `：${rep.resolved.targetTable}` : ""}`)
+                  else setIssues(rep.issues)
+                } catch (e) {
+                  setIssues([{ code: "CLIENT_ERROR", message: (e as Error).message, path: [] }])
+                } finally {
+                  setValidating(false)
+                }
+              }}
+            >
+              {validating ? "校验中…" : "验证连接与映射"}
+            </Button>
+            {form.outputAssetId && !meta ? (
+              <Button type="button" variant="ghost" size="sm" onClick={retryMeta}>重新读取目标表结构</Button>
+            ) : null}
+          </div>
+          {resolved ? (
+            <div className="rounded-md border border-emerald-300/60 bg-emerald-50/50 px-3 py-2 text-xs dark:bg-emerald-950/20">{resolved}</div>
+          ) : null}
+          {issues ? (
+            <div className="space-y-1 rounded-md border border-amber-300/60 bg-amber-50/40 px-3 py-2 text-xs dark:bg-amber-950/20">
+              <div className="font-medium">校验发现 {issues.length} 个问题（最终校验以服务端保存时为准）：</div>
+              {issues.map((i, k) => (
+                <div key={k} className="font-mono">{i.code} · {[...i.path].join(".")} — {i.message}</div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }

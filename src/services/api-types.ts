@@ -45,6 +45,25 @@ export interface ExecutionTargetDTO {
   pinnedWorkflowVersionId?: string | null
 }
 
+/** SDD 13 §8.1：OutputBinding 通用契约（target_table / platform_only）。 */
+export interface OutputBindingDTO {
+  mode: "platform_only" | "target_table"
+  assetId?: string | null
+  assetName?: string | null
+  definitionVersionId?: string | null
+  writeMode?: "append" | "upsert"
+  keyFields?: string[]
+  mapping?: Record<string, string>
+  failurePolicy?: string
+  validatedAt?: string | null
+  schemaFingerprint?: string | null
+}
+
+export interface OutputSchemaRefDTO {
+  ref: string
+  sha256?: string | null
+}
+
 export interface TaskVersionDTO {
   id: string
   versionNo: number
@@ -61,6 +80,8 @@ export interface TaskVersionDTO {
   dataWindow: TaskWindowDTO
   outputSchemaVersion: string
   outputSchemaVersionId: string | null
+  outputSchema?: OutputSchemaRefDTO | null
+  outputBinding?: OutputBindingDTO | null
   note: string
   createdBy: string
   createdAt: string

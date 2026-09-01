@@ -86,11 +86,22 @@ def test_backfill_processes_window_subset():
         "pinnedWorkflowVersionId": wv_id, "dataAssetId": asset["id"],
         "dataDefinitionVersionId": defv, "resultRuleVersionId": rpv, "inputMapping": MAPPING,
         "sampling": {"mode": "all"}, "dataWindow": {"mode": "all"}}).json()
+    # SDD 13 §18：backfill 属生产触发，platform_only 任务必须拒绝（422 新闸门）
     r = client.post(f"/api/tasks/{task['id']}/backfill",
                     json={"window": {"start": "2026-08-01", "end": "2026-08-31"}})
-    assert r.status_code == 202, r.text
-    tr = _wait_task_run(r.json()["taskRunId"])
-    assert tr["total"] == 2, f"回填窗口应只含 2 条（实际 {tr['total']}）"
+    assert r.status_code == 422, r.text
+    # 窗口子集语义改经 manual + window_override 验证（manual 允许 platform_only）
+    from app.task_runner import start_task_run
+    db = SessionLocal()
+    try:
+        tr_obj, _res = start_task_run(
+            db, task["id"], trigger="manual",
+            window_override={"mode": "fixed", "start": "2026-08-01", "end": "2026-08-31"})
+        trid = tr_obj.id
+    finally:
+        db.close()
+    tr = _wait_task_run(trid)
+    assert tr["total"] == 2, f"回填窗口应只含 2 条（实际 {tr['total']})"
     assert tr["succeeded"] == 2
     refs = {x["interactionRef"] for x in client.get(f"/api/task-runs/{tr['id']}/runs").json()["items"]}
     assert refs == {"BF-1", "BF-2"}, f"窗口外的 BF-3 不应被处理：{refs}"

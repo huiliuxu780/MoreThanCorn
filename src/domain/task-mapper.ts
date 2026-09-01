@@ -69,6 +69,19 @@ export function buildTaskPayload(form: TaskFormState): CreateTaskPayload {
     if (policy === "pinned") payload.pinnedWorkflowVersionId = form.fixedVersion
   }
   if (form.definitionVersionId) payload.dataDefinitionVersionId = form.definitionVersionId
+  // SDD 13 §9.1：结果输出绑定（target_table 时服务端完整预检；platform_only 不发送）
+  if (form.outputMode === "target_table") {
+    payload.outputBinding = {
+      mode: "target_table",
+      assetId: form.outputAssetId,
+      definitionVersionId: form.outputDefinitionVersionId || undefined,
+      writeMode: form.outputWriteMode,
+      keyFields: form.outputKeyFields.split(",").map((s) => s.trim()).filter(Boolean),
+      mapping: Object.fromEntries(form.outputMappingRows.filter((r) => r.column && r.expr)
+        .map((r) => [r.column, r.expr])),
+      failurePolicy: "separate_delivery_status",
+    }
+  }
   // 09 P0：规则绑定——显式版本=pinned；未选=跟随最新发布（服务端解析时失败关闭）
   if (form.ruleVersionId) {
     payload.resultRuleVersionId = form.ruleVersionId
@@ -119,6 +132,10 @@ export function taskVersionSummary(v: TaskVersionDTO): { label: string; value: s
     { label: "范围", value: conds.length ? conds.map((c) => `${c.field} ${c.op} ${String(c.value)}`).join(" 且 ") : "全部" },
     { label: "采样", value: sampling },
     { label: "数据窗口", value: win },
-    { label: "输出 Schema", value: v.outputSchemaVersion || "quality_evaluation" },
+    // SDD 13 §9.2：不再把非质检 Agent 显示为 quality_evaluation；读通用 outputSchema/outputBinding
+    { label: "输出 Schema", value: v.outputSchema?.ref || v.outputSchemaVersion || "—" },
+    { label: "结果输出", value: v.outputBinding?.mode === "target_table"
+      ? `目标表 ${v.outputBinding.assetName ?? v.outputBinding.assetId ?? ""} · ${v.outputBinding.writeMode ?? "upsert"} · 键 ${(v.outputBinding.keyFields ?? []).join("+")} · 映射 ${Object.keys(v.outputBinding.mapping ?? {}).length} 列`
+      : "仅保存在平台" },
   ]
 }

@@ -470,6 +470,62 @@ def create_asset(payload: dict, db: Session = Depends(get_db),
     return {"id": a.id, "name": a.name}
 
 
+@router.get("/api/data-assets/writable")
+def list_writable_assets(db: Session = Depends(get_db)):
+    """SDD 13 §9.1：目标表只列出可写 table asset（已连接+Ready+postgresql）。"""
+    from ..models import Connection, Datasource
+    rows = db.query(DataAsset).order_by(DataAsset.updated_at.desc()).all()
+    items = []
+    for a in rows:
+        ds = db.get(Datasource, a.datasource_id) if a.datasource_id else None
+        if not ds or (ds.type or "") != "postgresql" or (ds.status or "") != "enabled":
+            continue
+        conn = db.get(Connection, ds.connection_id) if ds.connection_id else None
+        if not conn or (conn.lifecycle or "") not in ("active",):
+            continue
+        if (a.lifecycle or "") != "Ready" or not (a.location or "").strip():
+            continue
+        items.append({"id": a.id, "name": a.name, "location": a.location,
+                      "datasourceName": ds.name, "connectionName": conn.name,
+                      "lifecycle": a.lifecycle})
+    return {"items": items}
+
+
+@router.get("/api/data-assets/{aid}/target-meta")
+def get_target_meta(aid: str, db: Session = Depends(get_db)):
+    """SDD 13 §9.1：mapping grid 所需的目标列/唯一约束/定义版本（服务端探测）。"""
+    from ..data_writers import WriterError, get_writer
+    from ..models import DataDefinition, DataDefinitionVersion, Datasource
+    a = db.get(DataAsset, aid)
+    if not a:
+        raise HTTPException(404, "数据资产不存在")
+    ds = db.get(Datasource, a.datasource_id) if a.datasource_id else None
+    if not ds:
+        raise HTTPException(422, "目标 DataAsset 未绑定 DataSource")
+    schema_name, table = "public", (a.location or "").strip()
+    if "." in table:
+        s, t = table.split(".", 1)
+        schema_name, table = s, t
+    snap = {"schemaName": schema_name, "table": table}
+    try:
+        writer = get_writer(db, ds)
+        meta = writer.inspect_target(snap)
+    except WriterError as exc:
+        raise HTTPException(422, {"code": exc.code, "message": exc.message})
+    defs = db.query(DataDefinition).filter_by(data_asset_id=aid).all()
+    def_versions = []
+    for d in defs:
+        vs = db.query(DataDefinitionVersion).filter_by(definition_id=d.id)\
+            .order_by(DataDefinitionVersion.version_no.desc()).all()
+        for v in vs:
+            def_versions.append({"id": v.id, "definitionId": d.id, "name": d.name,
+                                 "versionNo": v.version_no})
+    return {"columns": [{"name": c.name, "type": c.pg_type, "nullable": c.nullable,
+                         "hasDefault": c.has_default} for c in meta.columns.values()],
+            "uniqueConstraints": [list(u) for u in meta.unique_constraints],
+            "definitions": def_versions}
+
+
 @router.get("/api/data-assets/{aid}")
 def get_asset(aid: str, db: Session = Depends(get_db)):
     a = db.get(DataAsset, aid)

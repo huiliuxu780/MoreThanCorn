@@ -883,6 +883,23 @@ export interface CreateTaskPayload {
   scope?: { op: "and" | "or"; conditions: { field: string; op: string; value: unknown }[] }
   sampling?: { mode: "all" | "count" | "random"; count?: number; percent?: number }
   dataWindow?: { mode: "all" | "relative" | "fixed"; value?: string; timezone?: string; start?: string; end?: string }
+  /** SDD 13：结果输出绑定（target_table 时服务端完整预检） */
+  outputBinding?: {
+    mode: "platform_only" | "target_table"
+    assetId?: string
+    definitionVersionId?: string
+    writeMode?: "append" | "upsert"
+    keyFields?: string[]
+    mapping?: Record<string, string>
+    failurePolicy?: string
+  }
+}
+
+/** SDD 13 §8.2：OutputBinding 预检响应。 */
+export interface OutputBindingValidation {
+  valid: boolean
+  issues: { code: string; path: (string | number)[]; message: string }[]
+  resolved: { outputSchemaRef?: string; targetTable?: string | null; schemaFingerprint?: string | null } | null
 }
 
 export interface StartTaskRunResponse {
@@ -967,6 +984,19 @@ export const bizApi = {
     req<{ retried: number; newRunIds: string[] }>(`/api/tasks/${id}/runs/${trid}/retry-failed`, { method: "POST", body: "{}" }),
   taskSchedule: (id: string, cron: string, timezone = "Asia/Shanghai") =>
     req<{ id: string; nextRunAt: string }>(`/api/tasks/${id}/schedule`, { method: "POST", body: JSON.stringify({ cron, timezone }) }),
+  /* ---------- SDD 13：结果输出配置 ---------- */
+  writableAssets: () =>
+    req<{ items: { id: string; name: string; location: string; datasourceName: string; connectionName: string; lifecycle: string }[] }>(
+      "/api/data-assets/writable").then((r) => r.items),
+  targetMeta: (aid: string) =>
+    req<{ columns: { name: string; type: string; nullable: boolean; hasDefault: boolean }[];
+          uniqueConstraints: string[][];
+          definitions: { id: string; definitionId: string; name: string; versionNo: number }[] }>(
+      `/api/data-assets/${aid}/target-meta`),
+  validateOutputBinding: (body: { executionTarget?: Record<string, unknown>; inputAssetId?: string;
+    outputBinding: Record<string, unknown> }) =>
+    req<OutputBindingValidation>("/api/tasks/output-binding/validate", {
+      method: "POST", body: JSON.stringify(body) }),
 }
 
 export async function realQualityDetail(id: string): Promise<Record<string, unknown>> {

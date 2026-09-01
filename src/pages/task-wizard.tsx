@@ -12,6 +12,7 @@ import {
   DataTaskFields,
   emptyTaskForm,
   mappingIssues,
+  OutputBindingFields,
   StrategyTaskFields,
   TargetTaskFields,
   type TaskFormState,
@@ -21,8 +22,8 @@ import { buildTaskPayload, buildTaskSchedule, samplingLabelOf, windowLabelOf } f
 import { bizApi } from "@/services/wf-api"
 import type { TaskVersionDTO } from "@/services/api-types"
 
-/* R8-UI（11 §7-④ / 原型 v1-④）：插入「执行目标」步 */
-const STEPS = ["基本设置", "执行目标", "分析数据", "执行策略", "确认并创建"] as const
+/* R8-UI（11 §7-④ / 原型 v1-④）：插入「执行目标」步；SDD 13 §9.1：插入「结果输出」步 */
+const STEPS = ["基本设置", "执行目标", "分析数据", "结果输出", "执行策略", "确认并创建"] as const
 
 export default function TaskWizardPage() {
   const navigate = useNavigate()
@@ -44,6 +45,10 @@ export default function TaskWizardPage() {
       ? (form.agentVersionPolicy !== "pinned" || form.fixedVersion !== "")
       : (form.versionPolicy === "Latest Published" || form.fixedVersion !== "")),
     form.assetId !== "" && mappingOk,
+    // SDD 13 §9.1：target_table 时目标资产/定义版本/唯一键/映射必备（服务端最终校验）
+    form.outputMode === "platform_only"
+    || (form.outputAssetId !== "" && form.outputDefinitionVersionId !== ""
+      && form.outputKeyFields.trim() !== "" && form.outputMappingRows.length > 0),
     // R8-UI-3：规则绑定前置拦截——pinned 规则版本或 follow_latest 的 RuleSet 作用域必选其一（后端 422 兜底）
     (form.scheduleType === "一次性" ? form.dataWindowStart !== "" && form.dataWindowEnd !== "" : true)
     && (form.ruleVersionId !== "" || form.ruleSetId !== ""),
@@ -102,8 +107,9 @@ export default function TaskWizardPage() {
             }}
           />
         ) : null}
-        {step === 3 ? <StrategyTaskFields form={form} onChange={setForm} /> : null}
-        {step === 4 ? (
+        {step === 3 ? <OutputBindingFields form={form} onChange={setForm} /> : null}
+        {step === 4 ? <StrategyTaskFields form={form} onChange={setForm} /> : null}
+        {step === 5 ? (
           <div className="space-y-1 text-sm">
             <p className="mb-3 text-muted-foreground">该任务将：</p>
             <DefinitionRow label="执行目标">
@@ -138,7 +144,7 @@ export default function TaskWizardPage() {
         <Button variant="outline" disabled={step === 0} onClick={() => setStep((s) => s - 1)}>
           上一步
         </Button>
-        {step < 4 ? (
+        {step < 5 ? (
           <Button disabled={!stepValid} onClick={() => setStep((s) => s + 1)}>
             下一步 <ArrowRight className="size-4" />
           </Button>
