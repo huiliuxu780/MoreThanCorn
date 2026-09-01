@@ -1,6 +1,6 @@
 # AI Resources / Connections 重构验收清单
 
-状态：**P0 二次独立验收不通过（A-03 字段级 patch 数据丢失、kind/Secret 一致性阻断；其余阶段待实施）**
+状态：**P0 三次独立验收通过（P0 范围；其余阶段待实施）**
 规格：`docs/sdd/12-ai-resource-connection-refactor-sdd.md`  
 验收规则：实现者填写证据，验收人复跑并勾选；无证据不得标通过。
 
@@ -22,7 +22,7 @@
 
 - [ ] A-01 Connector Definition 有不可变 key/version、config schema、credential schema、operations、handler key 和 checksum。
 - [ ] A-02 Connection、ConnectionEnvironment、SecretRevision、CheckRun 之间是明确 FK，不再依赖 environments JSONB 作为新路径事实源。
-- [ ] A-03 普通 Connection config 更新不创建、不替换、不清空 SecretRevision。**二次验收仍不通过：未提交环境已能保留，但对已提交环境只改 `label` 会把省略的 `endpoint` 覆盖为 `{}`，字段级 patch 仍有配置数据丢失。**
+- [x] A-03 普通 Connection config 更新不创建、不替换、不清空 SecretRevision。
 - [ ] A-04 Resource、ResourceVersion、ResourceVersionBinding 已落库；发布版本不可修改。
 - [ ] A-05 RuntimeProjection 由版本、绑定和运行环境确定性产生，不读取 Resource latest 草稿。
 - [ ] A-06 Tool/MCP/Knowledge/Model 的 application service 不依赖 Router 函数。
@@ -165,6 +165,7 @@ node scripts/e2e-resource-runtime.mjs
 | 2026-08-31 | 阻断项修复完成，二次待验收 | 修复与证据见 M.6：A-03 环境 patch 化、B-03 EnvPatch 禁 Secret 写入、C-04 default_env 合并后校验，另修复归档门禁/轮换结构校验/_set_env_ref 落库缺陷；后端 336 tests、E2E 41/41、verify-fullstack 63/63、全部静态度门禁复验通过。失败项保持未勾选，由验收人二次复跑 |
 | 2026-09-01 | P0 二次独立验收不通过 | 原 B-03、C-04 与归档/rotate/JSONB 修复复跑通过；原 A-03 的”未提交环境丢失”已修复，但新增独立探针发现字段级 EnvPatch 会清空省略的 endpoint，且 kind 更新可保留不兼容的旧 Secret。既有 12 项门禁全部通过，覆盖仍缺两条边界；详情见 M.7。 |
 | 2026-09-01 | 二次阻断修复完成，三次待验收 | 修复与证据见 M.8：EnvPatch 字段级缺省（model_fields_set 只覆盖实际提交字段）、存在凭据时拒绝非原子 kind 变更（422, path=kind）、前端已配凭据锁定鉴权方式。后端 341 tests、E2E 45/45、typecheck/lint/ui-standard 通过；迁移无变化仍 `g045sdd12p0001 (head)`。失败项保持未勾选，由验收人三次复跑 |
+| 2026-09-01 | P0 三次独立验收通过 | 验收 commit `4af4bcf92bb1f16ec5d845f80023c89c447bc2b2`；两个二次阻断均关闭，仓库外独立探针 9/9、后端全量 341、Tool Service 7、Vitest 34、fullstack 63/63、runtime E2E 45/45 及全部静态门禁通过；浏览器真机确认根/环境凭据均锁定 kind、Basic 结构化轮换与归档只读。详情见 M.9。 |
 
 ---
 
@@ -335,3 +336,37 @@ server/.venv/bin/python scripts/report-resource-migration.py --out docs/sdd/acce
 **门禁覆盖补强**：`test_sdd12_acceptance_negatives.py` 增至 14 用例；`e2e-resource-runtime.mjs` 新增 R10 段（4 断言）。
 
 **复验结果（修复后）**：`pytest server/tests` 341 passed；`e2e-resource-runtime` 45/45；typecheck/lint/ui-standard 通过；其余门禁（vitest/build/prod-mock/secret-leak/cutover/verify-fullstack/tool_service）见状态日志终验记录。迁移无变化（仍 `g045sdd12p0001 (head)`）。
+
+### M.9 P0 三次独立验收记录（验收人，2026-09-01）
+
+验收人：Codex（独立复跑）
+
+验收 commit：`4af4bcf92bb1f16ec5d845f80023c89c447bc2b2`
+
+结论：**通过（P0 范围）**。M.7 的字段级 EnvPatch 数据丢失与 kind/Secret 一致性两个阻断均已关闭；A-03 现勾选通过。清单中未勾选的 P1～P4 架构、Runtime、迁移与 UX 项仍按原计划待实施，本结论不扩大其范围。
+
+独立审计与专项复现：
+
+- 分支基线与交付声明一致：`main...HEAD = 0 behind / 12 ahead`，验收前工作树干净；修复提交为 `521ca93`（后端）与 `4af4bcf`（前端、R10、证据）。
+- 静态审计确认 `EnvPatch.label/endpoint` 可缺省，`_env_rows_patch` 仅按 `model_fields_set` 覆盖实际提交字段；显式 `{}` 可清 endpoint，未提交字段和环境 `secret_ref` 保留。
+- 静态审计确认 kind 变化在应用更新前检查根级及全部环境 `secret_ref`；存在凭据返回 `422 VALIDATION_FAILED（path=kind）`，无凭据和同值提交仍允许。
+- 实现方相关套件 `test_sdd12_acceptance_negatives.py + test_sdd12_secret_lifecycle.py`：23/23 passed。
+- 仓库外 `/tmp/sdd12_acceptance_negatives.py`：9/9 passed。除复跑 M.5/M.7 原始路径外，额外覆盖 endpoint-only 保留 label、显式空 endpoint、仅环境凭据拒绝 kind 变化、无凭据允许变化、带凭据同 kind 保存。
+
+机器门禁（均在上述 commit 独立执行，退出码 0）：
+
+- `npm run lint`、`npm run typecheck`、`npm test -- --run`（34 passed）、`npm run build`：通过。
+- `server/.venv/bin/pytest server/tests -q`：341 passed，5 warnings，632.14s；warning 为既有 Starlette 弃用与 SQLAlchemy NULL identity 提示，无测试失败。
+- `services/tool_service/.venv/bin/pytest services/tool_service/tests -q`：7 passed。
+- `check-no-prod-mock`、`check-resource-v2-cutover`、`check-ui-standard`：PASS。
+- `check-no-secret-leak`：静态扫描通过；动态金丝雀覆盖 9 个响应面，无明文，reveal=410。
+- `verify-fullstack.mjs`：63/63 PASS；`e2e-resource-runtime.mjs`：45/45 PASS，R10 四项全部通过。
+- `wf_dev` / `wf_test` Alembic current 均为 `g045sdd12p0001 (head)`。
+
+浏览器真机复核（本地 `5173 → 8120` 栈）：
+
+- 根凭据连接和仅环境凭据连接的编辑 Dialog 均显示“鉴权方式（已锁定）”，对应鉴权 Select 实际带 `disabled`；提示先清除凭据或新建连接。
+- Basic 轮换 Dialog 保持用户名/密码结构化输入；归档卡片仅显示“已归档 · 只读”，无编辑、测试、启停、轮换或清除入口。
+- 浏览器验收专用 draft 已硬删；`wf_dev` 的 `accept-*` Connection/Tool、UI 验收连接与 `e2e-r10-*` 均为 0，`wf_test` 的 `accept-*` Connection/Tool 也均为 0。
+
+交付建议：该分支已满足 **SDD-12 P0 合并门禁**，可进入常规代码评审/合并流程；后续阶段不得据此视为已验收。

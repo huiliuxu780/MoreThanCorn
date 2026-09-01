@@ -28,8 +28,8 @@
 | [09](09-production-readiness-and-end-to-end-sdd.md) | 生产就绪、端到端闭环与 P0–P3 分级验收 | 可执行细节 + 上线门禁 | **待评审、待冻结** |
 | [10](10-domain-agent-runtime-provider-sdd.md) | 领域 Agent Module 与 Runtime Provider 集成 | 可执行架构 + 数据模型 + 分阶段验收 | **讨论稿（待评审、待冻结）** |
 | [10A](10-domain-agent-runtime-provider-implementation-prompt.md) | 领域 Agent Runtime 开工提示词 | 分支保护 + R-Archive～R4 实施指令 | **可用于开工** |
-| [12](12-ai-resource-connection-refactor-sdd.md) | AI Resources / Connections / Tools / MCP / Knowledge / LLM 重构 | 字段级实施规格 + 迁移 + 上线回滚 | **实施基线 v1.0（P0 已冻结）** |
-| [12A](acceptance/12-ai-resource-connection-acceptance.md) | AI Resources / Connections 重构验收 | 独立逐项验收清单 | **待实施、待验收** |
+| [12](12-ai-resource-connection-refactor-sdd.md) | AI Resources / Connections / Tools / MCP / Knowledge / LLM 重构 | 字段级实施规格 + 迁移 + 上线回滚 | **P0 已实施并三次独立验收通过；P1–P4 待实施（§20.1 部署项需拍板）** |
+| [12A](acceptance/12-ai-resource-connection-acceptance.md) | AI Resources / Connections 重构验收 | 独立逐项验收清单 | **P0 通过（M.9）；P1–P4 条目未勾选** |
 
 > 生产上线判断统一以 09 为最高优先级门禁。01–08 的功能或节点验收通过，不自动等于具备生产上线条件。
 
@@ -44,6 +44,7 @@
 | 生产就绪 P0 | **待验收**（修复轮自验全过，重新申请） | 2026-08-27 | — | — | P0-01~14 + 独立审计 6 类反例修复（`7bc3014`）：206 pytest + 21 vitest + lint 0/0 + 核心 E2E 38 断言 + 故障演练 + 负向安全 8 项；证据见 `acceptance/09-p0-acceptance.md` |
 | 生产就绪 P1 | **代码自验通过**（待真实 Staging） | 2026-08-27 | — | — | P1-01~12 全实现：197 pytest + 21 vitest + 门禁全绿 + 故障演练；§14.1 需真实环境项（7 天 Staging/真 Smoke/业务签字）如实标注待补；证据见 `acceptance/09-p1-acceptance.md` |
 | 生产就绪 P2 | **进行中**（代码项闭环，整体待用户决策） | 2026-08-27 | — | — | 代码项闭环：P2-01 本地账号+生命周期（`960e2d1`）、P2-03 单租户（决策）、P2-07 PII（`ebfeb05`）、P2-08 发布治理（`ffab23c`）=239 pytest+33 vitest+浏览器真机；余下 SLO/SSO/HA/DR/KMS/P2-02 待用户拍板；证据见 `acceptance/09-p2-acceptance.md` |
+| SDD-12 P0（Connection/Secret 止血） | **已接受**（三次独立验收通过） | 2026-08-31 | 2026-09-01 | Codex（独立） | 三轮验收：M.5 三阻断→修复→M.7 两阻断→修复→M.9 通过；341 pytest+45/45 E2E+63/63 fullstack+12 门禁全绿；迁移 `g045sdd12p0001`；证据见 `acceptance/12-ai-resource-connection-acceptance.md` M.1–M.9 |
 
 状态取值：未开始 / 进行中 / 待验收 / 已接受 / 已暂停。
 
