@@ -1,0 +1,31 @@
+moduleKey: dsh-consumer-analysis
+moduleVersion: 1.0.0
+displayName: 消费者意图与回应有用性分析
+description: 独立分析一通热线对话的意图、场景、实体与回应有用性；不读取质检 Agent 输出。
+riskClass: read-only
+specSchema: spec.schema.json
+inputSchema: ../shared/hotline_call_input.schema.json
+outputSchema: schemas/consumer_analysis_output.schema.json
+defaultSpec: spec.default.json
+masterData:
+  - master_data/conversation_taxonomy_v1.json
+  - master_data/product_catalog_v1.json
+workflowMode: independent_no_tools_v1
+requiredCapabilities:
+  tools: false
+  trace: true
+structuredOutput: true
+requiresRuleVersion: false
+producesQualityResult: false
+resultProjection: ConsumerAnalysisResult
+outputContract: consumer-analysis-v1
+runtimeMetadata:
+  agent_kind: consumer-analysis
+runtimeContextAssets:
+  - { key: taxonomy, path: master_data/conversation_taxonomy_v1.json }
+  - { key: product_catalog, path: master_data/product_catalog_v1.json }
+implementations:
+  deepseek-harness:
+    version: 0.1.0
+    entry: generic-json-no-tools
+logicalTools: []

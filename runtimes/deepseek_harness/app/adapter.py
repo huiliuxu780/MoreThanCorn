@@ -37,16 +37,20 @@ BUSINESS_BUNDLE = "morethancorn-dsh-business-analysis"
 
 def native_assets_for_mode(workflow_mode: str | None) -> dict:
     """R8-UI-5：workflow_mode → (cordis 配置, 原生插件, 必需 bundle)。纯函数可测。"""
+    if workflow_mode == "independent_no_tools_v1":
+        return {"config": "no_tools.cordis.yml",
+                "plugin": "native_quality_workflow.mjs",
+                "bundle": None, "native": False, "no_tools": True}
     if workflow_mode == "business_analysis_v1":
         return {"config": "native_business.cordis.yml",
                 "plugin": "native_business_analysis.mjs",
-                "bundle": BUSINESS_BUNDLE, "native": True}
+                "bundle": BUSINESS_BUNDLE, "native": True, "no_tools": False}
     if workflow_mode == "native_quality_v0.2":
         return {"config": "native_quality.cordis.yml",
                 "plugin": "native_quality_workflow.mjs",
-                "bundle": NATIVE_BUNDLE, "native": True}
+                "bundle": NATIVE_BUNDLE, "native": True, "no_tools": False}
     return {"config": "quality.cordis.yml", "plugin": "native_quality_workflow.mjs",
-            "bundle": None, "native": False}
+            "bundle": None, "native": False, "no_tools": False}
 
 
 def installed_dsh_version() -> str:
@@ -203,7 +207,7 @@ class DeepSeekHarnessAdapter:
     runtime = RuntimeInfo(
         provider="deepseek_harness",
         runtime_version=installed_dsh_version(),
-        adapter_version="0.2.0",
+        adapter_version="0.3.0",
     )
     capabilities = ProviderCapabilities(
         tools=True,
@@ -235,7 +239,17 @@ class DeepSeekHarnessAdapter:
         root.mkdir(parents=True, exist_ok=True)
         safe_run_id = re.sub(r"[^A-Za-z0-9_.-]", "_", request.run_id)[:80] or "run"
         # R8-UI-5：模式→资产选择收敛到 native_assets_for_mode（quality/business/通用）
-        assets = native_assets_for_mode(request.context.metadata.get("workflow_mode"))
+        workflow_mode = (request.context.metadata.get("workflow_mode")
+                         or request.context.metadata.get("workflowMode"))
+        assets = native_assets_for_mode(workflow_mode)
+        if assets["no_tools"] and request.agent.tools:
+            raise AdapterExecutionError(
+                RuntimeError(
+                    code=ErrorCode.PROVIDER_UNAVAILABLE,
+                    message="independent_no_tools_v1 forbids mounted tools",
+                    details={"declared_tool_count": len(request.agent.tools)},
+                )
+            )
         native_workflow = assets["native"]
         profile_runtime = supports_profile_runtime(DeepSeekHarnessConfig)
         config_root = Path(__file__).resolve().parents[1] / "config"
@@ -320,7 +334,9 @@ class DeepSeekHarnessAdapter:
                 }
                 if profile_runtime:
                     patches: tuple[str, ...] = ()
-                    if not native_workflow:
+                    if assets["no_tools"]:
+                        patches = (str(config_root / "no_tools.patch.yml"),)
+                    elif not native_workflow:
                         patches = (str(config_root / "disable_native_workflow.patch.yml"),)
                     common_config.update(
                         dsh_home=str(dsh_home),

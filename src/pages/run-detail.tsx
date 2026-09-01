@@ -34,6 +34,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TraceView, type TraceEvent } from "@/components/run/trace-view"
+import { BusinessResultView } from "@/components/business/business-result-view"
 import { DefinitionRow } from "@/components/app/form-field"
 import { FilterBar, SearchField } from "@/components/app/filters"
 import { ErrorState, TableSkeleton } from "@/components/app/list-state"
@@ -62,6 +63,7 @@ export default function RunDetailPage() {
   const { data: detail, loading, error, retry } = useAsyncData(() => realRunDetail(runId), [runId])
   const run = detail?.run ?? null
   const agentExtras = detail?.agent ?? null
+  const businessResult = detail?.businessResult ?? null
   const runPath = (rid: string) => agentId ? `/config/agents/${agentId}/runs/${rid}` : `/config/tasks/${taskId}/runs/${rid}`
   const { params, update } = useListQuery(50)
   const filters = useMemo(() => parseListFilters(params.filters), [params.filters])
@@ -475,6 +477,13 @@ export default function RunDetailPage() {
         </TabsContent>
 
         <TabsContent value="executions" className="mt-3 space-y-2">
+        {businessResult ? (
+          <>
+            <SectionHeader title="业务结果" description="来自当前 Run 的持久化结构化输出（Run.output）" />
+            <BusinessResultView result={businessResult} />
+          </>
+        ) : (
+        <>
         <SectionHeader title="Interaction Executions" description="SUCCESS + High Risk 合法；ERROR 表示没有成功产生有效业务结果" />
         <FilterBar>
           <SearchField value={searchInput} onChange={setSearchInput} placeholder="搜索 Interaction..." />
@@ -556,6 +565,8 @@ export default function RunDetailPage() {
               />
             ) : null}
           </>
+        )}
+        </>
         )}
         </TabsContent>
 

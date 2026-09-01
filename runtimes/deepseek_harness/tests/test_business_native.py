@@ -87,11 +87,13 @@ def test_native_assets_for_mode():
     biz = native_assets_for_mode("business_analysis_v1")
     assert biz == {"config": "native_business.cordis.yml",
                    "plugin": "native_business_analysis.mjs",
-                   "bundle": BUSINESS_BUNDLE, "native": True}
+                   "bundle": BUSINESS_BUNDLE, "native": True, "no_tools": False}
     qual = native_assets_for_mode("native_quality_v0.2")
     assert qual["bundle"] == NATIVE_BUNDLE and qual["native"] is True
     plain = native_assets_for_mode(None)
     assert plain["bundle"] is None and plain["native"] is False
+    no_tools = native_assets_for_mode("independent_no_tools_v1")
+    assert no_tools["config"] == "no_tools.cordis.yml" and no_tools["no_tools"] is True
     assert (RUNTIME_ROOT / "config" / biz["config"]).is_file()
     assert (RUNTIME_ROOT / "plugins" / biz["plugin"]).is_file()
 

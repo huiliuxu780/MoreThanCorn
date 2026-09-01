@@ -103,9 +103,6 @@ def list_modules(db: Session = Depends(get_db)):
 
     暴露 inputSchema/outputSchema（任务映射目标不再写死）+ resultProjection（领域结果路由）。"""
     from ..agent_modules import registry as module_registry
-    projection = {"quality-analysis": "QualityResult",
-                  "business-analysis": "BusinessAnalysisResult",
-                  "ticket-automation": "ActionLedger"}
     items = []
     for m in module_registry.all_modules():
         items.append({
@@ -115,8 +112,9 @@ def list_modules(db: Session = Depends(get_db)):
             "providers": sorted(m.manifest["implementations"]),
             "logicalTools": [t["name"] for t in m.logical_tools],
             "criteria": [c["id"] for c in m.default_spec.get("criteria", [])],
-            "resultProjection": projection.get(m.key, "DomainResult"),
-            "producesQualityResult": m.key == "quality-analysis",
+            "resultProjection": m.result_projection,
+            "producesQualityResult": m.produces_quality_result,
+            "requiresRuleVersion": m.requires_rule_version,
             "inputSchema": m.input_schema,
             "outputSchema": m.output_schema,
         })

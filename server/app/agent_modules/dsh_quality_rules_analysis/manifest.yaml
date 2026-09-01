@@ -1,0 +1,27 @@
+moduleKey: dsh-quality-rules-analysis
+moduleVersion: 1.0.0
+displayName: 质检项目判断
+description: 独立读取一通热线对话与任务冻结规则快照，逐规则输出判断；平台确定性计算分数。
+riskClass: read-only
+specSchema: spec.schema.json
+inputSchema: ../shared/hotline_call_input.schema.json
+outputSchema: schemas/quality_rules_output.schema.json
+defaultSpec: spec.default.json
+masterData: []
+workflowMode: independent_no_tools_v1
+requiredCapabilities:
+  tools: false
+  trace: true
+structuredOutput: true
+requiresRuleVersion: true
+injectRuleSnapshot: true
+producesQualityResult: true
+resultProjection: QualityResult
+outputContract: frozen-rule-results-v1
+runtimeMetadata:
+  agent_kind: quality-rules-analysis
+implementations:
+  deepseek-harness:
+    version: 0.1.0
+    entry: generic-json-no-tools
+logicalTools: []

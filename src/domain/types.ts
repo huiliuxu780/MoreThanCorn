@@ -173,6 +173,8 @@ export interface AgentEdgeDef {
 }
 
 export interface AgentDetail extends EvaluationAgent {
+  moduleKey?: string
+  requiresRuleVersion?: boolean
   inputSchema: {
     key: string
     type: "String" | "Number" | "Boolean" | "DateTime" | "Object" | "Array"

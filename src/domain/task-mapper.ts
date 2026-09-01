@@ -1,6 +1,6 @@
 /** 09-SDD §5.1/P0-B4：Task 表单态 ↔ API DTO 显式转换层（页面不直接拼接 API 结构）。
  * 纯函数，契约测试见 src/domain/__tests__/task-mapper.test.ts。 */
-import type { TaskFormState } from "@/components/tasks/task-form-sections"
+import { agentOf, type TaskFormState } from "@/components/tasks/task-form-sections"
 import type { CreateTaskPayload } from "@/services/wf-api"
 import type { TaskVersionDTO } from "@/services/api-types"
 
@@ -70,7 +70,10 @@ export function buildTaskPayload(form: TaskFormState): CreateTaskPayload {
   }
   if (form.definitionVersionId) payload.dataDefinitionVersionId = form.definitionVersionId
   // 09 P0：规则绑定——显式版本=pinned；未选=跟随最新发布（服务端解析时失败关闭）
-  if (form.ruleVersionId) {
+  const requiresRuleVersion = !isAgent || agentOf(form)?.requiresRuleVersion !== false
+  if (!requiresRuleVersion) {
+    payload.rulePolicy = "none"
+  } else if (form.ruleVersionId) {
     payload.resultRuleVersionId = form.ruleVersionId
     payload.rulePolicy = "pinned"
   } else {

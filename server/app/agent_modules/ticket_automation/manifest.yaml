@@ -13,6 +13,9 @@ requiredCapabilities:
   tools: true
   trace: true
 structuredOutput: true
+requiresRuleVersion: false
+producesQualityResult: false
+resultProjection: ActionLedger
 implementations:
   agentscope:
     version: 0.1.0

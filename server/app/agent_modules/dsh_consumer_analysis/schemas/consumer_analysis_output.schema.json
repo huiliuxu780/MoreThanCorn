@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quality-platform://schemas/consumer-analysis-output/1.0",
+  "title": "Consumer intent, entity and usefulness analysis",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["call_id", "analysis_status", "title", "summary", "segments"],
+  "properties": {
+    "call_id": {"type": "string", "minLength": 1},
+    "analysis_status": {
+      "type": "string",
+      "enum": ["in-scope", "partially-in-scope", "out-of-scope", "insufficient-content"]
+    },
+    "title": {"type": "string", "maxLength": 200},
+    "summary": {"type": "string", "maxLength": 2000},
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "segment_id", "start_index", "end_index", "scenario_id", "intention",
+          "usefulness_id", "usefulness_reason", "evidence_message_indexes", "entities"
+        ],
+        "properties": {
+          "segment_id": {"type": "string", "pattern": "^segment-[1-9][0-9]*$"},
+          "start_index": {"type": "integer", "minimum": 0},
+          "end_index": {"type": "integer", "minimum": 0},
+          "scenario_id": {
+            "type": "string",
+            "enum": [
+              "fault-consultation", "repair-and-appointment", "human-handoff",
+              "service-progress-and-logistics", "installation-consultation",
+              "policy-and-invoice-consultation", "product-consultation",
+              "price-and-store-consultation", "purchase-recommendation",
+              "model-comparison", "usage-guidance", "accessory-and-consumable",
+              "routine-maintenance"
+            ]
+          },
+          "intention": {"type": "string", "minLength": 1},
+          "usefulness_id": {
+            "type": "string",
+            "enum": [
+              "useful-basic", "useful-high-quality", "useless-off-topic",
+              "useless-wrong-or-harmful", "useless-system-error",
+              "useless-unresolved", "guidance-channel-handoff", "guidance-clarification"
+            ]
+          },
+          "usefulness_reason": {"type": "string", "minLength": 1},
+          "evidence_message_indexes": {
+            "type": "array", "items": {"type": "integer", "minimum": 0}, "uniqueItems": true
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": [
+                "type_id", "subtype_id", "mention", "normalized_name", "master_code",
+                "resolution_status", "evidence_message_indexes", "confidence"
+              ],
+              "properties": {
+                "type_id": {"type": "string", "minLength": 1},
+                "subtype_id": {"type": "string", "minLength": 1},
+                "mention": {"type": "string", "minLength": 1},
+                "normalized_name": {"type": ["string", "null"]},
+                "master_code": {"type": ["string", "null"]},
+                "resolution_status": {"type": "string", "enum": ["exact", "alias", "fuzzy", "unresolved"]},
+                "evidence_message_indexes": {
+                  "type": "array", "minItems": 1,
+                  "items": {"type": "integer", "minimum": 0}, "uniqueItems": true
+                },
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

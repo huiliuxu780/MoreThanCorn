@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "dsh-quality-rules-analysis AgentSpec",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "name", "instructions", "tools", "master_data"],
+  "properties": {
+    "id": {"const": "dsh-quality-rules-analysis"},
+    "version": {"const": "1.0.0"},
+    "name": {"type": "string", "minLength": 1},
+    "instructions": {"type": "string", "minLength": 1},
+    "tools": {"type": "array", "maxItems": 0},
+    "master_data": {"type": "array", "maxItems": 0},
+    "model": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider", "model"],
+      "properties": {
+        "provider": {"type": "string"}, "model": {"type": "string", "minLength": 1},
+        "parameters": {"type": "object"}
+      }
+    }
+  }
+}

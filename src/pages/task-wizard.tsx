@@ -46,7 +46,8 @@ export default function TaskWizardPage() {
     form.assetId !== "" && mappingOk,
     // R8-UI-3：规则绑定前置拦截——pinned 规则版本或 follow_latest 的 RuleSet 作用域必选其一（后端 422 兜底）
     (form.scheduleType === "一次性" ? form.dataWindowStart !== "" && form.dataWindowEnd !== "" : true)
-    && (form.ruleVersionId !== "" || form.ruleSetId !== ""),
+    && (form.targetType === "agent" && agentOf(form)?.requiresRuleVersion === false
+      ? true : (form.ruleVersionId !== "" || form.ruleSetId !== "")),
     true,
   ][step]
 

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "dsh-consumer-analysis AgentSpec",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "name", "instructions", "tools", "master_data"],
+  "properties": {
+    "id": {"const": "dsh-consumer-analysis"},
+    "version": {"const": "1.0.0"},
+    "name": {"type": "string", "minLength": 1},
+    "instructions": {"type": "string", "minLength": 1},
+    "tools": {"type": "array", "maxItems": 0},
+    "master_data": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "version"],
+        "properties": {"name": {"type": "string"}, "version": {"type": "string"}}
+      }
+    },
+    "model": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider", "model"],
+      "properties": {
+        "provider": {"type": "string"}, "model": {"type": "string", "minLength": 1},
+        "parameters": {"type": "object"}
+      }
+    }
+  }
+}

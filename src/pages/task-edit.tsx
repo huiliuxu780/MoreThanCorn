@@ -47,6 +47,7 @@ export default function TaskEditPage() {
       assetId: v?.dataAssetId ?? task.dataAssetId,
       definitionVersionId: v?.dataDefinitionVersionId ?? "",
       ruleVersionId: v?.resultRuleVersionId ?? "",
+      ruleSetId: v?.resultRuleSetId ?? "",
       mapping: v?.inputMapping ?? {},
       scope: (v?.scope?.conditions ?? []).map((c) => ({
         field: c.field, operator: OP_LABEL[c.op] ?? "=", value: String(c.value ?? ""),

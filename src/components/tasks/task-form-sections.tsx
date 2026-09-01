@@ -45,7 +45,7 @@ function loadCatalog() {
       const required = new Set((m?.inputSchema?.required ?? []) as string[])
       out.push({
         id: a.id, name: `${a.name}（Module）`, status: a.sandboxVersion != null ? "Published" : "Draft",
-        moduleKey: a.moduleKey,
+        moduleKey: a.moduleKey, requiresRuleVersion: m?.requiresRuleVersion ?? false,
         inputSchema: Object.entries(schema).map(([key, v]) => ({ key, type: (v?.type ?? "string"), label: key, required: required.has(key) })) as unknown as DataAssetField[],
         versions: [],
       } as unknown as AgentDetail)
@@ -180,6 +180,10 @@ export function autoMapping(agent: AgentDetail | null, asset: DataAsset | null):
   const mapping: Record<string, string> = {}
   if (!agent || !asset) return mapping
   const fields = (asset.schema ?? (asset as { fields?: DataAssetField[] }).fields ?? []) as DataAssetField[]
+  const documentField = fields.find((f) => f.key === "canonical_call" && f.type === "Object")
+  if (documentField && (agent.inputSchema ?? []).filter((i) => i.required).length > 1) {
+    return { $: documentField.key }
+  }
   for (const input of (agent.inputSchema ?? [])) {
     const exact = fields.find((f) => f.key === input.key)
     if (exact) {
@@ -198,6 +202,10 @@ export function mappingIssues(form: TaskFormState): { key: string; message: stri
   if (!agent || !asset) return []
   const fields = (asset.schema ?? (asset as { fields?: DataAssetField[] }).fields ?? []) as DataAssetField[]
   const issues: { key: string; message: string }[] = []
+  if (form.mapping.$) {
+    const root = fields.find((f) => f.key === form.mapping.$)
+    return root && root.type === "Object" ? [] : [{ key: "$", message: "完整输入映射必须指向 Object 字段" }]
+  }
   for (const input of (agent.inputSchema ?? [])) {
     const mapped = form.mapping[input.key]
     if (input.required && !mapped) {
@@ -446,7 +454,28 @@ export function DataTaskFields({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(agent.inputSchema ?? []).map((input) => {
+                {form.mapping.$ ? (
+                  <TableRow>
+                    <TableCell>
+                      <div className="font-mono text-sm">$（完整输入）</div>
+                      <div className="text-xs text-muted-foreground">Object · Required</div>
+                    </TableCell>
+                    <TableCell>
+                      <Select value={form.mapping.$} onValueChange={(v) => set({ mapping: { $: v } })}>
+                        <SelectTrigger className={cn("h-8 w-56", issues.length && "border-destructive")}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {assetFields.filter((f) => f.type === "Object").map((f) => (
+                            <SelectItem key={f.key} value={f.key}>{f.key}（Object）</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {issues[0] ? <div className="mt-1 text-xs text-destructive">{issues[0].message}</div> : null}
+                    </TableCell>
+                    <TableCell>{issues.length === 0 ? <span className="text-emerald-600">✓</span> : null}</TableCell>
+                  </TableRow>
+                ) : (agent.inputSchema ?? []).map((input) => {
                   const issue = issues.find((i) => i.key === input.key)
                   return (
                     <TableRow key={input.key}>
@@ -558,6 +587,7 @@ export function StrategyTaskFields({
   onChange: (next: TaskFormState) => void
 }) {
   const set = (patch: Partial<TaskFormState>) => onChange({ ...form, ...patch })
+  const requiresRuleVersion = form.targetType !== "agent" || agentOf(form)?.requiresRuleVersion !== false
   // 09 §9.2：任务绑定冻结规则版本（缺省=执行时取最新发布版本）
   const [ruleOptions, setRuleOptions] = useState<{ id: string; label: string }[]>([])
   // 09 闭环修复：follow_latest 需显式 RuleSet 作用域
@@ -575,7 +605,7 @@ export function StrategyTaskFields({
   }, [])
   return (
     <div className="space-y-5">
-      <FormField label="质检规则版本" description="绑定后该任务所有批次使用同一冻结版本；缺省跟随最新发布版本。">
+      {requiresRuleVersion ? <FormField label="质检规则版本" description="绑定后该任务所有批次使用同一冻结版本；缺省跟随最新发布版本。">
         <Select value={form.ruleVersionId || "latest"} onValueChange={(v) => set({ ruleVersionId: v === "latest" ? "" : v })}>
           <SelectTrigger className="h-8 w-64"><SelectValue placeholder="跟随最新发布版本" /></SelectTrigger>
           <SelectContent>
@@ -585,8 +615,12 @@ export function StrategyTaskFields({
             ))}
           </SelectContent>
         </Select>
-      </FormField>
-      {!form.ruleVersionId && (
+      </FormField> : (
+        <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+          该 Module 不消费质检规则，任务不会绑定 RuleVersion。
+        </div>
+      )}
+      {requiresRuleVersion && !form.ruleVersionId && (
         <FormField
           required
           label="跟随的规则集（RuleSet 作用域）"

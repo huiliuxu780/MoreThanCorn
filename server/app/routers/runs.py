@@ -68,7 +68,8 @@ def list_runs(workflowId: str = "", db: Session = Depends(get_db)):
 
 @router.get("/{run_id}")
 def get_run(run_id: str, db: Session = Depends(get_db)):
-    from ..models import AgentVersion, WorkflowVersion
+    from ..business_results import project_business_result
+    from ..models import Agent, AgentVersion, AnalysisTask, WorkflowVersion
     run = db.get(Run, run_id)
     if not run:
         raise HTTPException(404, "run not found")
@@ -136,6 +137,10 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
                    "critical": qr_latest.critical, "issueSummary": qr_latest.issue_summary,
                    "review": qr_latest.review_status,
                    "structuredOutput": qr_latest.structured_output or {}}
+    agent = db.get(Agent, run.agent_id) if run.agent_id else None
+    task = db.get(AnalysisTask, run.task_id) if run.task_id else None
+    module_key = (agent.module_key if agent else None) or snapshot.get("moduleKey")
+    business_result = project_business_result(run.output, module_key)
     return {
         "runId": run.id, "status": run.status, "trigger": run.trigger,
         "input": run.input, "output": run.output, "error": run.error,
@@ -145,6 +150,14 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
         "definitionSource": run.definition_source,  # draft|version
         "versionNo": version_no,
         "agentId": run.agent_id,  # R-Archive：前端据此隐藏旧 Agent 运行的重试入口
+        "agentName": agent.name if agent else None,
+        "agentModuleKey": module_key,
+        "taskRunId": run.task_run_id,
+        "taskId": run.task_id,
+        "taskName": task.name if task else None,
+        "taskVersionId": run.task_version_id,
+        "interactionRef": run.interaction_ref,
+        "businessResult": business_result,
         "runtime": runtime_block,
         "stages": stages,
         "calls": calls,
@@ -301,8 +314,9 @@ def run_trace(run_id: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "run not found")
     root, calls = _build_run_span(db, run, set())
     total_tokens = _tok_total(run.token_usage) or sum(_tok_total(c.token_usage) for c in calls)
+    usage_model_calls = int((run.token_usage or {}).get("modelCalls") or 0)
     return {
         "root": root,
         "totalTokens": total_tokens,
-        "modelCalls": sum(1 for c in calls if c.kind == "model"),
+        "modelCalls": max(sum(1 for c in calls if c.kind == "model"), usage_model_calls),
     }

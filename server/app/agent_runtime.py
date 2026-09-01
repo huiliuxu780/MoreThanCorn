@@ -49,8 +49,6 @@ class _Ctx:
 def _resolve_base_headers(db: Session, model_key: str) -> tuple[str, dict]:
     """R4：返回 (base, 鉴权请求头)。kind 真实生效（aksk/script 经签名层产出）。"""
     import os
-    from .auth_signers import AuthSignError, build_auth_headers
-    from .connection_runtime import resolve_for_request
     base = os.environ.get("WF_LLM_BASE_URL", "")
     secret = os.environ.get("WF_LLM_API_KEY", "")
     conn = None
@@ -65,12 +63,10 @@ def _resolve_base_headers(db: Session, model_key: str) -> tuple[str, dict]:
     if secret:
         return base, {"Authorization": f"Bearer {secret}"}
     if conn is not None:
-        _ep, payload, _code = resolve_for_request(conn)
-        try:
-            return base, build_auth_headers(conn.kind, payload, script=conn.auth_script,
-                                            env_vars=payload if isinstance(payload, dict) else None)
-        except AuthSignError as exc:
-            raise RunError(str(exc))
+        # LLM OpenAI-compatible endpoints use the same reviewed Bearer semantics as
+        # runner._call_model; do not regress api_key Connections to X-API-Key.
+        from .runner import llm_auth_headers
+        return base, llm_auth_headers(conn)
     return base, {}
 
 

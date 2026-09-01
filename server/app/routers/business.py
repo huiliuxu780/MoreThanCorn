@@ -491,6 +491,8 @@ def _validate_input_mapping(module_key: str | None, mapping: dict) -> None:
         mod = module_registry.get(module_key)
     except Exception:
         return
+    if (mapping or {}).get("$"):
+        return
     required = (mod.input_schema or {}).get("required") or []
     missing = [k for k in required if k not in (mapping or {})]
     if missing:
@@ -695,14 +697,22 @@ def create_task(payload: dict, db: Session = Depends(get_db),
             raise HTTPException(422, "dataDefinitionVersionId 必填且必须存在")
         # R7-3：字段映射目标来自 Module inputSchema，必填输入必须全部映射
         _validate_input_mapping(agent.module_key, payload.get("inputMapping") or {})
-        rule_policy = payload.get("rulePolicy") or ("pinned" if payload.get("resultRuleVersionId") else "pinned")
-        if rule_policy not in ("pinned", "follow_latest"):
-            raise HTTPException(422, "rulePolicy 必须是 pinned|follow_latest")
-        if rule_policy == "pinned":
-            if not payload.get("resultRuleVersionId") or not db.get(ResultRuleVersion, payload["resultRuleVersionId"]):
-                raise HTTPException(422, "pinned 规则策略必须提供有效 resultRuleVersionId")
-        elif not payload.get("resultRuleSetId") or not db.get(ResultRuleSet, payload["resultRuleSetId"]):
-            raise HTTPException(422, "follow_latest 策略必须提供 resultRuleSetId")
+        from ..agent_modules import registry as module_registry
+        requires_rules = module_registry.get(
+            agent.module_key, agent.module_version
+        ).requires_rule_version
+        has_rule_binding = bool(payload.get("resultRuleVersionId") or payload.get("resultRuleSetId"))
+        rule_policy = payload.get("rulePolicy") or ("pinned" if has_rule_binding else "none")
+        if requires_rules or has_rule_binding:
+            if rule_policy not in ("pinned", "follow_latest"):
+                raise HTTPException(422, "该 Module 的 rulePolicy 必须是 pinned|follow_latest")
+            if rule_policy == "pinned":
+                if not payload.get("resultRuleVersionId") or not db.get(ResultRuleVersion, payload["resultRuleVersionId"]):
+                    raise HTTPException(422, "pinned 规则策略必须提供有效 resultRuleVersionId")
+            elif not payload.get("resultRuleSetId") or not db.get(ResultRuleSet, payload["resultRuleSetId"]):
+                raise HTTPException(422, "follow_latest 策略必须提供 resultRuleSetId")
+        elif rule_policy != "none":
+            raise HTTPException(422, "不需要规则的 Module 应使用 rulePolicy=none")
     else:
         workflow_id = payload.get("workflowId")
         policy = payload.get("workflowVersionPolicy") or "latest_published"
@@ -878,6 +888,8 @@ def get_task_run(trid: str, db: Session = Depends(get_db)):
 
 
 def _run_dto(r) -> dict:
+    from ..business_results import project_business_result
+    snapshot = r.runtime_snapshot if isinstance(r.runtime_snapshot, dict) else {}
     return {"id": r.id, "status": r.status, "interactionRef": r.interaction_ref,
             "attempt": r.attempt, "workflowVersionId": r.workflow_version_id,
             "taskRunId": r.task_run_id, "taskId": r.task_id,
@@ -885,6 +897,7 @@ def _run_dto(r) -> dict:
             "agentId": r.agent_id, "agentVersionId": r.agent_version_id,
             "runtimeProviderId": r.runtime_provider_id,
             "originRunId": r.origin_run_id,
+            "businessResult": project_business_result(r.output, snapshot.get("moduleKey")),
             "error": r.error,
             "startedAt": r.started_at.isoformat() if r.started_at else None,
             "endedAt": r.ended_at.isoformat() if r.ended_at else None,
@@ -1019,14 +1032,26 @@ def _update_agent_task(db: Session, t: AnalysisTask, cur, payload: dict, user: d
                       if "dataDefinitionVersionId" in payload else (cur.data_definition_version_id if cur else None))
     if not db.get(DataDefinitionVersion, def_version_id):
         raise HTTPException(422, "dataDefinitionVersionId 必填且必须存在")
+    from ..agent_modules import registry as module_registry
+    requires_rules = module_registry.get(
+        agent.module_key, agent.module_version
+    ).requires_rule_version
     rule_policy = (payload.get("rulePolicy") if "rulePolicy" in payload
-                   else (cur.rule_policy if cur else "pinned"))
+                   else (cur.rule_policy if cur else ("pinned" if requires_rules else "none")))
     rule_version_id = (payload.get("resultRuleVersionId") if "resultRuleVersionId" in payload
                        else (cur.result_rule_version_id if cur else None))
     rule_set_id = (payload.get("resultRuleSetId") if "resultRuleSetId" in payload
                    else (cur.result_rule_set_id if cur else None))
-    if rule_policy == "pinned" and not (rule_version_id and db.get(ResultRuleVersion, rule_version_id)):
-        raise HTTPException(422, "pinned 规则策略必须提供有效 resultRuleVersionId")
+    has_rule_binding = bool(rule_version_id or rule_set_id)
+    if requires_rules or has_rule_binding:
+        if rule_policy not in ("pinned", "follow_latest"):
+            raise HTTPException(422, "该 Module 的 rulePolicy 必须是 pinned|follow_latest")
+        if rule_policy == "pinned" and not (rule_version_id and db.get(ResultRuleVersion, rule_version_id)):
+            raise HTTPException(422, "pinned 规则策略必须提供有效 resultRuleVersionId")
+        if rule_policy == "follow_latest" and not (rule_set_id and db.get(ResultRuleSet, rule_set_id)):
+            raise HTTPException(422, "follow_latest 规则策略必须提供有效 resultRuleSetId")
+    elif rule_policy != "none":
+        raise HTTPException(422, "不需要规则的 Module 应使用 rulePolicy=none")
     mapping = (payload.get("inputMapping") if payload.get("inputMapping") is not None
                else ((cur.input_mapping or {}) if cur else {}))
     if not isinstance(mapping, dict):

@@ -57,6 +57,20 @@ class AgentModule:
     def workflow_mode(self) -> str | None:
         return self.manifest.get("workflowMode")
 
+    @property
+    def requires_rule_version(self) -> bool:
+        """Whether every run must be bound to one immutable ResultRuleVersion."""
+        return bool(self.manifest.get("requiresRuleVersion", False))
+
+    @property
+    def produces_quality_result(self) -> bool:
+        """Whether a successful run is projected into QualityResult/Evidence."""
+        return bool(self.manifest.get("producesQualityResult", False))
+
+    @property
+    def result_projection(self) -> str:
+        return str(self.manifest.get("resultProjection") or "DomainResult")
+
     @cached_property
     def spec_schema(self) -> dict:
         return json.loads((self.dir / self.manifest["specSchema"]).read_text(encoding="utf-8"))
@@ -99,6 +113,28 @@ class AgentModule:
     def logical_tools(self) -> list[dict]:
         return list(self.manifest.get("logicalTools") or [])
 
+    @cached_property
+    def runtime_context(self) -> dict:
+        """Load reviewed, code-owned context assets declared by the Module.
+
+        Only relative JSON files inside the Module directory are accepted.  This keeps
+        runtime context versioned with the Module and prevents a manifest from reading
+        arbitrary host files.
+        """
+        metadata = copy.deepcopy(self.manifest.get("runtimeMetadata") or {})
+        for item in self.manifest.get("runtimeContextAssets") or []:
+            key = str(item.get("key") or "").strip()
+            rel = str(item.get("path") or "").strip()
+            if not key or not rel:
+                raise ValueError(f"module {self.key}@{self.version} runtimeContextAssets 格式错误")
+            path = (self.dir / rel).resolve()
+            try:
+                path.relative_to(self.dir.resolve())
+            except ValueError as exc:
+                raise ValueError(f"module runtime context 禁止越过模块目录: {rel}") from exc
+            metadata[key] = json.loads(path.read_text(encoding="utf-8"))
+        return metadata
+
     def resolve_implementation(self, provider_kind: str) -> dict:
         impl = self.manifest["implementations"].get(provider_kind)
         if not impl:
@@ -139,6 +175,8 @@ class AgentModule:
     def request_context(self, definition: dict) -> dict:
         """冻结的 AgentVersion.definition → Contract AgentExecutionSpec 组装字段。"""
         spec = definition.get("agentSpec") or {}
+        metadata = copy.deepcopy(self.runtime_context)
+        metadata["workflowMode"] = self.workflow_mode
         return {
             "instructions": spec.get("instructions") or "",
             "model": spec.get("model") or {},
@@ -146,8 +184,83 @@ class AgentModule:
             "master_data": [{"name": m["name"], "version": m["version"]}
                             for m in spec.get("master_data", [])],
             "output_schema": self.output_schema,
-            "metadata": {"workflowMode": self.workflow_mode},
+            "metadata": metadata,
         }
+
+    def validate_output_semantics(self, output: dict, runtime_context: dict) -> list[dict]:
+        """Validate cross-field invariants which JSON Schema cannot express.
+
+        The frozen-rule result contract requires exact, ordered coverage of the
+        snapshot and an identical ``result_by_rule`` projection.  It intentionally
+        rejects model-produced scores; the output Schema already rejects unknown
+        top-level fields such as ``score``.
+        """
+        contract = self.manifest.get("outputContract")
+        run_input = (runtime_context or {}).get("input") or {}
+        call_id = ((run_input.get("call") or {}).get("acid")
+                   if isinstance(run_input, dict) else None)
+        known_indexes = {m.get("index") for m in run_input.get("messages") or []
+                         if isinstance(m, dict)} if isinstance(run_input, dict) else set()
+        if contract == "consumer-analysis-v1":
+            issues: list[dict] = []
+            if output.get("call_id") != call_id:
+                issues.append({"code": "CALL_ID_MISMATCH", "path": ["call_id"],
+                               "message": "call_id 与输入 call.acid 不一致"})
+            previous_end = -1
+            for position, segment in enumerate(output.get("segments") or [], start=1):
+                if segment.get("segment_id") != f"segment-{position}":
+                    issues.append({"code": "SEGMENT_ORDER_INVALID", "path": ["segments", position - 1],
+                                   "message": "segment_id 必须连续且按顺序编号"})
+                start, end = segment.get("start_index"), segment.get("end_index")
+                if not isinstance(start, int) or not isinstance(end, int) or start > end \
+                        or start <= previous_end or start not in known_indexes or end not in known_indexes:
+                    issues.append({"code": "SEGMENT_RANGE_INVALID", "path": ["segments", position - 1],
+                                   "message": "片段必须有序、不重叠且边界引用已知消息"})
+                if isinstance(end, int):
+                    previous_end = end
+                evidence_indexes = set(segment.get("evidence_message_indexes") or [])
+                if not evidence_indexes.issubset(known_indexes):
+                    issues.append({"code": "EVIDENCE_INDEX_INVALID", "path": ["segments", position - 1],
+                                   "message": "片段证据引用了未知消息"})
+                for entity in segment.get("entities") or []:
+                    if not set(entity.get("evidence_message_indexes") or []).issubset(known_indexes):
+                        issues.append({"code": "ENTITY_EVIDENCE_INVALID", "path": ["segments", position - 1, "entities"],
+                                       "message": "实体证据引用了未知消息"})
+            return issues
+        if contract != "frozen-rule-results-v1":
+            return []
+        snapshot = (runtime_context or {}).get("rule_snapshot") or {}
+        expected = [r.get("id") for r in snapshot.get("evaluationRules") or []]
+        actual = [r.get("rule_id") for r in output.get("results") or []
+                  if isinstance(r, dict)]
+        issues: list[dict] = []
+        if output.get("call_id") != call_id:
+            issues.append({"code": "CALL_ID_MISMATCH", "path": ["call_id"],
+                           "message": "call_id 与输入 call.acid 不一致"})
+        if not expected:
+            issues.append({"code": "RULE_SNAPSHOT_EMPTY", "path": ["context", "rule_snapshot"],
+                           "message": "冻结规则快照没有 evaluationRules"})
+        elif actual != expected:
+            issues.append({"code": "RULE_COVERAGE_MISMATCH", "path": ["results"],
+                           "message": "results 必须按冻结快照顺序对每条规则恰好输出一次"})
+        projection = {r.get("rule_id"): r.get("result") for r in output.get("results") or []
+                      if isinstance(r, dict)}
+        if output.get("result_by_rule") != projection:
+            issues.append({"code": "RULE_PROJECTION_MISMATCH", "path": ["result_by_rule"],
+                           "message": "result_by_rule 必须与 results 完全一致"})
+        if output.get("rule_set_id") != snapshot.get("ruleSetId"):
+            issues.append({"code": "RULE_SET_MISMATCH", "path": ["rule_set_id"],
+                           "message": "rule_set_id 与冻结快照不一致"})
+        if output.get("rule_set_version") != snapshot.get("ruleSetVersion"):
+            issues.append({"code": "RULE_VERSION_MISMATCH", "path": ["rule_set_version"],
+                           "message": "rule_set_version 与冻结快照不一致"})
+        for result_pos, result in enumerate(output.get("results") or []):
+            for evidence in result.get("evidence") or []:
+                if not set(evidence.get("message_indexes") or []).issubset(known_indexes):
+                    issues.append({"code": "EVIDENCE_INDEX_INVALID",
+                                   "path": ["results", result_pos, "evidence"],
+                                   "message": "质检证据引用了未知消息"})
+        return issues
 
     def map_result(self, agent_version, runtime_run) -> dict:
         """Provider 输出 → 领域结果投影（quality_output：findings[] 为逐 criterion 结论）。
@@ -155,6 +268,11 @@ class AgentModule:
         质检分数由平台规则引擎派生——本映射只透传结构化结论，不计算 score。"""
         output = runtime_run.output or {}
         findings = output.get("findings") or []
+        if not findings and isinstance(output.get("results"), list):
+            findings = [{"criterion": r.get("rule_id"), "status": r.get("result"),
+                         "confidence": r.get("confidence"), "reason": r.get("reason"),
+                         "evidence": r.get("evidence") or []}
+                        for r in output["results"] if isinstance(r, dict)]
         return {"module": {"key": self.key, "version": self.version},
                 "agentVersionId": getattr(agent_version, "id", None),
                 "criteria": [{"id": f.get("criterion"), "status": f.get("status"),

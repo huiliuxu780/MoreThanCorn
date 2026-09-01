@@ -17,6 +17,9 @@ requiredCapabilities:
   tools: true
   trace: true
 structuredOutput: true
+requiresRuleVersion: true
+producesQualityResult: true
+resultProjection: QualityResult
 implementations:
   agentscope:
     version: 0.2.0

@@ -1,0 +1,18 @@
+# Profile-runtime overlay: disable every optional capability used by this repository's
+# tool-enabled profiles. Unknown ids are harmless in Cordis patch semantics.
+- id: llm-deepseek
+  config:
+    thinking: disabled
+    reasoningEffort: off
+- id: native-quality-workflow
+  disabled: true
+- id: native-business-analysis
+  disabled: true
+- id: mcp-quality-tools
+  disabled: true
+- id: bash
+  disabled: true
+- id: fs-local
+  disabled: true
+- id: subprocess
+  disabled: true

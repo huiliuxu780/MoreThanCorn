@@ -421,6 +421,21 @@ def _settle_module_result(db: Session, run: Run, state) -> None:
                                                       "code": "OUTPUT_SCHEMA_ERROR"})
         db.commit()
         return
+    from .dispatcher import _runtime_input
+    runtime_context = {"input": _runtime_input(run.input or {})}
+    if mod.manifest.get("injectRuleSnapshot"):
+        from .dispatcher import build_rule_snapshot
+        runtime_context["rule_snapshot"] = build_rule_snapshot(db, run.rule_version_id)
+    semantic_errors = mod.validate_output_semantics(run.output or {}, runtime_context)
+    if semantic_errors:
+        run.status = "failed"
+        first = semantic_errors[0]
+        run.error = {"code": first["code"], "message": first["message"]}
+        run.ended_at = _now()
+        emit(db, run.id, "runtime_finished", payload={"status": "failed",
+                                                      "code": first["code"]})
+        db.commit()
+        return
     snapshot = dict(run.runtime_snapshot or {})
     # runtime metadata 事实必须留痕（版本全链路可追溯）
     snapshot.update({"moduleKey": mod.key, "moduleVersion": mod.version,
@@ -449,7 +464,7 @@ def _settle_module_result(db: Session, run: Run, state) -> None:
     db.flush()
     # SDD 10 §5.9：仅 quality-analysis 映射到 QualityResult；其余 Module 的领域结果
     # （ticket/business）走各自 Result Mapper，R5+ 落地，此处不落 QualityResult。
-    if mod.key != "quality-analysis":
+    if not mod.produces_quality_result:
         db.commit()
         return
     # QualityResult 恰好一条（INV-03；重复轮询安全）
@@ -475,10 +490,24 @@ def _settle_module_result(db: Session, run: Run, state) -> None:
         db.add(qr)
         db.flush()
         for criterion in projection.get("criteria", []):
-            db.add(Evidence(result_id=qr.id, kind="field",
-                            locator={"criterionId": criterion.get("id"),
-                                     "status": criterion.get("status")},
-                            text=str(criterion.get("reason") or "")[:500]))
+            evidence = criterion.get("evidence") or []
+            if not evidence:
+                evidence = [{}]
+            for item in evidence:
+                item = item if isinstance(item, dict) else {}
+                source = str(item.get("source") or "field")
+                locator = {"criterionId": criterion.get("id"),
+                           "status": criterion.get("status")}
+                for key in ("message_indexes", "start_ms", "end_ms", "reference"):
+                    if item.get(key) is not None:
+                        locator[key] = item[key]
+                db.add(Evidence(result_id=qr.id,
+                                kind="transcript_span" if source == "transcript" else
+                                "tool_call" if source in {"knowledge", "appointment", "ticket"}
+                                else "field",
+                                locator=locator,
+                                source_ref=str(item.get("reference") or ""),
+                                text=str(item.get("excerpt") or criterion.get("reason") or "")[:500]))
         # 评分由平台冻结规则派生（SDD §9.1：不由 Agent 计算质检分数）
         from ..routers.business import apply_rules_to_result
         apply_rules_to_result(db, qr, run.rule_version_id)

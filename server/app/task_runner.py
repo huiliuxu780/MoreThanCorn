@@ -51,13 +51,30 @@ def _resolve_window_days(window: dict) -> int | None:
     return {"last_24h": 1, "last_7d": 7, "last_30d": 30}.get(window.get("value"))
 
 
-def _resolve_rule_version(db: Session, tv: AnalysisTaskVersion) -> str:
+def _task_requires_rule_version(db: Session, tv: AnalysisTaskVersion) -> bool:
+    """Workflow tasks keep the historical quality rule requirement; Agent tasks
+    declare it through their reviewed Module manifest."""
+    if tv.execution_target_type != "agent":
+        return True
+    agent = db.get(Agent, tv.agent_id) if tv.agent_id else None
+    if not agent or not agent.module_key:
+        return True
+    from .agent_modules import registry as module_registry
+    return module_registry.get(agent.module_key, agent.module_version).requires_rule_version
+
+
+def _resolve_rule_version(db: Session, tv: AnalysisTaskVersion) -> str | None:
     """09 P0 修复轮（审计反例 3/6）：批次启动时解析并冻结规则版本。
 
     - pinned：必须绑定存在的 result_rule_version_id。
     - follow_latest：解析最新已发布规则版本；无则失败关闭（不得静默跳过规则）。
     返回规则版本 ID（Run/Result 的 rule_version_id 来源，恒非空）。"""
     from .models import ResultRuleVersion
+    requires_rules = _task_requires_rule_version(db, tv)
+    # Non-quality Modules may still carry a legacy explicit rule binding. Preserve
+    # and validate it for replay compatibility, but do not require one for new tasks.
+    if not requires_rules and not tv.result_rule_version_id and not tv.result_rule_set_id:
+        return None
     if (tv.rule_policy or "pinned") == "pinned":
         if not tv.result_rule_version_id:
             raise TaskStartError("任务未绑定规则版本且未声明 follow_latest 策略", 422)
@@ -259,14 +276,27 @@ def _eligibility_hit(row: dict, eligibility: list) -> bool:
                for c in eligibility if isinstance(c, dict))
 
 
+def _mapping_value(row: dict, path: str):
+    value = row
+    for part in str(path).split("."):
+        value = value.get(part) if isinstance(value, dict) else None
+    return value
+
+
 def _apply_mapping(row: dict, mapping: dict) -> dict:
     """inputMapping：{工作流输入键: 资产字段名}；未映射时保留同名字段。"""
     if not mapping:
         return dict(row)
+    # "$" maps one JSON/JSONB column to the entire Module input.
+    if "$" in mapping:
+        root = _mapping_value(row, mapping["$"])
+        if not isinstance(root, dict):
+            raise ValueError(f"root input mapping {mapping['$']} did not resolve to an object")
+        return dict(root)
     out = {}
     for wf_key, asset_field in mapping.items():
         if asset_field:
-            out[wf_key] = row.get(asset_field)
+            out[wf_key] = _mapping_value(row, asset_field)
     return out
 
 
@@ -450,8 +480,12 @@ def execute_task_run(task_run_id: str) -> None:
                 # 09 P0 不变量（成功必须恰好一条生效 QualityResult）仅对"产出质检结果"的
                 # 目标强制：Workflow 目标 或 quality-analysis Module；其余只读 Module 的领域
                 # 结果走各自 Mapper（R5+），不强制 QualityResult。
-                enforce_qr = (not agent_target) or \
-                    (getattr(target_agent, "module_key", None) == "quality-analysis")
+                enforce_qr = not agent_target
+                if agent_target and getattr(target_agent, "module_key", None):
+                    from .agent_modules import registry as module_registry
+                    enforce_qr = module_registry.get(
+                        target_agent.module_key, target_agent.module_version
+                    ).produces_quality_result
                 if run.status == "succeeded":
                     if not enforce_qr:
                         ok += 1
@@ -525,7 +559,12 @@ def reaggregate_task_run(db: Session, tr: TaskRun) -> None:
     for ref, r in latest_by_ref.items():
         if r.status == "succeeded":
             agent = db.get(Agent, r.agent_id) if r.agent_id else None
-            enforce_qr = (agent is None) or (agent.module_key == "quality-analysis")
+            enforce_qr = agent is None
+            if agent is not None and agent.module_key:
+                from .agent_modules import registry as module_registry
+                enforce_qr = module_registry.get(
+                    agent.module_key, agent.module_version
+                ).produces_quality_result
             if not enforce_qr:
                 ok += 1
                 continue

@@ -17,9 +17,33 @@ from quality_runtime_contract import (
     ToolRef,
 )
 
-from ..models import Agent, AgentVersion, Run
+from ..models import Agent, AgentVersion, ResultRuleVersion, Run
 
 DEFAULT_RUNTIME_TIMEOUT_SECONDS = 300
+
+
+def build_rule_snapshot(db: Session, rule_version_id: str | None) -> dict:
+    """ResultRuleVersion → immutable Agent context, without mutable RuleSet reads."""
+    rv = db.get(ResultRuleVersion, rule_version_id or "")
+    if rv is None:
+        raise ValueError("RULE_VERSION_REQUIRED：运行未绑定有效的冻结规则版本")
+    rules = dict(rv.rules or {})
+    return {
+        "schema_version": str(rules.get("schemaVersion") or rules.get("schema_version") or "1.0"),
+        "ruleSetId": str(rules.get("ruleSetId") or rv.rule_set_id),
+        "ruleSetVersion": rv.version_no,
+        "status": "published",
+        "readOnlyAtRuntime": True,
+        "evaluationRules": list(rules.get("evaluationRules") or []),
+        "scoreRules": list(rules.get("scoreRules") or []),
+        "issueRules": list(rules.get("issueRules") or []),
+    }
+
+
+def _runtime_input(value: dict) -> dict:
+    """Remove platform-only replay metadata from the provider-visible input."""
+    return {key: child for key, child in (value or {}).items()
+            if not str(key).startswith("__")}
 
 
 def build_runtime_request(db: Session, run: Run, *, timeout_seconds: int | None = None) -> RuntimeExecuteRequest:
@@ -50,6 +74,8 @@ def build_runtime_request(db: Session, run: Run, *, timeout_seconds: int | None 
         metadata = {"agentVersionId": run.agent_version_id, "workflowId": run.workflow_id,
                     "taskRunId": run.task_run_id, "definitionSource": "version",
                     **ctx["metadata"]}
+        if mod.manifest.get("injectRuleSnapshot"):
+            metadata["rule_snapshot"] = build_rule_snapshot(db, run.rule_version_id)
     elif agent is not None and getattr(agent, "module_key", None):
         # 草稿预览：无冻结版本，经 Module 现算 Spec（写型业务工具禁用属 R3 策略执行）
         from ..agent_modules import registry as module_registry
@@ -69,6 +95,9 @@ def build_runtime_request(db: Session, run: Run, *, timeout_seconds: int | None 
         metadata = {"agentVersionId": None, "workflowId": run.workflow_id,
                     "taskRunId": run.task_run_id, "definitionSource": "draft",
                     "workflowMode": mod.workflow_mode}
+        metadata.update(mod.runtime_context)
+        if mod.manifest.get("injectRuleSnapshot"):
+            metadata["rule_snapshot"] = build_rule_snapshot(db, run.rule_version_id)
     else:
         model_ref = definition.get("modelRef") or {}
         spec = AgentExecutionSpec(
@@ -88,7 +117,7 @@ def build_runtime_request(db: Session, run: Run, *, timeout_seconds: int | None 
         run_id=run.id,
         idempotency_key=f"runtime:{run.id}:{run.attempt}:{str(artifact)[:16]}",
         agent=spec,
-        input=run.input or {},
+        input=_runtime_input(run.input or {}),
         context=ExecutionContext(task_instance_id=run.task_run_id, trace_id=run.id,
                                  metadata=metadata),
         timeout_seconds=timeout,

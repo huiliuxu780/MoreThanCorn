@@ -256,6 +256,10 @@ interface RunDetailRaw {
   taskId?: string | null
   taskVersionId?: string | null
   interactionRef?: string
+  taskName?: string | null
+  agentName?: string | null
+  agentModuleKey?: string | null
+  businessResult?: import("@/services/api-types").BusinessResultDTO | null
   nodeRuns?: {
     nodeRunId: string; nodeId: string; nodeType: string; status: string
     durationMs: number | null; attempt?: number; error?: { message?: string } | null
@@ -289,7 +293,7 @@ export interface AgentRunExtras {
   quality: NonNullable<RunDetailRaw["quality"]> | null
 }
 
-export async function realRunDetail(runId: string): Promise<{ run: Run; executions: { items: InteractionExecution[]; total: number; page: number; pageSize: number }; agent: AgentRunExtras | null }> {
+export async function realRunDetail(runId: string): Promise<{ run: Run; executions: { items: InteractionExecution[]; total: number; page: number; pageSize: number }; agent: AgentRunExtras | null; businessResult: import("@/services/api-types").BusinessResultDTO | null }> {
   const d = await req<RunDetailRaw>(`/api/runs/${runId}`)
   const nodeRuns = d.nodeRuns ?? []
   // 09 P0-08：任务主链 Run 用真实 TaskRun/DataSnapshot 填充，不再占位
@@ -318,8 +322,9 @@ export async function realRunDetail(runId: string): Promise<{ run: Run; executio
       assetRevision = ds.assetRevision
     }
   }
+  const isAgentRun = !!d.agentId
   const run: Run = {
-    id: d.runId, taskId: d.taskId ?? "-", taskName: "Workflow Run",
+    id: d.runId, taskId: d.taskId ?? "-", taskName: d.taskName ?? (isAgentRun ? "Agent Run" : "Workflow Run"),
     status: RUN_STATUS[d.status] ?? "PENDING",
     startedAt: d.startedAt ?? new Date().toISOString(),
     finishedAt: d.endedAt ?? undefined,
@@ -329,17 +334,19 @@ export async function realRunDetail(runId: string): Promise<{ run: Run; executio
     agentId: d.agentId ?? undefined,                  // R-Archive：旧 Agent 运行隐藏重试
     dataWindow: { start: "-", end: "-", label: windowLabel },
     snapshot: {
-      agentName: "workflow",
+      agentName: d.agentName ?? d.agentModuleKey ?? (isAgentRun ? "Agent" : "workflow"),
       // SDD A-01 验收：可见本次执行的是草稿还是哪个版本
       agentVersion: d.definitionSource === "version" ? `版本 v${d.versionNo ?? "?"}` : d.definitionSource === "draft" ? "草稿" : "-",
       dataAssetName: assetLabel, dataAssetRevision: assetRevision,
-      scope: scopeLabel, sampling: samplingLabel, runtime: "fastapi-kernel", toolVersions: [], inputMapping: [],
+      scope: scopeLabel, sampling: samplingLabel,
+      runtime: d.runtime?.provider ?? (isAgentRun ? "agent-runtime" : "fastapi-kernel"),
+      toolVersions: [], inputMapping: [],
     },
     summary: {
-      input: nodeRuns.length,
-      success: nodeRuns.filter((n) => n.status === "success").length,
-      skipped: nodeRuns.filter((n) => n.status === "skipped").length,
-      error: nodeRuns.filter((n) => n.status === "failed").length,
+      input: isAgentRun ? 1 : nodeRuns.length,
+      success: isAgentRun ? (d.status === "succeeded" ? 1 : 0) : nodeRuns.filter((n) => n.status === "success").length,
+      skipped: isAgentRun ? (d.status === "cancelled" ? 1 : 0) : nodeRuns.filter((n) => n.status === "skipped").length,
+      error: isAgentRun ? (d.status === "failed" || d.status === "timed_out" ? 1 : 0) : nodeRuns.filter((n) => n.status === "failed").length,
     },
   }
   const executions: InteractionExecution[] = nodeRuns.map((n) => ({
@@ -358,7 +365,7 @@ export async function realRunDetail(runId: string): Promise<{ run: Run; executio
       quality: d.quality ?? null,
     }
     : null
-  return { run, executions: { items: executions, total: executions.length, page: 1, pageSize: 50 }, agent }
+  return { run, executions: { items: executions, total: executions.length, page: 1, pageSize: 50 }, agent, businessResult: d.businessResult ?? null }
 }
 
 export interface Paged<T> { items: T[]; total: number; page: number; pageSize: number }
@@ -450,7 +457,7 @@ export const agentApi = {
   },
   get: (id: string) => req<AgentInfo>(`/api/agents/${id}`),
   // R4：Module Agent 创建与目录
-  modules: () => req<{ items: { key: string; version: string; displayName: string; description: string; riskClass: string; providers: string[]; logicalTools: string[]; criteria: string[]; resultProjection?: string; producesQualityResult?: boolean; inputSchema?: { required?: string[]; properties?: Record<string, { type?: string }> }; outputSchema?: Record<string, unknown> }[] }>(`/api/agents/modules`),
+  modules: () => req<{ items: { key: string; version: string; displayName: string; description: string; riskClass: string; providers: string[]; logicalTools: string[]; criteria: string[]; resultProjection?: string; producesQualityResult?: boolean; requiresRuleVersion?: boolean; inputSchema?: { required?: string[]; properties?: Record<string, { type?: string | string[] }> }; outputSchema?: Record<string, unknown> }[] }>(`/api/agents/modules`),
   create: (body: { name: string; moduleKey: string; moduleVersion?: string; description?: string; modelRef?: Record<string, unknown> }) =>
     req<{ id: string; name: string; type: string; moduleKey: string; moduleVersion: string; configRevision: number }>(`/api/agents`, {
       method: "POST", body: JSON.stringify(body) }),
@@ -676,8 +683,13 @@ export async function realQualityResults(params: {
     items: r.items.map((q) => ({
       id: q.id, interactionId: q.interactionId || q.id, interactionTime: q.interactionTime ?? new Date().toISOString(),
       org: { ...ORG, agentName: q.agentName ?? "-", teamName: "-", departmentName: "-" },
-      businessContext: { ...BC_Q, serviceType: q.serviceType ?? "-" },
-      requestType: "-", requestSummary: q.requestSummary ?? q.issueSummary ?? "-",
+      businessContext: {
+        brand: q.brand ?? "-",
+        productCategory: q.productCategory ?? "-",
+        serviceType: q.serviceType ?? "-",
+        issueTopic: q.issueTopic ?? "-",
+      },
+      requestType: q.requestType ?? "-", requestSummary: q.requestSummary ?? q.issueSummary ?? "-",
       score: q.score ?? undefined, risk: (q.risk as QualityResult["risk"]) ?? undefined, critical: !!q.critical,
       issueCount: q.issueCount ?? 0, issueSummary: q.issueSummary ?? undefined,
       review: { status: REVIEW_MAP[q.review ?? ""] ?? "PENDING" }, hasAudio: false,
@@ -698,6 +710,10 @@ export interface QualityResultListRaw {
   interactionTime?: string
   agentName?: string
   serviceType?: string
+  productCategory?: string
+  brand?: string
+  issueTopic?: string
+  requestType?: string
   requestSummary?: string
   score?: number | null
   risk?: string | null
@@ -706,6 +722,7 @@ export interface QualityResultListRaw {
   issueSummary?: string | null
   review?: string
   execution?: { runId?: string; status?: string } | null
+  businessResult?: import("@/services/api-types").BusinessResultDTO | null
 }
 
 export async function realQualityResultDetail(id: string): Promise<Record<string, unknown>> {
@@ -876,7 +893,7 @@ export interface CreateTaskPayload {
   dataDefinitionVersionId?: string
   resultRuleVersionId?: string
   /** 09 P0：pinned=绑定 resultRuleVersionId；follow_latest=批次启动解析最新发布版本 */
-  rulePolicy?: "pinned" | "follow_latest"
+  rulePolicy?: "none" | "pinned" | "follow_latest"
   /** 09 闭环修复：follow_latest 的 RuleSet 作用域 */
   resultRuleSetId?: string
   inputMapping?: Record<string, string>

@@ -1015,6 +1015,62 @@ def _quality_dims(r, run) -> dict:
     return dims
 
 
+def _snapshot_fingerprint(snapshot) -> tuple[str, int, str, str] | None:
+    """Exact dataset identity used when correlating independent Agent results."""
+    if snapshot is None:
+        return None
+    return (snapshot.asset_id, snapshot.asset_revision,
+            snapshot.definition_version_id or "", snapshot.checksum or "")
+
+
+def _correlated_consumer_results(db: Session, quality_rows: list) -> dict[str, dict]:
+    """Find consumer-analysis outputs belonging to the exact same frozen dataset.
+
+    interaction_ref alone is deliberately insufficient: the same identifier may
+    occur in another asset revision or regression suite.  A match therefore needs
+    the same asset, revision, definition version and snapshot checksum as well as
+    the published consumer Module key.
+    """
+    from ..business_results import project_business_result
+    from ..models import Agent, DataSnapshot, Run
+
+    run_ids = [row.run_id for row in quality_rows if row.run_id]
+    quality_runs = {run.id: run for run in db.query(Run).filter(Run.id.in_(run_ids or ["-"])).all()}
+    snapshot_ids = [run.data_snapshot_id for run in quality_runs.values() if run.data_snapshot_id]
+    snapshots = {snap.id: snap for snap in db.query(DataSnapshot)
+                 .filter(DataSnapshot.id.in_(snapshot_ids or ["-"])).all()}
+    row_keys: dict[str, tuple[tuple[str, int, str, str], str]] = {}
+    for row in quality_rows:
+        run = quality_runs.get(row.run_id or "")
+        fingerprint = _snapshot_fingerprint(snapshots.get(run.data_snapshot_id)) if run else None
+        if fingerprint and row.interaction_ref:
+            row_keys[row.id] = (fingerprint, row.interaction_ref)
+    if not row_keys:
+        return {}
+
+    wanted_fingerprints = {value[0] for value in row_keys.values()}
+    wanted_refs = {value[1] for value in row_keys.values()}
+    candidates = db.query(Run, DataSnapshot).join(
+        DataSnapshot, Run.data_snapshot_id == DataSnapshot.id
+    ).join(Agent, Run.agent_id == Agent.id).filter(
+        Run.interaction_ref.in_(wanted_refs),
+        Run.status == "succeeded",
+        Run.output.isnot(None),
+        Agent.module_key == "dsh-consumer-analysis",
+    ).order_by(Run.created_at.desc()).all()
+
+    by_key: dict[tuple[tuple[str, int, str, str], str], dict] = {}
+    for run, snapshot in candidates:
+        fingerprint = _snapshot_fingerprint(snapshot)
+        key = (fingerprint, run.interaction_ref) if fingerprint else None
+        if not key or fingerprint not in wanted_fingerprints or key in by_key:
+            continue
+        projection = project_business_result(run.output, "dsh-consumer-analysis")
+        if projection and projection.get("kind") == "consumer-analysis":
+            by_key[key] = {**projection, "runId": run.id, "taskRunId": run.task_run_id}
+    return {row_id: by_key[key] for row_id, key in row_keys.items() if key in by_key}
+
+
 @router.get("/api/quality-results")
 def list_quality_results(page: int = 1, pageSize: int = 20, review: str = "",
                          tab: str = "", search: str = "", criterion: str = "", risk: str = "",
@@ -1089,7 +1145,10 @@ def list_quality_results(page: int = 1, pageSize: int = 20, review: str = "",
     review_counts = dict(db.execute(select(QualityResult.review_status, func.count(QualityResult.id))
                                     .group_by(QualityResult.review_status)).all())
     all_total = db.query(func.count(QualityResult.id)).scalar()
-    # 视觉修复：接上真实字段——run→Agent 名称、structured_output 里的业务字段（此前全是"-"）
+    # 独立 Agent 结果关联只接受完全相同的数据快照指纹，禁止仅按 interaction_ref 串数据。
+    correlated_consumer = _correlated_consumer_results(db, rows)
+    # 视觉修复：接上真实字段——run→Agent 名称、structured_output/消费者分析里的业务字段。
+    from ..business_results import consumer_business_dimensions
     from ..models import Agent, Run, Workflow
     items = []
     for r in rows:
@@ -1120,12 +1179,22 @@ def list_quality_results(page: int = 1, pageSize: int = 20, review: str = "",
             service_type = str(so.get("serviceType") or so.get("scene") or "-")
         if request_summary in ("-", None):
             request_summary = str(so.get("requestSummary") or so.get("userQuery") or "-")
+        consumer_result = correlated_consumer.get(r.id)
+        consumer_dims = consumer_business_dimensions(consumer_result)
+        if consumer_dims:
+            service_type = consumer_dims.get("serviceType") or service_type
+            request_summary = consumer_dims.get("requestSummary") or request_summary
         items.append({"id": r.id, "runId": r.run_id, "interactionId": r.interaction_ref,
                       "interactionTime": r.interaction_time.isoformat(), "score": r.score,
                       "risk": r.risk, "critical": r.critical, "issueCount": r.issue_count,
                       "issueSummary": r.issue_summary, "review": r.review_status,
                       "agentName": agent_name, "serviceType": service_type,
+                      "productCategory": consumer_dims.get("productCategory") or "-",
+                      "brand": consumer_dims.get("brand") or "-",
+                      "issueTopic": consumer_dims.get("issueTopic") or "-",
+                      "requestType": consumer_dims.get("requestType") or "-",
                       "requestSummary": request_summary,
+                      "businessResult": consumer_result,
                       "execution": {"runId": r.run_id or "-", "taskId": "-", "status": "SUCCESS", "agentVersion": "-"}})
     return {"items": items,
             "total": total, "page": page, "pageSize": pageSize,

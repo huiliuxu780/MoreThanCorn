@@ -55,6 +55,8 @@ export interface TaskVersionDTO {
   dataAssetId: string
   dataDefinitionVersionId: string | null
   resultRuleVersionId: string | null
+  rulePolicy?: "none" | "pinned" | "follow_latest"
+  resultRuleSetId?: string | null
   inputMapping: Record<string, string>
   scope: TaskScopeDTO
   sampling: TaskSamplingDTO
@@ -115,6 +117,48 @@ export interface TaskRunRunDTO {
   startedAt: string | null
   endedAt: string | null
   durationMs: number | null
+  businessResult: BusinessResultDTO | null
+}
+
+export interface BusinessResultEntityDTO {
+  typeId: string
+  subtypeId: string
+  mention: string
+  normalizedName: string
+  masterCode: string
+  resolutionStatus: string
+  confidence: number | null
+}
+
+export interface BusinessResultSegmentDTO {
+  id: string
+  startIndex: number | null
+  endIndex: number | null
+  scenarioId: string
+  scenarioLabel: string
+  intention: string
+  usefulnessId: string
+  usefulnessLabel: string
+  usefulnessReason: string
+  evidenceMessageIndexes: number[]
+  entities: BusinessResultEntityDTO[]
+}
+
+/** Persisted Run.output projected for business-facing pages. */
+export interface BusinessResultDTO {
+  kind: "consumer-analysis" | "structured-output"
+  contract: string
+  callId: string
+  status: string
+  title: string
+  summary: string
+  scenarios: { id: string; label: string }[]
+  intentions: string[]
+  entities: BusinessResultEntityDTO[]
+  segments: BusinessResultSegmentDTO[]
+  output: Record<string, unknown>
+  runId?: string
+  taskRunId?: string | null
 }
 
 export interface TaskRunResultDTO {

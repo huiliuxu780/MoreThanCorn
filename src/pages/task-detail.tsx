@@ -22,11 +22,13 @@ import { ErrorState, TableSkeleton } from "@/components/app/list-state"
 import { PageContainer, PageHeader, SectionHeader } from "@/components/app/page"
 import { StatusBadge } from "@/components/app/status-badge"
 import { TableFrame } from "@/components/app/table-frame"
+import { BusinessResultSummary, BusinessResultView } from "@/components/business/business-result-view"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { formatCompactDateTime } from "@/lib/time"
 import { taskVersionSummary } from "@/domain/task-mapper"
 import { bizApi } from "@/services/wf-api"
 import { rbac } from "@/services/rbac"
+import type { BusinessResultDTO } from "@/services/api-types"
 
 export default function TaskDetailPage() {
   const { taskId = "" } = useParams()
@@ -244,6 +246,7 @@ export default function TaskDetailPage() {
 
 function TaskRunDetail({ trid, onOpenResult }: { trid: string; onOpenResult: (resultId: string) => void }) {
   const navigate = useNavigate()
+  const [selectedBusinessResult, setSelectedBusinessResult] = useState<BusinessResultDTO | null>(null)
   const { data, loading } = useAsyncData(async () => {
     const [runs, results, tr] = await Promise.all([
       bizApi.taskRunRuns(trid), bizApi.taskRunResults(trid), bizApi.taskRun(trid),
@@ -266,6 +269,7 @@ function TaskRunDetail({ trid, onOpenResult }: { trid: string; onOpenResult: (re
               <TableHead>Interaction</TableHead>
               <TableHead>状态</TableHead>
               <TableHead>耗时</TableHead>
+              <TableHead>业务结果</TableHead>
               <TableHead>Run</TableHead>
             </TableRow>
           </TableHeader>
@@ -275,6 +279,14 @@ function TaskRunDetail({ trid, onOpenResult }: { trid: string; onOpenResult: (re
                 <TableCell className="font-mono text-xs">{r.interactionRef || "（空）"}</TableCell>
                 <TableCell><StatusBadge status={r.status} context="run" /></TableCell>
                 <TableCell className="text-xs tabular-nums">{r.durationMs != null ? `${r.durationMs}ms` : "—"}</TableCell>
+                <TableCell className="max-w-xl">
+                  {r.businessResult ? (
+                    <button type="button" className="w-full rounded-md p-1 text-left hover:bg-muted/60"
+                      onClick={() => setSelectedBusinessResult(r.businessResult)}>
+                      <BusinessResultSummary result={r.businessResult} />
+                    </button>
+                  ) : <span className="text-xs text-muted-foreground">—</span>}
+                </TableCell>
                 <TableCell>
                   <button type="button" className="text-xs text-primary underline"
                     onClick={() => navigate(`/config/tasks/${data.tr.taskId}/runs/${r.id}`)}>查看 Run</button>
@@ -295,6 +307,15 @@ function TaskRunDetail({ trid, onOpenResult }: { trid: string; onOpenResult: (re
           ))}
         </div>
       ) : null}
+      <Sheet open={!!selectedBusinessResult} onOpenChange={(open) => { if (!open) setSelectedBusinessResult(null) }}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-3xl">
+          <SheetHeader>
+            <SheetTitle>业务结果</SheetTitle>
+            <SheetDescription>当前 Interaction 的结构化 Agent 输出</SheetDescription>
+          </SheetHeader>
+          {selectedBusinessResult ? <div className="mt-5"><BusinessResultView result={selectedBusinessResult} /></div> : null}
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }
