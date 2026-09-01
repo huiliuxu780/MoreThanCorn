@@ -199,7 +199,7 @@ def today_board(date: str = "", timezone: str = "Asia/Shanghai",
 
 @router.get("/task-runs/stream")
 async def task_runs_stream(request: Request,
-                           date: str = "", timezone: str = "Asia/Shanghai"):
+                           date: str = "", tz: str = "Asia/Shanghai"):
     """SSE：board upsert 与 summary 更新；事件带递增 sequence/serverTime。
 
     断线重连用 Last-Event-ID；无法续接时直接下发完整 snapshot（客户端无需另拉）。"""
@@ -219,10 +219,10 @@ async def task_runs_stream(request: Request,
             db = next(get_db())
             try:
                 if not date:
-                    d = datetime.now(ZoneInfo(timezone)).date().isoformat()
+                    d = datetime.now(ZoneInfo(tz)).date().isoformat()
                 else:
                     d = date
-                board = _board(db, d, timezone, {})
+                board = _board(db, d, tz, {})
             finally:
                 db.close()
             digest = hashlib.sha256(
