@@ -300,6 +300,10 @@ def schedule_tick() -> int:
     fired = 0
     try:
         now = datetime.now(timezone.utc)
+        # SDD 13 §4.6：滚动物化未来 48h occurrence + 超宽限标记 missed
+        from .occurrences import mark_missed, materialize_occurrences
+        materialize_occurrences(db, now)
+        mark_missed(db, now)
         due = db.execute(select(Schedule).where(Schedule.enabled == True)).scalars().all()  # noqa: E712
         for sch in due:
             if sch.next_run_at is None:
@@ -317,10 +321,16 @@ def schedule_tick() -> int:
                     # 09 P0-B2/B3：调度→TaskRun 新链路；唯一业务键防重复触发（INV-11）；
                     # paused/不可运行任务失败关闭但不计调度故障。
                     from .task_runner import TaskStartError, start_task_run
-                    fire_slot = sch.next_run_at.isoformat() if sch.next_run_at else now.isoformat()
+                    # SDD 13 §4.6：fire_key 归一 UTC（occurrence 与 TaskRun 同键）
+                    fire_at = (sch.next_run_at.astimezone(timezone.utc)
+                               if sch.next_run_at else now)
+                    fire_slot = fire_at.isoformat()
                     try:
                         _tr, _res = start_task_run(db, sch.task_id, trigger="schedule",
                                                    schedule_fire_key=f"{sch.id}:{fire_slot}")
+                        # 触发后与 occurrence 幂等关联（同卡不双显）
+                        from .occurrences import associate_fire
+                        associate_fire(db, sch.id, fire_at, _tr.id)
                         fired += 1
                     except TaskStartError as exc:
                         if exc.status_code == 409:  # paused（INV-10）：静默跳过

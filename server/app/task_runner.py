@@ -148,6 +148,11 @@ def start_task_run(db: Session, task_id: str, trigger: str = "manual",
     if not tv:
         raise TaskStartError("任务缺少配置版本")
 
+    # SDD 13 §6.2/§18：生产触发（schedule/backfill/api）强制 target_table（先于目标解析）
+    if trigger != "manual" and (tv.output_mode or "platform_only") != "target_table":
+        raise TaskStartError("生产触发（schedule/backfill/api）要求 outputBinding.mode="
+                             "target_table（SDD 13 §18；sandbox/manual 可 platform_only）", 422)
+
     # R3：统一执行目标解析（启动时一次冻结，批次内不漂移）
     agent_version = release = None
     if tv.execution_target_type == "agent":
@@ -174,6 +179,18 @@ def start_task_run(db: Session, task_id: str, trigger: str = "manual",
         raise TaskStartError("数据定义版本不存在", 422)
     # 09 P0：解析并冻结规则版本（失败关闭）
     resolved_rule_version_id = _resolve_rule_version(db, tv)
+    # SDD 13 §6.2：启动时 fail-closed 探测目标表（连接/表/结构/权限/唯一键），
+    # 失败不创建注定无法投递的生产 TaskRun；已启动批次的运行期故障走 Delivery 重试。
+    from .output_binding import freeze_binding_snapshot
+    from .output_binding_validator import validate_for_start
+    contract = tv.output_contract_snapshot or {}
+    binding_snapshot = freeze_binding_snapshot(
+        db, tv, contract.get("ref") or "", contract.get("sha256") or "")
+    if binding_snapshot:
+        ok, issues = validate_for_start(db, binding_snapshot)
+        if not ok:
+            raise TaskStartError("目标表启动探测失败（fail-closed）：" +
+                                 "；".join(i["message"] for i in issues), 502)
     asset = db.get(DataAsset, tv.data_asset_id)
     if not asset:
         raise TaskStartError("数据资产不存在")
@@ -201,6 +218,8 @@ def start_task_run(db: Session, task_id: str, trigger: str = "manual",
     tr = TaskRun(task_id=t.id, task_version_id=tv.id, data_snapshot_id=snap.id,
                  trigger=trigger, schedule_fire_key=schedule_fire_key,
                  idempotency_key=idempotency_key, status="queued", total=expected,
+                 output_binding_snapshot=binding_snapshot,
+                 delivery_status="pending" if binding_snapshot else "not_configured",
                  resolved_rule_version_id=resolved_rule_version_id,
                  resolved_workflow_version_id=wv.id if wv else None,
                  resolved_agent_version_id=agent_version.id if agent_version else None,

@@ -136,6 +136,23 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
                    "critical": qr_latest.critical, "issueSummary": qr_latest.issue_summary,
                    "review": qr_latest.review_status,
                    "structuredOutput": qr_latest.structured_output or {}}
+    # SDD 13 §8.5：Run 详情携带 delivery 详情与领域结果链接（链接解析来自领域服务，
+    # Task Core 不内嵌领域 DTO 的猜测路径；quality 块将于 PR6 移除）
+    from ..models import ResultDelivery
+    drow = db.query(ResultDelivery).filter_by(run_id=run_id).first()
+    delivery = None
+    if drow:
+        delivery = {"id": drow.id, "status": drow.status, "attempts": drow.attempts,
+                    "maxAttempts": drow.max_attempts, "writeMode": drow.write_mode,
+                    "error": drow.error, "targetReference": drow.target_reference,
+                    "payloadSha256": drow.payload_sha256,
+                    "nextAttemptAt": drow.next_attempt_at.isoformat()
+                    if drow.next_attempt_at else None,
+                    "outputAssetId": drow.output_asset_id}
+    domain_links = []
+    if qr_latest:
+        domain_links.append({"rel": "quality-result", "id": qr_latest.id,
+                             "interactionRef": qr_latest.interaction_ref})
     return {
         "runId": run.id, "status": run.status, "trigger": run.trigger,
         "input": run.input, "output": run.output, "error": run.error,
@@ -151,6 +168,8 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
         "usage": run.token_usage or {},
         "evidence": evidence,
         "quality": quality,
+        "delivery": delivery,
+        "domainLinks": domain_links,
         "originRunId": run.origin_run_id,
         "retryChildren": retry_children,
         "nodeRuns": [{
