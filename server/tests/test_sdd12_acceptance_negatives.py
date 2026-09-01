@@ -225,3 +225,37 @@ def test_create_validates_structured_secret():
         "name": u("neg"), "protocol": "http-api", "kind": "basic",
         "endpoint": {"base_url": "https://invalid.example/"}, "secret": {"password": "no-user"}})
     assert r2.status_code == 422
+
+
+# ---------- 修复：LLM（OpenAI 兼容）鉴权头必须 Bearer ----------
+
+def _mk_llm_conn(kind: str, secret) -> "object":
+    from app.models import Connection
+    from app.secrets import encrypt_secret, serialize_secret
+    return Connection(name=u("llm"), kind=kind, protocol="llm",
+                      endpoint={"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"},
+                      environments=[], default_env=None, auth_script=None,
+                      secret_ref=encrypt_secret(serialize_secret(secret)))
+
+
+def test_llm_auth_headers_bearer_for_api_key():
+    """api_key/bearer 连接的密钥必须产出 Authorization: Bearer（OpenAI 兼容端点标准），
+    不能是 X-API-Key（DashScope 等兼容端点会 401）。"""
+    from app.runner import llm_auth_headers
+    # 裸串密钥
+    h = llm_auth_headers(_mk_llm_conn("api_key", "sk-real-123"))
+    assert h == {"Authorization": "Bearer sk-real-123"}, f"应产出 Bearer，实际 {h}"
+    # 结构化 {api_key}
+    h2 = llm_auth_headers(_mk_llm_conn("api_key", {"api_key": "sk-dict"}))
+    assert h2 == {"Authorization": "Bearer sk-dict"}
+    # bearer kind 同理
+    h3 = llm_auth_headers(_mk_llm_conn("bearer", {"token": "tok-1"}))
+    assert h3 == {"Authorization": "Bearer tok-1"}
+
+
+def test_llm_auth_headers_rejects_empty_key():
+    from app.runner import llm_auth_headers
+    from app.runner import RunError
+    import pytest
+    with pytest.raises(RunError):
+        llm_auth_headers(_mk_llm_conn("api_key", ""))

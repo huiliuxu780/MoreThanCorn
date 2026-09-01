@@ -210,6 +210,28 @@ def exec_llm(node, ctx) -> dict:
     return out
 
 
+def llm_auth_headers(conn) -> dict:
+    """SDD-12：LLM（OpenAI 兼容）连接的出站鉴权头。
+
+    api_key/bearer 连接的密钥统一产出 `Authorization: Bearer <key>`——DashScope/通义等
+    兼容端点只认 Bearer，不能按 kind 产出 X-API-Key（会 401）。其余 kind（aksk/script
+    等）仍经签名层产出各自请求头。密钥取自连接解析后的 payload（裸串或
+    {api_key|token|access_key}）。
+    """
+    _ep, payload, _code = resolve_for_request(conn)
+    if conn.kind in ("api_key", "bearer"):
+        key = payload if isinstance(payload, str) else (
+            payload.get("api_key") or payload.get("token") or payload.get("access_key") or "")
+        if not key:
+            raise RunError("LLM 连接缺少可用密钥")
+        return {"Authorization": f"Bearer {key}"}
+    try:
+        return build_auth_headers(conn.kind, payload, script=conn.auth_script,
+                                  env_vars=payload if isinstance(payload, dict) else None)
+    except AuthSignError as exc:
+        raise RunError(str(exc))
+
+
 def _call_model(db: Session, model_id: str, prompt: str) -> tuple[str, dict]:
     """真实 LLM 联调：OpenAI 兼容协议。
     优先级：env WF_LLM_BASE_URL/WF_LLM_API_KEY > Model/Provider 表配置；无 http base 时 mock 回落。"""
@@ -242,13 +264,7 @@ def _call_model(db: Session, model_id: str, prompt: str) -> tuple[str, dict]:
         raise RunError(str(exc))
     headers = {"Authorization": f"Bearer {secret}"} if secret else {}
     if not secret and conn is not None:
-        # R4：kind 真实生效（aksk/script 等经签名层产出请求头，不再写死 Bearer）
-        _ep, payload, _code = resolve_for_request(conn)
-        try:
-            headers = build_auth_headers(conn.kind, payload, script=conn.auth_script,
-                                         env_vars=payload if isinstance(payload, dict) else None)
-        except AuthSignError as exc:
-            raise RunError(str(exc))
+        headers = llm_auth_headers(conn)
     with httpx.Client(timeout=60) as client:
         r = client.post(f"{base.rstrip('/')}/chat/completions",
                         headers=headers,
