@@ -12,6 +12,10 @@ const TaskWizardPage = lazy(() => import("@/pages/task-wizard"))
 const TaskDetailPage = lazy(() => import("@/pages/task-detail"))
 const TaskEditPage = lazy(() => import("@/pages/task-edit"))
 const RunDetailPage = lazy(() => import("@/pages/run-detail"))
+// SDD 13：运行中心（今日运行/批次历史/批次详情）canonical routes
+const OperationsTodayPage = lazy(() => import("@/pages/operations-today"))
+const OperationsHistoryPage = lazy(() => import("@/pages/operations-history"))
+const TaskRunDetailPage = lazy(() => import("@/pages/task-run-detail"))
 // A-14：agent 轨道 mock 双轨已清退——/config/agents 固定走真 API 页面
 const WfAgentsPage = lazy(() => import("@/pages/wf-agents-list"))
 const WfAgentEditorPage = lazy(() => import("@/pages/wf-agent-editor"))
@@ -42,6 +46,18 @@ const NotFoundPage = lazy(() =>
 function ToolRedirect() {
   const { toolId } = useParams()
   return <Navigate to={`/config/ai-resources/tool/${toolId}`} replace />
+}
+
+/** SDD 13 §10.2：旧批次路由 → canonical route（replace redirect，不维护双页面）。 */
+function TaskRunRedirect() {
+  const { taskRunId } = useParams()
+  return <Navigate to={`/operations/task-runs/${taskRunId}`} replace />
+}
+
+/** SDD 13 §10.2：旧 Run 路由 → canonical route。 */
+function RunRedirect() {
+  const { runId } = useParams()
+  return <Navigate to={`/operations/runs/${runId}`} replace />
 }
 
 function RouteFallback() {
@@ -76,7 +92,15 @@ export function App() {
           <Route path="/config/tasks/new" element={<TaskWizardPage />} />
           <Route path="/config/tasks/:taskId" element={<TaskDetailPage />} />
           <Route path="/config/tasks/:taskId/edit" element={<TaskEditPage />} />
-          <Route path="/config/tasks/:taskId/runs/:runId" element={<RunDetailPage />} />
+          {/* SDD 13 §10.2：旧路由 replace redirect 到 canonical route */}
+          <Route path="/config/tasks/:taskId/runs/:runId" element={<RunRedirect />} />
+          <Route path="/config/tasks/:taskId/batches/:taskRunId" element={<TaskRunRedirect />} />
+
+          {/* SDD 13：运行中心 */}
+          <Route path="/operations/task-runs/today" element={<OperationsTodayPage />} />
+          <Route path="/operations/task-runs" element={<OperationsHistoryPage />} />
+          <Route path="/operations/task-runs/:taskRunId" element={<TaskRunDetailPage />} />
+          <Route path="/operations/runs/:runId" element={<RunDetailPage />} />
 
           {/* 配置管理：Agents */}
           <Route path="/config/agents" element={<WfAgentsPage />} />

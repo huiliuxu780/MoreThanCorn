@@ -118,6 +118,9 @@ export interface TaskRunDTO {
   resolvedAgentVersionId?: string | null
   resolvedReleaseId?: string | null
   runtimeBinding?: { providerId?: string; providerKind?: string } | null
+  /** SDD 13 §8.3：execution 与 delivery 两块 */
+  execution?: { status: string; total: number; succeeded: number; failed: number; skipped: number; cancelled: number }
+  delivery?: { status: string; pending: number; succeeded: number; failed: number; targetAssetId?: string | null }
   errorSummary: { errors: { interactionRef?: string; row?: number; error: string }[] } | null
   startedAt: string | null
   endedAt: string | null

@@ -1,9 +1,11 @@
-import { Cpu, 
+import { Cpu,
   BarChart3,
   Bot,
+  CalendarClock,
   ChevronDown,
   ClipboardList,
   Database,
+  History,
   Layers,
   Plug,
   Rocket,
@@ -53,8 +55,25 @@ interface NavGroup {
   subItems?: NavItem[]
 }
 
-/** 固定导航（Handoff §2）：不允许新增一级入口。 */
+/** 固定导航（Handoff §2）。SDD 13 §10.1：显式产品变更——新增「运行中心」一级分组。 */
 export const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "运行中心",
+    items: [
+      {
+        label: "今日运行",
+        to: "/operations/task-runs/today",
+        icon: CalendarClock,
+        permission: "task.view",
+      },
+      {
+        label: "批次历史",
+        to: "/operations/task-runs",
+        icon: History,
+        permission: "task.view",
+      },
+    ],
+  },
   {
     label: UI_TERMS.navigation.quality,
     subLabel: UI_TERMS.navigation.agentQuality,

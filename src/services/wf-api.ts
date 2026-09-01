@@ -999,6 +999,149 @@ export const bizApi = {
       method: "POST", body: JSON.stringify(body) }),
 }
 
+/* ---------- SDD 13 §8.8/§10：运行中心 API ---------- */
+
+export interface OpsBoardCard {
+  kind: "task_run" | "schedule_occurrence"
+  id: string
+  occurrenceId: string | null
+  taskRunId: string | null
+  task: { id: string; name: string }
+  plannedAt: string | null
+  startedAt: string | null
+  trigger: string
+  environment: string
+  stage: "upcoming" | "queued" | "running" | "delivering" | "attention" | "completed"
+  execution: { total: number; succeeded: number; failed: number; running: number }
+  delivery: { status: string; succeeded: number; failed: number }
+  durationMs: number | null
+  attention: { code: string; message: string } | null
+}
+
+export interface OpsBoard {
+  date: string
+  timezone: string
+  generatedAt: string
+  summary: Record<string, number>
+  completedTruncated: boolean
+  columns: Record<string, OpsBoardCard[]>
+}
+
+export interface OpsHistoryItem {
+  id: string
+  taskId: string
+  taskName: string
+  trigger: string
+  environment: string
+  startedAt: string | null
+  endedAt: string | null
+  createdAt: string
+  durationMs: number | null
+  execution: { status: string; total: number; succeeded: number; failed: number; skipped: number; cancelled: number }
+  delivery: { status: string; pending: number; succeeded: number; failed: number }
+}
+
+export interface OpsDeliveryItem {
+  id: string
+  runId: string
+  interactionRef: string
+  status: string
+  writeMode: string
+  attempts: number
+  maxAttempts: number
+  nextAttemptAt: string | null
+  error: { code?: string; message?: string } | null
+  targetReference: { assetId?: string; schema?: string; table?: string; key?: Record<string, unknown> } | null
+  payloadSha256: string
+  outputAssetId: string | null
+  createdAt: string
+  endedAt: string | null
+}
+
+export interface OpsFailureSample {
+  id?: string
+  runId?: string
+  deliveryId?: string
+  interactionRef?: string
+  code?: string
+  message?: string
+  attempts?: number
+}
+
+export interface OpsRunItem {
+  id: string
+  status: string
+  interactionRef: string
+  attempt: number
+  durationMs: number | null
+  outputAvailable: boolean
+  outputSchemaRef?: string | null
+  delivery: { id: string; status: string; attempts: number; error: { code?: string; message?: string } | null } | null
+  error: { message?: string } | null
+  startedAt: string | null
+  endedAt: string | null
+}
+
+export interface OpsTaskRunDetail {
+  id: string
+  taskId: string
+  taskName: string
+  taskVersionId: string
+  versionNo: number | null
+  trigger: string
+  environment: string
+  scheduleFireKey: string | null
+  plannedAt: string | null
+  occurrence: { id: string; status: string; error: { code?: string; message?: string } | null } | null
+  startedAt: string | null
+  endedAt: string | null
+  durationMs: number | null
+  execution: { status: string; total: number; succeeded: number; failed: number; skipped: number; cancelled: number }
+  delivery: { status: string; pending: number; succeeded: number; failed: number;
+    targetAssetId?: string | null; targetTable?: string | null; writeMode?: string;
+    keyFields?: string[]; schemaFingerprint?: string; outputSchemaRef?: string }
+  frozen: {
+    agentVersionId: string | null
+    workflowVersionId: string | null
+    releaseId: string | null
+    ruleVersionId: string | null
+    runtimeBinding: Record<string, unknown> | null
+    outputBinding: Record<string, unknown> | null
+    dataSnapshot: { id: string; assetId: string; readCount: number; expectedCount: number;
+      checksum: string; resolvedWindow: Record<string, unknown> } | null
+  }
+  errorSummary: { errors: { error: string }[] } | null
+}
+
+export const opsApi = {
+  today: (params: { date?: string; timezone?: string; taskId?: string; trigger?: string; environment?: string; attention?: string; q?: string } = {}) => {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v)
+    return req<OpsBoard>(`/api/operations/task-runs/today?${qs.toString()}`)
+  },
+  history: (params: Record<string, string | number> = {}) => {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) if (v !== "" && v != null) qs.set(k, String(v))
+    return req<{ items: OpsHistoryItem[]; total: number; page: number; pageSize: number }>(
+      `/api/operations/task-runs?${qs.toString()}`)
+  },
+  detail: (taskRunId: string) => req<OpsTaskRunDetail>(`/api/operations/task-runs/${taskRunId}`),
+  deliveries: (taskRunId: string, params: { page?: number; pageSize?: number; status?: string } = {}) => {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, String(v))
+    return req<{ items: OpsDeliveryItem[]; total: number }>(
+      `/api/operations/task-runs/${taskRunId}/deliveries?${qs.toString()}`)
+  },
+  failureAnalysis: (taskRunId: string) =>
+    req<{ taskRunId: string; categories: { key: string; count: number; samples: OpsFailureSample[] }[] }>(
+      `/api/operations/task-runs/${taskRunId}/failure-analysis`),
+  retryFailedDeliveries: (taskRunId: string) =>
+    req<{ accepted: number; skipped: number }>(`/api/task-runs/${taskRunId}/retry-failed-deliveries`,
+      { method: "POST", body: "{}" }),
+  streamUrl: (timezone = "Asia/Shanghai") =>
+    `/api/operations/task-runs/stream?timezone=${encodeURIComponent(timezone)}`,
+}
+
 export async function realQualityDetail(id: string): Promise<Record<string, unknown>> {
   const q = await req<QualityResultDetailDTO>(`/api/quality-results/${id}`)
   const hist = q.reviewRevisions ?? []
