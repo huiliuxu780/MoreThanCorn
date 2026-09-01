@@ -86,7 +86,19 @@
 - `npm run typecheck` / `npm run lint` / `npm run build` → 0 错误（构建产物 dist/）。
 - 真实 PG 集成：`tests/test_sdd13_delivery.py` 9/9（wf_test）+ `scripts/verify-sdd13-delivery.py`（wf_dev）。
 
-## 3. 已知限制与迁移说明
+## 3. 存量测试对新品类闸门的适配（有意行为变更）
+
+- `test_p0_schedule.py`：schedule 触发按 §18 强制 target_table——用例预置真实验收表绑定
+  （`_mk_output_binding`），映射源遵守冻结 Output Schema（$run/$system/$constant 根）；
+  occurrence 物化与 scheduler 线程并发安全（ON CONFLICT DO NOTHING）。
+- `test_p0_taskrun.py::test_backfill_processes_window_subset`：backfill 属生产触发，platform_only
+  现返回 422（新闸门负向断言）；窗口子集语义改经 manual + window_override 验证。
+- `test_business.py::test_rules_engine_derives_and_recalc`：共享测试库下不再依赖
+  active_rule_version 全局回退（并发发布竞态），改经 Task 钉住 resultRuleVersionId
+  （09-SDD 冻结语义正道），断言不变（risk=High/ruleVersionId 明确）。
+- `test_p0_taskrun.py` 其余 /results 断言迁移为领域层直查 QualityResult（/results 已 deprecated）。
+
+## 4. 已知限制与迁移说明
 
 - SSE 在 IAB/部分代理环境会断流，前端自动降级 5s 轮询（页头明示）；生产部署需保证 SSE 直通（§18-7 门槛）。
 - 投递回归使用确定性 fixture 输出；真实 LLM 联调消耗额度，需另行批准后执行。
