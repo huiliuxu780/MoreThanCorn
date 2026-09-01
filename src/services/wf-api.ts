@@ -1163,8 +1163,17 @@ export const opsApi = {
   retryFailedDeliveries: (taskRunId: string) =>
     req<{ accepted: number; skipped: number }>(`/api/task-runs/${taskRunId}/retry-failed-deliveries`,
       { method: "POST", body: "{}" }),
+  runs: (taskRunId: string, params: { page?: number; pageSize?: number; status?: string; deliveryStatus?: string; q?: string } = {}) => {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, String(v))
+    return req<{ items: OpsRunItem[]; total: number; page: number; pageSize: number }>(
+      `/api/task-runs/${taskRunId}/runs?${qs.toString()}`)
+  },
+  retryDelivery: (deliveryId: string) =>
+    req<{ accepted: number; skipped: number }>(`/api/result-deliveries/${deliveryId}/retry`,
+      { method: "POST", body: "{}" }),
   streamUrl: (timezone = "Asia/Shanghai") =>
-    `/api/operations/task-runs/stream?timezone=${encodeURIComponent(timezone)}`,
+    `${WF_BASE}/api/operations/task-runs/stream?timezone=${encodeURIComponent(timezone)}`,
 }
 
 export async function realQualityDetail(id: string): Promise<Record<string, unknown>> {

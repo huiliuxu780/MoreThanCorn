@@ -155,12 +155,8 @@ function InteractionRunsTab({ taskRunId }: { taskRunId: string }) {
 
   useEffect(() => {
     let cancelled = false
-    const qs = new URLSearchParams({ page: String(page), pageSize: "50" })
-    if (status) qs.set("status", status)
-    if (deliveryStatus) qs.set("deliveryStatus", deliveryStatus)
-    if (q) qs.set("q", q)
-    fetch(`/api/task-runs/${taskRunId}/runs?${qs.toString()}`)
-      .then((r) => r.json() as Promise<{ items: OpsRunItem[]; total: number }>)
+    opsApi.runs(taskRunId, { page, status: status || undefined,
+      deliveryStatus: deliveryStatus || undefined, q: q || undefined })
       .then((r) => { if (!cancelled) setBody(r) })
       .catch(() => undefined)
     return () => { cancelled = true }
@@ -280,7 +276,7 @@ function DeliveryTab({ taskRunId, onChanged, canManage }: { taskRunId: string; o
                       <Button variant="outline" size="sm" className="h-7 px-2 text-xs"
                         onClick={async () => {
                           try {
-                            const r = await fetch(`/api/result-deliveries/${d.id}/retry`, { method: "POST" }).then((x) => x.json())
+                            const r = await opsApi.retryDelivery(d.id)
                             toast.success(`accepted=${r.accepted ?? 0}`)
                             onChanged()
                             opsApi.deliveries(taskRunId, { pageSize: 100 }).then(setBody)
