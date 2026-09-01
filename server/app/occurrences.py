@@ -63,8 +63,14 @@ def materialize_occurrences(db: Session, now: datetime | None = None) -> int:
                 break
             if nxt <= now - timedelta(minutes=MISS_GRACE_MINUTES):
                 continue  # 已过期窗口不补计划
-            # 与并发 materializer（scheduler 线程/测试直调）竞态安全：DB 侧去重
+            # 与并发 materializer（scheduler 线程/测试直调）竞态安全：DB 侧去重。
+            # rowcount 在 DO NOTHING 跳过时驱动可能报 -1，故以预检计数、冲突兜底。
             from sqlalchemy.dialects.postgresql import insert as pg_insert
+            exists = db.execute(select(ScheduleOccurrence.id).where(
+                ScheduleOccurrence.schedule_id == sch.id,
+                ScheduleOccurrence.planned_at == nxt)).first()
+            if exists is None:
+                created += 1
             stmt = pg_insert(ScheduleOccurrence).values(
                 id=new_id(), schedule_id=sch.id, task_id=sch.task_id, planned_at=nxt,
                 timezone=sch.timezone or "Asia/Shanghai",
@@ -72,9 +78,8 @@ def materialize_occurrences(db: Session, now: datetime | None = None) -> int:
                 schedule_snapshot={"cron": sch.cron_expr, "timezone": sch.timezone,
                                    "taskId": sch.task_id},
                 created_at=now, updated_at=now)
-            res = db.execute(stmt.on_conflict_do_nothing(
+            db.execute(stmt.on_conflict_do_nothing(
                 constraint="uq_occurrence_schedule_planned"))
-            created += res.rowcount
     if created or cancelled:
         db.commit()
     return created
