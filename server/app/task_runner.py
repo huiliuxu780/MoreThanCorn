@@ -278,6 +278,23 @@ def _eligibility_hit(row: dict, eligibility: list) -> bool:
                for c in eligibility if isinstance(c, dict))
 
 
+def _ref_value(row: dict, ref: str):
+    """资产字段引用：支持点号嵌套路径（如 canonical_call.call.acid）。
+
+    存量用例库以 canonical 原始结构存储（整列 JSON），Module 输入需要其中
+    的嵌套字段；不含点号的引用行为与平铺字段名完全一致（向后兼容）。
+    """
+    if "." not in ref:
+        return row.get(ref)
+    cur = row
+    for part in ref.split("."):
+        if isinstance(cur, dict):
+            cur = cur.get(part)
+        else:
+            return None
+    return cur
+
+
 def _apply_mapping(row: dict, mapping: dict) -> dict:
     """inputMapping：{工作流输入键: 资产字段名}；未映射时保留同名字段。"""
     if not mapping:
@@ -285,7 +302,7 @@ def _apply_mapping(row: dict, mapping: dict) -> dict:
     out = {}
     for wf_key, asset_field in mapping.items():
         if asset_field:
-            out[wf_key] = row.get(asset_field)
+            out[wf_key] = _ref_value(row, asset_field)
     return out
 
 

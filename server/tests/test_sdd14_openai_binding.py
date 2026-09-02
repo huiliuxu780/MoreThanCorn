@@ -149,6 +149,38 @@ def test_module_run_dispatch_same_spec_across_openai_and_agentscope(monkeypatch,
         "knowledge_search", "ticket_query", "sms_query", "appointment_query"}
 
 
+def test_input_mapping_supports_nested_canonical_paths():
+    """SDD-14 §35：存量用例库为 canonical 原始结构，inputMapping 需点号引用嵌套字段。"""
+    from app.task_runner import _apply_mapping, _ref_value
+
+    row = {
+        "sample_id": "sample-001",
+        "canonical_call": {
+            "call": {"acid": "30253400817"},
+            "messages": [{"role": "customer", "text": "hi"}],
+        },
+    }
+    # 平铺字段名行为不变（向后兼容）
+    assert _ref_value(row, "sample_id") == "sample-001"
+    # 点号路径取嵌套字段
+    assert _ref_value(row, "canonical_call.call.acid") == "30253400817"
+    assert _ref_value(row, "canonical_call.messages") == [{"role": "customer", "text": "hi"}]
+    # 路径不存在 → None（不抛错）
+    assert _ref_value(row, "canonical_call.nope.x") is None
+    assert _ref_value(row, "sample_id.x") is None
+    # 映射组装
+    mapped = _apply_mapping(row, {
+        "sample_id": "sample_id",
+        "call_id": "canonical_call.call.acid",
+        "conversation": "canonical_call.messages",
+    })
+    assert mapped == {
+        "sample_id": "sample-001",
+        "call_id": "30253400817",
+        "conversation": [{"role": "customer", "text": "hi"}],
+    }
+
+
 def test_openai_provider_batch_task_end_to_end(monkeypatch, fake_server_sdd14):
     """§58：openai-agents Provider 的完整 Task 链路（批次同步执行）。"""
     fake, base_url = fake_server_sdd14
