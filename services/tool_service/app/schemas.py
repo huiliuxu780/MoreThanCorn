@@ -16,6 +16,17 @@ class CaseQueryRequest(StrictModel):
     case_id: str = Field(min_length=1, max_length=128)
 
 
+class MetricQueryRequest(StrictModel):
+    metric: str = Field(min_length=1, max_length=128)
+    window: str | None = Field(default=None, max_length=16)
+    start: str | None = Field(default=None, max_length=16)
+    end: str | None = Field(default=None, max_length=16)
+
+
+class DimensionQueryRequest(MetricQueryRequest):
+    dimension: str = Field(min_length=1, max_length=128)
+
+
 class GenericToolCall(StrictModel):
     arguments: dict[str, Any]
 

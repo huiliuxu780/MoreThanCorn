@@ -10,8 +10,10 @@ from pydantic import ValidationError
 
 from .schemas import (
     CaseQueryRequest,
+    DimensionQueryRequest,
     GenericToolCall,
     KnowledgeSearchRequest,
+    MetricQueryRequest,
     ToolEnvelope,
 )
 from .store import FIXTURE_DATASET, TOOL_VERSIONS, FixtureStore
@@ -55,6 +57,27 @@ def create_mcp_server(fixture_store: FixtureStore) -> MCPServer:
         """Return synthetic appointment facts for one case ID."""
         request = CaseQueryRequest(case_id=case_id)
         return fixture_store.appointment_query(request.case_id)
+
+    @server.tool(annotations=READ_ONLY_TOOL)
+    def metric_query(metric: str, window: str = "", start: str = "", end: str = "") -> dict[str, Any]:
+        """Return deterministic metric series and window aggregate (read-only).
+
+        Prefer the symbolic window (last_7d / last_14d / last_30d / all); explicit
+        start/end dates override it. The store resolves windows deterministically —
+        callers must not compute dates themselves.
+        """
+        request = MetricQueryRequest(metric=metric, window=window or None,
+                                     start=start or None, end=end or None)
+        return fixture_store.metric_query(request.metric, request.window,
+                                          request.start, request.end)
+
+    @server.tool(annotations=READ_ONLY_TOOL)
+    def dimension_query(metric: str, dimension: str, window: str = "", start: str = "", end: str = "") -> dict[str, Any]:
+        """Return deterministic dimension breakdown for one metric (read-only)."""
+        request = DimensionQueryRequest(metric=metric, dimension=dimension, window=window or None,
+                                        start=start or None, end=end or None)
+        return fixture_store.dimension_query(request.metric, request.dimension, request.window,
+                                             request.start, request.end)
 
     return server
 
@@ -117,11 +140,25 @@ def appointment_query_http(request: CaseQueryRequest) -> dict[str, Any]:
     return store.appointment_query(request.case_id)
 
 
-_HTTP_HANDLERS: dict[str, tuple[type[KnowledgeSearchRequest] | type[CaseQueryRequest], Callable[..., dict[str, Any]]]] = {
+@app.post("/v1/tools/metric_query", response_model=ToolEnvelope)
+def metric_query_http(request: MetricQueryRequest) -> dict[str, Any]:
+    return store.metric_query(request.metric, request.start, request.end)
+
+
+@app.post("/v1/tools/dimension_query", response_model=ToolEnvelope)
+def dimension_query_http(request: DimensionQueryRequest) -> dict[str, Any]:
+    return store.dimension_query(request.metric, request.dimension, request.start, request.end)
+
+
+_HTTP_HANDLERS: dict[str, tuple[type[KnowledgeSearchRequest] | type[CaseQueryRequest]
+                                | type[MetricQueryRequest] | type[DimensionQueryRequest],
+                                Callable[..., dict[str, Any]]]] = {
     "knowledge_search": (KnowledgeSearchRequest, store.knowledge_search),
     "ticket_query": (CaseQueryRequest, store.ticket_query),
     "sms_query": (CaseQueryRequest, store.sms_query),
     "appointment_query": (CaseQueryRequest, store.appointment_query),
+    "metric_query": (MetricQueryRequest, store.metric_query),
+    "dimension_query": (DimensionQueryRequest, store.dimension_query),
 }
 
 

@@ -14,6 +14,8 @@ TOOL_VERSIONS = {
     "ticket_query": "1.0.0",
     "sms_query": "1.0.0",
     "appointment_query": "1.0.0",
+    "metric_query": "1.0.0",
+    "dimension_query": "1.0.0",
 }
 
 
@@ -99,3 +101,73 @@ class FixtureStore:
 
     def appointment_query(self, case_id: str) -> dict[str, Any]:
         return self._case_query("appointment_query", case_id)
+
+    # ---------- business-analysis：只读指标/维度查询（SDD-14 扩展） ----------
+
+    WINDOW_DAYS = {"last_7d": 7, "last_14d": 14, "last_30d": 30}
+
+    def _metric_window(
+        self, daily: dict[str, Any], window: str | None, start: str | None, end: str | None
+    ) -> tuple[list[str], str | None, str | None]:
+        """确定性窗口解析：显式 start/end 优先；否则按符号窗口（last_7d 等）
+        相对数据集自身日期范围求解——调用方（模型）无需也不得推算日期。"""
+
+        dates = sorted(daily)
+        if not dates:
+            return [], None, None
+        if start or end:
+            lo = start or dates[0]
+            hi = end or dates[-1]
+            return [d for d in dates if lo <= d <= hi], lo, hi
+        if window == "all":
+            return list(dates), dates[0], dates[-1]
+        n = self.WINDOW_DAYS.get(window or "last_7d", 7)
+        selected = dates[-n:]
+        return selected, selected[0], selected[-1]
+
+    def metric_query(
+        self, metric: str, window: str | None = None,
+        start: str | None = None, end: str | None = None,
+    ) -> dict[str, Any]:
+        record = (self.data.get("metric_store", {}).get("metrics", {}) or {}).get(metric)
+        if record is None:
+            return self.envelope(
+                "metric_query",
+                {"metric": metric, "known": False, "unit": None,
+                 "window": {"start": start, "end": end}, "points": [], "aggregate": None},
+            )
+        selected, lo, hi = self._metric_window(record["daily"], window, start, end)
+        points = [{"date": d, "value": record["daily"][d]} for d in selected]
+        values = [p["value"] for p in points]
+        aggregate = round(sum(values) / len(values), 2) if values else None
+        return self.envelope(
+            "metric_query",
+            {"metric": metric, "known": True, "unit": record.get("unit"),
+             "window": {"start": lo, "end": hi}, "points": points,
+             "aggregate": aggregate, "source": "metric_store_v1"},
+        )
+
+    def dimension_query(
+        self, metric: str, dimension: str, window: str | None = None,
+        start: str | None = None, end: str | None = None,
+    ) -> dict[str, Any]:
+        dimensions = (self.data.get("metric_store", {}).get("dimensions", {}) or {}).get(metric, {})
+        record = dimensions.get(dimension)
+        metric_rec = (self.data.get("metric_store", {}).get("metrics", {}) or {}).get(metric)
+        if record is None or metric_rec is None:
+            return self.envelope(
+                "dimension_query",
+                {"metric": metric, "dimension": dimension, "known": False, "unit": None,
+                 "window": {"start": start, "end": end}, "breakdown": []},
+            )
+        _, lo, hi = self._metric_window(metric_rec.get("daily", {}), window, start, end)
+        breakdown = [
+            {"key": key, "value": value}
+            for key, value in sorted(record["breakdown"].items())
+        ]
+        return self.envelope(
+            "dimension_query",
+            {"metric": metric, "dimension": dimension, "known": True,
+             "unit": record.get("unit"), "window": {"start": lo, "end": hi},
+             "breakdown": breakdown, "source": "metric_store_v1"},
+        )
