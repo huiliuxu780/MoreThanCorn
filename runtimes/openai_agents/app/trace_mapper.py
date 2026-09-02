@@ -4,6 +4,10 @@
 本地映射为 workflow/agent/model/tool 事件。事件按鸭子类型读取（.raw_responses /
 .new_items / .raw_item），便于测试用轻量替身验证映射逻辑。
 
+事件命名沿用平台既有消费约定（worker CallRecord 匹配 "ModelCall"/"ToolCall" +
+"EndEvent" 后缀；workflow/* 阶段事件与 AgentScope runtime 一致），保证
+Run Detail 的 stages/calls/usage 三块数据无需平台侧改造即可展示。
+
 只记录脱敏摘要：工具入参/出参截断到 SUMMARY_LIMIT 字符；凭据类字段一律不采集。
 """
 
@@ -61,7 +65,7 @@ def stage_trace_from_result(agent_name: str, result: Any) -> list[TraceEvent]:
             TraceEvent(
                 sequence=0,
                 timestamp=utcnow(),
-                type="model/start",
+                type="ModelCallStartEvent",
                 name=agent_name,
                 call_id=str(call_id),
             )
@@ -70,7 +74,7 @@ def stage_trace_from_result(agent_name: str, result: Any) -> list[TraceEvent]:
             TraceEvent(
                 sequence=0,
                 timestamp=utcnow(),
-                type="model/end",
+                type="ModelCallEndEvent",
                 name=agent_name,
                 call_id=str(call_id),
                 metadata=metadata,
@@ -88,7 +92,7 @@ def stage_trace_from_result(agent_name: str, result: Any) -> list[TraceEvent]:
                 TraceEvent(
                     sequence=0,
                     timestamp=utcnow(),
-                    type="tool/start",
+                    type="ToolCallStartEvent",
                     name=str(fields.get("name") or "unknown_tool"),
                     call_id=call_id or None,
                     input={"arguments": _preview(fields.get("arguments"))}
@@ -104,7 +108,7 @@ def stage_trace_from_result(agent_name: str, result: Any) -> list[TraceEvent]:
                 TraceEvent(
                     sequence=0,
                     timestamp=utcnow(),
-                    type="tool/end",
+                    type="ToolCallEndEvent",
                     name=_tool_name_for(events, pending_tool_starts.get(call_id)),
                     call_id=call_id or None,
                     output={"result": _preview(output_value)} if output_value is not None else None,
@@ -154,6 +158,14 @@ def usage_from_results(results: list[Any], tool_calls: int) -> RuntimeUsage:
 
 
 def enterprise_tool_call_count(trace: list[TraceEvent]) -> int:
-    """SDK 的 output_type 不产生工具项，因此 tool/start 全部是企业工具调用。"""
+    """SDK 的 output_type 不产生工具项，因此 ToolCallStartEvent 全部是企业工具调用。
 
-    return sum(event.type == "tool/start" for event in trace)
+    保留与 AgentScope runtime 相同的内置工具排除守卫，防止任何结构化输出辅助
+    工具被计入企业工具调用。
+    """
+
+    return sum(
+        event.type == "ToolCallStartEvent"
+        and event.name not in {"GenerateStructuredOutput", "generate_structured_output"}
+        for event in trace
+    )

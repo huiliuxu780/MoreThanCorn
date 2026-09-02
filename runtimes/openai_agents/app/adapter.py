@@ -266,7 +266,7 @@ class OpenAIAgentsRuntimeAdapter:
 
         from .native_workflow import run_native_quality_workflow
 
-        return await run_native_quality_workflow(self, request)
+        return await run_native_quality_workflow(request)
 
     @staticmethod
     def _run_config() -> Any:
