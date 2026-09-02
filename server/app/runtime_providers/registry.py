@@ -14,7 +14,7 @@ from ..models import AgentRuntimeProvider
 from .client import RuntimeGatewayClient
 from .errors import RuntimeProviderError
 
-PROVIDER_KINDS = ("agentscope", "deepseek-harness", "external")
+PROVIDER_KINDS = ("agentscope", "deepseek-harness", "openai-agents", "external")
 PROVIDER_STATUSES = ("draft", "enabled", "disabled")
 
 

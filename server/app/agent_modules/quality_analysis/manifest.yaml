@@ -11,7 +11,7 @@ masterData:
   - master_data/service_type_v1.json
   - master_data/issue_taxonomy_v1.json
 # 阶段语义（SDD 10 §9.1）：identify → plan → execute(per-plan 工具约束/多轮) → barrier → synthesize。
-# 由两个 Provider 实现各自承载；workflowMode 是平台 request mapper 写入 context.metadata 的实现选择标记。
+# 由各 Provider 实现分别承载；workflowMode 是平台 request mapper 写入 context.metadata 的实现选择标记。
 workflowMode: native_quality_v0.2
 requiredCapabilities:
   tools: true
@@ -24,6 +24,9 @@ implementations:
   deepseek-harness:
     version: 0.2.0
     bundle: morethancorn-dsh-native-quality-workflow
+  openai-agents:
+    version: 0.1.0
+    entry: native_quality_v0.2
 logicalTools:
   - { name: knowledge_search, version: 1.0.0, effect: read }
   - { name: ticket_query, version: 1.0.0, effect: read }
