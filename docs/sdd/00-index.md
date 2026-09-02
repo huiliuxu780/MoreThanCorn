@@ -31,6 +31,7 @@
 | [12](12-ai-resource-connection-refactor-sdd.md) | AI Resources / Connections / Tools / MCP / Knowledge / LLM 重构 | 字段级实施规格 + 迁移 + 上线回滚 | **P0 已实施并三次独立验收通过；P1–P4 待实施（§20.1 部署项需拍板）** |
 | [12A](acceptance/12-ai-resource-connection-acceptance.md) | AI Resources / Connections 重构验收 | 独立逐项验收清单 | **P0 通过（M.9）；P1–P4 条目未勾选** |
 | [13](13-task-output-delivery-and-batch-page-sdd.md) | Task 输出解耦、目标表投递与运行中心 | 数据模型 + 调度 occurrence + API + 投递一致性 + 今日看板 + 独立验收 | **已接受**（2026-09-02 用户验收通过；分支 feat/sdd13-task-output-delivery；证据见 [acceptance/13](acceptance/13-task-output-delivery-acceptance.md)） |
+| [14](14-openai-agents-runtime-provider-poc-sdd.md) | OpenAI Agents SDK Runtime Provider 接入与端到端 POC | 可执行架构 + 安全边界 + 20 项验收门禁 | **实施中**（2026-09-02 批准；分支 feat/sdd14-openai-agents-runtime；OAI-R0–R5 分阶段） |
 
 > 生产上线判断统一以 09 为最高优先级门禁。01–08 的功能或节点验收通过，不自动等于具备生产上线条件。
 
@@ -47,6 +48,7 @@
 | 生产就绪 P2 | **进行中**（代码项闭环，整体待用户决策） | 2026-08-27 | — | — | 代码项闭环：P2-01 本地账号+生命周期（`960e2d1`）、P2-03 单租户（决策）、P2-07 PII（`ebfeb05`）、P2-08 发布治理（`ffab23c`）=239 pytest+33 vitest+浏览器真机；余下 SLO/SSO/HA/DR/KMS/P2-02 待用户拍板；证据见 `acceptance/09-p2-acceptance.md` |
 | SDD-12 P0（Connection/Secret 止血） | **已接受**（三次独立验收通过） | 2026-08-31 | 2026-09-01 | Codex（独立） | 三轮验收：M.5 三阻断→修复→M.7 两阻断→修复→M.9 通过；341 pytest+45/45 E2E+63/63 fullstack+12 门禁全绿；迁移 `g045sdd12p0001`；证据见 `acceptance/12-ai-resource-connection-acceptance.md` M.1–M.9 |
 | SDD-13（Task 输出解耦/投递/运行中心） | **已接受**（用户验收通过） | 2026-09-02 | 2026-09-02 | 用户 | PR1–PR6 全实施：migration `g046sdd13pr10001`；真 PG 投递 20+20 回归（`scripts/verify-sdd13-delivery.py`）；运行中心三页+occurrence 调度；证据见 `acceptance/13-task-output-delivery-acceptance.md` |
+| SDD-14（OpenAI Agents Runtime POC） | **进行中** | 2026-09-02 | — | — | 基于含 13 成果的 main 实施；OAI-R0–R5 分阶段；门禁见文档 §54（POC-G01–G20）；分支 feat/sdd14-openai-agents-runtime |
 
 状态取值：未开始 / 进行中 / 待验收 / 已接受 / 已暂停。
 
