@@ -139,7 +139,7 @@
 | 套件 | 结果 |
 | --- | --- |
 | `runtimes/openai_agents` pytest | **49/49**（contract 11 / adapter 10 / tools 11 / native workflow 8 / trace 4 / e2e 5） |
-| `server/tests` pytest 全量 | **364/364**（基线 359 + SDD-14 新增 5） |
+| `server/tests` pytest 全量 | **365/365**（基线 359 + SDD-14 新增 6；最终全量复跑于 HEAD `3f79116` 之后） |
 | AgentScope runtime 套件（路由键修复后） | 9/9 |
 | DSH runtime 套件（路由键修复后） | 12/12 |
 
