@@ -198,7 +198,13 @@ class AgentScopeAdapter:
             stream=True,
         )
 
-        if request.context.metadata.get("workflow_mode") == "native_quality_v0.2":
+        # 平台 dispatcher 注入的规范键是 workflowMode（SDD 10 R2 起）；
+        # workflow_mode 是评测 harness 直连请求使用的旧键，两者都接受。
+        workflow_mode = (
+            request.context.metadata.get("workflowMode")
+            or request.context.metadata.get("workflow_mode")
+        )
+        if workflow_mode == "native_quality_v0.2":
             from .native_workflow import (
                 AgentScopeNativeQualityWorkflow,
                 AgentScopeStageRunner,

@@ -234,8 +234,13 @@ class DeepSeekHarnessAdapter:
         root = Path(os.environ.get("QUALITY_DSH_WORK_ROOT", tempfile.gettempdir())) / "quality-runtime"
         root.mkdir(parents=True, exist_ok=True)
         safe_run_id = re.sub(r"[^A-Za-z0-9_.-]", "_", request.run_id)[:80] or "run"
-        # R8-UI-5：模式→资产选择收敛到 native_assets_for_mode（quality/business/通用）
-        assets = native_assets_for_mode(request.context.metadata.get("workflow_mode"))
+        # R8-UI-5：模式→资产选择收敛到 native_assets_for_mode（quality/business/通用）。
+        # 平台 dispatcher 注入的规范键是 workflowMode（SDD 10 R2 起）；
+        # workflow_mode 是评测 harness 直连请求使用的旧键，两者都接受。
+        assets = native_assets_for_mode(
+            request.context.metadata.get("workflowMode")
+            or request.context.metadata.get("workflow_mode")
+        )
         native_workflow = assets["native"]
         profile_runtime = supports_profile_runtime(DeepSeekHarnessConfig)
         config_root = Path(__file__).resolve().parents[1] / "config"
