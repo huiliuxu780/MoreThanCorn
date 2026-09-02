@@ -179,6 +179,8 @@ class OpenAIAgentsRuntimeAdapter:
 
         from agents import Agent, Runner
 
+        from .model_adapter import build_model_settings
+
         model = build_chat_model(request)
         request_tools = [tool.name for tool in request.agent.tools]
         allowed = resolve_stage_tools(request_tools, None)
@@ -197,6 +199,7 @@ class OpenAIAgentsRuntimeAdapter:
             name=request.agent.id,
             instructions=request.agent.instructions,
             model=model,
+            model_settings=build_model_settings(request.agent.model.parameters),
             mcp_servers=mcp_servers,
             output_type=schema_model,
         )
@@ -210,6 +213,9 @@ class OpenAIAgentsRuntimeAdapter:
             ensure_ascii=False,
         )
 
+        # SDK 0.22：MCP 生命周期由调用方管理（每运行独立连接）。
+        for server in mcp_servers:
+            await server.connect()
         try:
             result = await asyncio.wait_for(
                 Runner.run(
@@ -241,6 +247,12 @@ class OpenAIAgentsRuntimeAdapter:
                     details={"exception_type": type(exc).__name__},
                 )
             ) from exc
+        finally:
+            for server in mcp_servers:
+                try:
+                    await server.cleanup()
+                except Exception:  # noqa: BLE001 - 清理失败不得掩盖执行结果
+                    pass
 
         if result.final_output is None:
             raise AdapterExecutionError(

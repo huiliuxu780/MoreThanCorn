@@ -45,10 +45,12 @@ def build_mcp_server(stage: str, allowed_tools: list[str], mcp_url: str) -> Any:
     from agents.mcp import MCPServerStreamableHttp
 
     safe_stage = re.sub(r"[^a-zA-Z0-9_-]", "-", stage) or "stage"
+    # SDK 0.22：静态白名单过滤为 {"allowed_tool_names": [...]}（列表形态会
+    # 被当作动态过滤器而要求 run_context/agent）。
     return MCPServerStreamableHttp(
         params={"url": mcp_url, "timeout": 30.0},
         name=f"quality-tools-{safe_stage}",
-        tool_filter=list(allowed_tools),
+        tool_filter={"allowed_tool_names": list(allowed_tools)},
         cache_tools_list=False,
     )
 

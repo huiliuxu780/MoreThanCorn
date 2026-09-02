@@ -116,6 +116,30 @@ class ScriptedQualityModel(Model):
         }
 
     def _respond(self, payload, tool_outputs):
+        if "tool_transcript" in payload:
+            # 两阶段执行的 Phase 2：无工具结构化整理调用
+            stage = str(payload.get("stage") or "")
+            if stage.startswith("execute/knowledge"):
+                claim = payload.get("task_payload", {}).get("claim", {}).get("claim", "")
+                rounds = [
+                    {"query": str(t.get("arguments") or "")[:200],
+                     "evidence_refs": ["KB-POC-1"], "decisive": True}
+                    for t in payload.get("tool_transcript", [])
+                ]
+                status = "accurate" if claim.endswith("免上门费") else "insufficient_evidence"
+                return {
+                    "status": status,
+                    "search_rounds": rounds,
+                    "evidence_refs": ["KB-POC-1"],
+                    "reason": f"针对「{claim}」的检索证据已闭环。",
+                }, None
+            if stage.startswith("execute/promise"):
+                return {
+                    "status": "fulfilled",
+                    "evidence_refs": ["FACT-TICKET-1"],
+                    "reason": "工单已按承诺创建。",
+                }, None
+            raise AssertionError(f"unexpected format stage: {stage}")
         if "claim" in payload:
             claim = payload["claim"]["claim"]
             required = self.KNOWLEDGE_ROUNDS_REQUIRED.get(claim, 1)
@@ -328,8 +352,7 @@ def test_e2e_request_tools_constrain_stage_tools(monkeypatch):
     # （无工具注入时 function_call 触发 tool-not-found），Run 失败关闭而非伪造成功。
     with pytest.raises(AdapterExecutionError):
         asyncio.run(OpenAIAgentsRuntimeAdapter().execute(request))
-    assert seen_stage_tools["identify"] == []
+    # 只有非空交集的阶段会装配工具；承诺阶段交集为空 → 无工具分支，失败关闭
     assert seen_stage_tools["execute/knowledge-1"] == ["knowledge_search"]
-    # 承诺阶段交集为空 → 无工具可执行，barrier 前失败关闭，不会进入 synthesize
-    assert seen_stage_tools["execute/promise-1"] == []
+    assert "execute/promise-1" not in seen_stage_tools
     assert "synthesize" not in seen_stage_tools

@@ -78,6 +78,7 @@ def build_model_settings(parameters: dict[str, Any]) -> Any:
     """把契约参数映射为 SDK ModelSettings；未知参数已在 validate_provider 拒绝。"""
 
     from agents import ModelSettings
+    from agents.model_settings import ModelRetrySettings
 
     kwargs: dict[str, Any] = {}
     if "temperature" in parameters:
@@ -90,6 +91,15 @@ def build_model_settings(parameters: dict[str, Any]) -> Any:
         kwargs["parallel_tool_calls"] = bool(parameters["parallel_tool_calls"])
     # chat completions 端点需要显式要求 usage 回传（token 统计来源）。
     kwargs["include_usage"] = True
+    # SDD 14 §64：瞬态网络错误（连接重置/5xx）有界重试；业务语义不变。
+    kwargs["retry"] = ModelRetrySettings(max_retries=2)
+    # 思考模式开关（运行时级模型配置，不进冻结 AgentSpec）：
+    # 思考型端点（qwen3 等）长推理会触发网关 ~120s 截断；显式
+    # QUALITY_MODEL_ENABLE_THINKING=false 关闭以稳定质检流水线。未设置时不附加，
+    # 保持对任意 OpenAI-compatible 端点的可移植性。
+    thinking = os.environ.get("QUALITY_MODEL_ENABLE_THINKING")
+    if thinking is not None:
+        kwargs["extra_body"] = {"enable_thinking": thinking.strip().lower() == "true"}
     return ModelSettings(**kwargs)
 
 

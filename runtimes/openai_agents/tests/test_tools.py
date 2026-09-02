@@ -73,7 +73,7 @@ def test_identify_and_synthesize_stages_get_no_tools():
 
 def test_build_mcp_server_carries_hard_tool_filter():
     server = build_mcp_server("execute/knowledge-1", ["knowledge_search"], "http://gw:8200/mcp/")
-    assert server.tool_filter == ["knowledge_search"]
+    assert server.tool_filter == {"allowed_tool_names": ["knowledge_search"]}
     assert server.params["url"] == "http://gw:8200/mcp/"
     assert server.cache_tools_list is False
     assert server.name == "quality-tools-execute-knowledge-1"

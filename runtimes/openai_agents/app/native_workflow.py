@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
+import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Literal, Protocol
 
@@ -31,6 +33,67 @@ from quality_runtime_service import AdapterExecutionError
 from .model_adapter import build_chat_model
 from .tool_adapter import DEFAULT_TOOL_MCP_URL, build_mcp_server, resolve_stage_tools
 from .trace_mapper import enterprise_tool_call_count, stage_trace_from_result, utcnow
+
+log = logging.getLogger("openai_agents.native_workflow")
+
+# 带工具阶段第一遍（工具循环）的收尾要求：证据充分后停止调用并以文本小结收尾。
+TOOL_LOOP_SUFFIX = (
+    "\n完成所需的全部工具核验后，停止调用工具，并用简洁文本总结你核实到的事实与证据引用。"
+)
+
+# 带工具阶段第二遍（结构化整理）：无工具、强制结构化格式。
+FORMAT_STAGE_INSTRUCTIONS = (
+    "你是结构化整理器。只根据 task_payload 与 tool_transcript 中已经发生的事实填写输出，"
+    "不得新增事实、不得重新调用工具、不得用常识补齐缺失证据。"
+    "tool_transcript 的每一条是一次真实工具调用：arguments 是入参，result 是返回。"
+    "search_rounds 必须逐轮对应真实发生过的检索（query 用真实入参，evidence_refs 用真实返回中的证据标识，"
+    "最后一轮 decisive 表示证据是否已闭环）。证据不足时如实给出对应状态，不得猜测。"
+)
+
+
+def _dump_final(final_output: Any) -> dict[str, Any]:
+    if hasattr(final_output, "model_dump"):
+        dumped = final_output.model_dump(mode="json")
+        if isinstance(dumped, dict):
+            return dumped
+    if isinstance(final_output, dict):
+        return final_output
+    raise ValueError("stage final output is not an object")
+
+
+def _final_text(result: Any) -> str:
+    final_output = getattr(result, "final_output", None)
+    if isinstance(final_output, str):
+        return final_output[:2000]
+    return ""
+
+
+def _tool_transcript(result: Any) -> list[dict[str, Any]]:
+    """从工具循环结果提取真实调用记录（query/入参 + 返回），供结构化阶段引用。"""
+
+    pending: dict[str, dict[str, Any]] = {}
+    transcript: list[dict[str, Any]] = []
+    for item in getattr(result, "new_items", []) or []:
+        kind = type(item).__name__
+        raw_item = getattr(item, "raw_item", None)
+        if raw_item is None:
+            continue
+        if kind == "ToolCallItem":
+            entry = {
+                "tool": str(getattr(raw_item, "name", "") or ""),
+                "arguments": str(getattr(raw_item, "arguments", "") or "")[:500],
+                "result": None,
+            }
+            call_id = str(getattr(raw_item, "call_id", "") or "")
+            if call_id:
+                pending[call_id] = entry
+            transcript.append(entry)
+        elif kind == "ToolCallOutputItem":
+            call_id = str(getattr(raw_item, "call_id", "") or "")
+            entry = pending.get(call_id)
+            if entry is not None:
+                entry["result"] = str(getattr(raw_item, "output", "") or "")[:1000]
+    return transcript
 
 
 class Need(BaseModel):
@@ -110,7 +173,14 @@ class StageRunner(Protocol):
 
 
 class OpenAIAgentsStageRunner:
-    """Run one bounded OpenAI Agents stage with a code-enforced tool allowlist."""
+    """Run one bounded OpenAI Agents stage with a code-enforced tool allowlist.
+
+    带工具阶段采用两阶段执行（实测端点行为，2026-09-02）：DashScope 等
+    OpenAI-compatible 端点在请求携带 tools 时会静默忽略 response_format，
+    导致工具轮之后无法强制结构化输出；无 tools 的请求则始终生效。因此：
+    Phase 1 工具循环（不带 output_type）→ Phase 2 无工具强制结构化整理。
+    无工具阶段保持单阶段直接结构化。
+    """
 
     def __init__(
         self,
@@ -118,11 +188,13 @@ class OpenAIAgentsStageRunner:
         model: Any,
         request_tools: list[str],
         mcp_url: str,
+        model_parameters: dict[str, Any] | None = None,
         max_turns: int = 12,
     ) -> None:
         self.model = model
         self.request_tools = request_tools
         self.mcp_url = mcp_url
+        self.model_parameters = dict(model_parameters or {})
         self.max_turns = max_turns
 
     def _stage_tooling(
@@ -147,33 +219,94 @@ class OpenAIAgentsStageRunner:
         from agents import Agent, Runner
         from agents.run import RunConfig
 
+        from .model_adapter import build_model_settings
+
         # SDD 14 §15.2：阶段白名单 ∩ 请求声明工具；白名单外的工具物理不存在。
         allowed = resolve_stage_tools(self.request_tools, allowed_tools)
+        model_settings = build_model_settings(self.model_parameters)
+        run_config = RunConfig(tracing_disabled=True)
+
+        if not allowed:
+            # 无工具阶段（identify/synthesize）：单阶段直接结构化输出。
+            agent = Agent(
+                name=f"quality-{stage}",
+                instructions=instructions,
+                model=self.model,
+                model_settings=model_settings,
+                output_type=schema,
+            )
+            result = await Runner.run(
+                agent,
+                input=json.dumps(payload, ensure_ascii=False),
+                max_turns=self.max_turns,
+                run_config=run_config,
+            )
+            if result.final_output is None:
+                raise ValueError(f"OpenAI Agents stage {stage} did not produce structured output")
+            return StageResult(output=_dump_final(result.final_output),
+                               trace=stage_trace_from_result(f"quality-{stage}", result))
+
+        # 带工具阶段两阶段执行（端点兼容性，见类说明）：
+        # Phase 1：工具循环（不带 output_type——部分 OpenAI-compatible 端点在请求
+        #          携带 tools 时会静默忽略 response_format）；
+        # Phase 2：无工具、强制结构化格式，把工具循环的事实整理为阶段输出。
         mcp_servers, function_tools = self._stage_tooling(stage, allowed)
-        agent = Agent(
-            name=f"quality-{stage}",
-            instructions=instructions,
+        # SDK 0.22：MCP 生命周期由调用方管理（每阶段独立连接，与 AgentScope 同构）。
+        for server in mcp_servers:
+            await server.connect()
+        try:
+            loop_agent = Agent(
+                name=f"quality-{stage}",
+                instructions=instructions + TOOL_LOOP_SUFFIX,
+                model=self.model,
+                model_settings=model_settings,
+                tools=function_tools,
+                mcp_servers=mcp_servers,
+            )
+            loop_result = await Runner.run(
+                loop_agent,
+                input=json.dumps(payload, ensure_ascii=False),
+                max_turns=self.max_turns,
+                run_config=run_config,
+            )
+        finally:
+            for server in mcp_servers:
+                try:
+                    await server.cleanup()
+                except Exception:  # noqa: BLE001 - 清理失败不得掩盖执行结果
+                    log.warning("MCP cleanup failed for stage %s", stage, exc_info=True)
+
+        transcript = _tool_transcript(loop_result)
+        format_agent = Agent(
+            name=f"quality-{stage}-format",
+            instructions=FORMAT_STAGE_INSTRUCTIONS,
             model=self.model,
-            tools=function_tools,
-            mcp_servers=mcp_servers,
+            model_settings=model_settings,
             output_type=schema,
         )
-        result = await Runner.run(
-            agent,
-            input=json.dumps(payload, ensure_ascii=False),
-            max_turns=self.max_turns,
-            run_config=RunConfig(tracing_disabled=True),
-        )
-        if result.final_output is None:
+        format_payload = {
+            "stage": stage,
+            "task_payload": payload,
+            "tool_transcript": transcript,
+            "agent_notes": _final_text(loop_result),
+        }
+        try:
+            format_result = await Runner.run(
+                format_agent,
+                input=json.dumps(format_payload, ensure_ascii=False),
+                max_turns=2,
+                run_config=run_config,
+            )
+        except Exception as exc:  # noqa: BLE001 - 结构化失败按工作流重试语义上抛
+            raise ValueError(
+                f"OpenAI Agents stage {stage} did not produce structured output: {exc}"
+            ) from exc
+        if format_result.final_output is None:
             raise ValueError(f"OpenAI Agents stage {stage} did not produce structured output")
-        final_output = result.final_output
-        output = (
-            final_output.model_dump(mode="json")
-            if hasattr(final_output, "model_dump")
-            else dict(final_output)
-        )
-        trace = stage_trace_from_result(str(agent.name), result)
-        return StageResult(output=output, trace=trace)
+
+        trace = stage_trace_from_result(f"quality-{stage}", loop_result)
+        trace.extend(stage_trace_from_result(f"quality-{stage}-format", format_result))
+        return StageResult(output=_dump_final(format_result.final_output), trace=trace)
 
 
 # ---------- 平台 Schema 投影（确定性代码，不依赖语言模型） ----------
@@ -407,6 +540,8 @@ class OpenAIAgentsNativeQualityWorkflow:
                 metadata=metadata,
             )
         )
+        if event_type.startswith("workflow/"):
+            log.info("native workflow %s: %s %s", event_type, name, metadata or "")
 
     def _append_native_trace(self, stage: str, trace: list[TraceEvent]) -> None:
         for event in trace:
@@ -656,10 +791,13 @@ async def run_native_quality_workflow(
         model=model,
         request_tools=[tool.name for tool in request.agent.tools],
         mcp_url=os.environ.get("QUALITY_TOOL_MCP_URL", DEFAULT_TOOL_MCP_URL),
+        model_parameters=request.agent.model.parameters,
     )
+    workflow = OpenAIAgentsNativeQualityWorkflow(runner)
+    started = time.monotonic()
     try:
         output, trace = await asyncio.wait_for(
-            OpenAIAgentsNativeQualityWorkflow(runner).execute(request),
+            workflow.execute(request),
             timeout=request.timeout_seconds,
         )
     except asyncio.TimeoutError as exc:
@@ -668,6 +806,7 @@ async def run_native_quality_workflow(
                 code=ErrorCode.TIMEOUT,
                 message="OpenAI Agents native workflow timed out",
                 retryable=True,
+                details=_progress_details(workflow, started),
             )
         ) from exc
     except asyncio.CancelledError:
@@ -680,7 +819,21 @@ async def run_native_quality_workflow(
                 code=ErrorCode.MODEL_ERROR,
                 message="OpenAI Agents native workflow failed",
                 retryable=True,
-                details={"exception_type": type(exc).__name__},
+                details={"exception_type": type(exc).__name__,
+                         "exception_message": str(exc)[:300],
+                         **_progress_details(workflow, started)},
             )
         ) from exc
     return output, trace, runtime_usage_from_trace(trace)
+
+
+def _progress_details(workflow: OpenAIAgentsNativeQualityWorkflow, started: float) -> dict[str, Any]:
+    """失败/超时时保留阶段进度证据（哪个 Stage 走到哪里，SDD 14 §63）。"""
+
+    stages = [
+        f"{event.type.removeprefix('workflow/')}:{event.name}"
+        for event in workflow.trace
+        if event.type.startswith("workflow/stage")
+    ]
+    return {"elapsed_seconds": round(time.monotonic() - started, 1),
+            "stage_progress": stages[-12:]}
