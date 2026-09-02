@@ -68,8 +68,34 @@ def _final_text(result: Any) -> str:
     return ""
 
 
+def _normalize_tool_output(value: Any) -> str:
+    """工具回包归一为文本：字符串原样；MCP 内容块（[{type:*_text, text}, …]）
+    取文本拼接；带 .text/.content 的对象递归解包。"""
+
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple)):
+        texts = []
+        for item in value:
+            text = item.get("text") if isinstance(item, dict) else getattr(item, "text", None)
+            if isinstance(text, str):
+                texts.append(text)
+        return "\n".join(texts) if texts else str(value)
+    text = getattr(value, "text", None)
+    if isinstance(text, str):
+        return text
+    content = getattr(value, "content", None)
+    if content is not None:
+        return _normalize_tool_output(content)
+    return str(value)
+
+
 def _tool_transcript(result: Any) -> list[dict[str, Any]]:
     """从工具循环结果提取真实调用记录（query/入参 + 返回），供结构化阶段引用。"""
+
+    from .trace_mapper import _raw_get
 
     pending: dict[str, dict[str, Any]] = {}
     transcript: list[dict[str, Any]] = []
@@ -80,19 +106,20 @@ def _tool_transcript(result: Any) -> list[dict[str, Any]]:
             continue
         if kind == "ToolCallItem":
             entry = {
-                "tool": str(getattr(raw_item, "name", "") or ""),
-                "arguments": str(getattr(raw_item, "arguments", "") or "")[:500],
+                "tool": str(_raw_get(raw_item, "name") or ""),
+                "arguments": str(_raw_get(raw_item, "arguments") or "")[:500],
                 "result": None,
             }
-            call_id = str(getattr(raw_item, "call_id", "") or "")
+            call_id = str(_raw_get(raw_item, "call_id") or "")
             if call_id:
                 pending[call_id] = entry
             transcript.append(entry)
         elif kind == "ToolCallOutputItem":
-            call_id = str(getattr(raw_item, "call_id", "") or "")
+            call_id = str(_raw_get(raw_item, "call_id") or "")
             entry = pending.get(call_id)
             if entry is not None:
-                entry["result"] = str(getattr(raw_item, "output", "") or "")[:1000]
+                # 4000 字符：容纳指标序列回包全文（business 需要确定性解析数值）。
+                entry["result"] = _normalize_tool_output(_raw_get(raw_item, "output"))[:4000]
     return transcript
 
 
@@ -190,12 +217,15 @@ class OpenAIAgentsStageRunner:
         mcp_url: str,
         model_parameters: dict[str, Any] | None = None,
         max_turns: int = 12,
+        format_instructions: str | None = None,
     ) -> None:
         self.model = model
         self.request_tools = request_tools
         self.mcp_url = mcp_url
         self.model_parameters = dict(model_parameters or {})
         self.max_turns = max_turns
+        # Phase 2 结构化整理提示词可按领域覆写（business 有自己的字段语义）。
+        self.format_instructions = format_instructions or FORMAT_STAGE_INSTRUCTIONS
 
     def _stage_tooling(
         self, stage: str, allowed_tools: list[str]
@@ -205,6 +235,59 @@ class OpenAIAgentsStageRunner:
         if not allowed_tools:
             return [], []
         return [build_mcp_server(stage, allowed_tools, self.mcp_url)], []
+
+    async def run_tool_loop(
+        self,
+        *,
+        stage: str,
+        instructions: str,
+        payload: dict[str, Any],
+        allowed_tools: list[str],
+    ) -> tuple[Any, list[dict[str, Any]], str]:
+        """仅执行工具循环阶段（不带 output_type），返回 (loop_result, transcript, 收尾文本)。
+
+        供两类消费者使用：
+        - quality 两阶段执行的 Phase 1（Phase 2 由 run() 的结构化整理完成）；
+        - business 执行阶段：数值由调用方从工具回包确定性解析（模块铁律），
+          不经过语言模型。
+        """
+
+        from agents import Agent, Runner
+        from agents.run import RunConfig
+
+        from .model_adapter import build_model_settings
+
+        allowed = resolve_stage_tools(self.request_tools, allowed_tools)
+        if not allowed:
+            raise ValueError(f"stage {stage} has no allowed tools for the tool loop")
+        model_settings = build_model_settings(self.model_parameters)
+        run_config = RunConfig(tracing_disabled=True)
+        mcp_servers, function_tools = self._stage_tooling(stage, allowed)
+        # SDK 0.22：MCP 生命周期由调用方管理（每阶段独立连接，与 AgentScope 同构）。
+        for server in mcp_servers:
+            await server.connect()
+        try:
+            loop_agent = Agent(
+                name=f"quality-{stage}",
+                instructions=instructions + TOOL_LOOP_SUFFIX,
+                model=self.model,
+                model_settings=model_settings,
+                tools=function_tools,
+                mcp_servers=mcp_servers,
+            )
+            loop_result = await Runner.run(
+                loop_agent,
+                input=json.dumps(payload, ensure_ascii=False),
+                max_turns=self.max_turns,
+                run_config=run_config,
+            )
+        finally:
+            for server in mcp_servers:
+                try:
+                    await server.cleanup()
+                except Exception:  # noqa: BLE001 - 清理失败不得掩盖执行结果
+                    log.warning("MCP cleanup failed for stage %s", stage, exc_info=True)
+        return loop_result, _tool_transcript(loop_result), _final_text(loop_result)
 
     async def run(
         self,
@@ -250,36 +333,13 @@ class OpenAIAgentsStageRunner:
         # Phase 1：工具循环（不带 output_type——部分 OpenAI-compatible 端点在请求
         #          携带 tools 时会静默忽略 response_format）；
         # Phase 2：无工具、强制结构化格式，把工具循环的事实整理为阶段输出。
-        mcp_servers, function_tools = self._stage_tooling(stage, allowed)
-        # SDK 0.22：MCP 生命周期由调用方管理（每阶段独立连接，与 AgentScope 同构）。
-        for server in mcp_servers:
-            await server.connect()
-        try:
-            loop_agent = Agent(
-                name=f"quality-{stage}",
-                instructions=instructions + TOOL_LOOP_SUFFIX,
-                model=self.model,
-                model_settings=model_settings,
-                tools=function_tools,
-                mcp_servers=mcp_servers,
-            )
-            loop_result = await Runner.run(
-                loop_agent,
-                input=json.dumps(payload, ensure_ascii=False),
-                max_turns=self.max_turns,
-                run_config=run_config,
-            )
-        finally:
-            for server in mcp_servers:
-                try:
-                    await server.cleanup()
-                except Exception:  # noqa: BLE001 - 清理失败不得掩盖执行结果
-                    log.warning("MCP cleanup failed for stage %s", stage, exc_info=True)
-
-        transcript = _tool_transcript(loop_result)
+        loop_result, transcript, _notes = await self.run_tool_loop(
+            stage=stage, instructions=instructions, payload=payload,
+            allowed_tools=allowed_tools,
+        )
         format_agent = Agent(
             name=f"quality-{stage}-format",
-            instructions=FORMAT_STAGE_INSTRUCTIONS,
+            instructions=self.format_instructions,
             model=self.model,
             model_settings=model_settings,
             output_type=schema,

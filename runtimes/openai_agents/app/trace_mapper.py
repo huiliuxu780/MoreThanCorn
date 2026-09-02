@@ -30,12 +30,20 @@ def _preview(value: Any) -> str:
     return text[:SUMMARY_LIMIT]
 
 
+def _raw_get(raw_item: Any, key: str) -> Any:
+    """原始项可能是 pydantic 对象（Responses 路径）或 dict（函数工具输出路径）。"""
+
+    if isinstance(raw_item, dict):
+        return raw_item.get(key)
+    return getattr(raw_item, key, None)
+
+
 def _call_fields(raw_item: Any) -> dict[str, Any]:
     """从 function-call / mcp-call 原始项提取统一字段（两者字段名一致）。"""
 
     fields: dict[str, Any] = {}
     for key in ("name", "call_id", "arguments", "server_label"):
-        item_value = getattr(raw_item, key, None)
+        item_value = _raw_get(raw_item, key)
         if item_value is not None:
             fields[key] = item_value
     return fields
@@ -102,8 +110,8 @@ def stage_trace_from_result(agent_name: str, result: Any) -> list[TraceEvent]:
             )
             pending_tool_starts[call_id] = len(events) - 1
         elif kind == "ToolCallOutputItem" and raw_item is not None:
-            call_id = str(getattr(raw_item, "call_id", "") or "")
-            output_value = getattr(raw_item, "output", None)
+            call_id = str(_raw_get(raw_item, "call_id") or "")
+            output_value = _raw_get(raw_item, "output")
             events.append(
                 TraceEvent(
                     sequence=0,

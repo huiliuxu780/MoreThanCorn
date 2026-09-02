@@ -92,8 +92,11 @@ class OpenAIAgentsRuntimeAdapter:
         validate_provider(request)
         started_at = utcnow()
 
-        if workflow_mode_of(request) == "native_quality_v0.2":
+        mode = workflow_mode_of(request)
+        if mode == "native_quality_v0.2":
             core = self._execute_native(request)
+        elif mode == "business_analysis_v1":
+            core = self._execute_business(request)
         else:
             core = self._execute_generic(request)
 
@@ -279,6 +282,15 @@ class OpenAIAgentsRuntimeAdapter:
         from .native_workflow import run_native_quality_workflow
 
         return await run_native_quality_workflow(request)
+
+    async def _execute_business(
+        self, request: RuntimeExecuteRequest
+    ) -> tuple[dict[str, Any], list[TraceEvent], Any]:
+        """business_analysis_v1 只读业务分析工作流（SDD-14 扩展）。"""
+
+        from .business_workflow import run_business_workflow
+
+        return await run_business_workflow(request)
 
     @staticmethod
     def _run_config() -> Any:

@@ -356,3 +356,118 @@ def test_e2e_request_tools_constrain_stage_tools(monkeypatch):
     assert seen_stage_tools["execute/knowledge-1"] == ["knowledge_search"]
     assert "execute/promise-1" not in seen_stage_tools
     assert "synthesize" not in seen_stage_tools
+
+
+# ---------- business_analysis_v1（SDD-14 扩展） ----------
+
+
+class ScriptedBusinessModel(Model):
+    """business_analysis_v1 脚本模型：两阶段工具执行 + 确定性整理调用。"""
+
+    async def get_response(self, system_instructions, input, model_settings, tools,
+                           output_schema, handoffs, tracing, *, previous_response_id=None,
+                           conversation_id=None, prompt=None):
+        payload, tool_outputs = parse_payload(input)
+        final, call = self._respond(payload, tool_outputs)
+        output = [call] if call is not None else [message(json.dumps(final, ensure_ascii=False))]
+        return ModelResponse(output=output,
+                             usage=Usage(input_tokens=50, output_tokens=20, total_tokens=70),
+                             response_id="resp-biz")
+
+    async def stream_response(self, *args, **kwargs):  # pragma: no cover - 非流式
+        raise NotImplementedError("streaming disabled in POC")
+
+    def _respond(self, payload, tool_outputs):
+        # business 执行阶段为"工具循环 + 代码确定性解析"，无 Phase 2 整理调用。
+        if "plan_results" in payload:  # synthesize 阶段
+            return {"answer": "近 7 日热线接通率均值 86.4%；华东区 88.2% 为最高。"}, None
+        if "plan" in payload:  # 执行阶段工具循环
+            plan = payload["plan"]
+            if tool_outputs == 0:
+                args = ({"metric": "connect_rate"} if plan["kind"] == "metric"
+                        else {"metric": "connect_rate", "dimension": "region"})
+                return None, function_call(plan["tool"], args, f"biz-{plan['id']}")
+            return {"note": f"{plan['id']} 查询完成"}, None
+        return {"question_id": "q1",
+                "plans": [{"kind": "metric", "subject": "connect_rate",
+                           "query": "connect_rate 近 7 日"},
+                          {"kind": "dimension", "subject": "connect_rate×region",
+                           "query": "connect_rate 按 region 拆解 近 7 日"}]}, None
+
+
+def install_business_tools(monkeypatch, record):
+    @function_tool
+    async def metric_query(metric: str, window: str = "", start: str = "", end: str = "") -> str:
+        """Query deterministic metric series."""
+        record.append(("metric_query", metric))
+        return json.dumps({"tool": "metric_query", "version": "1.0.0",
+                           "fixture_dataset": "e2e",
+                           "output": {"known": True, "metric": metric, "unit": "%",
+                                      "window": {"start": "2026-08-27", "end": "2026-09-02"},
+                                      "aggregate": 86.4,
+                                      "points": [{"date": "2026-09-02", "value": 87.1}]}},
+                          ensure_ascii=False)
+
+    @function_tool
+    async def dimension_query(metric: str, dimension: str, window: str = "",
+                              start: str = "", end: str = "") -> str:
+        """Query deterministic dimension breakdown."""
+        record.append(("dimension_query", dimension))
+        return json.dumps({"tool": "dimension_query", "version": "1.0.0",
+                           "fixture_dataset": "e2e",
+                           "output": {"known": True, "metric": metric, "dimension": dimension,
+                                      "unit": "%",
+                                      "window": {"start": "2026-08-27", "end": "2026-09-02"},
+                                      "breakdown": [{"key": "east", "value": 88.2}]}},
+                          ensure_ascii=False)
+
+    catalog = {"metric_query": metric_query, "dimension_query": dimension_query}
+
+    def tooling(self, stage, allowed_tools):
+        return [], [catalog[name] for name in allowed_tools if name in catalog]
+
+    monkeypatch.setattr(OpenAIAgentsStageRunner, "_stage_tooling", tooling)
+
+
+def test_e2e_business_workflow_through_adapter(monkeypatch):
+    monkeypatch.setenv("QUALITY_MODEL_API_KEY", "test-key")
+    schema_path = (ROOT / "server" / "app" / "agent_modules" / "business_analysis"
+                   / "schemas" / "output.schema.json")
+    output_schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    request = RuntimeExecuteRequest(
+        run_id="e2e-business",
+        idempotency_key="e2e-business",
+        agent=AgentExecutionSpec(
+            id="business-agent",
+            version="1.0.0",
+            instructions="只读业务分析。",
+            model=ModelSpec(provider="openai-compatible", model="qwen3.8-max"),
+            tools=[ToolRef(name="metric_query", version="1.0.0"),
+                   ToolRef(name="dimension_query", version="1.0.0")],
+            output_schema=output_schema,
+        ),
+        input={"question_id": "q1", "question": "近 7 日热线接通率是多少？",
+               "window": "last_7d"},
+        context=ExecutionContext(metadata={"workflowMode": "business_analysis_v1"}),
+        timeout_seconds=300,
+    )
+    record: list[tuple[str, str]] = []
+    install_business_tools(monkeypatch, record)
+    model = ScriptedBusinessModel()
+    import app.business_workflow as business_workflow
+    monkeypatch.setattr(business_workflow, "build_chat_model", lambda req: model)
+
+    run = asyncio.run(OpenAIAgentsRuntimeAdapter().execute(request))
+    assert run.status is RunStatus.SUCCEEDED
+    from jsonschema import Draft202012Validator
+    Draft202012Validator(output_schema).validate(run.output)
+    # 确定性投影：数值/引用/置信度不来自 LLM
+    assert run.output["question_id"] == "q1"
+    assert run.output["metrics"] == [{"metric": "connect_rate", "value": 86.4, "unit": "%"}]
+    assert {c["source"] for c in run.output["citations"]} == {"metric_query", "dimension_query"}
+    assert run.output["confidence"] == 0.9
+    # 每计划恰好一次真实工具调用
+    names = [name for name, _ in record]
+    assert names.count("metric_query") == 1
+    assert names.count("dimension_query") == 1
+    assert run.usage.tool_calls == 2
