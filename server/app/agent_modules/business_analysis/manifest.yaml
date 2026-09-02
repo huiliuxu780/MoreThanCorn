@@ -20,6 +20,9 @@ implementations:
   deepseek-harness:
     version: 0.1.0
     bundle: morethancorn-dsh-business-analysis
+  openai-agents:
+    version: 0.1.0
+    entry: business_analysis_v1
 logicalTools:
   - { name: metric_query, version: 1.0.0, effect: read }
   - { name: dimension_query, version: 1.0.0, effect: read }

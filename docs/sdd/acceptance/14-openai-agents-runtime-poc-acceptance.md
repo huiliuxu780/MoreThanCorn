@@ -122,7 +122,8 @@
 1. 打开任务列表 → `OpenAI Agents - Quality POC` 任务 → 任务详情核对：Execution Target=agent、Agent=质检-OpenAI POC、版本策略=钉住、Output Mode=platform_only；
 2. 进入 TaskRun `0f2735c8…`（批次）→ 核对 total/succeeded=20、resolved AgentVersion/Release/Runtime Provider；
 3. 任选一条 Interaction Run 进入 Run Detail → 核对：Runtime（openai-agents/0.22.0/0.1.0）、Input、Output（结构化 findings/labels/summary）、Stages（identify/execute/*…）、Calls（model/tool）、Usage（tokens/调用数）、Evidence；
-4. （可选）在任务页点击"运行"再触发一批次，验证页面手工触发 → 新 TaskRun → 新 Runs 全链路。
+4. （可选）在任务页点击"运行"再触发一批次，验证页面手工触发 → 新 TaskRun → 新 Runs 全链路；
+5. （可选，business 场景）任务 `OpenAI Agents - 业务分析 POC` → TaskRun `5ace2fee…` → 3 条 Run（指标聚合 86.4%/85.81% 与区域拆解，见 §9.2）。
 
 ## 7. 已知限制（如实登记）
 
@@ -138,11 +139,46 @@
 
 | 套件 | 结果 |
 | --- | --- |
-| `runtimes/openai_agents` pytest | **49/49**（contract 11 / adapter 10 / tools 11 / native workflow 8 / trace 4 / e2e 5） |
-| `server/tests` pytest 全量 | **365/365**（基线 359 + SDD-14 新增 6；最终全量复跑于 HEAD `3f79116` 之后） |
+| `runtimes/openai_agents` pytest | **57/57**（contract 11 / adapter 10 / tools 11 / native workflow 8 / business workflow 7 / trace 4 / e2e 6） |
+| `services/tool_service` pytest | **12/12**（含 business 工具 metric_query/dimension_query 6 项） |
+| `server/tests` pytest 全量 | **365/365**（基线 359 + SDD-14 新增 6；business manifest 变更后全量复跑通过。注：期间一次 `test_settle_and_real_write` 失败经单独复跑通过，确认为与并行运行批次的状态干扰偶发） |
 | AgentScope runtime 套件（路由键修复后） | 9/9 |
 | DSH runtime 套件（路由键修复后） | 12/12 |
 
+## 9. business-analysis 场景扩展（2026-09-02 用户指令追加）
+
+质检 POC 通过后，用户要求把第二个只读场景 `business-analysis@1.0.0` 也接入 OpenAI runtime 并真实跑任务。实施与结果如下。
+
+### 9.1 实施内容
+
+| 项 | 说明 |
+| --- | --- |
+| 工具服务扩展 | `metric_query` / `dimension_query`（read-only fixture，MCP+HTTP 双通道）；**符号窗口**（`last_7d/last_14d/last_30d/all`）由工具端对数据集日期范围确定性求解——模型不得也不需推算日期（初版模型臆造 2024 日期致窗口为空，此为修复根因） |
+| fixture 数据 | `tool_fixtures_v0.2.json` 增 `metric_store`：connect_rate/resolution_rate/avg_handle_time 14 日序列 + region/service_group 维度（近 7 日 connect_rate 均值钉扎 86.4，与 R5 测试先例一致） |
+| runtime 工作流 | `business_workflow.py`：identify（问题→查询计划）→ execute/<plan>（每计划恰好一次对应工具）→ barrier → synthesize；**数值/单位/引用由代码从工具回包确定性解析（模块铁律"数值计算由确定性代码完成"），语言模型只发起查询与撰写 answer** |
+| 平台绑定 | manifest 增 `openai-agents` 实现（entry `business_analysis_v1`）；metric/dimension 工具注册为平台资源（同质检工具，受 egress 门禁为 disabled） |
+| 用例库 | 平台无存量 business 用例（已核实）——新建内联资产「业务分析用例库v1」3 条：模块题库 q1（近 7 日/近 14 日两个窗口）+ q2（区域对比）。如实登记：非存量库，为场景首建 |
+| 实体 | Agent `e2787f2b…` / Version `3d11888e…` / Release `4e438ab3…`（→ OpenAI Provider）/ Task `84e6d759…` / TaskRun `5ace2fee…` |
+
+### 9.2 真实运行结果（真模型 + 真工具）
+
+**3/3 succeeded（TaskRun succeeded）**：
+
+| 用例 | 结果 | 数值 |
+| --- | --- | --- |
+| BIZ-Q1-7D（近 7 日接通率） | succeeded | connect_rate **86.4%**，窗口 2026-08-27..2026-09-02（7 点，与 fixture 钉扎一致） |
+| BIZ-Q1-14D（近 14 日接通率） | succeeded | connect_rate **85.81%**（14 日窗口，窗口语义正确区分） |
+| BIZ-Q2-REGION（区域对比） | succeeded | 区域拆解 east 88.2 / north 85.6 / south 86.9 / west 84.8，metrics=[]（纯维度问题，Schema 合法） |
+
+- runtime_provider_id 3/3 指向 OpenAI Provider；CallRecord model 13 + tool 3；stages 事件 identify/execute/metric-1/execute/dimension-1/synthesize 齐全；**每计划恰好一次工具调用**（exactly-once 守卫实测生效）。
+- 输出过平台 `_settle_module_result` 的 business output Schema 二次校验。
+- 调试过程如实登记：前 5 轮尝试失败，三个根因依次修复——① 工具输出 content-blocks 形态未归一（MCP 返回 `[{type:*_text,text}]`）；② 模型臆造日期致窗口为空 → 符号窗口；③ 数值提取由 LLM 改为代码确定性解析（消除失败源）。第 6 轮起稳定成功。
+
+### 9.3 与既有实现的语义对齐
+
+- DSH 侧 `native_business_analysis.mjs` 为本场景既有参考实现（状态机同构）；AgentScope 侧 business 走通用路径（SDD-10 已登记偏差）。本次为 OpenAI runtime 首个 staged business 实现。
+- 输出 Schema（question_id/answer/metrics/citations/confidence，additionalProperties=false）与 DSH synthesize 契约一致；`ticket-automation`（write 型）仍按 §61.4 排除。
+
 ---
 
-**结论**：SDD-14 §69 DoD 的工程侧全部成立——存量用例库配置的 Agent Analysis Task 绑定 OpenAI Agents Runtime Provider，手工运行产生真实 TaskRun 与 20 条 Interaction Run，由 OpenAI Agents SDK 使用真实模型与受控工具完成动态多事项质检，符合现有 Output Schema 的结果写入 `Run.output`，并可在 Run Detail 查看阶段/调用/用量/证据。剩余唯一门禁为 G20 用户浏览器终验。
+**结论**：SDD-14 §69 DoD 的工程侧全部成立——存量用例库配置的 Agent Analysis Task 绑定 OpenAI Agents Runtime Provider，手工运行产生真实 TaskRun 与 20 条 Interaction Run，由 OpenAI Agents SDK 使用真实模型与受控工具完成动态多事项质检，符合现有 Output Schema 的结果写入 `Run.output`，并可在 Run Detail 查看阶段/调用/用量/证据。追加的 business-analysis 场景亦以真实模型/真实工具 3/3 跑通（§9）。剩余唯一门禁为 G20 用户浏览器终验。
