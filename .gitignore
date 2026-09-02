@@ -8,6 +8,8 @@ dist-ssr
 .vscode/*
 !.vscode/extensions.json
 .venv/
+# 本地环境变量/凭据（仅 .env.example 入库，SDD 14 §61.1）
+.env
 __pycache__/
 *.pyc
 .pytest_cache/
