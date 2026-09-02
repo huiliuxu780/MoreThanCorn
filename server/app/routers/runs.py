@@ -126,16 +126,24 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
         for ev in db.query(Evidence).filter_by(result_id=qr.id).all():
             evidence.append({"kind": ev.kind, "locator": ev.locator, "text": ev.text,
                              "sourceRef": ev.source_ref})
-    # R8-UI：RunDetail 派生质检卡（评分由平台规则派生，非 Agent 给分；复核状态直读）
-    qr_latest = db.query(QualityResult).filter_by(run_id=run_id, is_latest=True).first() \
-        or db.query(QualityResult).filter_by(run_id=run_id) \
-            .order_by(QualityResult.created_at.desc()).first()
-    quality = None
+    # SDD 13 §8.5/PR6：Task Core 不内嵌领域 DTO；领域结果以 resource link 表达
+    # （链接来自领域服务事实：QualityResult 行存在即提供 quality-result 链接）。
+    from ..models import ResultDelivery
+    qr_latest = db.query(QualityResult).filter_by(run_id=run_id, is_latest=True).first()
+    drow = db.query(ResultDelivery).filter_by(run_id=run_id).first()
+    delivery = None
+    if drow:
+        delivery = {"id": drow.id, "status": drow.status, "attempts": drow.attempts,
+                    "maxAttempts": drow.max_attempts, "writeMode": drow.write_mode,
+                    "error": drow.error, "targetReference": drow.target_reference,
+                    "payloadSha256": drow.payload_sha256,
+                    "nextAttemptAt": drow.next_attempt_at.isoformat()
+                    if drow.next_attempt_at else None,
+                    "outputAssetId": drow.output_asset_id}
+    domain_links = []
     if qr_latest:
-        quality = {"id": qr_latest.id, "score": qr_latest.score, "risk": qr_latest.risk,
-                   "critical": qr_latest.critical, "issueSummary": qr_latest.issue_summary,
-                   "review": qr_latest.review_status,
-                   "structuredOutput": qr_latest.structured_output or {}}
+        domain_links.append({"rel": "quality-result", "id": qr_latest.id,
+                             "interactionRef": qr_latest.interaction_ref})
     return {
         "runId": run.id, "status": run.status, "trigger": run.trigger,
         "input": run.input, "output": run.output, "error": run.error,
@@ -150,7 +158,8 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
         "calls": calls,
         "usage": run.token_usage or {},
         "evidence": evidence,
-        "quality": quality,
+        "delivery": delivery,
+        "domainLinks": domain_links,
         "originRunId": run.origin_run_id,
         "retryChildren": retry_children,
         "nodeRuns": [{

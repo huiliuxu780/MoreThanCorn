@@ -38,7 +38,6 @@ export default function TaskDetailPage() {
     [taskId],
   )
 
-  const [runsOpen, setRunsOpen] = useState<string | null>(null)
   // 09 P1-01：历史窗口回填
   const [backfillOpen, setBackfillOpen] = useState(false)
   const [backfillStart, setBackfillStart] = useState("")
@@ -129,9 +128,17 @@ export default function TaskDetailPage() {
         )}
       </div>
 
-      {/* TaskRun 批次历史（09 §9.4：状态由子 Run 统计确定） */}
+      {/* SDD 13 §10.1：Task 详情只保留最近 5 个批次摘要；完整运行历史在运行中心 */}
       <div className="space-y-2">
-        <SectionHeader title="批次运行（TaskRun）" description="每个批次冻结一个 TaskVersion + DataSnapshot；partial=部分成功" />
+        <SectionHeader
+          title="最近批次（TaskRun）"
+          description="每个批次冻结一个 TaskVersion + DataSnapshot；完整历史见运行中心"
+          actions={
+            <Button variant="outline" size="sm" onClick={() => navigate(`/operations/task-runs?taskId=${task.id}`)}>
+              查看全部运行
+            </Button>
+          }
+        />
         <TableFrame>
           <Table>
             <TableHeader>
@@ -141,42 +148,23 @@ export default function TaskDetailPage() {
                 <TableHead className="text-right">输入</TableHead>
                 <TableHead className="text-right">成功</TableHead>
                 <TableHead className="text-right">失败</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead className="w-10" />
+                <TableHead>执行状态</TableHead>
+                <TableHead>投递状态</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {(taskRuns ?? []).length === 0 ? (
                 <TableRow><TableCell colSpan={7} className="py-6 text-center text-sm text-muted-foreground">尚未执行过批次</TableCell></TableRow>
-              ) : (taskRuns ?? []).map((tr) => (
-                <TableRow key={tr.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setRunsOpen(tr.id)}>
+              ) : (taskRuns ?? []).slice(0, 5).map((tr) => (
+                <TableRow key={tr.id} className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => navigate(`/operations/task-runs/${tr.id}`)}>
                   <TableCell className="text-sm tabular-nums">{tr.startedAt ? formatCompactDateTime(tr.startedAt) : formatCompactDateTime(tr.createdAt)}</TableCell>
                   <TableCell className="text-sm">{tr.trigger}</TableCell>
                   <TableCell className="text-right tabular-nums">{tr.total}</TableCell>
                   <TableCell className="text-right tabular-nums">{tr.succeeded}</TableCell>
                   <TableCell className="text-right tabular-nums">{tr.failed}</TableCell>
                   <TableCell><StatusBadge status={tr.status} context="run" /></TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="size-7"><MoreHorizontal className="size-4" /></Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setRunsOpen(tr.id)}>查看 Interaction Runs</DropdownMenuItem>
-                        {(tr.status === "failed" || tr.status === "partial") && canManage ? (
-                          <DropdownMenuItem onClick={async () => {
-                            try {
-                              const r = await bizApi.retryFailed(task.id, tr.id)
-                              toast.success(r.retried ? `已重试 ${r.retried} 条失败交互（新 attempt，不覆盖历史）` : "无失败项可重试")
-                              retryRuns()
-                            } catch (e) {
-                              toast.error(`重试失败：${(e as Error).message}`)
-                            }
-                          }}>重试失败项</DropdownMenuItem>
-                        ) : null}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
+                  <TableCell><span className="rounded border px-1.5 py-0.5 text-[11px]">{tr.delivery?.status ?? "not_configured"}</span></TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -188,17 +176,6 @@ export default function TaskDetailPage() {
           </div>
         ) : null}
       </div>
-
-      {/* TaskRun 明细 Sheet：Interaction Runs + 结果数 */}
-      <Sheet open={runsOpen !== null} onOpenChange={(open) => !open && setRunsOpen(null)}>
-        <SheetContent className="w-[560px]">
-          <SheetHeader>
-            <SheetTitle>批次 Interaction Runs</SheetTitle>
-            <SheetDescription>一条 Interaction 一个 Run；失败样本有可解释原因（09 §13.1）</SheetDescription>
-          </SheetHeader>
-          {runsOpen ? <TaskRunDetail trid={runsOpen} onOpenResult={(rid) => navigate(`/quality/results/${rid}`)} /> : null}
-        </SheetContent>
-      </Sheet>
 
       {/* 09 P1-01 回填 Sheet：历史窗口补跑（新批次，不覆盖历史） */}
       <Sheet open={backfillOpen} onOpenChange={setBackfillOpen}>
@@ -239,62 +216,5 @@ export default function TaskDetailPage() {
         </SheetContent>
       </Sheet>
     </PageContainer>
-  )
-}
-
-function TaskRunDetail({ trid, onOpenResult }: { trid: string; onOpenResult: (resultId: string) => void }) {
-  const navigate = useNavigate()
-  const { data, loading } = useAsyncData(async () => {
-    const [runs, results, tr] = await Promise.all([
-      bizApi.taskRunRuns(trid), bizApi.taskRunResults(trid), bizApi.taskRun(trid),
-    ])
-    return { runs, results, tr }
-  }, [trid])
-  if (loading || !data) return <div className="mt-4"><TableSkeleton rows={4} columns={4} /></div>
-  return (
-    <div className="mt-4 space-y-4">
-      <div className="text-xs text-muted-foreground">
-        批次 {data.tr.id.slice(0, 8)} · 状态 {data.tr.status} · 成功 {data.tr.succeeded} / 失败 {data.tr.failed} / 跳过 {data.tr.skipped}
-        {data.tr.dataSnapshotId ? ` · DataSnapshot ${data.tr.dataSnapshotId.slice(0, 8)}` : ""}
-        {data.tr.resolvedAgentVersionId ? ` · 冻结 AgentVersion ${data.tr.resolvedAgentVersionId.slice(0, 8)}` : ""}
-        {data.tr.runtimeBinding?.providerId ? ` · Provider ${String(data.tr.runtimeBinding.providerId).slice(0, 8)}` : ""}
-      </div>
-      <TableFrame>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Interaction</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>耗时</TableHead>
-              <TableHead>Run</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.runs.map((r) => (
-              <TableRow key={r.id}>
-                <TableCell className="font-mono text-xs">{r.interactionRef || "（空）"}</TableCell>
-                <TableCell><StatusBadge status={r.status} context="run" /></TableCell>
-                <TableCell className="text-xs tabular-nums">{r.durationMs != null ? `${r.durationMs}ms` : "—"}</TableCell>
-                <TableCell>
-                  <button type="button" className="text-xs text-primary underline"
-                    onClick={() => navigate(`/config/tasks/${data.tr.taskId}/runs/${r.id}`)}>查看 Run</button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableFrame>
-      {data.results.length > 0 ? (
-        <div className="space-y-1">
-          <div className="text-sm font-medium">质检结果（{data.results.length}）</div>
-          {data.results.map((q) => (
-            <button key={q.id} type="button" className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm hover:bg-muted/50" onClick={() => onOpenResult(q.id)}>
-              <span className="font-mono text-xs">{q.interactionRef}</span>
-              <span className="text-xs text-muted-foreground">score {q.score ?? "—"} · {q.risk ?? "—"}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
   )
 }

@@ -69,16 +69,31 @@ def _qr_by_run(run_id: str):
 
 def test_rules_engine_derives_and_recalc():
     """09-P0-07 新语义：发布=冻结不可变 RuleVersion（禁止全库重算）；
-    结果在创建时绑定当时的冻结版本并派生（旧"发布即重算全库"已废止）。"""
+    结果在创建时绑定当时的冻结版本并派生（旧"发布即重算全库"已废止）。
+
+    共享测试库下不依赖 active_rule_version 全局回退（他用例并发发布会竞态），
+    改经 Task 钉住 resultRuleVersionId（09-SDD 冻结语义的正道）。"""
     rules = client.post("/api/result-rules", json={"name": "承诺规则", "rules": {
         "scoreRules": [{"id": "s1", "field": "score", "op": "gt", "value": 80, "weight": 0}],
         "issueRules": [{"id": "i1", "criterion": "承诺未兑现检查", "field": "promise", "op": "contains", "value": "回电", "severity": "High"}]}}).json()
     pub = client.post(f"/api/result-rules/{rules['id']}/publish").json()
     assert pub["version"] == 1 and pub["ruleVersionId"] and not pub.get("recalculated")
     wf = _wf_with_sink()
-    r = client.post("/api/runs", json={"workflowId": wf["id"], "trigger": "test", "input": {}})
-    _wait_run_terminal(r.json()["runId"])
-    qr = _qr_by_run(r.json()["runId"])
+    assert client.post(f"/api/workflows/{wf['id']}/publish").status_code == 201
+    wf_det = client.get(f"/api/workflows/{wf['id']}").json()
+    asset = client.post("/api/data-assets", json={
+        "name": "承诺资产", "rows": [{"interactionId": "P-1", "promise": "回电"}]}).json()
+    defv = make_definition_version(client, asset["id"])
+    task = client.post("/api/tasks", json={
+        "name": "承诺任务", "workflowId": wf["id"], "workflowVersionPolicy": "latest_published",
+        "dataAssetId": asset["id"], "dataDefinitionVersionId": defv,
+        "resultRuleVersionId": pub["ruleVersionId"]}).json()
+    start = client.post(f"/api/tasks/{task['id']}/runs", json={})
+    assert start.status_code == 202, start.text
+    tr = _wait_task_run_terminal(start.json()["taskRunId"])
+    assert tr["succeeded"] == 1, tr
+    runs = client.get(f"/api/task-runs/{tr['id']}/runs").json()["items"]
+    qr = _qr_by_run(runs[0]["id"])
     det = client.get(f"/api/quality-results/{qr['id']}").json()
     assert det["risk"] == "High" and det["issueCount"] == 1
     assert det["ruleVersionId"] == pub["ruleVersionId"]  # 结果记录明确 RuleVersion

@@ -148,6 +148,11 @@ def start_task_run(db: Session, task_id: str, trigger: str = "manual",
     if not tv:
         raise TaskStartError("任务缺少配置版本")
 
+    # SDD 13 §6.2/§18：生产触发（schedule/backfill/api）强制 target_table（先于目标解析）
+    if trigger != "manual" and (tv.output_mode or "platform_only") != "target_table":
+        raise TaskStartError("生产触发（schedule/backfill/api）要求 outputBinding.mode="
+                             "target_table（SDD 13 §18；sandbox/manual 可 platform_only）", 422)
+
     # R3：统一执行目标解析（启动时一次冻结，批次内不漂移）
     agent_version = release = None
     if tv.execution_target_type == "agent":
@@ -174,6 +179,18 @@ def start_task_run(db: Session, task_id: str, trigger: str = "manual",
         raise TaskStartError("数据定义版本不存在", 422)
     # 09 P0：解析并冻结规则版本（失败关闭）
     resolved_rule_version_id = _resolve_rule_version(db, tv)
+    # SDD 13 §6.2：启动时 fail-closed 探测目标表（连接/表/结构/权限/唯一键），
+    # 失败不创建注定无法投递的生产 TaskRun；已启动批次的运行期故障走 Delivery 重试。
+    from .output_binding import freeze_binding_snapshot
+    from .output_binding_validator import validate_for_start
+    contract = tv.output_contract_snapshot or {}
+    binding_snapshot = freeze_binding_snapshot(
+        db, tv, contract.get("ref") or "", contract.get("sha256") or "")
+    if binding_snapshot:
+        ok, issues = validate_for_start(db, binding_snapshot)
+        if not ok:
+            raise TaskStartError("目标表启动探测失败（fail-closed）：" +
+                                 "；".join(i["message"] for i in issues), 502)
     asset = db.get(DataAsset, tv.data_asset_id)
     if not asset:
         raise TaskStartError("数据资产不存在")
@@ -201,6 +218,8 @@ def start_task_run(db: Session, task_id: str, trigger: str = "manual",
     tr = TaskRun(task_id=t.id, task_version_id=tv.id, data_snapshot_id=snap.id,
                  trigger=trigger, schedule_fire_key=schedule_fire_key,
                  idempotency_key=idempotency_key, status="queued", total=expected,
+                 output_binding_snapshot=binding_snapshot,
+                 delivery_status="pending" if binding_snapshot else "not_configured",
                  resolved_rule_version_id=resolved_rule_version_id,
                  resolved_workflow_version_id=wv.id if wv else None,
                  resolved_agent_version_id=agent_version.id if agent_version else None,
@@ -447,28 +466,10 @@ def execute_task_run(task_run_id: str) -> None:
                 db.add(run)
                 db.commit()
                 _dispatch_interaction_run(db, run, agent_version)
-                # 09 P0 不变量（成功必须恰好一条生效 QualityResult）仅对"产出质检结果"的
-                # 目标强制：Workflow 目标 或 quality-analysis Module；其余只读 Module 的领域
-                # 结果走各自 Mapper（R5+），不强制 QualityResult。
-                enforce_qr = (not agent_target) or \
-                    (getattr(target_agent, "module_key", None) == "quality-analysis")
+                # SDD 13 PR6：Task Core 不再普遍性假设 QualityResult——领域结果由领域
+                # 消费者/投影器负责（create-record 节点 / Module Mapper），核心只认 Run 终态。
                 if run.status == "succeeded":
-                    if not enforce_qr:
-                        ok += 1
-                    else:
-                        from .models import QualityResult
-                        n_res = db.execute(select(func.count(QualityResult.id)).where(
-                            QualityResult.run_id == run.id,
-                            QualityResult.is_latest.is_(True))).scalar() or 0
-                        if n_res != 1:
-                            run.status = "failed"
-                            run.error = {"message": f"MISSING_QUALITY_RESULT：成功但结果数={n_res}（应=1）"}
-                            db.commit()
-                            fail += 1
-                            errors.append({"interactionRef": ref,
-                                           "error": run.error["message"]})
-                        else:
-                            ok += 1
+                    ok += 1
                 else:
                     fail += 1
                     errors.append({"interactionRef": ref,
@@ -513,7 +514,6 @@ def execute_task_run(task_run_id: str) -> None:
 def reaggregate_task_run(db: Session, tr: TaskRun) -> None:
     """09 P1-06（审计：父批次永久 partial）：按每 Interaction 的最新 attempt 重汇
     TaskRun 的 succeeded/failed 与终态。"""
-    from .models import QualityResult
     runs = db.query(Run).filter(Run.task_run_id == tr.id).all()
     latest_by_ref: dict[str, Run] = {}
     for r in runs:
@@ -523,20 +523,9 @@ def reaggregate_task_run(db: Session, tr: TaskRun) -> None:
     ok = fail = 0
     errors: list[dict] = []
     for ref, r in latest_by_ref.items():
+        # SDD 13 PR6：重汇只认 Run 终态，不假设 QualityResult（领域结果归领域层）
         if r.status == "succeeded":
-            agent = db.get(Agent, r.agent_id) if r.agent_id else None
-            enforce_qr = (agent is None) or (agent.module_key == "quality-analysis")
-            if not enforce_qr:
-                ok += 1
-                continue
-            n_res = db.execute(select(func.count(QualityResult.id)).where(
-                QualityResult.run_id == r.id,
-                QualityResult.is_latest.is_(True))).scalar() or 0
-            if n_res == 1:
-                ok += 1
-            else:
-                fail += 1
-                errors.append({"interactionRef": ref, "error": "MISSING_QUALITY_RESULT"})
+            ok += 1
         elif r.status in ("failed", "cancelled"):
             fail += 1
             errors.append({"interactionRef": ref,

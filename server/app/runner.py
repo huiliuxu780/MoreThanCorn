@@ -300,6 +300,10 @@ def schedule_tick() -> int:
     fired = 0
     try:
         now = datetime.now(timezone.utc)
+        # SDD 13 §4.6：滚动物化未来 48h occurrence + 超宽限标记 missed
+        from .occurrences import mark_missed, materialize_occurrences
+        materialize_occurrences(db, now)
+        mark_missed(db, now)
         due = db.execute(select(Schedule).where(Schedule.enabled == True)).scalars().all()  # noqa: E712
         for sch in due:
             if sch.next_run_at is None:
@@ -317,10 +321,16 @@ def schedule_tick() -> int:
                     # 09 P0-B2/B3：调度→TaskRun 新链路；唯一业务键防重复触发（INV-11）；
                     # paused/不可运行任务失败关闭但不计调度故障。
                     from .task_runner import TaskStartError, start_task_run
-                    fire_slot = sch.next_run_at.isoformat() if sch.next_run_at else now.isoformat()
+                    # SDD 13 §4.6：fire_key 归一 UTC（occurrence 与 TaskRun 同键）
+                    fire_at = (sch.next_run_at.astimezone(timezone.utc)
+                               if sch.next_run_at else now)
+                    fire_slot = fire_at.isoformat()
                     try:
                         _tr, _res = start_task_run(db, sch.task_id, trigger="schedule",
                                                    schedule_fire_key=f"{sch.id}:{fire_slot}")
+                        # 触发后与 occurrence 幂等关联（同卡不双显）
+                        from .occurrences import associate_fire
+                        associate_fire(db, sch.id, fire_at, _tr.id)
                         fired += 1
                     except TaskStartError as exc:
                         if exc.status_code == 409:  # paused（INV-10）：静默跳过
@@ -1361,6 +1371,10 @@ def execute_run(run_id: str, call_chain: list[str] | None = None, resume: dict |
         run.ended_at = datetime.now(timezone.utc)
         if run.started_at:
             run.duration_ms = int((run.ended_at - run.started_at).total_seconds() * 1000)
+        if run.status == "succeeded":
+            # SDD 13 §7.1：Run.output 与 ResultDelivery 同一平台事务创建
+            from .delivery import settle_run_success
+            settle_run_success(db, run)
         db.commit()
     except _Paused:
         # 07-SDD：wait-review 挂起——Run 置 paused，等待 resume 端点续跑
@@ -1604,6 +1618,9 @@ def _dispatch_job(jtype: str, payload: dict) -> None:
     elif jtype == "agent-runtime-cancel":  # SDD 10 R1-4：请求 Provider 取消并按实际终态收尾
         from .runtime_providers.worker import cancel_agent_runtime
         cancel_agent_runtime(payload)
+    elif jtype == "result-delivery":  # SDD 13 §7.2：目标表投递 Outbox worker
+        from .delivery import process_result_delivery
+        process_result_delivery(payload)
     else:
         execute_run(payload["run_id"], resume=payload.get("resume"))
 

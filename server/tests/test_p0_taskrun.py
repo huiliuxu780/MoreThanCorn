@@ -17,6 +17,18 @@ from tests._quality_setup import (MAPPING, make_asset, make_definition_version,
                                   make_rule_version)
 
 client = TestClient(app)
+
+def _qr_items(trid: str):
+    """SDD 13 PR6：领域结果经领域层直查（/results 已迁移为通用 deliveries）。"""
+    from app.models import QualityResult
+    db = SessionLocal()
+    try:
+        return db.query(QualityResult).filter_by(task_run_id=trid)\
+            .order_by(QualityResult.created_at.asc()).all()
+    finally:
+        db.close()
+
+
 _worker = start_worker()
 
 
@@ -102,9 +114,9 @@ def test_n_equals_n_runs_including_rejected():
     failed_msgs = [r["error"]["message"] for r in runs if r["status"] == "failed"]
     assert any("DUPLICATE_INTERACTION_REF" in m for m in failed_msgs)
     assert any("EMPTY_INTERACTION_REF" in m for m in failed_msgs)
-    results = client.get(f"/api/task-runs/{tr['id']}/results").json()["items"]
+    results = _qr_items(tr["id"])
     assert len(results) == 4, f"4 个合法样本应产生 4 结果（实际 {len(results)}）"
-    assert len({r["interactionRef"] for r in results}) == 4
+    assert len({r.interaction_ref for r in results}) == 4
 
 
 def test_successful_run_must_have_unique_result():
@@ -114,10 +126,10 @@ def test_successful_run_must_have_unique_result():
     start = client.post(f"/api/tasks/{task['id']}/runs", json={})
     tr = _wait_task_run(start.json()["taskRunId"])
     assert tr["succeeded"] == 3 and tr["failed"] == 0
-    results = client.get(f"/api/task-runs/{tr['id']}/results").json()["items"]
+    results = _qr_items(tr["id"])
     assert len(results) == 3
     # 每结果 run_id 唯一（INV-03）
-    assert len({r["runId"] for r in results}) == 3
+    assert len({r.run_id for r in results}) == 3
 
 
 def test_traceability_fields_non_null():
@@ -125,13 +137,13 @@ def test_traceability_fields_non_null():
     task = _mk_valid_task(_rows_score_risk(2))
     start = client.post(f"/api/tasks/{task['id']}/runs", json={})
     tr = _wait_task_run(start.json()["taskRunId"])
-    results = client.get(f"/api/task-runs/{tr['id']}/results").json()["items"]
+    results = _qr_items(tr["id"])
     assert results
     for r in results:
-        assert r["taskRunId"] == tr["id"]
-        assert r["workflowVersionId"], "workflowVersionId 非空"
-        assert r["ruleVersionId"], "ruleVersionId 非空（INV-05）"
-        assert r["interactionRef"], "interactionRef 非空（INV-04）"
+        assert r.task_run_id == tr["id"]
+        assert r.workflow_version_id, "workflowVersionId 非空"
+        assert r.rule_version_id, "ruleVersionId 非空（INV-05）"
+        assert r.interaction_ref, "interactionRef 非空（INV-04）"
 
 
 def test_follow_latest_rule_policy():
@@ -200,7 +212,7 @@ def test_invalid_schema_output_fails_run():
     start = client.post(f"/api/tasks/{task['id']}/runs", json={})
     tr = _wait_task_run(start.json()["taskRunId"])
     assert tr["succeeded"] == 0 and tr["failed"] == 1
-    results = client.get(f"/api/task-runs/{tr['id']}/results").json()["items"]
+    results = _qr_items(tr["id"])
     assert results == [], "非法 Schema 不得产生结果"
     runs = client.get(f"/api/task-runs/{tr['id']}/runs").json()["items"]
     assert runs[0]["status"] == "failed"

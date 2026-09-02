@@ -9,6 +9,7 @@ import {
   BasicTaskFields,
   DataTaskFields,
   emptyTaskForm,
+  OutputBindingFields,
   StrategyTaskFields,
   TargetTaskFields,
   type TaskFormState,
@@ -59,6 +60,13 @@ export default function TaskEditPage() {
         : "上一自然日",
       dataWindowStart: window?.mode === "fixed" ? window.start ?? "" : "",
       dataWindowEnd: window?.mode === "fixed" ? window.end ?? "" : "",
+      // SDD 13 §9.1：从服务端冻结快照回填 OutputBinding（历史批次不受编辑影响）
+      outputMode: v?.outputBinding?.mode === "target_table" ? "target_table" : "platform_only",
+      outputAssetId: v?.outputBinding?.assetId ?? "",
+      outputDefinitionVersionId: v?.outputBinding?.definitionVersionId ?? "",
+      outputWriteMode: v?.outputBinding?.writeMode === "append" ? "append" : "upsert",
+      outputKeyFields: (v?.outputBinding?.keyFields ?? ["_run_id"]).join(","),
+      outputMappingRows: Object.entries(v?.outputBinding?.mapping ?? {}).map(([column, expr]) => ({ column, expr })),
     })
   }, [task])
 
@@ -81,6 +89,8 @@ export default function TaskEditPage() {
         <TargetTaskFields form={form} onChange={setForm} />
         <Separator />
         <DataTaskFields form={form} onChange={setForm} />
+        <Separator />
+        <OutputBindingFields form={form} onChange={setForm} />
         <Separator />
         <StrategyTaskFields form={form} onChange={setForm} />
       </div>

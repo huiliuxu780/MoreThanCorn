@@ -13,12 +13,91 @@ from ..auth import (apply_data_scope, assert_task_readable, data_scope_members,
                     require_admin, require_operator, require_reviewer, require_role)
 from ..db import get_db
 from ..models import (AgentVersion, AnalysisTask, AnalysisTaskVersion, DataAsset,
-                      DataDefinitionVersion, QualityResult, ResultRuleSet,
-                      ResultRuleVersion, ReviewRevision, Schedule, Workflow,
-                      WorkflowVersion)
+                      DataDefinitionVersion, QualityResult, ResultDelivery,
+                      ResultRuleSet, ResultRuleVersion, ReviewRevision, Schedule,
+                      Workflow, WorkflowVersion)
+from ..output_binding import MappingExpressionError, normalize_binding
+from ..output_binding_validator import validate_for_edit
 from ..output_schema import latest_quality_schema
 
 router = APIRouter(tags=["business"])
+
+
+def _sha256_of(obj) -> str:
+    import hashlib
+    import json
+    return hashlib.sha256(json.dumps(obj, sort_keys=True, ensure_ascii=False,
+                                     default=str).encode()).hexdigest()
+
+
+def _resolve_output_contract(db: Session, target_type: str, agent_id: str | None,
+                             workflow_id: str | None, policy: str | None,
+                             pinned: str | None) -> tuple[dict, str, str, str]:
+    """SDD 13 §5.1：Output Schema 来自冻结执行目标（Agent Module / WorkflowVersion），
+    TaskVersion 只冻结本体+ref+sha256，不由前端重造。返回 (schema, ref, sha256, source)。"""
+    if target_type == "agent" and agent_id:
+        from ..models import Agent
+        from ..agent_modules import registry as module_registry
+        agent = db.get(Agent, agent_id)
+        if agent and agent.module_key:
+            mod = module_registry.get(agent.module_key, agent.module_version)
+            ref = f"{mod.output_schema_ref['id']}@{mod.version}"
+            return mod.output_schema, ref, _sha256_of(mod.output_schema), "module"
+    wf = db.get(Workflow, workflow_id) if workflow_id else None
+    wv = None
+    if wf:
+        if policy == "pinned" and pinned:
+            wv = db.get(WorkflowVersion, pinned)
+        elif wf.current_version_id:
+            wv = db.get(WorkflowVersion, wf.current_version_id)
+    schemas = (wv.structured_output_schemas if wv else None) or []
+    if schemas and isinstance(schemas, list) and schemas[0]:
+        first = schemas[0]
+        schema = first.get("schema") or first
+        ref = first.get("ref") or f"workflow-output@{wv.version_no}"
+        return schema, ref, _sha256_of(schema), "workflow"
+    osrow = latest_quality_schema(db)
+    if osrow:
+        return osrow.schema_, f"{osrow.key}@v{osrow.version_no}", \
+            _sha256_of(osrow.schema_), "legacy_quality"
+    return {}, "unknown@0", _sha256_of({}), "none"
+
+
+def _apply_output_binding(db: Session, payload: dict, target_type: str,
+                          agent_id: str | None, workflow_id: str | None,
+                          policy: str | None, pinned: str | None) -> dict:
+    """解析+校验 outputBinding；返回要写入 TaskVersion 的字段 dict（422 带完整 issues）。"""
+    raw = payload.get("outputBinding")
+    if raw in (None, {}):
+        return {"output_mode": "platform_only"}
+    try:
+        binding = normalize_binding(raw)
+    except MappingExpressionError as exc:
+        raise HTTPException(422, {"code": exc.code, "message": exc.message,
+                                  "path": "outputBinding"})
+    if binding["mode"] != "target_table":
+        return {"output_mode": "platform_only"}
+    schema, ref, sha, source = _resolve_output_contract(
+        db, target_type, agent_id, workflow_id, policy, pinned)
+    rep = validate_for_edit(db, binding, output_schema=schema, output_schema_ref=ref,
+                            input_asset_id=payload.get("dataAssetId"))
+    if not rep["valid"]:
+        raise HTTPException(422, {"code": "OUTPUT_BINDING_INVALID",
+                                  "message": "OutputBinding 校验失败",
+                                  "issues": rep["issues"]})
+    from datetime import datetime as _dt, timezone as _tz
+    return {"output_mode": "target_table",
+            "output_asset_id": binding["assetId"],
+            "output_definition_version_id": binding["definitionVersionId"],
+            "output_write_mode": binding["writeMode"],
+            "output_key_fields": binding["keyFields"],
+            "output_mapping": binding["mapping"],
+            "output_failure_policy": binding["failurePolicy"],
+            "output_contract_snapshot": {
+                "schema": schema, "ref": ref, "sha256": sha, "source": source,
+                "constants": binding["constants"],
+                "validatedAt": _dt.now(_tz.utc).isoformat(),
+                "schemaFingerprint": (rep["resolved"] or {}).get("schemaFingerprint")}}
 
 # 09 §11.1：Task 状态机取值
 TASK_STATUSES = ("draft", "active", "paused", "archived")
@@ -391,6 +470,62 @@ def create_asset(payload: dict, db: Session = Depends(get_db),
     return {"id": a.id, "name": a.name}
 
 
+@router.get("/api/data-assets/writable")
+def list_writable_assets(db: Session = Depends(get_db)):
+    """SDD 13 §9.1：目标表只列出可写 table asset（已连接+Ready+postgresql）。"""
+    from ..models import Connection, Datasource
+    rows = db.query(DataAsset).order_by(DataAsset.updated_at.desc()).all()
+    items = []
+    for a in rows:
+        ds = db.get(Datasource, a.datasource_id) if a.datasource_id else None
+        if not ds or (ds.type or "") != "postgresql" or (ds.status or "") != "enabled":
+            continue
+        conn = db.get(Connection, ds.connection_id) if ds.connection_id else None
+        if not conn or (conn.lifecycle or "") not in ("active",):
+            continue
+        if (a.lifecycle or "") != "Ready" or not (a.location or "").strip():
+            continue
+        items.append({"id": a.id, "name": a.name, "location": a.location,
+                      "datasourceName": ds.name, "connectionName": conn.name,
+                      "lifecycle": a.lifecycle})
+    return {"items": items}
+
+
+@router.get("/api/data-assets/{aid}/target-meta")
+def get_target_meta(aid: str, db: Session = Depends(get_db)):
+    """SDD 13 §9.1：mapping grid 所需的目标列/唯一约束/定义版本（服务端探测）。"""
+    from ..data_writers import WriterError, get_writer
+    from ..models import DataDefinition, DataDefinitionVersion, Datasource
+    a = db.get(DataAsset, aid)
+    if not a:
+        raise HTTPException(404, "数据资产不存在")
+    ds = db.get(Datasource, a.datasource_id) if a.datasource_id else None
+    if not ds:
+        raise HTTPException(422, "目标 DataAsset 未绑定 DataSource")
+    schema_name, table = "public", (a.location or "").strip()
+    if "." in table:
+        s, t = table.split(".", 1)
+        schema_name, table = s, t
+    snap = {"schemaName": schema_name, "table": table}
+    try:
+        writer = get_writer(db, ds)
+        meta = writer.inspect_target(snap)
+    except WriterError as exc:
+        raise HTTPException(422, {"code": exc.code, "message": exc.message})
+    defs = db.query(DataDefinition).filter_by(data_asset_id=aid).all()
+    def_versions = []
+    for d in defs:
+        vs = db.query(DataDefinitionVersion).filter_by(definition_id=d.id)\
+            .order_by(DataDefinitionVersion.version_no.desc()).all()
+        for v in vs:
+            def_versions.append({"id": v.id, "definitionId": d.id, "name": d.name,
+                                 "versionNo": v.version_no})
+    return {"columns": [{"name": c.name, "type": c.pg_type, "nullable": c.nullable,
+                         "hasDefault": c.has_default} for c in meta.columns.values()],
+            "uniqueConstraints": [list(u) for u in meta.unique_constraints],
+            "definitions": def_versions}
+
+
 @router.get("/api/data-assets/{aid}")
 def get_asset(aid: str, db: Session = Depends(get_db)):
     a = db.get(DataAsset, aid)
@@ -499,6 +634,19 @@ def _validate_input_mapping(module_key: str | None, mapping: dict) -> None:
                                   "path": "inputMapping"})
 
 
+def _carry_binding(cur) -> dict:
+    """编辑未显式提供 outputBinding 时沿用当前版本冻结值（TaskVersion 不可变语义）。"""
+    if cur is None or (cur.output_mode or "platform_only") != "target_table":
+        return {"output_mode": "platform_only"}
+    return {"output_mode": cur.output_mode, "output_asset_id": cur.output_asset_id,
+            "output_definition_version_id": cur.output_definition_version_id,
+            "output_write_mode": cur.output_write_mode,
+            "output_key_fields": cur.output_key_fields or [],
+            "output_mapping": cur.output_mapping or {},
+            "output_failure_policy": cur.output_failure_policy,
+            "output_contract_snapshot": cur.output_contract_snapshot}
+
+
 def _task_version_dto(db: Session, v: AnalysisTaskVersion) -> dict:
     os_label = ""
     if v.output_schema_version_id:
@@ -506,6 +654,24 @@ def _task_version_dto(db: Session, v: AnalysisTaskVersion) -> dict:
         row = db.get(QualityOutputSchema, v.output_schema_version_id)
         if row:
             os_label = f"{row.key}@v{row.version_no}"
+    # SDD 13 §8.1：outputSchema + outputBinding 通用呈现（legacy 质检引用只作兼容字段）
+    contract = v.output_contract_snapshot or {}
+    asset_name = None
+    if v.output_asset_id:
+        from ..models import DataAsset as _DA
+        oa = db.get(_DA, v.output_asset_id)
+        asset_name = oa.name if oa else None
+    output_schema = {"ref": contract.get("ref") or os_label,
+                     "sha256": contract.get("sha256")}
+    output_binding = {"mode": v.output_mode or "platform_only",
+                      "assetId": v.output_asset_id, "assetName": asset_name,
+                      "definitionVersionId": v.output_definition_version_id,
+                      "writeMode": v.output_write_mode,
+                      "keyFields": v.output_key_fields or [],
+                      "mapping": v.output_mapping or {},
+                      "failurePolicy": v.output_failure_policy,
+                      "validatedAt": contract.get("validatedAt"),
+                      "schemaFingerprint": contract.get("schemaFingerprint")}
     return {"id": v.id, "versionNo": v.version_no,
             "workflowId": v.workflow_id,
             "workflowVersionPolicy": v.workflow_version_policy,
@@ -523,6 +689,8 @@ def _task_version_dto(db: Session, v: AnalysisTaskVersion) -> dict:
             "dataWindow": v.data_window or {},
             "outputSchemaVersion": os_label,
             "outputSchemaVersionId": v.output_schema_version_id,
+            "outputSchema": output_schema,
+            "outputBinding": output_binding,
             "note": v.note, "createdBy": v.created_by,
             "createdAt": v.created_at.isoformat()}
 
@@ -720,6 +888,9 @@ def create_task(payload: dict, db: Session = Depends(get_db),
     osrow = latest_quality_schema(db)
     if not osrow:
         raise HTTPException(500, "quality_evaluation 输出 Schema 未配置")
+    # SDD 13 PR3：OutputBinding（target_table 时服务端完整预检；缺省 platform_only 兼容存量）
+    ob_fields = _apply_output_binding(db, payload, target_type, agent_id,
+                                      workflow_id, policy, pinned)
     scope = _norm_scope(payload.get("scope"))
     sampling = _norm_sampling(payload.get("sampling"))
     window = _norm_window(payload.get("dataWindow", "all"))
@@ -755,6 +926,15 @@ def create_task(payload: dict, db: Session = Depends(get_db),
                             input_mapping=mapping, scope=scope, sampling=sampling,
                             data_window=window,
                             output_schema_version_id=osrow.id,
+                            output_contract_snapshot=ob_fields.get("output_contract_snapshot"),
+                            output_mode=ob_fields.get("output_mode", "platform_only"),
+                            output_asset_id=ob_fields.get("output_asset_id"),
+                            output_definition_version_id=ob_fields.get("output_definition_version_id"),
+                            output_write_mode=ob_fields.get("output_write_mode", "upsert"),
+                            output_key_fields=ob_fields.get("output_key_fields") or [],
+                            output_mapping=ob_fields.get("output_mapping") or {},
+                            output_failure_policy=ob_fields.get("output_failure_policy",
+                                                                "separate_delivery_status"),
                             created_by=user.get("username", "system"))
     db.add(v)
     db.flush()
@@ -769,12 +949,21 @@ def create_task(payload: dict, db: Session = Depends(get_db),
 
 
 def _task_run_dto(tr) -> dict:
+    # SDD 13 §8.3：execution 与 delivery 两块；迁移期保留旧平铺计数。
     return {"id": tr.id, "taskId": tr.task_id, "taskVersionId": tr.task_version_id,
             "dataSnapshotId": tr.data_snapshot_id, "trigger": tr.trigger,
             "scheduleFireKey": tr.schedule_fire_key, "idempotencyKey": tr.idempotency_key,
             "status": tr.status, "total": tr.total,
             "succeeded": tr.succeeded_count, "failed": tr.failed_count,
             "skipped": tr.skipped_count, "cancelled": tr.cancelled_count,
+            "execution": {"status": tr.status, "total": tr.total,
+                          "succeeded": tr.succeeded_count, "failed": tr.failed_count,
+                          "skipped": tr.skipped_count, "cancelled": tr.cancelled_count},
+            "delivery": {"status": tr.delivery_status,
+                         "pending": tr.delivery_pending_count,
+                         "succeeded": tr.delivery_succeeded_count,
+                         "failed": tr.delivery_failed_count,
+                         "targetAssetId": (tr.output_binding_snapshot or {}).get("assetId")},
             # R7-5：冻结快照（AgentVersion/Release/Provider）
             "resolvedAgentVersionId": tr.resolved_agent_version_id,
             "resolvedReleaseId": tr.resolved_release_id,
@@ -877,7 +1066,8 @@ def get_task_run(trid: str, db: Session = Depends(get_db)):
     return _task_run_dto(tr)
 
 
-def _run_dto(r) -> dict:
+def _run_dto(r, delivery=None) -> dict:
+    # SDD 13 §8.4：通用 Run 项 + delivery 摘要；禁止返回业务专用投影。
     return {"id": r.id, "status": r.status, "interactionRef": r.interaction_ref,
             "attempt": r.attempt, "workflowVersionId": r.workflow_version_id,
             "taskRunId": r.task_run_id, "taskId": r.task_id,
@@ -885,19 +1075,56 @@ def _run_dto(r) -> dict:
             "agentId": r.agent_id, "agentVersionId": r.agent_version_id,
             "runtimeProviderId": r.runtime_provider_id,
             "originRunId": r.origin_run_id,
+            "outputAvailable": r.output is not None,
             "error": r.error,
             "startedAt": r.started_at.isoformat() if r.started_at else None,
             "endedAt": r.ended_at.isoformat() if r.ended_at else None,
-            "durationMs": r.duration_ms}
+            "durationMs": r.duration_ms,
+            "delivery": {"id": delivery.id, "status": delivery.status,
+                         "attempts": delivery.attempts,
+                         "targetReference": delivery.target_reference,
+                         "error": delivery.error} if delivery else None}
+
+
+_RUN_SORT_WHITELIST = {"createdAt", "-createdAt", "durationMs", "-durationMs"}
 
 
 @router.get("/api/task-runs/{trid}/runs")
-def list_task_run_runs(trid: str, db: Session = Depends(get_db)):
+def list_task_run_runs(trid: str, page: int = 1, pageSize: int = 50, status: str = "",
+                       deliveryStatus: str = "", q: str = "", attempt: int | None = None,
+                       sort: str = "createdAt", db: Session = Depends(get_db)):
+    """SDD 13 §8.4：服务端分页+筛选；1000 条批次不得一次性加载。"""
     from ..models import Run, TaskRun
-    if not db.get(TaskRun, trid):
+    tr = db.get(TaskRun, trid)
+    if not tr:
         raise HTTPException(404, "TaskRun 不存在")
-    rows = db.query(Run).filter_by(task_run_id=trid).order_by(Run.created_at.asc()).all()
-    return {"items": [_run_dto(r) for r in rows], "total": len(rows)}
+    pageSize = min(max(pageSize, 1), 200)
+    if sort not in _RUN_SORT_WHITELIST:
+        raise HTTPException(422, f"sort 必须是 {sorted(_RUN_SORT_WHITELIST)} 之一")
+    query = db.query(Run).filter(Run.task_run_id == trid)
+    if status:
+        query = query.filter(Run.status == status)
+    if deliveryStatus:
+        query = query.filter(Run.id.in_(
+            db.query(ResultDelivery.run_id).filter(
+                ResultDelivery.status == deliveryStatus)))
+    if q:
+        query = query.filter(Run.interaction_ref.ilike(f"%{q}%"))
+    if attempt is not None:
+        query = query.filter(Run.attempt == attempt)
+    order = {"createdAt": Run.created_at.asc(), "-createdAt": Run.created_at.desc(),
+             "durationMs": Run.duration_ms.asc(), "-durationMs": Run.duration_ms.desc()}[sort]
+    total = query.count()
+    rows = query.order_by(order).offset((page - 1) * pageSize).limit(pageSize).all()
+    dels = {d.run_id: d for d in db.query(ResultDelivery).filter(
+        ResultDelivery.run_id.in_([r.id for r in rows] or ["-"])).all()}
+    schema_ref = (tr.output_binding_snapshot or {}).get("outputSchemaRef")
+    items = []
+    for r in rows:
+        dto = _run_dto(r, dels.get(r.id))
+        dto["outputSchemaRef"] = schema_ref
+        items.append(dto)
+    return {"items": items, "total": total, "page": page, "pageSize": pageSize}
 
 
 @router.get("/api/task-runs/{trid}/snapshot")
@@ -921,18 +1148,19 @@ def get_task_run_snapshot(trid: str, db: Session = Depends(get_db)):
 
 @router.get("/api/task-runs/{trid}/results")
 def list_task_run_results(trid: str, db: Session = Depends(get_db)):
-    from ..models import QualityResult, TaskRun
+    """SDD 13 PR6（Phase C）：Task 批次 API 不再查询 QualityResult 判断输出情况；
+    本端点迁移为通用 deliveries 兼容面（deprecated），领域结果走 /api/quality-results。"""
     if not db.get(TaskRun, trid):
         raise HTTPException(404, "TaskRun 不存在")
-    rows = db.query(QualityResult).filter_by(task_run_id=trid)\
-        .order_by(QualityResult.created_at.asc()).all()
-    return {"items": [{"id": q.id, "runId": q.run_id, "interactionRef": q.interaction_ref,
-                       "taskId": q.task_id, "taskRunId": q.task_run_id,
-                       "workflowVersionId": q.workflow_version_id,
-                       "ruleVersionId": q.rule_version_id,
-                       "outputSchemaVersionId": q.output_schema_version_id,
-                       "score": q.score, "risk": q.risk, "review": q.review_status,
-                       "isLatest": q.is_latest} for q in rows]}
+    rows = db.query(ResultDelivery).filter_by(task_run_id=trid)\
+        .order_by(ResultDelivery.created_at.asc()).all()
+    return {"deprecated": True,
+            "hint": "领域结果请查询 /api/quality-results 等领域 API",
+            "items": [{"id": d.id, "runId": d.run_id, "interactionRef": d.interaction_ref,
+                       "taskId": d.task_id, "taskRunId": d.task_run_id,
+                       "status": d.status, "attempts": d.attempts,
+                       "targetReference": d.target_reference,
+                       "error": d.error} for d in rows]}
 
 
 @router.post("/api/tasks/{tid}/runs/{trid}/retry-failed", status_code=202)
@@ -954,6 +1182,30 @@ def retry_failed_interactions(tid: str, trid: str, db: Session = Depends(get_db)
     db.add(JobQueue(type="task-run-retry", payload={"task_run_id": trid}))
     db.commit()
     return {"retried": n_failed, "taskRunId": trid}
+
+
+@router.post("/api/result-deliveries/{did}/retry", status_code=202)
+def retry_delivery_api(did: str, db: Session = Depends(get_db),
+                       user: dict = Depends(require_operator)):
+    """SDD 13 §8.6 重新投递：不调用模型；仅 failed/dead_letter；payload 哈希不变。"""
+    from ..delivery import retry_delivery
+    try:
+        return retry_delivery(db, did, user.get("username", "operator"))
+    except LookupError:
+        raise HTTPException(404, "ResultDelivery 不存在")
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+
+
+@router.post("/api/task-runs/{trid}/retry-failed-deliveries", status_code=202)
+def retry_failed_deliveries_api(trid: str, db: Session = Depends(get_db),
+                                user: dict = Depends(require_operator)):
+    """SDD 13 §8.6 批量重试投递：返回 accepted/skipped 数量与原因。"""
+    from ..delivery import retry_failed_deliveries
+    from ..models import TaskRun
+    if not db.get(TaskRun, trid):
+        raise HTTPException(404, "TaskRun 不存在")
+    return retry_failed_deliveries(db, trid, user.get("username", "operator"))
 
 
 @router.get("/api/tasks/{tid}")
@@ -1035,6 +1287,12 @@ def _update_agent_task(db: Session, t: AnalysisTask, cur, payload: dict, user: d
     scope = _norm_scope(payload.get("scope")) if payload.get("scope") is not None else ((cur.scope if cur else None) or {"op": "and", "conditions": []})
     sampling = _norm_sampling(payload.get("sampling")) if payload.get("sampling") is not None else ((cur.sampling if cur else None) or {"mode": "all"})
     window = _norm_window(payload.get("dataWindow")) if payload.get("dataWindow") is not None else ((cur.data_window if cur else None) or {"mode": "all"})
+    if "outputBinding" in payload:
+        ob_fields = _apply_output_binding(db, {"outputBinding": payload["outputBinding"],
+                                               "dataAssetId": asset_id},
+                                          "agent", agent_id, None, version_policy, pinned)
+    else:
+        ob_fields = _carry_binding(cur)
     version_no = (db.query(func.max(AnalysisTaskVersion.version_no))
                   .filter_by(task_id=t.id).scalar() or 0) + 1
     v = AnalysisTaskVersion(task_id=t.id, version_no=version_no,
@@ -1048,6 +1306,15 @@ def _update_agent_task(db: Session, t: AnalysisTask, cur, payload: dict, user: d
                             scope=scope, sampling=sampling, data_window=window,
                             output_schema_version_id=(cur.output_schema_version_id if cur else None)
                             or (latest_quality_schema(db).id if latest_quality_schema(db) else None),
+                            output_contract_snapshot=ob_fields.get("output_contract_snapshot"),
+                            output_mode=ob_fields.get("output_mode", "platform_only"),
+                            output_asset_id=ob_fields.get("output_asset_id"),
+                            output_definition_version_id=ob_fields.get("output_definition_version_id"),
+                            output_write_mode=ob_fields.get("output_write_mode", "upsert"),
+                            output_key_fields=ob_fields.get("output_key_fields") or [],
+                            output_mapping=ob_fields.get("output_mapping") or {},
+                            output_failure_policy=ob_fields.get("output_failure_policy",
+                                                                "separate_delivery_status"),
                             note=payload.get("note", ""), created_by=user.get("username", "system"))
     db.add(v)
     db.flush()
@@ -1111,6 +1378,12 @@ def update_task(tid: str, payload: dict, db: Session = Depends(get_db),
     mapping = payload.get("inputMapping") if payload.get("inputMapping") is not None else (_cur("input_mapping") or {})
     if not isinstance(mapping, dict):
         raise HTTPException(422, "inputMapping 必须是对象")
+    if "outputBinding" in payload:
+        ob_fields = _apply_output_binding(db, {"outputBinding": payload["outputBinding"],
+                                               "dataAssetId": asset_id},
+                                          "workflow", None, workflow_id, policy, pinned)
+    else:
+        ob_fields = _carry_binding(cur)
     from sqlalchemy import func
     version_no = (db.query(func.max(AnalysisTaskVersion.version_no))
                   .filter_by(task_id=tid).scalar() or 0) + 1
@@ -1125,6 +1398,15 @@ def update_task(tid: str, payload: dict, db: Session = Depends(get_db),
                             input_mapping=mapping, scope=scope, sampling=sampling,
                             data_window=window,
                             output_schema_version_id=_cur("output_schema_version_id") or (latest_quality_schema(db).id if latest_quality_schema(db) else None),
+                            output_contract_snapshot=ob_fields.get("output_contract_snapshot"),
+                            output_mode=ob_fields.get("output_mode", "platform_only"),
+                            output_asset_id=ob_fields.get("output_asset_id"),
+                            output_definition_version_id=ob_fields.get("output_definition_version_id"),
+                            output_write_mode=ob_fields.get("output_write_mode", "upsert"),
+                            output_key_fields=ob_fields.get("output_key_fields") or [],
+                            output_mapping=ob_fields.get("output_mapping") or {},
+                            output_failure_policy=ob_fields.get("output_failure_policy",
+                                                                "separate_delivery_status"),
                             note=payload.get("note", ""), created_by=user.get("username", "system"))
     db.add(v)
     db.flush()
@@ -1141,6 +1423,29 @@ def update_task(tid: str, payload: dict, db: Session = Depends(get_db),
             "taskVersion": _task_version_dto(db, v)}
 
 
+@router.post("/api/tasks/output-binding/validate")
+def validate_output_binding(payload: dict, db: Session = Depends(get_db),
+                            _user: dict = Depends(require_operator)):
+    """SDD 13 §8.2：OutputBinding 预检——返回完整问题列表与 resolved 摘要。"""
+    target = payload.get("executionTarget") or {}
+    target_type = target.get("type") or "workflow"
+    try:
+        binding = normalize_binding(payload.get("outputBinding") or {})
+    except MappingExpressionError as exc:
+        return {"valid": False,
+                "issues": [{"code": exc.code, "path": ["outputBinding"], "message": exc.message}],
+                "resolved": None}
+    if binding["mode"] != "target_table":
+        return {"valid": True, "issues": [], "resolved": None}
+    schema, ref, sha, _src = _resolve_output_contract(
+        db, target_type, target.get("agentId"), target.get("workflowId"),
+        target.get("versionPolicy"), target.get("pinnedAgentVersionId")
+        or target.get("pinnedWorkflowVersionId"))
+    rep = validate_for_edit(db, binding, output_schema=schema, output_schema_ref=ref,
+                            input_asset_id=payload.get("inputAssetId"))
+    return rep
+
+
 @router.post("/api/tasks/{tid}/status")
 def set_task_status(tid: str, payload: dict, db: Session = Depends(get_db),
                     user: dict = Depends(require_operator)):
@@ -1155,6 +1460,13 @@ def set_task_status(tid: str, payload: dict, db: Session = Depends(get_db),
         raise HTTPException(422, "status 必须是 active|paused|draft|archived")
     if t.status == "archived":
         raise HTTPException(422, "已归档任务不可变更状态")
+    # SDD 13 §6.2/§18：首次激活（draft→active）fail-closed 要求 target_table 绑定；
+    # paused→active 为恢复语义，沿用启动时探测（start_task_run 闸门）。
+    if status == "active" and t.status == "draft":
+        tv = db.get(AnalysisTaskVersion, t.current_version_id) if t.current_version_id else None
+        if tv is None or (tv.output_mode or "platform_only") != "target_table":
+            raise HTTPException(422, "生产任务激活要求 outputBinding.mode=target_table"
+                                     "（sandbox/manual 可 platform_only；SDD 13 §18）")
     t.status = aliases[status]
     db.commit()
     return {"id": t.id, "status": t.status}

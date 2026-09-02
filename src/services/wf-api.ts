@@ -256,6 +256,10 @@ interface RunDetailRaw {
   taskId?: string | null
   taskVersionId?: string | null
   interactionRef?: string
+  /* SDD 13 §8.5：delivery 与领域链接 */
+  delivery?: RunDeliveryInfo | null
+  domainLinks?: DomainLink[]
+  output?: Record<string, unknown> | null
   nodeRuns?: {
     nodeRunId: string; nodeId: string; nodeType: string; status: string
     durationMs: number | null; attempt?: number; error?: { message?: string } | null
@@ -289,7 +293,22 @@ export interface AgentRunExtras {
   quality: NonNullable<RunDetailRaw["quality"]> | null
 }
 
-export async function realRunDetail(runId: string): Promise<{ run: Run; executions: { items: InteractionExecution[]; total: number; page: number; pageSize: number }; agent: AgentRunExtras | null }> {
+export interface RunDeliveryInfo {
+  id: string
+  status: string
+  attempts: number
+  maxAttempts: number
+  writeMode: string
+  error: { code?: string; message?: string } | null
+  targetReference: { assetId?: string; schema?: string; table?: string; key?: Record<string, unknown> } | null
+  payloadSha256: string
+  nextAttemptAt: string | null
+  outputAssetId: string | null
+}
+
+export interface DomainLink { rel: string; id: string; interactionRef?: string }
+
+export async function realRunDetail(runId: string): Promise<{ run: Run; executions: { items: InteractionExecution[]; total: number; page: number; pageSize: number }; agent: AgentRunExtras | null; delivery: RunDeliveryInfo | null; domainLinks: DomainLink[]; rawOutput: Record<string, unknown> | null }> {
   const d = await req<RunDetailRaw>(`/api/runs/${runId}`)
   const nodeRuns = d.nodeRuns ?? []
   // 09 P0-08：任务主链 Run 用真实 TaskRun/DataSnapshot 填充，不再占位
@@ -348,17 +367,23 @@ export async function realRunDetail(runId: string): Promise<{ run: Run; executio
     duration: n.durationMs != null ? `${n.durationMs}ms` : undefined,
     errorType: n.error?.message, attempts: [{ no: n.attempt ?? 1, status: EX_STATUS[n.status] ?? "SKIPPED", error: n.error?.message }],
   }))
-  const agent: AgentRunExtras | null = d.runtime || (d.stages ?? []).length || (d.calls ?? []).length || d.quality
+  const agent: AgentRunExtras | null = d.runtime || (d.stages ?? []).length || (d.calls ?? []).length
     ? {
       runtime: d.runtime ?? null,
       stages: d.stages ?? [],
       calls: d.calls ?? [],
       usage: d.usage ?? {},
       evidence: d.evidence ?? [],
-      quality: d.quality ?? null,
+      quality: null,  // SDD 13 PR6：Task Core 不再内嵌领域 DTO
     }
     : null
-  return { run, executions: { items: executions, total: executions.length, page: 1, pageSize: 50 }, agent }
+  // SDD 13 §8.5/§11：delivery 详情 + 领域链接 + 原始输出（通用 viewer 消费）
+  return {
+    run, executions: { items: executions, total: executions.length, page: 1, pageSize: 50 }, agent,
+    delivery: d.delivery ?? null,
+    domainLinks: d.domainLinks ?? [],
+    rawOutput: d.output ?? null,
+  }
 }
 
 export interface Paged<T> { items: T[]; total: number; page: number; pageSize: number }
@@ -883,6 +908,23 @@ export interface CreateTaskPayload {
   scope?: { op: "and" | "or"; conditions: { field: string; op: string; value: unknown }[] }
   sampling?: { mode: "all" | "count" | "random"; count?: number; percent?: number }
   dataWindow?: { mode: "all" | "relative" | "fixed"; value?: string; timezone?: string; start?: string; end?: string }
+  /** SDD 13：结果输出绑定（target_table 时服务端完整预检） */
+  outputBinding?: {
+    mode: "platform_only" | "target_table"
+    assetId?: string
+    definitionVersionId?: string
+    writeMode?: "append" | "upsert"
+    keyFields?: string[]
+    mapping?: Record<string, string>
+    failurePolicy?: string
+  }
+}
+
+/** SDD 13 §8.2：OutputBinding 预检响应。 */
+export interface OutputBindingValidation {
+  valid: boolean
+  issues: { code: string; path: (string | number)[]; message: string }[]
+  resolved: { outputSchemaRef?: string; targetTable?: string | null; schemaFingerprint?: string | null } | null
 }
 
 export interface StartTaskRunResponse {
@@ -967,6 +1009,171 @@ export const bizApi = {
     req<{ retried: number; newRunIds: string[] }>(`/api/tasks/${id}/runs/${trid}/retry-failed`, { method: "POST", body: "{}" }),
   taskSchedule: (id: string, cron: string, timezone = "Asia/Shanghai") =>
     req<{ id: string; nextRunAt: string }>(`/api/tasks/${id}/schedule`, { method: "POST", body: JSON.stringify({ cron, timezone }) }),
+  /* ---------- SDD 13：结果输出配置 ---------- */
+  writableAssets: () =>
+    req<{ items: { id: string; name: string; location: string; datasourceName: string; connectionName: string; lifecycle: string }[] }>(
+      "/api/data-assets/writable").then((r) => r.items),
+  targetMeta: (aid: string) =>
+    req<{ columns: { name: string; type: string; nullable: boolean; hasDefault: boolean }[];
+          uniqueConstraints: string[][];
+          definitions: { id: string; definitionId: string; name: string; versionNo: number }[] }>(
+      `/api/data-assets/${aid}/target-meta`),
+  validateOutputBinding: (body: { executionTarget?: Record<string, unknown>; inputAssetId?: string;
+    outputBinding: Record<string, unknown> }) =>
+    req<OutputBindingValidation>("/api/tasks/output-binding/validate", {
+      method: "POST", body: JSON.stringify(body) }),
+}
+
+/* ---------- SDD 13 §8.8/§10：运行中心 API ---------- */
+
+export interface OpsBoardCard {
+  kind: "task_run" | "schedule_occurrence"
+  id: string
+  occurrenceId: string | null
+  taskRunId: string | null
+  task: { id: string; name: string }
+  plannedAt: string | null
+  startedAt: string | null
+  trigger: string
+  environment: string
+  stage: "upcoming" | "queued" | "running" | "delivering" | "attention" | "completed"
+  execution: { total: number; succeeded: number; failed: number; running: number }
+  delivery: { status: string; succeeded: number; failed: number }
+  durationMs: number | null
+  attention: { code: string; message: string } | null
+}
+
+export interface OpsBoard {
+  date: string
+  timezone: string
+  generatedAt: string
+  summary: Record<string, number>
+  completedTruncated: boolean
+  columns: Record<string, OpsBoardCard[]>
+}
+
+export interface OpsHistoryItem {
+  id: string
+  taskId: string
+  taskName: string
+  trigger: string
+  environment: string
+  startedAt: string | null
+  endedAt: string | null
+  createdAt: string
+  durationMs: number | null
+  execution: { status: string; total: number; succeeded: number; failed: number; skipped: number; cancelled: number }
+  delivery: { status: string; pending: number; succeeded: number; failed: number }
+}
+
+export interface OpsDeliveryItem {
+  id: string
+  runId: string
+  interactionRef: string
+  status: string
+  writeMode: string
+  attempts: number
+  maxAttempts: number
+  nextAttemptAt: string | null
+  error: { code?: string; message?: string } | null
+  targetReference: { assetId?: string; schema?: string; table?: string; key?: Record<string, unknown> } | null
+  payloadSha256: string
+  outputAssetId: string | null
+  createdAt: string
+  endedAt: string | null
+}
+
+export interface OpsFailureSample {
+  id?: string
+  runId?: string
+  deliveryId?: string
+  interactionRef?: string
+  code?: string
+  message?: string
+  attempts?: number
+}
+
+export interface OpsRunItem {
+  id: string
+  status: string
+  interactionRef: string
+  attempt: number
+  durationMs: number | null
+  outputAvailable: boolean
+  outputSchemaRef?: string | null
+  delivery: { id: string; status: string; attempts: number; error: { code?: string; message?: string } | null } | null
+  error: { message?: string } | null
+  startedAt: string | null
+  endedAt: string | null
+}
+
+export interface OpsTaskRunDetail {
+  id: string
+  taskId: string
+  taskName: string
+  taskVersionId: string
+  versionNo: number | null
+  trigger: string
+  environment: string
+  scheduleFireKey: string | null
+  plannedAt: string | null
+  occurrence: { id: string; status: string; error: { code?: string; message?: string } | null } | null
+  startedAt: string | null
+  endedAt: string | null
+  durationMs: number | null
+  execution: { status: string; total: number; succeeded: number; failed: number; skipped: number; cancelled: number }
+  delivery: { status: string; pending: number; succeeded: number; failed: number;
+    targetAssetId?: string | null; targetTable?: string | null; writeMode?: string;
+    keyFields?: string[]; schemaFingerprint?: string; outputSchemaRef?: string }
+  frozen: {
+    agentVersionId: string | null
+    workflowVersionId: string | null
+    releaseId: string | null
+    ruleVersionId: string | null
+    runtimeBinding: Record<string, unknown> | null
+    outputBinding: Record<string, unknown> | null
+    dataSnapshot: { id: string; assetId: string; readCount: number; expectedCount: number;
+      checksum: string; resolvedWindow: Record<string, unknown> } | null
+  }
+  errorSummary: { errors: { error: string }[] } | null
+}
+
+export const opsApi = {
+  today: (params: { date?: string; timezone?: string; taskId?: string; trigger?: string; environment?: string; attention?: string; q?: string } = {}) => {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v)
+    return req<OpsBoard>(`/api/operations/task-runs/today?${qs.toString()}`)
+  },
+  history: (params: Record<string, string | number> = {}) => {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) if (v !== "" && v != null) qs.set(k, String(v))
+    return req<{ items: OpsHistoryItem[]; total: number; page: number; pageSize: number }>(
+      `/api/operations/task-runs?${qs.toString()}`)
+  },
+  detail: (taskRunId: string) => req<OpsTaskRunDetail>(`/api/operations/task-runs/${taskRunId}`),
+  deliveries: (taskRunId: string, params: { page?: number; pageSize?: number; status?: string } = {}) => {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, String(v))
+    return req<{ items: OpsDeliveryItem[]; total: number }>(
+      `/api/operations/task-runs/${taskRunId}/deliveries?${qs.toString()}`)
+  },
+  failureAnalysis: (taskRunId: string) =>
+    req<{ taskRunId: string; categories: { key: string; count: number; samples: OpsFailureSample[] }[] }>(
+      `/api/operations/task-runs/${taskRunId}/failure-analysis`),
+  retryFailedDeliveries: (taskRunId: string) =>
+    req<{ accepted: number; skipped: number }>(`/api/task-runs/${taskRunId}/retry-failed-deliveries`,
+      { method: "POST", body: "{}" }),
+  runs: (taskRunId: string, params: { page?: number; pageSize?: number; status?: string; deliveryStatus?: string; q?: string } = {}) => {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, String(v))
+    return req<{ items: OpsRunItem[]; total: number; page: number; pageSize: number }>(
+      `/api/task-runs/${taskRunId}/runs?${qs.toString()}`)
+  },
+  retryDelivery: (deliveryId: string) =>
+    req<{ accepted: number; skipped: number }>(`/api/result-deliveries/${deliveryId}/retry`,
+      { method: "POST", body: "{}" }),
+  streamUrl: (timezone = "Asia/Shanghai") =>
+    `${WF_BASE}/api/operations/task-runs/stream?timezone=${encodeURIComponent(timezone)}`,
 }
 
 export async function realQualityDetail(id: string): Promise<Record<string, unknown>> {

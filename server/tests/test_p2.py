@@ -31,9 +31,17 @@ def test_schedule_next_run_computed_and_tick_fires():
     sch.next_run_at = datetime.now(timezone.utc) - timedelta(seconds=5)
     db.commit()
     db.close()
-    fired = schedule_tick()
-    assert fired >= 1  # worker 线程可能并发 tick，断言至少一次
-    runs = client.get(f"/api/schedules/{sid}/runs").json()
+    # worker 线程的 scheduler 可能并发 tick 抢先触发：不断言本线程 fired 次数，
+    # 以"调度确实产生了 run"为事实（SDD 13 后 occurrence 物化亦在 tick 内）。
+    schedule_tick()
+    import time as _t
+    deadline = _t.time() + 10
+    runs = []
+    while _t.time() < deadline:
+        runs = client.get(f"/api/schedules/{sid}/runs").json()
+        if runs:
+            break
+        _t.sleep(0.3)
     assert len(runs) >= 1 and runs[0]["status"] in ("queued", "running", "succeeded", "failed")
 
 
