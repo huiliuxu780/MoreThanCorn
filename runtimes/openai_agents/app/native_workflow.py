@@ -195,6 +195,41 @@ def _evidence_summary(text: str) -> str:
     return text[:EVIDENCE_SUMMARY_LIMIT] if text else "（无附加说明）"
 
 
+def _nested_scalar(value: Any, keys: set[str]) -> str | None:
+    """在任意嵌套结构里找第一个命中的标量字段（脱敏输入容错解析）。"""
+
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in keys and isinstance(child, (str, int)):
+                return str(child)
+        for child in value.values():
+            found = _nested_scalar(child, keys)
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = _nested_scalar(child, keys)
+            if found is not None:
+                return found
+    return None
+
+
+def resolve_sample_id(request: RuntimeExecuteRequest) -> str:
+    """sample_id 解析：请求顶层 → 嵌套搜索 → run 标识（不虚构、不猜测）。
+
+    与 DSH runtime 的容错语义一致（其插件亦从输入文本提取并兜底），
+    保证整列 canonical_call 直灌（{"$": "canonical_call"}）等映射可用。
+    """
+
+    direct = request.input.get("sample_id")
+    if isinstance(direct, (str, int)) and str(direct):
+        return str(direct)
+    found = _nested_scalar(request.input, {"sample_id"})
+    if found:
+        return found
+    return request.run_id
+
+
 def _knowledge_evidence(results: list[dict[str, Any]]) -> list[dict[str, str]]:
     evidence: list[dict[str, str]] = []
     for row in results:
@@ -602,7 +637,7 @@ class OpenAIAgentsNativeQualityWorkflow:
         self._event("workflow/stage_completed", "synthesize")
 
         output = project_platform_output(
-            sample_id=request.input["sample_id"],
+            sample_id=resolve_sample_id(request),
             identification=identification,
             knowledge_results=knowledge_results,
             promise_results=promise_results,

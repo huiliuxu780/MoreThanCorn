@@ -261,6 +261,22 @@ def test_projection_rejects_unknown_need_category_at_identify_layer():
         })
 
 
+def test_resolve_sample_id_direct_nested_then_run_id():
+    from app.native_workflow import resolve_sample_id
+
+    direct = make_request()
+    direct.input = {"sample_id": "S-DIRECT", "call": {}}
+    assert resolve_sample_id(direct) == "S-DIRECT"
+
+    nested = make_request()
+    nested.input = {"case": {"sample_id": "S-NESTED", "messages": []}}
+    assert resolve_sample_id(nested) == "S-NESTED"
+
+    missing = make_request()
+    missing.input = {"call": {"acid": "30253400817", "messages": []}}
+    assert resolve_sample_id(missing) == missing.run_id
+
+
 def test_projection_never_emits_abusive_language_without_evaluation():
     identification = Identification.model_validate({
         "consumer_needs": [],
