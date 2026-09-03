@@ -1,13 +1,41 @@
-{ "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "business_analysis_output",
-  "type": "object", "additionalProperties": false,
-  "required": ["question_id", "answer", "metrics", "citations"],
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "business-platform://schemas/business-output/1.0",
+  "title": "business_analysis_output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sample_id", "service_type_code", "customer_intents", "business_outcome", "follow_ups", "summary"],
   "properties": {
-    "question_id": { "type": "string" },
-    "answer": { "type": "string", "minLength": 1 },
-    "metrics": { "type": "array", "items": { "type": "object", "additionalProperties": false,
-      "required": ["metric", "value", "unit"], "properties": { "metric": { "type": "string" },
-        "value": { "type": "number" }, "unit": { "type": "string" } } } },
-    "citations": { "type": "array", "items": { "type": "object", "additionalProperties": false,
-      "required": ["source", "reference"], "properties": { "source": { "type": "string" },
-        "reference": { "type": "string" }, "summary": { "type": "string" } } } },
-    "confidence": { "type": "number" } } }
+    "sample_id": {"type": "string", "minLength": 1},
+    "service_type_code": {"type": ["string", "null"]},
+    "customer_intents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["intent", "description"],
+        "properties": {
+          "intent": {"type": "string", "minLength": 1},
+          "description": {"type": "string"}
+        }
+      }
+    },
+    "business_outcome": {
+      "type": "string",
+      "enum": ["resolved", "pending", "escalated", "unresolved", "unclear"]
+    },
+    "follow_ups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["action", "reason"],
+        "properties": {
+          "action": {"type": "string", "minLength": 1},
+          "reason": {"type": "string"}
+        }
+      }
+    },
+    "summary": {"type": "string", "minLength": 1}
+  }
+}

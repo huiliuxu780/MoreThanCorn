@@ -23,18 +23,18 @@ client = TestClient(app)
 
 
 class BusinessFake(FakeProvider):
-    """提交即 succeeded，输出符合 business_analysis output Schema。"""
+    """提交即 succeeded，输出符合 business_analysis output Schema（通话业务打标）。"""
 
     def __init__(self):
         super().__init__()
         self.auto_succeed = True
         self.output_builder = lambda run_id, entry: {
-            "question_id": str((entry.get("request", {}).get("input") or {}).get("question_id") or run_id),
-            "answer": "近 7 日热线接通率为 86.4%，环比 +1.2pct。",
-            "metrics": [{"metric": "connect_rate", "value": 86.4, "unit": "%"}],
-            "citations": [{"source": "metric_query", "reference": "metric:connect_rate:2026-08-22..2026-08-28",
-                           "summary": "日粒度接通率聚合"}],
-            "confidence": 0.9}
+            "sample_id": str((entry.get("request", {}).get("input") or {}).get("sample_id") or run_id),
+            "service_type_code": "REPAIR",
+            "customer_intents": [{"intent": "故障报修", "description": "设备故障，要求上门检修"}],
+            "business_outcome": "pending",
+            "follow_ups": [{"action": "安排上门检修", "reason": "已受理报修，需落实"}],
+            "summary": "客户报修设备故障，坐席受理并安排上门检修。"}
 
 
 def test_registry_discovers_two_modules():
@@ -42,7 +42,8 @@ def test_registry_discovers_two_modules():
     assert {"quality-analysis", "business-analysis"} <= keys
     biz = module_registry.get("business-analysis", "1.0.0")
     assert biz.manifest["riskClass"] == "read-only"
-    assert {t["name"] for t in biz.logical_tools} == {"metric_query", "dimension_query"}
+    # 通话业务打标为纯通话理解，不依赖企业工具
+    assert biz.logical_tools == []
     # 目录端点暴露双 Module
     r = client.get("/api/agents/modules").json()
     assert {m["key"] for m in r["items"]} >= {"quality-analysis", "business-analysis"}
@@ -60,9 +61,6 @@ def test_business_module_readonly_run_no_quality_result(monkeypatch):
         monkeypatch.setattr("app.runtime_providers.dispatcher.DEFAULT_RUNTIME_TIMEOUT_SECONDS", 20)
         patch_gateway(monkeypatch, base_url)
         _seed_tools()
-        for tn in ("metric_query", "dimension_query"):
-            client.post("/api/ai-resources/tools", json={"name": tn, "kind": "builtin",
-                                                        "spec": {"kind": "echo"}, "tested": True})
         prov = make_provider("agentscope", base_url)
         r = client.post("/api/agents", json={"name": "经营分析", "moduleKey": "business-analysis",
                                              "moduleVersion": "1.0.0",
@@ -73,15 +71,19 @@ def test_business_module_readonly_run_no_quality_result(monkeypatch):
         assert client.post(f"/api/agents/{aid}/releases", json={
             "versionId": v["versionId"], "environment": "sandbox",
             "runtimeProviderId": prov["id"]}).status_code == 201
-        # 批次闭环（复用质检任务装配，仅验证分派/结果事务分流）
-        asset = make_asset(client, [{"interactionId": "B1", "question_id": "q1"}])
+        # 批次闭环（通话资产，仅验证分派/结果事务分流）
+        asset = make_asset(client, [{"interactionId": "B1", "sample_id": "B1", "call_id": "acid-B1",
+                                     "conversation": [{"sequence": 0, "speaker": "customer",
+                                                       "text": "设备坏了，需要上门检修"}]}])
         defv = make_definition_version(client, asset)
         rulev = make_rule_version(client)
         t = client.post("/api/tasks", json={
             "name": "R5-biz", "executionTarget": {"type": "agent", "agentId": aid,
                                                  "versionPolicy": "latest_sandbox_release"},
             "dataAssetId": asset, "dataDefinitionVersionId": defv,
-            "resultRuleVersionId": rulev, "inputMapping": {"question_id": "question_id"},
+            "resultRuleVersionId": rulev,
+            "inputMapping": {"sample_id": "sample_id", "call_id": "call_id",
+                             "conversation": "conversation"},
             "sampling": {"mode": "all"}, "dataWindow": {"mode": "all"}}).json()
         db = SessionLocal()
         try:
@@ -95,7 +97,8 @@ def test_business_module_readonly_run_no_quality_result(monkeypatch):
         try:
             run = db.query(Run).filter_by(task_run_id=tr_id).first()
             assert run.status == "succeeded", run.error
-            assert (run.output or {}).get("answer")
+            assert (run.output or {}).get("summary")
+            assert (run.output or {}).get("service_type_code") == "REPAIR"
             # 只读 business Module 不写 QualityResult
             assert db.query(QualityResult).filter_by(run_id=run.id).count() == 0
         finally:

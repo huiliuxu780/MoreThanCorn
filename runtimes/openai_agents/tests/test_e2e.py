@@ -358,11 +358,11 @@ def test_e2e_request_tools_constrain_stage_tools(monkeypatch):
     assert "synthesize" not in seen_stage_tools
 
 
-# ---------- business_analysis_v1（SDD-14 扩展） ----------
+# ---------- business_analysis_v1（SDD-14：通话业务打标，无工具两阶段） ----------
 
 
 class ScriptedBusinessModel(Model):
-    """business_analysis_v1 脚本模型：两阶段工具执行 + 确定性整理调用。"""
+    """business_analysis_v1 打标脚本模型：understand → synthesize，无工具。"""
 
     async def get_response(self, system_instructions, input, model_settings, tools,
                            output_schema, handoffs, tracing, *, previous_response_id=None,
@@ -378,55 +378,25 @@ class ScriptedBusinessModel(Model):
         raise NotImplementedError("streaming disabled in POC")
 
     def _respond(self, payload, tool_outputs):
-        # business 执行阶段为"工具循环 + 代码确定性解析"，无 Phase 2 整理调用。
-        if "plan_results" in payload:  # synthesize 阶段
-            return {"answer": "近 7 日热线接通率均值 86.4%；华东区 88.2% 为最高。"}, None
-        if "plan" in payload:  # 执行阶段工具循环
-            plan = payload["plan"]
-            if tool_outputs == 0:
-                args = ({"metric": "connect_rate"} if plan["kind"] == "metric"
-                        else {"metric": "connect_rate", "dimension": "region"})
-                return None, function_call(plan["tool"], args, f"biz-{plan['id']}")
-            return {"note": f"{plan['id']} 查询完成"}, None
-        return {"question_id": "q1",
-                "plans": [{"kind": "metric", "subject": "connect_rate",
-                           "query": "connect_rate 近 7 日"},
-                          {"kind": "dimension", "subject": "connect_rate×region",
-                           "query": "connect_rate 按 region 拆解 近 7 日"}]}, None
-
-
-def install_business_tools(monkeypatch, record):
-    @function_tool
-    async def metric_query(metric: str, window: str = "", start: str = "", end: str = "") -> str:
-        """Query deterministic metric series."""
-        record.append(("metric_query", metric))
-        return json.dumps({"tool": "metric_query", "version": "1.0.0",
-                           "fixture_dataset": "e2e",
-                           "output": {"known": True, "metric": metric, "unit": "%",
-                                      "window": {"start": "2026-08-27", "end": "2026-09-02"},
-                                      "aggregate": 86.4,
-                                      "points": [{"date": "2026-09-02", "value": 87.1}]}},
-                          ensure_ascii=False)
-
-    @function_tool
-    async def dimension_query(metric: str, dimension: str, window: str = "",
-                              start: str = "", end: str = "") -> str:
-        """Query deterministic dimension breakdown."""
-        record.append(("dimension_query", dimension))
-        return json.dumps({"tool": "dimension_query", "version": "1.0.0",
-                           "fixture_dataset": "e2e",
-                           "output": {"known": True, "metric": metric, "dimension": dimension,
-                                      "unit": "%",
-                                      "window": {"start": "2026-08-27", "end": "2026-09-02"},
-                                      "breakdown": [{"key": "east", "value": 88.2}]}},
-                          ensure_ascii=False)
-
-    catalog = {"metric_query": metric_query, "dimension_query": dimension_query}
-
-    def tooling(self, stage, allowed_tools):
-        return [], [catalog[name] for name in allowed_tools if name in catalog]
-
-    monkeypatch.setattr(OpenAIAgentsStageRunner, "_stage_tooling", tooling)
+        if "understanding" in payload:  # synthesize 阶段
+            return {
+                "service_type_code": "REPAIR",
+                "customer_intents": [
+                    {"intent": "故障报修", "description": "洗衣机甩干异常晃动，要求上门检修"}
+                ],
+                "business_outcome": "pending",
+                "follow_ups": [
+                    {"action": "安排师傅上门检修", "reason": "坐席已承诺上门，需落实"}
+                ],
+                "summary": "客户报修洗衣机甩干异常，坐席受理并承诺安排上门检修。",
+            }, None
+        # understand 阶段
+        return {
+            "customer_needs": ["洗衣机甩干异常晃动，要求上门检修"],
+            "service_scenario": "家电故障报修",
+            "key_events": ["坐席登记故障现象", "坐席承诺安排师傅上门"],
+            "resolution_signals": "已受理报修，等待上门",
+        }, None
 
 
 def test_e2e_business_workflow_through_adapter(monkeypatch):
@@ -442,17 +412,14 @@ def test_e2e_business_workflow_through_adapter(monkeypatch):
             version="1.0.0",
             instructions="只读业务分析。",
             model=ModelSpec(provider="openai-compatible", model="qwen3.8-max"),
-            tools=[ToolRef(name="metric_query", version="1.0.0"),
-                   ToolRef(name="dimension_query", version="1.0.0")],
+            tools=[],
             output_schema=output_schema,
         ),
-        input={"question_id": "q1", "question": "近 7 日热线接通率是多少？",
-               "window": "last_7d"},
+        input={"sample_id": "sample-001", "call_id": "acid-1",
+               "conversation": [{"sequence": 0, "speaker": "customer", "text": "洗衣机坏了"}]},
         context=ExecutionContext(metadata={"workflowMode": "business_analysis_v1"}),
         timeout_seconds=300,
     )
-    record: list[tuple[str, str]] = []
-    install_business_tools(monkeypatch, record)
     model = ScriptedBusinessModel()
     import app.business_workflow as business_workflow
     monkeypatch.setattr(business_workflow, "build_chat_model", lambda req: model)
@@ -461,13 +428,14 @@ def test_e2e_business_workflow_through_adapter(monkeypatch):
     assert run.status is RunStatus.SUCCEEDED
     from jsonschema import Draft202012Validator
     Draft202012Validator(output_schema).validate(run.output)
-    # 确定性投影：数值/引用/置信度不来自 LLM
-    assert run.output["question_id"] == "q1"
-    assert run.output["metrics"] == [{"metric": "connect_rate", "value": 86.4, "unit": "%"}]
-    assert {c["source"] for c in run.output["citations"]} == {"metric_query", "dimension_query"}
-    assert run.output["confidence"] == 0.9
-    # 每计划恰好一次真实工具调用
-    names = [name for name, _ in record]
-    assert names.count("metric_query") == 1
-    assert names.count("dimension_query") == 1
-    assert run.usage.tool_calls == 2
+    # sample_id 由代码确定性注入；打标内容来自脚本模型
+    assert run.output["sample_id"] == "sample-001"
+    assert run.output["service_type_code"] == "REPAIR"
+    assert run.output["business_outcome"] == "pending"
+    assert run.output["customer_intents"][0]["intent"] == "故障报修"
+    assert run.output["follow_ups"][0]["action"] == "安排师傅上门检修"
+    # 打标为纯通话理解，无工具调用
+    assert run.usage.tool_calls == 0
+    # 两阶段事件齐全
+    stages = [e.name for e in run.trace if e.type == "workflow/stage_completed"]
+    assert stages == ["understand", "synthesize"]

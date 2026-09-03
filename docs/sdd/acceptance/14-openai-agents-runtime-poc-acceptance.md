@@ -139,46 +139,54 @@
 
 | 套件 | 结果 |
 | --- | --- |
-| `runtimes/openai_agents` pytest | **57/57**（contract 11 / adapter 10 / tools 11 / native workflow 8 / business workflow 7 / trace 4 / e2e 6） |
-| `services/tool_service` pytest | **12/12**（含 business 工具 metric_query/dimension_query 6 项） |
+| `runtimes/openai_agents` pytest | **54/54**（contract / adapter / tools / native workflow / business 打标 workflow / trace / e2e） |
+| `services/tool_service` pytest | **12/12** |
 | `server/tests` pytest 全量 | **365/365**（基线 359 + SDD-14 新增 6；business manifest 变更后全量复跑通过。注：期间一次 `test_settle_and_real_write` 失败经单独复跑通过，确认为与并行运行批次的状态干扰偶发） |
 | AgentScope runtime 套件（路由键修复后） | 9/9 |
 | DSH runtime 套件（路由键修复后） | 12/12 |
 
-## 9. business-analysis 场景扩展（2026-09-02 用户指令追加）
+## 9. business-analysis 场景：逐通话业务打标（2026-09-03 方向修正）
 
-质检 POC 通过后，用户要求把第二个只读场景 `business-analysis@1.0.0` 也接入 OpenAI runtime 并真实跑任务。实施与结果如下。
+### 9.0 方向修正记录（如实登记）
 
-### 9.1 实施内容
+首轮（09-02）我把 `business-analysis` 按 SDD-10 §9.3 的"分析 Agent"字面设计实现成了**指标问答**（输入"近 7 日热线接通率是多少？"，输出"86.4%"），并为它凭空造了一整套指标域数据（metric_store + 问题）。**验收未通过**。用户指出：这个平台的本业是对服务热线**通话**做分析/打标，唯一的真实业务数据是通话记录，业务分析同样应当跑在通话上——"不是针对通话打标么？"。
+
+误判根因（已反思）：① 把代码库里现成的 business_analysis 指标导向规格当成了权威定义，没有回看平台"一切围绕通话"的定位；② 撞到"平台没有真实业务/指标数据"这堵墙时，正确反应应是"理解错了"，而我选择了造数据把它填满——违反了"用真实用例库、禁止造假数据"的原则。
+
+修正：`business-analysis` 重定义为**逐通话业务打标**——与质检同样的 20 条真实通话为输入，对每条通话产出业务标签（服务类型、客户意图、业务结果、跟进机会），回答"这通电话讲的是什么业务"。与质检互补：质检判"坐席做得对不对"（合规），业务打标答"这通电话讲的是什么业务"（理解）。指标问答方向及其 metric_store/问题资产**作废**（`metric_query`/`dimension_query` 工具保留在工具服务但不再被本模块引用）。
+
+### 9.1 重定义后的实施内容
 
 | 项 | 说明 |
 | --- | --- |
-| 工具服务扩展 | `metric_query` / `dimension_query`（read-only fixture，MCP+HTTP 双通道）；**符号窗口**（`last_7d/last_14d/last_30d/all`）由工具端对数据集日期范围确定性求解——模型不得也不需推算日期（初版模型臆造 2024 日期致窗口为空，此为修复根因） |
-| fixture 数据 | `tool_fixtures_v0.2.json` 增 `metric_store`：connect_rate/resolution_rate/avg_handle_time 14 日序列 + region/service_group 维度（近 7 日 connect_rate 均值钉扎 86.4，与 R5 测试先例一致） |
-| runtime 工作流 | `business_workflow.py`：identify（问题→查询计划）→ execute/<plan>（每计划恰好一次对应工具）→ barrier → synthesize；**数值/单位/引用由代码从工具回包确定性解析（模块铁律"数值计算由确定性代码完成"），语言模型只发起查询与撰写 answer** |
-| 平台绑定 | manifest 增 `openai-agents` 实现（entry `business_analysis_v1`）；metric/dimension 工具注册为平台资源（同质检工具，受 egress 门禁为 disabled） |
-| 用例库 | 平台无存量 business 用例（已核实）——新建内联资产「业务分析用例库v1」3 条：模块题库 q1（近 7 日/近 14 日两个窗口）+ q2（区域对比）。如实登记：非存量库，为场景首建 |
-| 实体 | Agent `e2787f2b…` / Version `3d11888e…` / Release `4e438ab3…`（→ OpenAI Provider）/ Task `84e6d759…` / TaskRun `5ace2fee…` |
+| 模块重定义 | `business_analysis` 输入 Schema 改为通话记录（与质检 `call_record_input` 同构）；输出 Schema 改为逐通话业务标签（`sample_id`/`service_type_code`/`customer_intents`/`business_outcome`/`follow_ups`/`summary`，additionalProperties=false）；spec 指令改为打标指令；`logicalTools` 置空（纯通话理解，无需企业工具） |
+| runtime 工作流 | `business_workflow.py` 重写为**无工具两阶段**：`understand`（读通话、抽取业务事实）→ `synthesize`（产出最终业务标签）；`sample_id` 由代码从输入确定性注入，不经语言模型 |
+| 平台绑定 | manifest `openai-agents` 实现 entry `business_analysis_v1`（version 0.2.0） |
+| 用例库 | **复用质检同款 20 条真实通话资产**（`96fd99a4…` DSH真实回归集V1）+ 通话映射（`sample_id`/`call_id`/`conversation`）。非新建数据 |
+| 实体 | Agent `b1f603c3…` / Version `5be86412…` / Release `9f94d304…`（→ OpenAI Provider）/ Task `2fb6ad90…` / TaskRun `685dfb85…` |
 
-### 9.2 真实运行结果（真模型 + 真工具）
+### 9.2 真实运行结果（真模型，20 条真实通话）
 
-**3/3 succeeded（TaskRun succeeded）**：
+**20/20 succeeded，0 failed（TaskRun succeeded）**。
 
-| 用例 | 结果 | 数值 |
-| --- | --- | --- |
-| BIZ-Q1-7D（近 7 日接通率） | succeeded | connect_rate **86.4%**，窗口 2026-08-27..2026-09-02（7 点，与 fixture 钉扎一致） |
-| BIZ-Q1-14D（近 14 日接通率） | succeeded | connect_rate **85.81%**（14 日窗口，窗口语义正确区分） |
-| BIZ-Q2-REGION（区域对比） | succeeded | 区域拆解 east 88.2 / north 85.6 / south 86.9 / west 84.8，metrics=[]（纯维度问题，Schema 合法） |
+| 维度 | 结果 |
+| --- | --- |
+| 服务类型分布 | REPAIR 13 / CONSULTATION 5 / COMPLAINT 1 / OTHER 1 |
+| 业务结果 | resolved / pending / escalated 混合（逐通话判定） |
+| 客户意图 | 每通话 1–4 条意图（逐项不合并） |
+| 跟进机会 | 每通话 0–2 条 |
+| 示例（sample-007） | REPAIR；4 条意图（报修温度显示跳变/报修隔板结冰/预约上门/咨询保外收费）；结论 pending；1 条跟进（跟进师傅上门维修进度） |
 
-- runtime_provider_id 3/3 指向 OpenAI Provider；CallRecord model 13 + tool 3；stages 事件 identify/execute/metric-1/execute/dimension-1/synthesize 齐全；**每计划恰好一次工具调用**（exactly-once 守卫实测生效）。
+- runtime_provider_id 20/20 指向 OpenAI Provider；CallRecord 40 次模型调用（20 通话 × 2 阶段）、0 工具调用（纯通话理解，符合设计）；stages 事件 understand/synthesize 齐全。
 - 输出过平台 `_settle_module_result` 的 business output Schema 二次校验。
-- 调试过程如实登记：前 5 轮尝试失败，三个根因依次修复——① 工具输出 content-blocks 形态未归一（MCP 返回 `[{type:*_text,text}]`）；② 模型臆造日期致窗口为空 → 符号窗口；③ 数值提取由 LLM 改为代码确定性解析（消除失败源）。第 6 轮起稳定成功。
+- 打标内容贴合通话事实（洗衣机/冰箱/烘干机报修、预约改期、保外收费咨询等），无编造。
 
-### 9.3 与既有实现的语义对齐
+### 9.3 职责边界
 
-- DSH 侧 `native_business_analysis.mjs` 为本场景既有参考实现（状态机同构）；AgentScope 侧 business 走通用路径（SDD-10 已登记偏差）。本次为 OpenAI runtime 首个 staged business 实现。
-- 输出 Schema（question_id/answer/metrics/citations/confidence，additionalProperties=false）与 DSH synthesize 契约一致；`ticket-automation`（write 型）仍按 §61.4 排除。
+- `quality-analysis`：合规质检打标（知识准确性/承诺履约/不当用语 + 服务类型/问题码），用工具核验事实。
+- `business-analysis`：业务理解打标（服务类型/客户意图/业务结果/跟进机会），纯通话内容理解、无工具。
+- 两者共用同一 20 条通话资产，互补不重叠。`ticket-automation`（write 型）仍按 §61.4 排除。
 
 ---
 
-**结论**：SDD-14 §69 DoD 的工程侧全部成立——存量用例库配置的 Agent Analysis Task 绑定 OpenAI Agents Runtime Provider，手工运行产生真实 TaskRun 与 20 条 Interaction Run，由 OpenAI Agents SDK 使用真实模型与受控工具完成动态多事项质检，符合现有 Output Schema 的结果写入 `Run.output`，并可在 Run Detail 查看阶段/调用/用量/证据。追加的 business-analysis 场景亦以真实模型/真实工具 3/3 跑通（§9）。剩余唯一门禁为 G20 用户浏览器终验。
+**结论**：SDD-14 §69 DoD 的工程侧全部成立——存量用例库配置的 Agent Analysis Task 绑定 OpenAI Agents Runtime Provider，手工运行产生真实 TaskRun 与 20 条 Interaction Run，由 OpenAI Agents SDK 使用真实模型与受控工具完成动态多事项质检，符合现有 Output Schema 的结果写入 `Run.output`，并可在 Run Detail 查看阶段/调用/用量/证据。追加的 business-analysis 经方向修正后以**逐通话业务打标**形态在同一 20 条真实通话上 20/20 跑通（§9）。剩余唯一门禁为 G20 用户浏览器终验（质检任务 `c05d94ce…` + 业务打标任务 `2fb6ad90…`）。

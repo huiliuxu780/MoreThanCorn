@@ -1,13 +1,13 @@
-"""OAI-R2 扩展：business_analysis_v1 工作流测试（SDD-14 business 场景）。
+"""OAI-R2 扩展：business_analysis_v1 通话业务打标工作流测试（SDD-14）。
 
-覆盖：五阶段编排、每计划恰好一次工具调用守卫、数值由代码从工具回包确定性解析
-（不经语言模型）、失败不抢跑 synthesize。
+business-analysis = 对一通通话做只读业务理解与逐通话打标（服务类型/客户意图/
+业务结果/跟进机会）。无工具两阶段：understand → synthesize。sample_id 由代码
+从输入确定性注入，不经语言模型。
 """
 
 import asyncio
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 from jsonschema import Draft202012Validator
@@ -19,7 +19,7 @@ from quality_runtime_contract import (
     ToolRef,
 )
 
-from app.business_workflow import BusinessAnalysisWorkflow
+from app.business_workflow import BusinessTaggingWorkflow
 from app.native_workflow import StageResult
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -28,54 +28,40 @@ PLATFORM_SCHEMA = (
     / "output.schema.json"
 )
 
+UNDERSTANDING = {
+    "customer_needs": ["洗衣机甩干异常晃动，要求上门检修"],
+    "service_scenario": "家电故障报修",
+    "key_events": ["坐席登记故障现象", "坐席承诺安排师傅上门"],
+    "resolution_signals": "已受理报修，等待上门，通话结束时尚未解决",
+}
+
+TAGS = {
+    "service_type_code": "REPAIR",
+    "customer_intents": [
+        {"intent": "故障报修", "description": "洗衣机甩干异常晃动，要求上门检修"}
+    ],
+    "business_outcome": "pending",
+    "follow_ups": [
+        {"action": "安排师傅上门检修", "reason": "坐席已承诺上门，需落实"}
+    ],
+    "summary": "客户报修洗衣机甩干异常，坐席受理并承诺安排上门检修。",
+}
+
 
 class FakeRunner:
-    """identify/synthesize 走 run()；执行阶段走 run_tool_loop() 返回工具回包。"""
-
-    def __init__(self, *, extra_tool_calls: int = 0, aggregate=86.4, known: bool = True):
+    def __init__(self, *, understanding=None, tags=None):
         self.calls = []
-        self.extra_tool_calls = extra_tool_calls
-        self.aggregate = aggregate
-        self.known = known
+        self.understanding = understanding or UNDERSTANDING
+        self.tags = tags or TAGS
 
     async def run(self, **kwargs):
         stage = kwargs["stage"]
         self.calls.append({"stage": stage, "allowed_tools": kwargs["allowed_tools"]})
-        if stage == "identify":
-            output = {
-                "question_id": "q1",
-                "plans": [
-                    {"kind": "metric", "subject": "connect_rate",
-                     "query": "connect_rate 近 7 日"},
-                    {"kind": "dimension", "subject": "connect_rate×region",
-                     "query": "connect_rate 按 region 拆解 近 7 日"},
-                ],
-            }
-            return StageResult(output=output, trace=[])
+        if stage == "understand":
+            return StageResult(output=self.understanding, trace=[])
         if stage == "synthesize":
-            return StageResult(output={"answer": "近 7 日热线接通率均值 86.4%，华东区最高。"},
-                               trace=[])
+            return StageResult(output=self.tags, trace=[])
         raise AssertionError(stage)
-
-    async def run_tool_loop(self, *, stage, instructions, payload, allowed_tools):
-        self.calls.append({"stage": stage, "allowed_tools": allowed_tools})
-        plan = payload["plan"]
-        tool = plan["tool"]
-        if plan["kind"] == "metric":
-            output = {"known": self.known, "metric": "connect_rate", "unit": "%",
-                      "window": {"start": "2026-08-27", "end": "2026-09-02"},
-                      "aggregate": self.aggregate,
-                      "points": [{"date": "2026-09-02", "value": 87.1}]}
-        else:
-            output = {"known": self.known, "metric": "connect_rate", "dimension": "region",
-                      "unit": "%", "window": {"start": "2026-08-27", "end": "2026-09-02"},
-                      "breakdown": [{"key": "east", "value": 88.2}]}
-        transcript = [{"tool": tool, "arguments": "{}",
-                       "result": json.dumps({"tool": tool, "output": output},
-                                            ensure_ascii=False)}]
-        transcript += [{"tool": tool, "arguments": "{}", "result": ""}
-                       for _ in range(self.extra_tool_calls)]
-        return SimpleNamespace(), transcript, ""
 
 
 def make_request():
@@ -87,87 +73,50 @@ def make_request():
             version="1.0.0",
             instructions="只读业务分析。",
             model=ModelSpec(provider="openai-compatible", model="fake"),
-            tools=[ToolRef(name="metric_query", version="1.0.0"),
-                   ToolRef(name="dimension_query", version="1.0.0")],
+            tools=[],
             output_schema=json.loads(PLATFORM_SCHEMA.read_text(encoding="utf-8")),
         ),
-        input={"question_id": "q1", "question": "近 7 日热线接通率是多少？",
-               "window": "last_7d"},
+        input={"sample_id": "sample-001", "call_id": "acid-1",
+               "conversation": [{"sequence": 0, "speaker": "customer", "text": "洗衣机坏了"}]},
         context=ExecutionContext(metadata={"workflowMode": "business_analysis_v1"}),
     )
 
 
-def test_business_workflow_fans_out_with_per_plan_tool_policies():
+def test_business_tagging_workflow_stages_and_schema():
     runner = FakeRunner()
-    output, trace = asyncio.run(BusinessAnalysisWorkflow(runner).execute(make_request()))
+    output, trace = asyncio.run(BusinessTaggingWorkflow(runner).execute(make_request()))
     Draft202012Validator(json.loads(PLATFORM_SCHEMA.read_text(encoding="utf-8"))).validate(output)
 
     assert [event.name for event in trace if event.type == "workflow/stage_completed"] == [
-        "identify", "plan", "execute", "barrier", "synthesize",
+        "understand", "synthesize",
     ]
-    policies = {call["stage"]: call["allowed_tools"] for call in runner.calls}
-    assert policies["identify"] == []
-    assert policies["execute/metric-1"] == ["metric_query"]
-    assert policies["execute/dimension-2"] == ["dimension_query"]
-    assert policies["synthesize"] == []
+    # 打标为纯通话理解，两阶段均无工具
+    assert all(call["allowed_tools"] == [] for call in runner.calls)
+    assert [call["stage"] for call in runner.calls] == ["understand", "synthesize"]
+
+    assert output["service_type_code"] == "REPAIR"
+    assert output["business_outcome"] == "pending"
+    assert output["customer_intents"][0]["intent"] == "故障报修"
+    assert output["follow_ups"][0]["action"] == "安排师傅上门检修"
+    assert "洗衣机" in output["summary"]
 
 
-def test_business_numeric_projection_is_deterministic_not_llm():
+def test_business_output_sample_id_is_deterministic():
     runner = FakeRunner()
-    output, _ = asyncio.run(BusinessAnalysisWorkflow(runner).execute(make_request()))
-    assert output["question_id"] == "q1"
-    # 数值/单位/引用来自代码对工具回包的解析，不是语言模型产物
-    assert output["metrics"] == [{"metric": "connect_rate", "value": 86.4, "unit": "%"}]
-    citations = output["citations"]
-    assert {c["source"] for c in citations} == {"metric_query", "dimension_query"}
-    metric_citation = next(c for c in citations if c["source"] == "metric_query")
-    assert metric_citation["reference"] == "metric:connect_rate:2026-08-27..2026-09-02"
-    assert output["confidence"] == 0.9
-    assert "86.4" in output["answer"]  # synthesize 文本（FakeRunner 脚本）引用数值
+    output, _ = asyncio.run(BusinessTaggingWorkflow(runner).execute(make_request()))
+    # sample_id 来自输入（代码注入），不依赖语言模型
+    assert output["sample_id"] == "sample-001"
 
 
-def test_plan_tool_called_twice_is_rejected():
-    runner = FakeRunner(extra_tool_calls=1)  # 每计划两次调用 → 违反恰好一次
-    with pytest.raises(ValueError):
-        asyncio.run(BusinessAnalysisWorkflow(runner).execute(make_request()))
-    # 重试一次后仍失败 → 未进入 synthesize
-    assert "synthesize" not in [call["stage"] for call in runner.calls]
-
-
-def test_metric_plan_requires_numeric_aggregate():
-    runner = FakeRunner(aggregate=None)  # 工具回包无聚合值 → 数值守卫拒绝
-    with pytest.raises(ValueError):
-        asyncio.run(BusinessAnalysisWorkflow(runner).execute(make_request()))
-    assert "synthesize" not in [call["stage"] for call in runner.calls]
-
-
-def test_unknown_metric_fails_honestly():
-    runner = FakeRunner(known=False)  # 工具如实报告未知指标 → 不得编造
-    with pytest.raises(ValueError):
-        asyncio.run(BusinessAnalysisWorkflow(runner).execute(make_request()))
-
-
-def test_tool_output_normalization_handles_mcp_content_blocks():
-    from app.native_workflow import _normalize_tool_output
-
-    # 字符串原样
-    assert _normalize_tool_output('{"a":1}') == '{"a":1}'
-    # MCP 内容块（dict 形态）
-    blocks = [{"type": "input_text", "text": '{"tool":"metric_query","output":{"aggregate":86.4}}'}]
-    assert "86.4" in _normalize_tool_output(blocks)
-    # 对象形态（.text）
-    assert _normalize_tool_output(SimpleNamespace(text="abc")) == "abc"
-    # 对象形态（.content 递归）
-    assert "86.4" in _normalize_tool_output(SimpleNamespace(content=blocks))
-    assert _normalize_tool_output(None) == ""
-
-
-def test_identification_requires_at_least_one_plan():
-    class NoPlanRunner(FakeRunner):
-        async def run(self, **kwargs):
-            if kwargs["stage"] == "identify":
-                return StageResult(output={"question_id": "q1", "plans": []}, trace=[])
-            raise AssertionError(kwargs["stage"])
-
+def test_business_tags_missing_summary_rejected():
+    bad_tags = {k: v for k, v in TAGS.items() if k != "summary"}
+    runner = FakeRunner(tags=bad_tags)
     with pytest.raises(Exception):
-        asyncio.run(BusinessAnalysisWorkflow(NoPlanRunner()).execute(make_request()))
+        asyncio.run(BusinessTaggingWorkflow(runner).execute(make_request()))
+
+
+def test_business_outcome_invalid_enum_rejected():
+    bad_tags = {**TAGS, "business_outcome": "not-a-valid-outcome"}
+    runner = FakeRunner(tags=bad_tags)
+    with pytest.raises(Exception):
+        asyncio.run(BusinessTaggingWorkflow(runner).execute(make_request()))
