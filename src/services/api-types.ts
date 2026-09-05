@@ -87,7 +87,42 @@ export interface TaskVersionDTO {
   createdAt: string
 }
 
-export interface AnalysisTaskDTO {
+/** MTC-002A：自主任务状态（产品名自主任务；持久层仍为 AnalysisTask）。 */
+export type AutomationDefinitionStatus = "draft" | "active" | "paused" | "archived"
+
+export interface AutomationInputConfigDTO {
+  dataAssetId: string
+  dataDefinitionVersionId?: string | null
+  scope?: Record<string, unknown>
+  sampling?: Record<string, unknown>
+  dataWindow?: Record<string, unknown>
+  inputMapping?: Record<string, string>
+}
+
+export interface AutomationScheduleConfigDTO {
+  id: string
+  name?: string | null
+  cron: string
+  timezone: string
+  enabled: boolean
+  nextRunAt: string | null
+}
+
+export interface AutomationExecutionConfigDTO {
+  executionTarget?: ExecutionTargetDTO | null
+  outputMode?: string | null
+  outputAssetId?: string | null
+  outputWriteMode?: string | null
+  outputFailurePolicy?: string | null
+  outputKeyFields?: string[]
+  outputMapping?: Record<string, string>
+}
+
+/**
+ * MTC-002A：自主任务领域 DTO（/api/automations canonical 形状）。
+ * 前半为旧 /api/tasks 兼容字段，后半为 canonical 新增字段（旧接口不返回，故可选）。
+ */
+export interface AutomationDefinitionDTO {
   id: string
   name: string
   description: string
@@ -95,10 +130,22 @@ export interface AnalysisTaskDTO {
   workflowVersionPolicy: WorkflowVersionPolicy | string
   dataAssetId: string
   dataDefinitionId: string | null
-  status: TaskStatus | string
+  status: TaskStatus | AutomationDefinitionStatus | string
   taskVersion: TaskVersionDTO | null
   executionTarget?: ExecutionTargetDTO | null
+  agentId?: string | null
+  workflowVersionId?: string | null
+  inputConfig?: AutomationInputConfigDTO | null
+  scheduleConfig?: AutomationScheduleConfigDTO | null
+  executionConfig?: AutomationExecutionConfigDTO | null
+  createdAt?: string | null
+  updatedAt?: string | null
+  createdBy?: string
+  version?: number | null
 }
+
+/** @deprecated Use AutomationDefinitionDTO（MTC-002A：产品名收敛为自主任务） */
+export type AnalysisTaskDTO = AutomationDefinitionDTO
 
 export interface TaskRunDTO {
   id: string

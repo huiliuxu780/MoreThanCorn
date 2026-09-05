@@ -884,7 +884,7 @@ export async function realAgentAnalysis(): Promise<AgentAnalysisData> {
 
 /* ---------- 业务深化适配器（09 P0-B4：显式 DTO，去 agentId 承载语义） ---------- */
 import type {
-  AnalysisTaskDTO, QualityResultDetailDTO, ResultRuleDetailDTO, ResultRuleSetDTO,
+  AnalysisTaskDTO, AutomationDefinitionDTO, QualityResultDetailDTO, ResultRuleDetailDTO, ResultRuleSetDTO,
   ResultRuleVersionDTO, TaskRunDTO, TaskRunResultDTO, TaskRunRunDTO, TaskVersionDTO,
 } from "@/services/api-types"
 import type { DataAsset } from "@/domain/types"
@@ -961,7 +961,28 @@ export const bizApi = {
   asset: (id: string) => req<{ id: string; name: string; rows: unknown[]; revision: number }>(`/api/data-assets/${id}`),
   appendRows: (id: string, rows: unknown[]) =>
     req<{ id: string; rows: number; revision: number }>(`/api/data-assets/${id}/rows`, { method: "POST", body: JSON.stringify({ rows }) }),
+  /* ---------- MTC-002A：自主任务 canonical API（兼容层；与 /api/tasks 同表同数据） ---------- */
+  automations: {
+    list: (page = 1, pageSize = 50) =>
+      req<{ items: AutomationDefinitionDTO[]; total: number; page: number; pageSize: number }>(
+        `/api/automations?page=${page}&pageSize=${pageSize}`),
+    get: (id: string) => req<AutomationDefinitionDTO>(`/api/automations/${id}`),
+    create: (body: CreateTaskPayload) =>
+      req<AutomationDefinitionDTO>("/api/automations", { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, body: Partial<CreateTaskPayload> & { note?: string }) =>
+      req<AutomationDefinitionDTO>(`/api/automations/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    startRun: (id: string, idempotencyKey?: string) =>
+      req<StartTaskRunResponse>(`/api/automations/${id}/runs`, {
+        method: "POST", body: "{}",
+        headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {},
+      }),
+    runs: (id: string) => req<{ items: TaskRunDTO[] }>(`/api/automations/${id}/runs`).then((r) => r.items),
+    schedules: (id: string) =>
+      req<{ items: { id: string; name: string; cron: string; timezone: string; enabled: boolean; nextRunAt: string | null; lastRanAt: string | null; failedCount: number }[] }>(
+        `/api/automations/${id}/schedules`).then((r) => r.items),
+  },
   /* ---------- 任务：09 §10.1 创建即返回已解析 TaskVersion ---------- */
+  /** @deprecated Use bizApi.automations（MTC-002A 兼容层；旧 API 保留，后续任务收敛） */
   tasks: () => req<{ items: AnalysisTaskDTO[] }>("/api/tasks").then((r) => r.items),
   task: (id: string) => req<AnalysisTaskDTO>(`/api/tasks/${id}`),
   taskVersions: (id: string) => req<{ items: TaskVersionDTO[] }>(`/api/tasks/${id}/versions`).then((r) => r.items),

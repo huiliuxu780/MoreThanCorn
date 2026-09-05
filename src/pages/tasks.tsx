@@ -78,13 +78,13 @@ export default function TasksPage() {
   return (
     <PageContainer wide className="space-y-3">
       <PageHeader
-        title="分析任务"
-        description="管理质检任务的数据范围、执行周期和评价 Agent"
+        title="自主任务"
+        description="管理自主任务的数据范围、执行周期和评价 Agent"
         actions={
           canManage ? (
             <Button asChild>
               <Link to="/autonomous-tasks/new">
-                <Plus className="size-4" /> 新建任务
+                <Plus className="size-4" /> 新建自主任务
               </Link>
             </Button>
           ) : null
@@ -92,7 +92,7 @@ export default function TasksPage() {
       />
 
       <FilterBar>
-        <SearchField value={searchInput} onChange={setSearchInput} placeholder="搜索任务..." />
+        <SearchField value={searchInput} onChange={setSearchInput} placeholder="搜索自主任务..." />
         <Select value={filters.status ?? "__all__"} onValueChange={(v) => setFilter("status", v)}>
           <SelectTrigger className="h-9 w-28"><SelectValue placeholder="状态" /></SelectTrigger>
           <SelectContent>
@@ -123,7 +123,7 @@ export default function TasksPage() {
       </FilterBar>
 
       {error ? (
-        <ErrorState title="分析任务加载失败" onRetry={retry} />
+        <ErrorState title="自主任务加载失败" onRetry={retry} />
       ) : loading ? (
         <TableFrame><TableSkeleton rows={6} columns={6} /></TableFrame>
       ) : !data || filteredItems.length === 0 ? (
@@ -131,9 +131,9 @@ export default function TasksPage() {
           <FilteredEmptyState onClear={() => { setSearchInput(""); update({ filters: "", search: "" }, true) }} />
         ) : (
           <EmptyState
-            title="暂无分析任务"
-            description="创建第一个分析任务，开始对生产数据执行质量评价"
-            action={canManage ? <Button asChild><Link to="/autonomous-tasks/new">新建任务</Link></Button> : null}
+            title="暂无自主任务"
+            description="创建第一个自主任务，开始对生产数据执行质量评价"
+            action={canManage ? <Button asChild><Link to="/autonomous-tasks/new">新建自主任务</Link></Button> : null}
           />
         )
       ) : (

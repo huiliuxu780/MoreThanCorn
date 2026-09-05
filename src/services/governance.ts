@@ -89,7 +89,7 @@ export const RESOURCE_TYPE_LABEL: Record<GovernanceResourceType, string> = {
   workflow: "工作流",
   rule: "结果规则",
   definition: "数据定义",
-  task: "分析任务",
+  task: "自主任务",
 }
 
 // ---------- 纯函数：Diff 摘要 ----------

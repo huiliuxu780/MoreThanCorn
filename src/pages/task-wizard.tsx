@@ -64,9 +64,9 @@ export default function TaskWizardPage() {
     <PageContainer className="max-w-3xl space-y-6">
       <div>
         <Button variant="ghost" size="sm" className="gap-1 px-2" onClick={() => navigate("/autonomous-tasks")}>
-          <ArrowLeft className="size-4" /> 分析任务
+          <ArrowLeft className="size-4" /> 自主任务
         </Button>
-        <PageHeader className="mt-2" title="新建分析任务" description="按依赖顺序完成任务配置" />
+        <PageHeader className="mt-2" title="新建自主任务" description="按依赖顺序完成任务配置" />
       </div>
 
       {/* Step Indicator */}
@@ -162,10 +162,10 @@ export default function TaskWizardPage() {
                 const sch = buildTaskSchedule(form)
                 if (sch) {
                   await bizApi.taskSchedule(t.id, sch.cron, sch.timezone).catch((e) => {
-                    toast.warning(`任务已创建，但调度创建失败：${(e as Error).message}`)
+                    toast.warning(`自主任务已创建，但调度创建失败：${(e as Error).message}`)
                   })
                 }
-                toast.success(`任务已创建（配置版本 V${t.taskVersion.versionNo}）`)
+                toast.success(`自主任务已创建（配置版本 V${t.taskVersion.versionNo}）`)
                 navigate(`/autonomous-tasks/${t.id}`)
               } catch (e) {
                 toast.error(`创建失败：${(e as Error).message}`)

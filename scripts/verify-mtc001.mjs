@@ -183,7 +183,7 @@ for (const p of ["/resources", "/settings", "/settings?section=general"]) {
   const clean = await page.evaluate(() => !document.body.innerText.includes("MTC-") && !document.body.innerText.includes("后续任务"))
   check(`产品文案无内部编号 ${p}`, clean)
 }
-check("设置占位为中性措辞", await page.evaluate(() => document.body.innerText.includes("该功能尚未启用")))
+check("设置占位为中性措辞", await page.evaluate(() => document.body.innerText.includes("功能尚未启用") && !document.body.innerText.includes("该功能尚未启用")))
 
 /* ---------- 7. 1280 / 768 恒 80px ---------- */
 for (const vw of [1280, 768]) {

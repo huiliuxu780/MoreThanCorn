@@ -126,7 +126,7 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
         title={domain === "ai" ? "AI Resources" : "Data Resources"}
         description={domain === "ai"
           ? "管理 Agent 执行过程中使用的 AI 能力资源。引用链：Agent → Workflow → Version → Node Config → Resource。"
-          : "管理分析任务与 Evaluation Agent 使用的数据资源。数据链：Datasource → Data Asset → Data Definition → Analysis Task。"}
+          : "管理自主任务与 Evaluation Agent 使用的数据资源。数据链：Datasource → Data Asset → Data Definition → 自主任务。"}
         actions={
           isProviders ? undefined : (
             <Button onClick={() => navigate(domain === "ai" ? "/config/ai-resources/new" : "/config/data-resources/new")}>

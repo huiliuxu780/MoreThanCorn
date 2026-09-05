@@ -80,7 +80,7 @@ export default function TaskEditPage() {
         <Button variant="ghost" size="sm" className="gap-1 px-2" onClick={() => navigate(`/autonomous-tasks/${task.id}`)}>
           <ArrowLeft className="size-4" /> {task.name}
         </Button>
-        <PageHeader className="mt-2" title="编辑任务" description="单页表单：修改某一项配置时不强迫重复走向导" />
+        <PageHeader className="mt-2" title="编辑自主任务" description="单页表单：修改某一项配置时不强迫重复走向导" />
       </div>
 
       <div className="space-y-6 rounded-lg border bg-card p-5">

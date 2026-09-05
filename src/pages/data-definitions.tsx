@@ -62,7 +62,7 @@ export default function DataDefinitionsPage() {
       {loading ? (
         <TableFrame><TableSkeleton rows={5} columns={6} /></TableFrame>
       ) : items.length === 0 ? (
-        <EmptyState title="暂无数据定义" description="基于 Data Asset 创建字段语义定义，供分析任务选择" />
+        <EmptyState title="暂无数据定义" description="基于 Data Asset 创建字段语义定义，供自主任务选择" />
       ) : (
         <TableFrame>
           <Table>

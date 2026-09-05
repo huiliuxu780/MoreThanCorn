@@ -46,7 +46,7 @@ export default function TaskDetailPage() {
   const canManage = rbac.can("task.manage")
   const isActive = task?.status === "active"
 
-  if (error) return <PageContainer><ErrorState title="任务加载失败" onRetry={retry} /></PageContainer>
+  if (error) return <PageContainer><ErrorState title="自主任务加载失败" onRetry={retry} /></PageContainer>
   if (loading || !task) return <PageContainer><TableSkeleton rows={6} columns={6} /></PageContainer>
 
   const version = task.taskVersion
@@ -56,7 +56,7 @@ export default function TaskDetailPage() {
     <PageContainer wide className="space-y-5">
       <div>
         <Button variant="ghost" size="sm" className="gap-1 px-2" onClick={() => navigate("/autonomous-tasks")}>
-          <ArrowLeft className="size-4" /> 分析任务
+          <ArrowLeft className="size-4" /> 自主任务
         </Button>
         <PageHeader
           className="mt-2"
@@ -92,7 +92,7 @@ export default function TaskDetailPage() {
                   onClick={async () => {
                     try {
                       const r = await bizApi.setTaskStatus(task.id, isActive ? "paused" : "active")
-                      toast.success(r.status === "active" ? "任务已启用" : "任务已暂停：不再创建新的批次（INV-10），已运行批次不受影响")
+                      toast.success(r.status === "active" ? "自主任务已启用" : "自主任务已暂停：不再创建新的批次（INV-10），已运行批次不受影响")
                       retry()
                     } catch (e) {
                       toast.error(`操作失败：${(e as Error).message}`)
@@ -107,7 +107,7 @@ export default function TaskDetailPage() {
                     <Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(task.id); toast.success("已复制任务 ID") }}>复制任务 ID</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(task.id); toast.success("已复制自主任务 ID") }}>复制任务 ID</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </>
@@ -131,7 +131,7 @@ export default function TaskDetailPage() {
       {/* SDD 13 §10.1：Task 详情只保留最近 5 个批次摘要；完整运行历史在运行中心 */}
       <div className="space-y-2">
         <SectionHeader
-          title="最近批次（TaskRun）"
+          title="运行记录（最近批次）"
           description="每个批次冻结一个 TaskVersion + DataSnapshot；完整历史见运行中心"
           actions={
             <Button variant="outline" size="sm" onClick={() => navigate(`/operations/task-runs?taskId=${task.id}`)}>
