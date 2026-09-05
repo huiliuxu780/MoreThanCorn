@@ -1,21 +1,23 @@
-"""MTC-002B：WorkItemProjection —— 统一任务读模型（只投影，不建表、不双写）。
+"""MTC-002B-R：WorkItemProjection —— 统一任务读模型（只投影，不建表、不双写）。
 
 对象关系：
 
-    AutomationDefinition（analysis_task）
-              │ 手动 / Schedule / API / Backfill
+    AutomationDefinition（analysis_task，自主任务定义）
+              │  手动 / Schedule / API / Backfill
               ▼
-    WorkItem（读模型）←── TaskRun 或 未触发 ScheduleOccurrence
+    WorkItem（读模型，无表）←── TaskRun（一次批次） 或 未触发 ScheduleOccurrence（一次计划）
               │
               ▼
-    Run → QualityResult / ResultDelivery
+    Run（单条交互执行） → QualityResult / ResultDelivery
 
-设计约束：
-- 状态映射唯一入口 ``project_work_item_status``；路由/前端/看板组件禁止各自映射；
-- Delivery 是结果处理的技术状态，不是一级工作状态（见 docs/product-domain/work-item-projection.md）；
-- 关联对象（task/version/agent/workflow/活跃 Run 计数）一律批量加载，禁止逐卡查询；
-- ID 稳定：手动/API/Backfill 的 TaskRun = ``taskrun:{id}``；
-  ScheduleOccurrence 触发前后均为 ``occurrence:{id}``（触发后补 taskRunId）。
+R 轮修正（MTC-002B-ACCEPTANCE P1-02/03/04）：
+- 历史 TaskRun 的执行目标/assignee/has_target 一律读**冻结的** ``task_version_id``；
+  仅未触发 occurrence 使用定义当前版本；
+- ``started/firing`` 却无 TaskRun 的 occurrence 不再静默丢弃 → needs_action
+  （code=OCCURRENCE_RUN_MISSING）；
+- 可下推筛选（日期/automationId/origin/agentId/数据范围）放入 SQL；
+  子 Run 聚合仅针对本次候选 TaskRun ID 集合；
+- 默认排序改为时间倒序（时间切片分页），避免状态排序导致后置泳道整页消失。
 """
 from __future__ import annotations
 
@@ -34,10 +36,12 @@ STATUS_ORDER = ("needs_action", "running", "completed", "queued", "failed_cancel
 
 _KNOWN_RUN_STATUS = {"queued", "running", "partial", "succeeded", "failed", "cancelled"}
 _ACTIVE_RUN_STATUS = ("queued", "running")
-_TERMINAL_RUN_STATUS = ("succeeded", "failed", "cancelled", "partial")
 _DELIVERY_PROCESSING = ("pending", "running", "retrying")
 _DELIVERY_DONE = ("succeeded", "not_configured")
 _DELIVERY_BAD = ("failed", "partial", "dead_letter")
+#: occurrence 声称已触发/触发中但找不到 TaskRun = 调度断链
+_BROKEN_OCC_STATUS = ("started", "firing")
+ORIGINS = ("manual", "schedule", "api", "backfill", "unknown")
 
 
 def _attention(code: str, message: str, severity: str) -> dict:
@@ -48,15 +52,11 @@ def project_work_item_status(tr: TaskRun | None, occ: ScheduleOccurrence | None,
                              has_target: bool, child_active: int, child_total: int) -> dict:
     """集中状态映射。返回 {status, phase, attention, conflict_codes}。
 
-    优先级：缺失关联 > 调度错过 > 未知状态 > 生命周期/执行-投递冲突 >
+    优先级：缺失关联 > 调度断链/错过 > 未知状态 > 生命周期/执行-投递冲突 >
     排队 > 执行 > partial > 失败/取消 > succeeded×delivery 组合。
     矛盾数据一律 needs_action，禁止静默归入 completed。
-    ``child_active/child_total`` 为子 Run 活跃数/总数（批量统计传入）。
     """
     conflicts: list[str] = []
-
-    def _diag_conflict(code: str) -> None:
-        conflicts.append(code)
 
     if not has_target:
         return {"status": "needs_action", "phase": "attention",
@@ -71,6 +71,12 @@ def project_work_item_status(tr: TaskRun | None, occ: ScheduleOccurrence | None,
                                             (occ.error or {}).get("message", "计划时间已到但未触发批次"),
                                             "critical"),
                     "conflict_codes": ["SCHEDULE_MISSED"]}
+        if occ is not None and occ.status in _BROKEN_OCC_STATUS:
+            return {"status": "needs_action", "phase": "attention",
+                    "attention": _attention("OCCURRENCE_RUN_MISSING",
+                                            "调度已标记触发但批次记录缺失，需人工确认调度链路",
+                                            "critical"),
+                    "conflict_codes": ["OCCURRENCE_RUN_MISSING"]}
         # 未触发 occurrence → 排队中（不再单列“即将运行”泳道）
         return {"status": "queued", "phase": "scheduled", "attention": None,
                 "conflict_codes": []}
@@ -83,26 +89,23 @@ def project_work_item_status(tr: TaskRun | None, occ: ScheduleOccurrence | None,
 
     # 生命周期 / 执行-投递 冲突（先于一切终态判定）
     if tr.status == "running" and tr.delivery_status == "succeeded":
-        _diag_conflict("EXECUTION_DELIVERY_CONFLICT")
         return {"status": "needs_action", "phase": "attention",
                 "attention": _attention("EXECUTION_DELIVERY_CONFLICT",
                                         "执行仍显示运行中，但结果已成功处理，状态矛盾，需人工确认",
                                         "critical"),
-                "conflict_codes": conflicts}
+                "conflict_codes": ["EXECUTION_DELIVERY_CONFLICT"]}
     if tr.ended_at is not None and tr.status in _ACTIVE_RUN_STATUS:
-        _diag_conflict("LIFECYCLE_CONFLICT")
         return {"status": "needs_action", "phase": "attention",
                 "attention": _attention("LIFECYCLE_CONFLICT",
                                         "批次已有结束时间但状态仍为 queued/running，需人工确认",
                                         "critical"),
-                "conflict_codes": conflicts}
+                "conflict_codes": ["LIFECYCLE_CONFLICT"]}
     if tr.status == "running" and child_total > 0 and child_active == 0:
-        _diag_conflict("RUNS_TERMINAL_TASKRUN_RUNNING")
         return {"status": "needs_action", "phase": "attention",
                 "attention": _attention("RUNS_TERMINAL_TASKRUN_RUNNING",
                                         "所有子 Run 已终态但批次仍显示运行中，需人工确认",
                                         "critical"),
-                "conflict_codes": conflicts}
+                "conflict_codes": ["RUNS_TERMINAL_TASKRUN_RUNNING"]}
 
     if tr.status == "queued":
         return {"status": "queued", "phase": "queued", "attention": None,
@@ -144,10 +147,7 @@ def project_work_item_status(tr: TaskRun | None, occ: ScheduleOccurrence | None,
 
 
 def day_bounds(date_s: str, tz_s: str) -> tuple[datetime, datetime]:
-    try:
-        zone = ZoneInfo(tz_s)
-    except Exception:  # noqa: BLE001
-        zone = ZoneInfo("Asia/Shanghai")
+    zone = ZoneInfo(tz_s)
     day = datetime.fromisoformat(date_s)
     start = day.replace(tzinfo=zone)
     return start.astimezone(timezone.utc), (start + timedelta(days=1)).astimezone(timezone.utc)
@@ -160,20 +160,135 @@ def _duration_ms(tr: TaskRun | None) -> int | None:
     return int((end - tr.started_at).total_seconds() * 1000)
 
 
+def _build_item(tr: TaskRun | None, occ: ScheduleOccurrence | None,
+                task: AnalysisTask | None, version: AnalysisTaskVersion | None,
+                child_active: int, child_total: int) -> dict:
+    """单对 (tr, occ) → WorkItemDTO dict。version 语义：有 TaskRun 用冻结版本，否则当前版本。"""
+    has_target = version is not None
+    st = project_work_item_status(tr, occ, has_target, child_active, child_total)
+    total = tr.total or 0 if tr else 0
+    succeeded = tr.succeeded_count or 0 if tr else 0
+    failed = tr.failed_count or 0 if tr else 0
+    skipped = tr.skipped_count or 0 if tr else 0
+    cancelled = tr.cancelled_count or 0 if tr else 0
+    completed_n = succeeded + failed + skipped + cancelled
+    if occ is not None:
+        wid = f"occurrence:{occ.id}"
+    else:
+        wid = f"taskrun:{tr.id}"
+    assignee = None
+    if version is not None:
+        if version.execution_target_type == "agent" and version.agent_id:
+            assignee = {"type": "agent", "id": version.agent_id,
+                        "name": version.agent_id, "avatarUrl": None}
+        elif version.workflow_id:
+            assignee = {"type": "workflow", "id": version.workflow_id,
+                        "name": version.workflow_id, "avatarUrl": None}
+    created_dt = tr.created_at if tr is not None else getattr(occ, "created_at", None)
+    updated_dt = ((tr.ended_at or tr.started_at or tr.created_at) if tr is not None
+                  else getattr(occ, "updated_at", None))
+    task_id = (tr.task_id if tr is not None else (occ.task_id if occ is not None else None))
+    return {
+        "id": wid,
+        "kind": "schedule_occurrence" if occ is not None else "task_run",
+        "automationId": task_id or "",
+        "taskRunId": tr.id if tr is not None else None,
+        "scheduleOccurrenceId": occ.id if occ is not None else None,
+        "title": task.name if task else "(缺失自主任务)",
+        "description": (task.description or None) if task else None,
+        "status": st["status"],
+        "phase": st["phase"],
+        "origin": tr.trigger if tr is not None else "schedule",
+        "assignee": assignee,
+        "progress": {
+            "total": total, "completed": completed_n, "succeeded": succeeded,
+            "failed": failed, "skipped": skipped, "cancelled": cancelled,
+            "percent": round(completed_n / total * 100, 1) if total else None,
+        },
+        "attention": st["attention"] or {"required": False, "code": None,
+                                         "message": None, "severity": None},
+        "scheduledAt": occ.planned_at.isoformat() if occ is not None else None,
+        "createdAt": created_dt.isoformat() if created_dt else None,
+        "updatedAt": updated_dt.isoformat() if updated_dt else None,
+        "startedAt": tr.started_at.isoformat() if tr is not None and tr.started_at else None,
+        "finishedAt": tr.ended_at.isoformat() if tr is not None and tr.ended_at else None,
+        "durationMs": _duration_ms(tr),
+        "diagnostics": {
+            "executionStatus": tr.status if tr is not None else None,
+            "deliveryStatus": tr.delivery_status if tr is not None else None,
+            "occurrenceStatus": occ.status if occ is not None else None,
+            "conflictCodes": st["conflict_codes"],
+        },
+        "links": {
+            "primary": f"/operations/task-runs/{tr.id}" if tr is not None
+                       else f"/autonomous-tasks/{task_id or ''}",
+            "automation": f"/autonomous-tasks/{task_id or ''}",
+            "taskRun": f"/operations/task-runs/{tr.id}" if tr is not None else None,
+        },
+    }
+
+
+def _resolve_names(db: Session, items: list[dict]) -> None:
+    """批量回填 assignee 名称（agent/workflow），避免逐卡查询。"""
+    agent_ids = {a["assignee"]["id"] for a in items
+                 if a["assignee"] and a["assignee"]["type"] == "agent"}
+    wf_ids = {a["assignee"]["id"] for a in items
+              if a["assignee"] and a["assignee"]["type"] == "workflow"}
+    if not agent_ids and not wf_ids:
+        return
+    agents = {a.id: a.name for a in db.execute(
+        select(Agent).where(Agent.id.in_(agent_ids or {"-"}))).scalars().all()}
+    wfs = {w.id: w.name for w in db.execute(
+        select(Workflow).where(Workflow.id.in_(wf_ids or {"-"}))).scalars().all()}
+    for a in items:
+        if not a["assignee"]:
+            continue
+        if a["assignee"]["type"] == "agent":
+            a["assignee"]["name"] = agents.get(a["assignee"]["id"], a["assignee"]["id"])
+        else:
+            a["assignee"]["name"] = wfs.get(a["assignee"]["id"], a["assignee"]["id"])
+
+
 def build_work_items(db: Session, user: dict, *, date_from: str, date_to: str,
-                     tz_s: str) -> list[dict]:
-    """投影当日（或日期区间）全部 WorkItem。批量加载关联，服务端数据范围过滤。"""
+                     tz_s: str, automation_id: str = "", origin: str = "",
+                     agent_id: str = "") -> list[dict]:
+    """投影日期区间内全部 WorkItem。
+
+    可下推筛选（automation_id/origin/agent_id/数据范围/日期）在 SQL 完成；
+    status/attentionOnly/q 为投影后计算筛选（由路由层应用）。
+    子 Run 聚合仅针对候选 TaskRun ID 集合（不扫全表）。
+    """
     start, _ = day_bounds(date_from, tz_s)
     _, end = day_bounds(date_to, tz_s)
 
-    occs = db.execute(select(ScheduleOccurrence).where(
-        ScheduleOccurrence.planned_at >= start,
-        ScheduleOccurrence.planned_at < end)).scalars().all()
-    runs = db.execute(select(TaskRun).where(
+    occ_q = select(ScheduleOccurrence).where(
+        ScheduleOccurrence.planned_at >= start, ScheduleOccurrence.planned_at < end)
+    run_q = select(TaskRun).where(
         (TaskRun.created_at >= start) & (TaskRun.created_at < end)
         | (TaskRun.started_at >= start) & (TaskRun.started_at < end)
         | (TaskRun.started_at < start) & (TaskRun.status.in_(_ACTIVE_RUN_STATUS))
-        | (TaskRun.ended_at >= start) & (TaskRun.ended_at < end))).scalars().all()
+        | (TaskRun.ended_at >= start) & (TaskRun.ended_at < end))
+    if automation_id:
+        occ_q = occ_q.where(ScheduleOccurrence.task_id == automation_id)
+        run_q = run_q.where(TaskRun.task_id == automation_id)
+    if origin:
+        if origin == "schedule":
+            run_q = run_q.where(TaskRun.trigger == "schedule")
+        else:
+            occ_q = occ_q.where(ScheduleOccurrence.id == "-")
+            run_q = run_q.where(TaskRun.trigger == origin)
+    if agent_id:
+        vids = {r[0] for r in db.execute(
+            select(AnalysisTaskVersion.id).where(
+                AnalysisTaskVersion.agent_id == agent_id)).all()}
+        run_q = run_q.where(TaskRun.task_version_id.in_(vids or {"-"}))
+        tids = {r[0] for r in db.execute(
+            select(AnalysisTask.id).where(
+                AnalysisTask.current_version_id.in_(vids or {"-"}))).all()}
+        occ_q = occ_q.where(ScheduleOccurrence.task_id.in_(tids or {"-"}))
+
+    occs = db.execute(occ_q).scalars().all()
+    runs = db.execute(run_q).scalars().all()
     runs_by_id = {r.id: r for r in runs}
 
     # occurrence 已关联但 run 不在窗口集合：补拉，避免丢卡
@@ -182,7 +297,7 @@ def build_work_items(db: Session, user: dict, *, date_from: str, date_to: str,
         for r in db.execute(select(TaskRun).where(TaskRun.id.in_(missing))).scalars().all():
             runs_by_id[r.id] = r
 
-    # 数据范围：按所属 AutomationDefinition 的 created_by 过滤（服务端强制）
+    # 数据范围：按所属 AutomationDefinition 的 created_by 服务端过滤
     task_ids = {o.task_id for o in occs if o.task_id} | {r.task_id for r in runs_by_id.values()}
     tasks = {t.id: t for t in db.execute(
         select(AnalysisTask).where(AnalysisTask.id.in_(task_ids or {"-"}))).scalars().all()}
@@ -193,133 +308,85 @@ def build_work_items(db: Session, user: dict, *, date_from: str, date_to: str,
         runs_by_id = {rid: r for rid, r in runs_by_id.items() if r.task_id in allowed}
         tasks = {tid: t for tid, t in tasks.items() if tid in allowed}
 
-    # 批量：配置版本 / Agent / Workflow 名称 / 活跃子 Run 计数
-    versions = {v.id: v for v in db.execute(select(AnalysisTaskVersion).where(
-        AnalysisTaskVersion.id.in_(
-            {t.current_version_id for t in tasks.values() if t.current_version_id}
-            or {"-"}))).scalars().all()}
-    agent_ids = {v.agent_id for v in versions.values() if v.execution_target_type == "agent" and v.agent_id}
-    wf_ids = {v.workflow_id for v in versions.values() if v.execution_target_type == "workflow" and v.workflow_id}
-    agents = {a.id: a.name for a in db.execute(
-        select(Agent).where(Agent.id.in_(agent_ids or {"-"}))).scalars().all()}
-    wfs = {w.id: w.name for w in db.execute(
-        select(Workflow).where(Workflow.id.in_(wf_ids or {"-"}))).scalars().all()}
+    # 冻结版本优先：TaskRun 用 task_version_id；occurrence-only 用定义当前版本
+    version_ids = {r.task_version_id for r in runs_by_id.values() if r.task_version_id}
+    version_ids |= {t.current_version_id for t in tasks.values() if t.current_version_id}
+    versions = {v.id: v for v in db.execute(
+        select(AnalysisTaskVersion).where(
+            AnalysisTaskVersion.id.in_(version_ids or {"-"}))).scalars().all()}
+
+    run_ids = set(runs_by_id)
     active_counts = dict(db.execute(
         select(Run.task_run_id, func.count(Run.id)).where(
+            Run.task_run_id.in_(run_ids or {"-"}),
             Run.status.in_(_ACTIVE_RUN_STATUS)).group_by(Run.task_run_id)).all())
     child_totals = dict(db.execute(
-        select(Run.task_run_id, func.count(Run.id)).group_by(Run.task_run_id)).all())
+        select(Run.task_run_id, func.count(Run.id)).where(
+            Run.task_run_id.in_(run_ids or {"-"})).group_by(Run.task_run_id)).all())
 
-    occ_by_run = {o.task_run_id: o for o in occs if o.task_run_id}
+    def _version_for(tr: TaskRun | None, task: AnalysisTask | None):
+        if tr is not None:
+            return versions.get(tr.task_version_id) if tr.task_version_id else None
+        return versions.get(task.current_version_id) if task and task.current_version_id else None
+
     items: list[dict] = []
     seen_run_ids: set[str] = set()
-
-    def _assignee(task: AnalysisTask | None) -> dict | None:
-        v = versions.get(task.current_version_id) if task and task.current_version_id else None
-        if v is None or task is None:
-            return None
-        if v.execution_target_type == "agent" and v.agent_id:
-            return {"type": "agent", "id": v.agent_id,
-                    "name": agents.get(v.agent_id, v.agent_id), "avatarUrl": None}
-        if v.workflow_id:
-            return {"type": "workflow", "id": v.workflow_id,
-                    "name": wfs.get(v.workflow_id, v.workflow_id), "avatarUrl": None}
-        return None
-
-    def _make(tr: TaskRun | None, occ: ScheduleOccurrence | None, task: AnalysisTask | None) -> dict:
-        has_target = bool(versions.get(task.current_version_id)) if task and task.current_version_id else False
-        st = project_work_item_status(tr, occ, has_target,
-                                      child_active=active_counts.get(tr.id, 0) if tr else 0,
-                                      child_total=child_totals.get(tr.id, 0) if tr else 0)
-        total = tr.total or 0 if tr else 0
-        succeeded = tr.succeeded_count or 0 if tr else 0
-        failed = tr.failed_count or 0 if tr else 0
-        skipped = tr.skipped_count or 0 if tr else 0
-        cancelled = tr.cancelled_count or 0 if tr else 0
-        completed_n = succeeded + failed + skipped + cancelled
-        if occ is not None and (tr is None or occ.id is not None):
-            wid = f"occurrence:{occ.id}"
-        else:
-            wid = f"taskrun:{tr.id}"
-        created_dt = tr.created_at if tr is not None else getattr(occ, "created_at", None)
-        updated_dt = ((tr.ended_at or tr.started_at or tr.created_at) if tr is not None
-                      else getattr(occ, "updated_at", None))
-        return {
-            "id": wid,
-            "kind": "schedule_occurrence" if occ is not None else "task_run",
-            "automationId": (tr.task_id if tr else occ.task_id) if (tr or occ) else "",
-            "taskRunId": tr.id if tr is not None else None,
-            "scheduleOccurrenceId": occ.id if occ is not None else None,
-            "title": task.name if task else "(缺失自主任务)",
-            "description": (task.description or None) if task else None,
-            "status": st["status"],
-            "phase": st["phase"],
-            "origin": tr.trigger if tr is not None else "schedule",
-            "assignee": _assignee(task),
-            "progress": {
-                "total": total, "completed": completed_n, "succeeded": succeeded,
-                "failed": failed, "skipped": skipped, "cancelled": cancelled,
-                "percent": round(completed_n / total * 100, 1) if total else None,
-            },
-            "attention": st["attention"] or {"required": False, "code": None,
-                                             "message": None, "severity": None},
-            "scheduledAt": occ.planned_at.isoformat() if occ is not None else None,
-            "createdAt": created_dt.isoformat() if created_dt else None,
-            "updatedAt": updated_dt.isoformat() if updated_dt else None,
-            "startedAt": tr.started_at.isoformat() if tr is not None and tr.started_at else None,
-            "finishedAt": tr.ended_at.isoformat() if tr is not None and tr.ended_at else None,
-            "durationMs": _duration_ms(tr),
-            "diagnostics": {
-                "executionStatus": tr.status if tr is not None else None,
-                "deliveryStatus": tr.delivery_status if tr is not None else None,
-                "occurrenceStatus": occ.status if occ is not None else None,
-                "conflictCodes": st["conflict_codes"],
-            },
-            "links": {
-                "primary": f"/operations/task-runs/{tr.id}" if tr is not None
-                           else f"/autonomous-tasks/{occ.task_id if occ else ''}",
-                "automation": f"/autonomous-tasks/{(tr.task_id if tr else occ.task_id) if (tr or occ) else ''}",
-                "taskRun": f"/operations/task-runs/{tr.id}" if tr is not None else None,
-            },
-        }
-
-    # 1) occurrence 卡（触发后沿用 occurrence ID 并补 taskRunId；去重见 seen_run_ids）
     for occ in occs:
         tr = runs_by_id.get(occ.task_run_id) if occ.task_run_id else None
         if tr is None and occ.status in ("cancelled", "skipped"):
             continue  # 取消/跳过的空 occurrence 不投影（领域文档记录）
-        if tr is None and occ.status == "started":
-            continue  # 关联中但 run 缺失的边界：以 run 卡呈现（若 run 存在）
         task = tasks.get(occ.task_id or "")
-        items.append(_make(tr, occ, task))
+        items.append(_build_item(tr, occ, task, _version_for(tr, task),
+                                 active_counts.get(tr.id, 0) if tr else 0,
+                                 child_totals.get(tr.id, 0) if tr else 0))
         if tr is not None:
             seen_run_ids.add(tr.id)
-    # 2) 无 occurrence 归属的 TaskRun 卡
     for rid, tr in runs_by_id.items():
-        if rid in seen_run_ids or rid in occ_by_run:
+        if rid in seen_run_ids:
             continue
-        items.append(_make(tr, None, tasks.get(tr.task_id)))
+        items.append(_build_item(tr, None, tasks.get(tr.task_id), _version_for(tr, None),
+                                 active_counts.get(rid, 0), child_totals.get(rid, 0)))
         seen_run_ids.add(rid)
 
-    items.sort(key=lambda w: (STATUS_ORDER.index(w["status"]),
-                              -(datetime.fromisoformat(w["scheduledAt"] or w["startedAt"]
-                                                       or w["createdAt"] or "1970-01-01T00:00:00+00:00")
-                                .timestamp())))
+    _resolve_names(db, items)
+    # 时间倒序（时间切片分页）：避免状态排序使后置泳道整页消失
+    items.sort(key=lambda w: (
+        datetime.fromisoformat(w["scheduledAt"] or w["startedAt"] or w["createdAt"]
+                               or "1970-01-01T00:00:00+00:00").timestamp(),
+        w["id"]), reverse=True)
     return items
 
 
-def filter_work_items(items: list[dict], *, status: str = "", automation_id: str = "",
-                      agent_id: str = "", q: str = "", origin: str = "",
+def project_single(db: Session, tr: TaskRun | None, occ: ScheduleOccurrence | None) -> dict | None:
+    """单条投影（详情/by-task-runs 用）。cancelled/skipped 空 occurrence 返回 None（不投影）。"""
+    if tr is None and occ is None:
+        return None
+    if tr is None and occ is not None and occ.status in ("cancelled", "skipped"):
+        return None
+    task_id = tr.task_id if tr is not None else (occ.task_id if occ is not None else None)
+    task = db.get(AnalysisTask, task_id) if task_id else None
+    version = None
+    if tr is not None and tr.task_version_id:
+        version = db.get(AnalysisTaskVersion, tr.task_version_id)
+    elif tr is None and task is not None and task.current_version_id:
+        version = db.get(AnalysisTaskVersion, task.current_version_id)
+    child_active = child_total = 0
+    if tr is not None:
+        child_total = db.execute(select(func.count(Run.id)).where(
+            Run.task_run_id == tr.id)).scalar() or 0
+        child_active = db.execute(select(func.count(Run.id)).where(
+            Run.task_run_id == tr.id, Run.status.in_(_ACTIVE_RUN_STATUS))).scalar() or 0
+    item = _build_item(tr, occ, task, version, child_active, child_total)
+    _resolve_names(db, [item])
+    return item
+
+
+def filter_work_items(items: list[dict], *, status: str = "", q: str = "",
                       attention_only: bool = False) -> list[dict]:
+    """投影后计算筛选（status/attentionOnly/q）。automationId/origin/agentId 已下推 SQL。"""
     out = items
     if status:
         out = [w for w in out if w["status"] == status]
-    if automation_id:
-        out = [w for w in out if w["automationId"] == automation_id]
-    if agent_id:
-        out = [w for w in out if (w["assignee"] or {}).get("id") == agent_id]
-    if origin:
-        out = [w for w in out if w["origin"] == origin]
     if attention_only:
         out = [w for w in out if w["attention"]["required"]]
     if q:

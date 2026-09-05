@@ -1216,9 +1216,62 @@ export const workItemsApi = {
     return req<WorkItemListResponse>(`/api/work-items?${qs.toString()}`)
   },
   get: (workItemId: string) => req<WorkItemDTO>(`/api/work-items/${workItemId}`),
-  /** SSE 仅发 refresh 信号；前端收到后重拉列表，失败降级轮询 */
+  /** MTC-002B-R：按 taskRunId 批量取（自主任务详情最近批次用，避免长窗口全投影） */
+  byTaskRuns: (ids: string[]) =>
+    req<{ items: WorkItemDTO[] }>(`/api/work-items/by-task-runs?ids=${ids.join(",")}`),
+  /** @deprecated MTC-002B-R：原生 EventSource 无法携带 Bearer，改用 streamWorkItems() */
   streamUrl: (timezone = "Asia/Shanghai") =>
     `${WF_BASE}/api/work-items/stream?timezone=${encodeURIComponent(timezone)}`,
+}
+
+/**
+ * MTC-002B-R：授权 WorkItem 变更流（fetch + ReadableStream，可携带 Bearer Token）。
+ * 服务端仅发 refresh 信号；收到即重拉列表。401/403 为终态（onError 后由页面降级轮询）。
+ */
+export async function streamWorkItems(onRefresh: (seq: number) => void,
+                                      opts: { onError?: (e: unknown) => void; signal?: AbortSignal } = {}): Promise<void> {
+  let reconnects = 0
+  for (;;) {
+    if (opts.signal?.aborted) return
+    const tok = wfApiToken()
+    const headers: Record<string, string> = { ...(tok ? { Authorization: `Bearer ${tok}` } : {}) }
+    try {
+      const resp = await fetch(`${WF_BASE}/api/work-items/stream`, { headers, signal: opts.signal })
+      if (resp.status === 401 || resp.status === 403) {
+        opts.onError?.(new ApiError(resp.status, `WorkItem 事件流未授权（${resp.status}）`))
+        return
+      }
+      if (!resp.ok || !resp.body) {
+        if (++reconnects > 3) { opts.onError?.(new Error(`事件流连接失败：${resp.status}`)); return }
+        await new Promise((r) => setTimeout(r, 500 * reconnects))
+        continue
+      }
+      reconnects = 0
+      const reader = resp.body.getReader()
+      const dec = new TextDecoder()
+      let buf = ""
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += dec.decode(value, { stream: true })
+        let sep: number
+        while ((sep = buf.indexOf("\n\n")) >= 0) {
+          const block = buf.slice(0, sep)
+          buf = buf.slice(sep + 2)
+          if (!block.includes("event: refresh")) continue
+          const dataLine = block.split("\n").find((l) => l.startsWith("data:"))
+          if (!dataLine) continue
+          try {
+            onRefresh(Number(JSON.parse(dataLine.slice(5).trim()).sequence ?? 0))
+          } catch { /* 忽略坏帧 */ }
+        }
+      }
+    } catch (e) {
+      if (opts.signal?.aborted) return
+      if (++reconnects > 3) { opts.onError?.(e); return }
+      await new Promise((r) => setTimeout(r, 500 * reconnects))
+    }
+  }
 }
 
 export async function realQualityDetail(id: string): Promise<Record<string, unknown>> {

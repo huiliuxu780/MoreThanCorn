@@ -25,7 +25,18 @@ function check(name, ok, detail = "") {
 const list = await fetch(`${API}/api/work-items?pageSize=200`).then((r) => r.json())
 const byStatus = (s) => list.items.filter((w) => w.status === s)
 const conflict = list.items.find((w) => w.diagnostics.conflictCodes.includes("EXECUTION_DELIVERY_CONFLICT"))
-const queuedOcc = byStatus("queued").find((w) => w.kind === "schedule_occurrence")
+let queuedOcc = byStatus("queued").find((w) => w.kind === "schedule_occurrence")
+let occDate = ""
+if (!queuedOcc) {
+  // 深夜场景：occurrence 可能落在下一业务日 → 两日窗口查找 + 页面日期控件定位
+  const pad = (n) => String(n).padStart(2, "0")
+  const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const t0 = new Date()
+  const t1 = new Date(t0.getTime() + 86400000)
+  const l2 = await fetch(`${API}/api/work-items?dateFrom=${fmt(t0)}&dateTo=${fmt(t1)}&pageSize=200`).then((r) => r.json())
+  queuedOcc = l2.items.find((w) => w.kind === "schedule_occurrence" && w.status === "queued")
+  if (queuedOcc) occDate = (queuedOcc.scheduledAt ?? "").slice(0, 10)
+}
 check("API 五组状态均有样本", ["needs_action", "running", "completed", "queued", "failed_cancelled"].every((s) => byStatus(s).length > 0), JSON.stringify(list.counts))
 check("存在 execution=running+delivery=succeeded 冲突样本", !!conflict, conflict?.id ?? "")
 
@@ -49,6 +60,9 @@ async function openTasks() {
 /* ---------- Light 全板 ---------- */
 await setTheme("light")
 await openTasks()
+// P1-01：页面必须进入实时（SSE），不得静默降级
+const sseUp = await page.waitForFunction(() => document.body.innerText.includes("实时（SSE）"), { timeout: 20000 }).then(() => true).catch(() => false)
+check("页面进入实时（SSE）通道", sseUp)
 const laneLabels = await page.evaluate(() =>
   [...document.querySelectorAll("[data-lane]")].map((l) => l.querySelector(".text-sm.font-medium")?.textContent?.trim()),
 )
@@ -66,6 +80,25 @@ if (conflict) {
     return !!el
   }, conflict.id)
   check("状态冲突卡位于需要操作泳道", inLane, conflict.id)
+}
+// P1-01：主动制造一次允许范围内的变化，观察 SSE refresh 驱动看板更新
+const demo = list.items.find((w) => w.title.startsWith("DEMO-002B") && w.kind === "task_run")
+if (demo) {
+  const pr = await fetch(`${API}/api/tasks/${demo.automationId}/runs`, {
+    method: "POST", body: "{}",
+    headers: { "Idempotency-Key": `demo-002b-verify-${Date.now()}`, "Content-Type": "application/json" },
+  })
+  check("制造变化：新批次启动 202", pr.status === 202, String(pr.status))
+  // 新批次可能保持 queued，也可能被在线 worker 立即执行成 completed：两者任一 +1 即证明 refresh 生效
+  const expectQ = list.counts.queued + 1
+  const expectC = list.counts.completed + 1
+  const saw = await page.waitForFunction(
+    (q, c) => document.body.innerText.includes(`排队中 ${q}`) || document.body.innerText.includes(`已完成 ${c}`),
+    { timeout: 15000 }, expectQ, expectC).then(() => true).catch(() => false)
+  check("SSE refresh 后看板反映变化（排队中/已完成 +1）", saw, `期望 排队中 ${expectQ} 或 已完成 ${expectC}`)
+  check("变化后仍为实时（SSE）通道", await page.evaluate(() => document.body.innerText.includes("实时（SSE）")))
+} else {
+  check("存在 DEMO-002B 夹具任务", false, "先运行 scripts/seed_workitems_demo.py")
 }
 await page.screenshot({ path: `${OUT}/01-work-items-five-lanes-light.png` })
 
@@ -86,7 +119,31 @@ const running = byStatus("running")[0]
 if (running) await cardShot(running.id, "04-running-card.png")
 const completed = byStatus("completed")[0]
 if (completed) await cardShot(completed.id, "05-completed-card.png")
-if (queuedOcc) await cardShot(queuedOcc.id, "06-queued-schedule-card.png")
+if (queuedOcc) {
+  if (occDate) {
+    await page.evaluate((val) => {
+      const el = document.querySelector('input[aria-label="业务日期"]')
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set
+      setter.call(el, val)
+      el.dispatchEvent(new Event("input", { bubbles: true }))
+      el.dispatchEvent(new Event("change", { bubbles: true }))
+    }, occDate)
+    await new Promise((r) => setTimeout(r, 1500))
+  }
+  await cardShot(queuedOcc.id, "06-queued-schedule-card.png")
+  if (occDate) {
+    await page.evaluate(() => {
+      const el = document.querySelector('input[aria-label="业务日期"]')
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set
+      setter.call(el, "")
+      el.dispatchEvent(new Event("input", { bubbles: true }))
+      el.dispatchEvent(new Event("change", { bubbles: true }))
+    })
+    await new Promise((r) => setTimeout(r, 1500))
+  }
+} else {
+  check("存在排队中调度卡（occurrence）", false, "先运行 scripts/seed_workitems_demo.py 后立即复跑")
+}
 const failed = byStatus("failed_cancelled")[0]
 if (failed) await cardShot(failed.id, "07-failed-cancelled-card.png")
 

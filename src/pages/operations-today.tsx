@@ -13,7 +13,7 @@ import { formatCompactDateTime } from "@/lib/time"
 import {
   WORK_ITEM_ORIGIN_LABELS, WORK_ITEM_STATUS_LABELS,
 } from "@/config/ui-terms"
-import { workItemsApi, type WorkItemDTO, type WorkItemStatus } from "@/services/wf-api"
+import { streamWorkItems, workItemsApi, type WorkItemDTO, type WorkItemStatus } from "@/services/wf-api"
 
 /** MTC-002B：五泳道固定顺序；Delivery 不再是一级状态（技术详情见 /operations/task-runs/:id）。 */
 const LANES: { key: WorkItemStatus; badge: "warning" | "info" | "success" | "neutral" | "danger" }[] = [
@@ -37,29 +37,50 @@ export default function OperationsTodayPage() {
   const [origin, setOrigin] = useState("")
   const [attentionOnly, setAttentionOnly] = useState(false)
   const [resp, setResp] = useState<Awaited<ReturnType<typeof workItemsApi.list>> | null>(null)
+  const [items, setItems] = useState<WorkItemDTO[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<string | null>(null)
   const [channel, setChannel] = useState<"sse" | "polling">("sse")
-  const esRef = useRef<EventSource | null>(null)
   const pollRef = useRef<number | null>(null)
+
+  const listParams = useCallback((pg: number) => ({
+    dateFrom: date || undefined, q: q || undefined, origin: origin || undefined,
+    attentionOnly: attentionOnly || undefined, pageSize: 200, page: pg,
+  }), [date, q, origin, attentionOnly])
 
   const load = useCallback(async () => {
     try {
-      const r = await workItemsApi.list({
-        dateFrom: date || undefined, q: q || undefined, origin: origin || undefined,
-        attentionOnly: attentionOnly || undefined, pageSize: 200,
-      })
+      const r = await workItemsApi.list(listParams(1))
       setResp(r)
+      setItems(r.items)
+      setTotal(r.total)
+      setPage(1)
       setLastUpdated(new Date().toISOString())
       setError(null)
     } catch (e) {
       setError((e as Error).message)
     }
-  }, [date, q, origin, attentionOnly])
+  }, [listParams])
 
-  // 实时：SSE 只发 refresh 信号 → 重拉列表；断线降级 5s 轮询；SSE 失败不报错页面
+  // MTC-002B-R：超过一页时显式续载，禁止静默漏卡
+  const loadMore = useCallback(async () => {
+    try {
+      const r = await workItemsApi.list(listParams(page + 1))
+      setItems((prev) => [...prev, ...r.items])
+      setTotal(r.total)
+      setPage(page + 1)
+      setLastUpdated(new Date().toISOString())
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }, [listParams, page])
+
+  // 实时：授权 fetch SSE（refresh 信号 → 重拉第一页）；401/断线降级 5s 轮询；失败不报错页面
   useEffect(() => {
     let cancelled = false
+    const ctrl = new AbortController()
     const startPolling = () => {
       if (pollRef.current != null) return
       setChannel("polling")
@@ -70,21 +91,20 @@ export default function OperationsTodayPage() {
     const stopPolling = () => {
       if (pollRef.current != null) { window.clearInterval(pollRef.current); pollRef.current = null }
     }
-    try {
-      const es = new EventSource(workItemsApi.streamUrl())
-      esRef.current = es
-      es.addEventListener("refresh", () => {
-        if (!cancelled) void load()
-      })
-      es.onerror = () => { es.close(); esRef.current = null; stopPolling(); startPolling() }
-    } catch {
-      startPolling()
-    }
+    void streamWorkItems(
+      () => {
+        if (cancelled) return
+        setChannel("sse")
+        stopPolling()
+        void load()
+      },
+      { onError: () => { if (!cancelled) startPolling() }, signal: ctrl.signal },
+    )
     const onVis = () => { if (!document.hidden) void load() }
     document.addEventListener("visibilitychange", onVis)
     return () => {
       cancelled = true
-      esRef.current?.close()
+      ctrl.abort()
       stopPolling()
       document.removeEventListener("visibilitychange", onVis)
     }
@@ -114,9 +134,9 @@ export default function OperationsTodayPage() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1.5">
           <CalendarDays className="size-4 text-muted-foreground" />
-          <Input type="date" className="h-8 w-40" value={date} onChange={(e) => setDate(e.target.value)} />
+          <Input type="date" className="h-8 w-40" aria-label="业务日期" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
-        <Input placeholder="搜索自主任务 / 批次" className="h-8 w-48" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input placeholder="搜索自主任务 / 批次" aria-label="搜索自主任务或批次" className="h-8 w-48" value={q} onChange={(e) => setQ(e.target.value)} />
         <Select value={origin || "all"} onValueChange={(v) => setOrigin(v === "all" ? "" : v)}>
           <SelectTrigger className="h-8 w-32"><SelectValue placeholder="触发方式" /></SelectTrigger>
           <SelectContent>
@@ -145,7 +165,7 @@ export default function OperationsTodayPage() {
       {/* 五泳道固定看板：不拖拽、不手工加卡（Awake 视觉属 MTC-003） */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {LANES.map((lane) => {
-          const cards = (resp?.items ?? []).filter((w) => w.status === lane.key)
+          const cards = items.filter((w) => w.status === lane.key)
           return (
             <div key={lane.key} className="space-y-2 rounded-lg border bg-muted/20 p-2" data-lane={lane.key}>
               <div className="flex items-center justify-between px-1">
@@ -203,6 +223,13 @@ export default function OperationsTodayPage() {
           )
         })}
       </div>
+
+      {total > items.length ? (
+        <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+          已显示 {items.length} / {total} 件工作（其余在后续页）
+          <Button variant="outline" size="sm" onClick={() => void loadMore()}>加载更多</Button>
+        </div>
+      ) : null}
     </PageContainer>
   )
 }

@@ -46,14 +46,13 @@ export default function TaskDetailPage() {
     [taskId],
   )
 
-  // MTC-002B：任务状态列读统一 WorkItem 状态（后端集中映射）；投递细节仅技术详情页可见
+  // MTC-002B-R：任务状态列按 taskRunId 批量取 WorkItem（不再拉 90 天全投影）
+  const runIdsKey = (taskRuns ?? []).slice(0, 5).map((r) => r.id).join(",")
   const { data: workItems } = useAsyncData(
-    () => workItemsApi.list({
-      automationId: taskId, pageSize: 200,
-      dateFrom: new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10),
-      dateTo: new Date().toISOString().slice(0, 10),
-    }).then((r) => r.items).catch(() => []),
-    [taskId],
+    () => (runIdsKey
+      ? workItemsApi.byTaskRuns(runIdsKey.split(",")).then((r) => r.items).catch(() => [])
+      : Promise.resolve([])),
+    [taskId, runIdsKey],
   )
 
   // 09 P1-01：历史窗口回填

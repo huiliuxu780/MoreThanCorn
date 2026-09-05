@@ -108,3 +108,23 @@ WF_AUTH=on 匿名 401。ScheduleOccurrence 与 TaskRun 均通过所属 Automatio
 
 Awake 完整 Kanban 视觉、列表视图与 Toggle、拖拽改状态、Task Drawer、Detail 重做、
 Avatar 体系、WorkItem 表、migration、删除 Delivery 后端能力、删除旧 Operations API。
+
+## 8. MTC-002B-R 修订（2026-09-05 验收返工）
+
+1. **冻结版本真值**：有 TaskRun 的 WorkItem，其 assignee/执行目标/has_target 一律读
+   `task_run.task_version_id` 对应的冻结版本；仅未触发 occurrence 使用定义当前版本。
+   编辑自主任务不会使历史卡片漂移（回归：V1 Workflow 运行后改 V2 Agent，旧卡仍 V1）。
+2. **调度断链可见**：`started/firing` 却无 TaskRun 的 occurrence 不再静默丢弃，
+   投影为 needs_action（code=`OCCURRENCE_RUN_MISSING`，critical）；
+   详情三态区分：实体不存在 404 / 跨团队 403 / 关系损坏仍 200（needs_action）。
+   `cancelled/skipped` 空 occurrence 不投影（详情 404，明确说明）。
+3. **规模与分页**：automationId/origin/agentId/数据范围/日期下推 SQL；子 Run 聚合仅针对
+   候选 TaskRun ID 集合；默认排序改时间倒序（时间切片），响应含 `truncated`；
+   前端超过一页时显示“已显示 X / Y · 加载更多”，禁止静默漏卡。
+   自主任务详情改用 `GET /api/work-items/by-task-runs?ids=` 批量取状态（不再 90 天全投影）。
+4. **SSE 可用且授权**：前端改 fetch+ReadableStream（可携带 Bearer；原生 EventSource 退役）；
+   stream digest 使用当前用户数据范围（`compute_stream_digest`），不硬编码 admin/all；
+   参数契约：dateFrom/dateTo/timezone/status/origin/attentionOnly 非法一律 422。
+5. **视觉夹具**：`scripts/seed_workitems_demo.py` 可重置（DEMO-002B-* 标记清理后重建），
+   提供五泳道样本与 SSE 变更钩子；夹具时间敏感（occurrence 2 小时后到期转 missed），
+   seed 后应立即跑 `scripts/verify-mtc002b.mjs`。
