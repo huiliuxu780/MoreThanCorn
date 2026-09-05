@@ -398,4 +398,6 @@ export interface WorkItemListResponse {
   businessDate: string
   timezone: string
   counts: Record<WorkItemStatus, number>
+  /** MTC-002B-R2：服务端截断标记；前端据此显示“加载更多”，不自行猜测 */
+  truncated: boolean
 }

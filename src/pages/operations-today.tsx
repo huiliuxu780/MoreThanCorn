@@ -1,5 +1,6 @@
 import { CalendarDays, CircleAlert, Loader2, RefreshCw } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { toast } from "sonner"
 import { useNavigate } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -40,9 +41,10 @@ export default function OperationsTodayPage() {
   const [items, setItems] = useState<WorkItemDTO[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+  const [lastSeq, setLastSeq] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<string | null>(null)
-  const [channel, setChannel] = useState<"sse" | "polling">("sse")
+  const [channel, setChannel] = useState<"connecting" | "sse" | "polling">("connecting")
   const pollRef = useRef<number | null>(null)
 
   const listParams = useCallback((pg: number) => ({
@@ -68,7 +70,11 @@ export default function OperationsTodayPage() {
   const loadMore = useCallback(async () => {
     try {
       const r = await workItemsApi.list(listParams(page + 1))
-      setItems((prev) => [...prev, ...r.items])
+      // P2：合并按 WorkItem id 去重，防并发 refresh 与分页交叠产生重复卡
+      setItems((prev) => {
+        const seen = new Set(prev.map((w) => w.id))
+        return [...prev, ...r.items.filter((w) => !seen.has(w.id))]
+      })
       setTotal(r.total)
       setPage(page + 1)
       setLastUpdated(new Date().toISOString())
@@ -91,14 +97,23 @@ export default function OperationsTodayPage() {
     const stopPolling = () => {
       if (pollRef.current != null) { window.clearInterval(pollRef.current); pollRef.current = null }
     }
+    setChannel("connecting")
     void streamWorkItems(
-      () => {
+      (seq) => {
         if (cancelled) return
         setChannel("sse")
+        setLastSeq(seq)
         stopPolling()
+        // P2：refresh 到达 → 重置第一页并提示，避免已加载页与新增数据交叠漏项
         void load()
+        toast.info("列表已更新")
       },
-      { onError: () => { if (!cancelled) startPolling() }, signal: ctrl.signal },
+      {
+        onError: () => { if (!cancelled) { setChannel("polling"); startPolling() } },
+        signal: ctrl.signal,
+        dateFrom: date || undefined,
+        timezone: "Asia/Shanghai",
+      },
     )
     const onVis = () => { if (!document.hidden) void load() }
     document.addEventListener("visibilitychange", onVis)
@@ -108,7 +123,7 @@ export default function OperationsTodayPage() {
       stopPolling()
       document.removeEventListener("visibilitychange", onVis)
     }
-  }, [load])
+  }, [load, date])
 
   useEffect(() => { void load() }, [load])
 
@@ -120,9 +135,9 @@ export default function OperationsTodayPage() {
         title="今日运行"
         description={`业务日期 ${resp?.businessDate ?? "今天"} · 时区 ${resp?.timezone ?? "Asia/Shanghai"} · 一张卡 = 一件工作（批次或未触发计划）`}
         actions={
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground" data-sse-seq={lastSeq || undefined}>
             <RefreshCw className="size-3.5" />
-            {channel === "sse" ? "实时（SSE）" : "降级轮询 5s"}
+            {channel === "sse" ? "实时（SSE）" : channel === "connecting" ? "连接实时更新中" : "降级轮询 5s"}
             {lastUpdated ? ` · 更新 ${formatCompactDateTime(lastUpdated)}` : ""}
             <Button variant="ghost" size="icon" className="size-7" onClick={() => void load()} aria-label="刷新">
               <RefreshCw className="size-3.5" />
@@ -175,7 +190,9 @@ export default function OperationsTodayPage() {
                       <span className="size-2 rounded-full bg-muted-foreground/50" aria-hidden />}
                   {WORK_ITEM_STATUS_LABELS[lane.key]}
                 </div>
-                <span className="text-xs tabular-nums text-muted-foreground">{cards.length}</span>
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {resp?.counts?.[lane.key] ?? cards.length}
+                </span>
               </div>
               {cards.length === 0 ? (
                 <div className="rounded-md border border-dashed px-2 py-4 text-center text-xs text-muted-foreground">空</div>
@@ -224,8 +241,8 @@ export default function OperationsTodayPage() {
         })}
       </div>
 
-      {total > items.length ? (
-        <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+      {resp?.truncated ? (
+        <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground" data-testid="load-more">
           已显示 {items.length} / {total} 件工作（其余在后续页）
           <Button variant="outline" size="sm" onClick={() => void loadMore()}>加载更多</Button>
         </div>

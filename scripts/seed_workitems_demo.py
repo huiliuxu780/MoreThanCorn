@@ -1,189 +1,183 @@
-"""MTC-002B-R：可重置的 WorkItem 视觉验收夹具（仅开发库 wf_dev）。
+"""MTC-002B-R2：WorkItem 视觉验收夹具（安全模型重写版）。
 
-用法（仓库根目录）：server/.venv/bin/python scripts/seed_workitems_demo.py
+用法（仓库根目录）：
+    WF_ENV=development ALLOW_DEMO_SEED=1 server/.venv/bin/python scripts/seed_workitems_demo.py [--bulk N]
 
-- 幂等/可重置：先按标记删除旧夹具（schedule 名 DEMO-002B-*、fire_key 前缀 demo-002b-/seed-、
-  TaskRun.idempotency_key 前缀 demo-002b-，以及一次性清理 2026-09-05 首版未标记种子），再重建；
-- 夹具挂在独立自主任务 DEMO-002B-<suffix> 下，不污染真实开发数据；
-- 产出五泳道样本：排队中（未触发 occurrence）、失败/取消（failed+cancelled）、
-  已完成（succeeded+not_configured）、执行中（running 无终态子 Run）；
-  需要操作由真实冲突批次或 running+delivery=succeeded 夹具提供。
+安全门控（任一不满足即退出非 0，且不执行任何 delete/insert/HTTP）：
+1. WF_ENV == "development"；
+2. ALLOW_DEMO_SEED == "1"（显式 opt-in）；
+3. 当前数据库名严格等于 wf_dev（或经 MTC_SEED_EXPECT_DB 显式声明的专用 fixture DB）。
+
+设计约束：
+- 单一一致目标：全部经 SessionLocal（同一 DATABASE_URL）ORM 写入，**零 HTTP 调用**，
+  不存在“API 与数据库不同目标”的风险；
+- 精确清理：仅删除可由 marker 根对象追溯的资源（任务名/资产名/定义名/调度名/
+  fire_key/idempotency_key 均带 DEMO002B- 前缀）；禁止通配旧前缀、禁止时间窗清理；
+- 清理与新建在同一事务内完成，任一失败整体回滚（不留“已清理、未建成”半完成态）；
+- 每轮生成唯一 namespace（DEMO002B-<ns>），验收脚本只查该 namespace；
+- 测试钩子 MTC_SEED_INJECT_ERROR=1：清理后、提交前抛错，用于验证回滚（仅测试用）。
 """
 from __future__ import annotations
 
+import os
 import sys
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "server"))
+REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "server"))
 
-import json  # noqa: E402
-import urllib.request  # noqa: E402
-
-from sqlalchemy import select  # noqa: E402
-from zoneinfo import ZoneInfo  # noqa: E402
-
-from app.db import SessionLocal  # noqa: E402
-from app.models import (AnalysisTask, AnalysisTaskVersion, DataAsset,  # noqa: E402
-                        DataDefinition, DataDefinitionVersion, Schedule,
-                        ScheduleOccurrence, TaskRun, Workflow)
-
-SH = ZoneInfo("Asia/Shanghai")
-MARK = "demo-002b"
+MARK = "DEMO002B"
 
 
-def _cleanup(db) -> int:
-    """按依赖顺序用核心 DELETE 清理旧夹具（ORM 无 relationship，删除顺序不可靠）。"""
-    from sqlalchemy import delete as sql_delete
-    removed = 0
-    occs = db.execute(select(ScheduleOccurrence.id).where(
-        ScheduleOccurrence.fire_key.like(f"{MARK}-%")
-        | ScheduleOccurrence.fire_key.like("seed-%"))).scalars().all()
-    if occs:
-        db.execute(sql_delete(ScheduleOccurrence).where(
-            ScheduleOccurrence.id.in_([o for o in occs])))
-        removed += len(occs)
-    scheds = db.execute(select(Schedule.id).where(
-        Schedule.name.like("DEMO-002B-%") | Schedule.name.in_(["mtc002b-seed"]))).scalars().all()
-    if scheds:
-        db.execute(sql_delete(Schedule).where(Schedule.id.in_([s_ for s_ in scheds])))
-        removed += len(scheds)
-    runs = db.execute(select(TaskRun.id).where(
-        TaskRun.idempotency_key.like(f"{MARK}-%"))).scalars().all()
-    legacy = db.execute(select(TaskRun.id).where(
-        TaskRun.created_at >= datetime(2026, 9, 5, 14, 0, tzinfo=timezone.utc),
-        TaskRun.created_at <= datetime(2026, 9, 5, 14, 10, tzinfo=timezone.utc),
-        TaskRun.status.in_(["failed", "cancelled", "succeeded"]),
-        TaskRun.trigger.in_(["manual", "api", "schedule"]))).scalars().all()
-    run_ids = [r for r in runs] + [r for r in legacy if r not in runs]
-    if run_ids:
-        db.execute(sql_delete(TaskRun).where(TaskRun.id.in_(run_ids)))
-        removed += len(run_ids)
-    defs = db.execute(select(DataDefinition.id).where(
-        DataDefinition.name.like("DEMO-002B-def-%"))).scalars().all()
-    def_ids = [d for d in defs]
-    if def_ids:
-        db.execute(sql_delete(DataDefinitionVersion).where(
-            DataDefinitionVersion.definition_id.in_(def_ids)))
-        db.execute(sql_delete(DataDefinition).where(DataDefinition.id.in_(def_ids)))
-        removed += len(def_ids)
-    assets = db.execute(select(DataAsset.id).where(
-        DataAsset.name.like("DEMO-002B-asset-%"))).scalars().all()
-    if assets:
-        db.execute(sql_delete(DataAsset).where(DataAsset.id.in_([a for a in assets])))
-        removed += len(assets)
-    demos = db.execute(select(AnalysisTask.id).where(
-        AnalysisTask.name.like("DEMO-002B-%"))).scalars().all()
-    demo_ids = [t for t in demos]
-    if demo_ids:
-        db.execute(sql_delete(AnalysisTaskVersion).where(
-            AnalysisTaskVersion.task_id.in_(demo_ids)))
-        db.execute(sql_delete(AnalysisTask).where(AnalysisTask.id.in_(demo_ids)))
-        removed += len(demo_ids)
-    db.commit()
-    return removed
+def _gate() -> tuple[str, str]:
+    """返回 (db_name, namespace)；门控失败打印原因并 exit 2（无任何副作用）。"""
+    env = os.environ.get("WF_ENV", "")
+    if env != "development":
+        print(f"REFUSE: WF_ENV 必须为 development（当前：{env!r}）", file=sys.stderr)
+        sys.exit(2)
+    if os.environ.get("ALLOW_DEMO_SEED", "") != "1":
+        print("REFUSE: 需要显式 opt-in ALLOW_DEMO_SEED=1", file=sys.stderr)
+        sys.exit(2)
+    from app.config import DATABASE_URL
+    db_name = DATABASE_URL.rsplit("/", 1)[-1]
+    expect = os.environ.get("MTC_SEED_EXPECT_DB", "wf_dev")
+    if db_name != expect:
+        print(f"REFUSE: 数据库名 {db_name!r} != 期望 {expect!r}（拒绝在非目标库写入）",
+              file=sys.stderr)
+        sys.exit(2)
+    return db_name, uuid.uuid4().hex[:8]
 
 
 def main() -> None:
+    db_name, ns = _gate()
+    bulk = 0
+    if "--bulk" in sys.argv:
+        bulk = int(sys.argv[sys.argv.index("--bulk") + 1])
+    print(f"TARGET DB: {db_name} | namespace: {MARK}-{ns} | bulk: {bulk}")
+    print("RISK: 将清理并重建该 namespace 的夹具对象（marker 可追溯），不影响其他数据。")
+
+    from sqlalchemy import delete as sql_delete
+    from sqlalchemy import select
+    from zoneinfo import ZoneInfo
+
+    from app.db import SessionLocal
+    from app.models import (AnalysisTask, AnalysisTaskVersion, DataAsset,
+                            DataDefinition, DataDefinitionVersion, ResultRuleSet,
+                            ResultRuleVersion, Schedule, ScheduleOccurrence, TaskRun,
+                            Workflow)
+
+    sh = ZoneInfo("Asia/Shanghai")
+    now = datetime.now(sh)
     db = SessionLocal()
     try:
-        removed = _cleanup(db)
-        suffix = uuid.uuid4().hex[:6]
-        name = f"DEMO-002B-{suffix}"
-        # 真实已发布工作流（启动批次需要可解析的 published version）
-        pub = db.execute(select(Workflow).where(
-            Workflow.status == "published").limit(1)).scalars().first()
-        wf_id = pub.id if pub else "wf-demo"
-        task = AnalysisTask(name=name, created_by="dev", updated_by="dev",
-                            data_asset_id="da-demo", workflow_id=wf_id, status="active")
-        db.add(task)
-        db.flush()
-        ver = AnalysisTaskVersion(task_id=task.id, version_no=1, data_asset_id="da-demo",
-                                  workflow_id=wf_id, rule_policy="pinned")
-        db.add(ver)
-        db.flush()
-        task.current_version_id = ver.id
-        db.flush()
+        # ---- 精确清理（marker 根对象追溯；与新建同事务） ----
+        old_tasks = [t.id for t in db.execute(select(AnalysisTask).where(
+            AnalysisTask.name.like(f"{MARK}-%"))).scalars().all()]
+        if old_tasks:
+            db.execute(sql_delete(TaskRun).where(TaskRun.task_id.in_(old_tasks)))
+            db.execute(sql_delete(ScheduleOccurrence).where(
+                ScheduleOccurrence.task_id.in_(old_tasks)))
+            db.execute(sql_delete(Schedule).where(Schedule.task_id.in_(old_tasks)))
+            db.execute(sql_delete(AnalysisTaskVersion).where(
+                AnalysisTaskVersion.task_id.in_(old_tasks)))
+            db.execute(sql_delete(AnalysisTask).where(AnalysisTask.id.in_(old_tasks)))
+        old_defs = [d.id for d in db.execute(select(DataDefinition).where(
+            DataDefinition.name.like(f"{MARK}-%"))).scalars().all()]
+        if old_defs:
+            db.execute(sql_delete(DataDefinitionVersion).where(
+                DataDefinitionVersion.definition_id.in_(old_defs)))
+            db.execute(sql_delete(DataDefinition).where(DataDefinition.id.in_(old_defs)))
+        db.execute(sql_delete(DataAsset).where(DataAsset.name.like(f"{MARK}-%")))
 
-        # 真实单行数据资产（经 API 创建，reader 可读）→ 允许 verify 脚本启动新批次制造 SSE 变化
-        req = urllib.request.Request(
-            "http://127.0.0.1:8120/api/data-assets",
-            data=json.dumps({"name": f"DEMO-002B-asset-{suffix}",
-                             "rows": [{"interactionId": "D1",
-                                       "interactionTime": "2026-09-05T10:00:00Z",
-                                       "score": 90, "risk": "Low",
-                                       "issues": [], "summary": "demo"}],
-                             "timeField": "interactionTime"}).encode(),
-            headers={"Content-Type": "application/json"}, method="POST")
-        asset_id = json.load(urllib.request.urlopen(req))["id"]
-        task.data_asset_id = asset_id
-        ver.data_asset_id = asset_id
-        # 发布一个数据定义版本（P0-08 启动闸门要求非空）
-        req = urllib.request.Request(
-            "http://127.0.0.1:8120/api/data-definitions",
-            data=json.dumps({"name": f"DEMO-002B-def-{suffix}", "assetId": asset_id,
-                             "fieldSchema": [
-                                 {"key": "interactionId", "type": "String", "required": True},
-                                 {"key": "score", "type": "Number", "required": False},
-                                 {"key": "risk", "type": "String", "required": False},
-                                 {"key": "issues", "type": "Array", "required": False},
-                                 {"key": "summary", "type": "String", "required": False}]}).encode(),
-            headers={"Content-Type": "application/json"}, method="POST")
-        def_id = json.load(urllib.request.urlopen(req))["id"]
-        req = urllib.request.Request(
-            f"http://127.0.0.1:8120/api/data-definitions/{def_id}/publish",
-            data=b"{}", headers={"Content-Type": "application/json"}, method="POST")
-        ver.data_definition_version_id = json.load(urllib.request.urlopen(req))["versionId"]
-        task.data_definition_id = def_id
-        # 钉住一个真实已发布规则版本（启动闸门：pinned 需 result_rule_version_id）
-        from app.models import ResultRuleSet, ResultRuleVersion
+        # ---- 依赖的真实对象（同库查询，不伪造） ----
+        wf = db.execute(select(Workflow).where(
+            Workflow.status == "published").limit(1)).scalars().first()
+        if wf is None:
+            raise RuntimeError("目标库没有已发布 Workflow，拒绝伪造执行目标")
         rset = db.execute(select(ResultRuleSet).where(
             ResultRuleSet.status == "published").limit(1)).scalars().first()
+        rrv = None
         if rset is not None:
             rrv = db.execute(select(ResultRuleVersion).where(
                 ResultRuleVersion.rule_set_id == rset.id,
                 ResultRuleVersion.version_no == rset.version).limit(1)).scalars().first()
-            if rrv is not None:
-                ver.result_rule_version_id = rrv.id
-                ver.result_rule_set_id = rset.id
+
+        # ---- 新建夹具（单一 namespace） ----
+        asset = DataAsset(name=f"{MARK}-asset-{ns}", source="manual", location="",
+                          lifecycle="Ready", health="Healthy",
+                          rows=[{"interactionId": "D1",
+                                 "interactionTime": "2026-09-05T10:00:00Z",
+                                 "score": 90, "risk": "Low",
+                                 "issues": [], "summary": "demo"}])
+        db.add(asset)
+        db.flush()
+        ddef = DataDefinition(name=f"{MARK}-def-{ns}", data_asset_id=asset.id,
+                              field_schema=[
+                                  {"key": "interactionId", "type": "String", "required": True},
+                                  {"key": "score", "type": "Number", "required": False}],
+                              lifecycle="Ready")
+        db.add(ddef)
+        db.flush()
+        dver = DataDefinitionVersion(definition_id=ddef.id, version_no=1,
+                                     field_schema=ddef.field_schema)
+        db.add(dver)
         db.flush()
 
-        now = datetime.now(SH)
+        task = AnalysisTask(name=f"{MARK}-{ns}", created_by="dev", updated_by="dev",
+                            data_asset_id=asset.id, data_definition_id=ddef.id,
+                            workflow_id=wf.id, status="active")
+        db.add(task)
+        db.flush()
+        ver = AnalysisTaskVersion(task_id=task.id, version_no=1, data_asset_id=asset.id,
+                                  data_definition_version_id=dver.id, workflow_id=wf.id,
+                                  rule_policy="pinned",
+                                  result_rule_version_id=rrv.id if rrv else None,
+                                  result_rule_set_id=rset.id if rset else None)
+        db.add(ver)
+        db.flush()
+        task.current_version_id = ver.id
 
-        def add_run(status, delivery, total, succ, fail, canc, trigger, key):
-            started = (now - timedelta(hours=1)).astimezone(timezone.utc)
-            ended = (now - timedelta(minutes=30)).astimezone(timezone.utc)
-            tr = TaskRun(task_id=task.id, task_version_id=ver.id, status=status,
-                         delivery_status=delivery, trigger=trigger, total=total,
-                         succeeded_count=succ, failed_count=fail, skipped_count=0,
-                         cancelled_count=canc,
-                         started_at=started if status != "queued" else None,
-                         ended_at=ended if status in ("succeeded", "failed", "cancelled") else None,
-                         idempotency_key=f"{MARK}-{key}")
+        def add_run(status, delivery, total, succ, fail, canc, trigger, key,
+                    started=True, ended=None):
+            tr = TaskRun(
+                task_id=task.id, task_version_id=ver.id, status=status,
+                delivery_status=delivery, trigger=trigger, total=total,
+                succeeded_count=succ, failed_count=fail, skipped_count=0,
+                cancelled_count=canc,
+                started_at=(now - timedelta(hours=1)).astimezone(timezone.utc) if started else None,
+                ended_at=ended, idempotency_key=f"{MARK}-run-{ns}-{key}")
             db.add(tr)
             return tr
 
-        add_run("failed", "not_configured", 5, 0, 5, 0, "manual", "failed")
-        add_run("cancelled", "not_configured", 3, 0, 0, 3, "api", "cancelled")
-        add_run("succeeded", "not_configured", 4, 4, 0, 0, "schedule", "completed")
+        ended_at = (now - timedelta(minutes=30)).astimezone(timezone.utc)
+        add_run("failed", "not_configured", 5, 0, 5, 0, "manual", "failed", ended=ended_at)
+        add_run("cancelled", "not_configured", 3, 0, 0, 3, "api", "cancelled", ended=ended_at)
+        add_run("succeeded", "not_configured", 4, 4, 0, 0, "schedule", "completed", ended=ended_at)
         add_run("running", "not_configured", 6, 2, 0, 0, "manual", "running")
-        # 冲突样本：execution running + delivery succeeded → 需要操作
         add_run("running", "succeeded", 2, 2, 0, 0, "manual", "conflict")
+        for i in range(bulk):
+            add_run("queued", "not_configured", 2, 0, 0, 0, "manual", f"bulk{i}", started=False)
 
-        # 排队中证据=尚未到期的 planned occurrence（允许跨天；verify 会用日期控件定位其业务日）
-        plan = now + timedelta(hours=2)
-        # 年度 cron：避免调度器按小时 materialize 噪声；单条 occurrence 即排队中证据
-        sched = Schedule(task_id=task.id, workflow_id=None, name=f"DEMO-002B-{suffix}",
+        sched = Schedule(task_id=task.id, workflow_id=None, name=f"{MARK}-sched-{ns}",
                          cron_expr="0 0 1 1 *", timezone="Asia/Shanghai", enabled=True)
         db.add(sched)
         db.flush()
+        plan = now + timedelta(hours=2)
         db.add(ScheduleOccurrence(schedule_id=sched.id, task_id=task.id, status="planned",
                                   planned_at=plan.astimezone(timezone.utc),
                                   timezone="Asia/Shanghai",
-                                  fire_key=f"{MARK}-occ-{suffix}"))
+                                  fire_key=f"{MARK}-occ-{ns}"))
+
+        if os.environ.get("MTC_SEED_INJECT_ERROR", "") == "1":
+            raise RuntimeError("MTC_SEED_INJECT_ERROR：测试用注入失败（应整体回滚）")
         db.commit()
-        print(f"reset: removed={removed}; seeded task={name} (5 runs + 1 occurrence)")
+        print(f"OK: seeded namespace {MARK}-{ns} (5 runs + {bulk} bulk + 1 occurrence)")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        print(f"ABORT(rolled back): {exc}", file=sys.stderr)
+        sys.exit(1)
     finally:
         db.close()
 

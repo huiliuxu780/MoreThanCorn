@@ -1229,14 +1229,26 @@ export const workItemsApi = {
  * 服务端仅发 refresh 信号；收到即重拉列表。401/403 为终态（onError 后由页面降级轮询）。
  */
 export async function streamWorkItems(onRefresh: (seq: number) => void,
-                                      opts: { onError?: (e: unknown) => void; signal?: AbortSignal } = {}): Promise<void> {
+                                      opts: {
+                                        onError?: (e: unknown) => void
+                                        signal?: AbortSignal
+                                        /** MTC-002B-R2：跟随页面业务日期/时区，日期切换时由调用方中止重连 */
+                                        dateFrom?: string
+                                        dateTo?: string
+                                        timezone?: string
+                                      } = {}): Promise<void> {
   let reconnects = 0
+  const qs = new URLSearchParams()
+  if (opts.dateFrom) qs.set("dateFrom", opts.dateFrom)
+  if (opts.dateTo) qs.set("dateTo", opts.dateTo)
+  if (opts.timezone) qs.set("timezone", opts.timezone)
+  const url = `${WF_BASE}/api/work-items/stream${qs.toString() ? `?${qs}` : ""}`
   for (;;) {
     if (opts.signal?.aborted) return
     const tok = wfApiToken()
     const headers: Record<string, string> = { ...(tok ? { Authorization: `Bearer ${tok}` } : {}) }
     try {
-      const resp = await fetch(`${WF_BASE}/api/work-items/stream`, { headers, signal: opts.signal })
+      const resp = await fetch(url, { headers, signal: opts.signal })
       if (resp.status === 401 || resp.status === 403) {
         opts.onError?.(new ApiError(resp.status, `WorkItem 事件流未授权（${resp.status}）`))
         return

@@ -67,7 +67,10 @@ def _run(task_id: str, version_id: str | None, status: str, delivery: str = "not
         tr = TaskRun(task_id=task_id, task_version_id=version_id, status=status,
                      delivery_status=delivery, trigger=trigger,
                      total=kw.get("total", 4), succeeded_count=kw.get("succeeded", 0),
-                     failed_count=kw.get("failed", 0), skipped_count=0, cancelled_count=0)
+                     failed_count=kw.get("failed", 0), skipped_count=0,
+                     cancelled_count=kw.get("cancelled", 0),
+                     created_at=kw.get("created_at"), started_at=kw.get("started_at"),
+                     ended_at=kw.get("ended_at"))
         db.add(tr)
         db.flush()
         rid = tr.id

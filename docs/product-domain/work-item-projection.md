@@ -128,3 +128,36 @@ Avatar 体系、WorkItem 表、migration、删除 Delivery 后端能力、删除
 5. **视觉夹具**：`scripts/seed_workitems_demo.py` 可重置（DEMO-002B-* 标记清理后重建），
    提供五泳道样本与 SSE 变更钩子；夹具时间敏感（occurrence 2 小时后到期转 missed），
    seed 后应立即跑 `scripts/verify-mtc002b.mjs`。
+
+## 9. MTC-002B-R2 修订（2026-09-06）
+
+### 9.1 窗口与长期 queued 保留策略
+- queued：`created_at < 区间结束` 且仍 queued 即纳入；下界为 `区间结束 - QUEUE_RETENTION_DAYS(=7)`，
+  超过 7 天仍 queued 的批次不再进入当前看板（避免无边界累积；如需追查走批次历史页）。
+- running：只要 `created_at < 区间结束` 即纳入（跨日不丢，直到终态）。
+- 终态（succeeded/failed/cancelled/partial）：仅当 created/started/ended 任一落入区间才显示。
+- 多日窗口（dateFrom≠dateTo）按行级唯一投影，不重复。
+- 注意：queued 的 carry-forward 是**向前**的——未来业务日的看板也会包含仍 queued 的旧批次；
+  因此“当日数据变化不影响其他日期 digest”的边界仅对终态批次成立。
+
+### 9.2 分页并发限制（offset）
+当前列表为 offset 分页（page/pageSize）。并发写入下 offset 可能重复/漏项；
+前端约定：SSE refresh 到达即重置第一页并提示“列表已更新”；load-more 合并按 WorkItem id 去重。
+cursor 化留待数据量证明必要后再做（MTC-003+）。
+
+### 9.3 SSE 成本边界与降级策略
+- digest 复用投影输入事实集（`_load_projection_inputs`），并带 1s TTL 全局共享缓存：
+  同窗口多客户端每秒最多触发一次事实查询（约 8 条索引查询/窗口），不做完整 DTO 投影。
+- 连接状态三态：connecting（首帧前“连接实时更新中”）→ sse（收到真实 refresh）→
+  polling（401/403 或连续 3 次连接失败后降级 5s 轮询）。
+- stream 跟随页面业务日期/时区（dateFrom/dateTo/timezone 参数）；日期切换即中止旧连接重建。
+
+### 9.4 数据范围与筛选
+team 数据范围以 `task_id IN (scope 子查询)` 下推 occurrence/run SQL（真下推）；
+automationId/origin/agentId 同样下推。status/attentionOnly/q 为投影后计算筛选。
+by-task-runs 为常量级批量投影（runs/tasks/versions/child 聚合/名称 各一次批量查询）。
+
+### 9.5 agent 筛选与稳定 ID（跨版本）
+已触发 occurrence 的成员资格、展示与归属完全跟随关联 TaskRun 的冻结版本；
+未触发 occurrence 才按定义 current_version。agentId 筛选不会因补拉 Run 被绕过
+（关联 Run 行整体缺失的损坏 occurrence 才投影为 OCCURRENCE_RUN_MISSING）。

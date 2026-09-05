@@ -11,7 +11,6 @@ R 轮修正：参数校验 422（date/timezone/status/origin）；stream 不再�
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 from datetime import datetime, timezone as dt_timezone
 from zoneinfo import ZoneInfo
@@ -26,18 +25,24 @@ from ..db import get_db
 from ..models import AnalysisTask, ScheduleOccurrence, TaskRun
 from ..work_item_projection import (ORIGINS, STATUS_ORDER, build_work_items,
                                     count_by_status, day_bounds, filter_work_items,
-                                    project_single)
+                                    project_single)  # noqa: F401  (project_single 供详情使用)
 
 router = APIRouter(prefix="/api/work-items", tags=["work-items"])
 
 _DEFAULT_TZ = "Asia/Shanghai"
 
 
+_DATE_RE = __import__("re").compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
 def _valid_date(value: str, field: str) -> str:
+    """P2：只接受 YYYY-MM-DD；带时间/非法格式一律 422。"""
+    if not _DATE_RE.match(value):
+        raise HTTPException(422, f"{field} 必须是 YYYY-MM-DD（收到：{value}）")
     try:
         datetime.fromisoformat(value)
     except ValueError:
-        raise HTTPException(422, f"{field} 必须是 ISO 日期（YYYY-MM-DD）")
+        raise HTTPException(422, f"{field} 不是真实日期（收到：{value}）")
     return value
 
 
@@ -63,6 +68,8 @@ def list_work_items(dateFrom: str = "", dateTo: str = "", timezone: str = _DEFAU
     tz_s = _valid_tz(timezone or _DEFAULT_TZ)
     date_from = _valid_date(dateFrom, "dateFrom") if dateFrom else _business_date(tz_s)
     date_to = _valid_date(dateTo, "dateTo") if dateTo else date_from
+    if date_from > date_to:
+        raise HTTPException(422, f"dateFrom 不能晚于 dateTo（{date_from} > {date_to}）")
     if status and status not in STATUS_ORDER:
         raise HTTPException(422, f"status 必须是 {list(STATUS_ORDER)} 之一")
     if origin and origin not in ORIGINS:
@@ -91,55 +98,13 @@ def work_items_by_task_runs(ids: str = "", db: Session = Depends(get_db),
     wanted = [x for x in (ids or "").split(",") if x][:200]
     if not wanted:
         return {"items": []}
-    runs = {r.id: r for r in db.execute(
-        select(TaskRun).where(TaskRun.id.in_(wanted))).scalars().all()}
-    tasks = {t.id: t for t in db.execute(
-        select(AnalysisTask).where(AnalysisTask.id.in_(
-            {r.task_id for r in runs.values()} or {"-"}))).scalars().all()}
-    from ..auth import data_scope_members
-    members = data_scope_members(db, user)
-    items = []
-    for rid in wanted:
-        tr = runs.get(rid)
-        if tr is None:
-            continue
-        task = tasks.get(tr.task_id)
-        if task is None:
-            continue
-        if members is not None and (task.created_by or "") not in members:
-            continue
-        item = project_single(db, tr, None)
-        if item is not None:
-            items.append(item)
-    return {"items": items}
+    # P1-04：真批量投影（常量级 SQL；顺序与输入一致；不存在/跨团队静默跳过）
+    from ..work_item_projection import project_batch
+    return {"items": project_batch(db, user, wanted)}
 
 
-def compute_stream_digest(db: Session, user: dict, date_from: str, date_to: str,
-                          tz_s: str) -> str:
-    """轻量变更摘要：仅取状态相关列（不做完整投影），按当前用户数据范围。"""
-    start, _ = day_bounds(date_from, tz_s)
-    _, end = day_bounds(date_to, tz_s)
-    from ..auth import data_scope_members
-    members = data_scope_members(db, user)
-    run_q = select(TaskRun.id, TaskRun.status, TaskRun.delivery_status,
-                   TaskRun.succeeded_count, TaskRun.failed_count, TaskRun.task_id).where(
-        (TaskRun.created_at >= start) & (TaskRun.created_at < end)
-        | (TaskRun.started_at >= start) & (TaskRun.started_at < end)
-        | (TaskRun.started_at < start) & (TaskRun.status.in_(("queued", "running")))
-        | (TaskRun.ended_at >= start) & (TaskRun.ended_at < end))
-    occ_q = select(ScheduleOccurrence.id, ScheduleOccurrence.status,
-                   ScheduleOccurrence.task_run_id, ScheduleOccurrence.task_id).where(
-        ScheduleOccurrence.planned_at >= start, ScheduleOccurrence.planned_at < end)
-    if members is not None:
-        tids = {r[0] for r in db.execute(
-            select(AnalysisTask.id).where(AnalysisTask.created_by.in_(members))).all()}
-        run_q = run_q.where(TaskRun.task_id.in_(tids or {"-"}))
-        occ_q = occ_q.where(ScheduleOccurrence.task_id.in_(tids or {"-"}))
-    rows = [tuple(r) for r in db.execute(run_q).all()]
-    occs = [tuple(r) for r in db.execute(occ_q).all()]
-    payload = json.dumps({"runs": sorted(map(str, rows)), "occs": sorted(map(str, occs))},
-                         sort_keys=True, default=str)
-    return hashlib.sha256(payload.encode()).hexdigest()
+# P1-01：digest 唯一实现位于 work_item_projection（复用投影事实集 + 1s TTL 共享缓存）
+from ..work_item_projection import compute_stream_digest  # noqa: E402
 
 
 async def work_items_stream_iter(user: dict, d_from: str, d_to: str, tz_s: str,

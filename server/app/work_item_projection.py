@@ -1,4 +1,4 @@
-"""MTC-002B-R：WorkItemProjection —— 统一任务读模型（只投影，不建表、不双写）。
+"""MTC-002B-R2：WorkItemProjection —— 统一任务读模型（只投影，不建表、不双写）。
 
 对象关系：
 
@@ -10,17 +10,23 @@
               ▼
     Run（单条交互执行） → QualityResult / ResultDelivery
 
-R 轮修正（MTC-002B-ACCEPTANCE P1-02/03/04）：
-- 历史 TaskRun 的执行目标/assignee/has_target 一律读**冻结的** ``task_version_id``；
-  仅未触发 occurrence 使用定义当前版本；
-- ``started/firing`` 却无 TaskRun 的 occurrence 不再静默丢弃 → needs_action
-  （code=OCCURRENCE_RUN_MISSING）；
-- 可下推筛选（日期/automationId/origin/agentId/数据范围）放入 SQL；
-  子 Run 聚合仅针对本次候选 TaskRun ID 集合；
-- 默认排序改为时间倒序（时间切片分页），避免状态排序导致后置泳道整页消失。
+R2 轮修正（MTC-002B-R2 指令）：
+- P1-03 窗口规则：queued 以 created_at < 区间结束且仍 queued 纳入（保留期
+  QUEUE_RETENTION_DAYS=7 天，见领域文档 §9）；running 以 started_at 或 created_at
+  跨日纳入；终态仅按其 created/started/ended 落入区间显示；多日窗口不重复（行级唯一）。
+- P1-02 agent 跨版本：已触发 occurrence 完全跟随关联 TaskRun 的冻结版本成员资格；
+  未触发 occurrence 才按定义 current_version 筛选；删除“补拉绕过 agentId”的路径
+  （关联 Run 行缺失的损坏 occurrence 才走 OCCURRENCE_RUN_MISSING）。
+- P1-04 data scope 真下推：team 范围以 task_id IN (scope 子查询) 进入 occurrence/run SQL；
+  by-task-runs 走真批量投影（常量级 SQL，顺序与输入一致）。
+- P1-01 digest 复用投影输入事实集（_load_projection_inputs 的全部事实），1s TTL 共享缓存。
 """
 from __future__ import annotations
 
+import hashlib
+import json
+import time
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -33,6 +39,9 @@ from .models import (Agent, AnalysisTask, AnalysisTaskVersion, Run,
 
 #: 用户可见主状态（固定五组，顺序即看板泳道顺序）
 STATUS_ORDER = ("needs_action", "running", "completed", "queued", "failed_cancelled")
+
+#: 长期 queued 的保留期（天）：超过该期限的 queued 批次不再进入当前看板（领域文档 §9）
+QUEUE_RETENTION_DAYS = 7
 
 _KNOWN_RUN_STATUS = {"queued", "running", "partial", "succeeded", "failed", "cancelled"}
 _ACTIVE_RUN_STATUS = ("queued", "running")
@@ -160,9 +169,121 @@ def _duration_ms(tr: TaskRun | None) -> int | None:
     return int((end - tr.started_at).total_seconds() * 1000)
 
 
+def _window_run_clause(start: datetime, end: datetime):
+    """P1-03：queued 看 created_at（保留期内）；running 跨日保留；终态按三个生命周期时间落窗。"""
+    retention_start = end - timedelta(days=QUEUE_RETENTION_DAYS)
+    queued = ((TaskRun.status == "queued") & (TaskRun.created_at < end)
+              & (TaskRun.created_at >= retention_start))
+    running = (TaskRun.status == "running") & (TaskRun.created_at < end)
+    terminal = (TaskRun.status.notin_(("queued", "running"))) & (
+        ((TaskRun.created_at >= start) & (TaskRun.created_at < end))
+        | ((TaskRun.started_at >= start) & (TaskRun.started_at < end))
+        | ((TaskRun.ended_at >= start) & (TaskRun.ended_at < end)))
+    return queued | running | terminal
+
+
+@dataclass
+class ProjectionInputs:
+    """投影与 digest 共用的批量事实集合（单一事实源）。"""
+    occs: list
+    runs_by_id: dict
+    tasks: dict
+    versions: dict
+    active_counts: dict
+    child_totals: dict
+    agent_names: dict
+    workflow_names: dict
+
+
+def _load_projection_inputs(db: Session, user: dict, start: datetime, end: datetime,
+                            automation_id: str = "", origin: str = "",
+                            agent_id: str = "") -> ProjectionInputs:
+    occ_q = select(ScheduleOccurrence).where(
+        ScheduleOccurrence.planned_at >= start, ScheduleOccurrence.planned_at < end)
+    run_q = select(TaskRun).where(_window_run_clause(start, end))
+
+    # P1-04A：data scope 真下推（子查询进入 occurrence/run SQL）
+    members = data_scope_members(db, user)
+    if members is not None:
+        scope_ids = select(AnalysisTask.id).where(AnalysisTask.created_by.in_(members))
+        occ_q = occ_q.where(ScheduleOccurrence.task_id.in_(scope_ids))
+        run_q = run_q.where(TaskRun.task_id.in_(scope_ids))
+    if automation_id:
+        occ_q = occ_q.where(ScheduleOccurrence.task_id == automation_id)
+        run_q = run_q.where(TaskRun.task_id == automation_id)
+    vids: set[str] | None = None
+    if origin:
+        if origin == "schedule":
+            run_q = run_q.where(TaskRun.trigger == "schedule")
+        else:
+            occ_q = occ_q.where(ScheduleOccurrence.id == "-")
+            run_q = run_q.where(TaskRun.trigger == origin)
+    if agent_id:
+        vids = {r[0] for r in db.execute(
+            select(AnalysisTaskVersion.id).where(
+                AnalysisTaskVersion.agent_id == agent_id)).all()}
+        run_q = run_q.where(TaskRun.task_version_id.in_(vids or {"-"}))
+        # 未触发 occurrence 才按 current_version 的 agent 归属；已触发的跟随关联 Run（后置判定）
+        tids_cur = {r[0] for r in db.execute(
+            select(AnalysisTask.id).where(
+                AnalysisTask.current_version_id.in_(vids or {"-"}))).all()}
+        occ_q = occ_q.where(
+            (ScheduleOccurrence.task_run_id.is_(None)
+             & ScheduleOccurrence.task_id.in_(tids_cur or {"-"}))
+            | ScheduleOccurrence.task_run_id.isnot(None))
+
+    occs = list(db.execute(occ_q).scalars().all())
+    runs_by_id = {r.id: r for r in db.execute(run_q).scalars().all()}
+
+    # P1-02：已触发 occurrence 的成员资格完全由关联 Run 决定；
+    # 关联 Run 行整体缺失（损坏）才保留为断链卡；Run 存在但被窗口/范围/agent 排除则 occ 一并排除。
+    triggered_missing = {o.task_run_id for o in occs
+                         if o.task_run_id and o.task_run_id not in runs_by_id}
+    broken_run_ids: set[str] = set()
+    if triggered_missing:
+        broken_run_ids = triggered_missing - {r[0] for r in db.execute(
+            select(TaskRun.id).where(TaskRun.id.in_(triggered_missing))).all()}
+    occs = [o for o in occs
+            if (not o.task_run_id) or (o.task_run_id in runs_by_id)
+            or (o.task_run_id in broken_run_ids)]
+
+    task_ids = {o.task_id for o in occs if o.task_id} | {r.task_id for r in runs_by_id.values()}
+    tasks = {t.id: t for t in db.execute(
+        select(AnalysisTask).where(AnalysisTask.id.in_(task_ids or {"-"}))).scalars().all()}
+
+    version_ids = {r.task_version_id for r in runs_by_id.values() if r.task_version_id}
+    version_ids |= {t.current_version_id for t in tasks.values() if t.current_version_id}
+    versions = {v.id: v for v in db.execute(
+        select(AnalysisTaskVersion).where(
+            AnalysisTaskVersion.id.in_(version_ids or {"-"}))).scalars().all()}
+
+    run_ids = set(runs_by_id)
+    active_counts = dict(db.execute(
+        select(Run.task_run_id, func.count(Run.id)).where(
+            Run.task_run_id.in_(run_ids or {"-"}),
+            Run.status.in_(_ACTIVE_RUN_STATUS)).group_by(Run.task_run_id)).all())
+    child_totals = dict(db.execute(
+        select(Run.task_run_id, func.count(Run.id)).where(
+            Run.task_run_id.in_(run_ids or {"-"})).group_by(Run.task_run_id)).all())
+
+    agent_ids = {v.agent_id for v in versions.values()
+                 if v.execution_target_type == "agent" and v.agent_id}
+    wf_ids = {v.workflow_id for v in versions.values()
+              if v.execution_target_type == "workflow" and v.workflow_id}
+    agent_names = {a.id: a.name for a in db.execute(
+        select(Agent).where(Agent.id.in_(agent_ids or {"-"}))).scalars().all()}
+    workflow_names = {w.id: w.name for w in db.execute(
+        select(Workflow).where(Workflow.id.in_(wf_ids or {"-"}))).scalars().all()}
+
+    return ProjectionInputs(occs=occs, runs_by_id=runs_by_id, tasks=tasks, versions=versions,
+                            active_counts=active_counts, child_totals=child_totals,
+                            agent_names=agent_names, workflow_names=workflow_names)
+
+
 def _build_item(tr: TaskRun | None, occ: ScheduleOccurrence | None,
                 task: AnalysisTask | None, version: AnalysisTaskVersion | None,
-                child_active: int, child_total: int) -> dict:
+                child_active: int, child_total: int,
+                agent_names: dict | None = None, workflow_names: dict | None = None) -> dict:
     """单对 (tr, occ) → WorkItemDTO dict。version 语义：有 TaskRun 用冻结版本，否则当前版本。"""
     has_target = version is not None
     st = project_work_item_status(tr, occ, has_target, child_active, child_total)
@@ -180,10 +301,12 @@ def _build_item(tr: TaskRun | None, occ: ScheduleOccurrence | None,
     if version is not None:
         if version.execution_target_type == "agent" and version.agent_id:
             assignee = {"type": "agent", "id": version.agent_id,
-                        "name": version.agent_id, "avatarUrl": None}
+                        "name": (agent_names or {}).get(version.agent_id, version.agent_id),
+                        "avatarUrl": None}
         elif version.workflow_id:
             assignee = {"type": "workflow", "id": version.workflow_id,
-                        "name": version.workflow_id, "avatarUrl": None}
+                        "name": (workflow_names or {}).get(version.workflow_id, version.workflow_id),
+                        "avatarUrl": None}
     created_dt = tr.created_at if tr is not None else getattr(occ, "created_at", None)
     updated_dt = ((tr.ended_at or tr.started_at or tr.created_at) if tr is not None
                   else getattr(occ, "updated_at", None))
@@ -228,127 +351,32 @@ def _build_item(tr: TaskRun | None, occ: ScheduleOccurrence | None,
     }
 
 
-def _resolve_names(db: Session, items: list[dict]) -> None:
-    """批量回填 assignee 名称（agent/workflow），避免逐卡查询。"""
-    agent_ids = {a["assignee"]["id"] for a in items
-                 if a["assignee"] and a["assignee"]["type"] == "agent"}
-    wf_ids = {a["assignee"]["id"] for a in items
-              if a["assignee"] and a["assignee"]["type"] == "workflow"}
-    if not agent_ids and not wf_ids:
-        return
-    agents = {a.id: a.name for a in db.execute(
-        select(Agent).where(Agent.id.in_(agent_ids or {"-"}))).scalars().all()}
-    wfs = {w.id: w.name for w in db.execute(
-        select(Workflow).where(Workflow.id.in_(wf_ids or {"-"}))).scalars().all()}
-    for a in items:
-        if not a["assignee"]:
-            continue
-        if a["assignee"]["type"] == "agent":
-            a["assignee"]["name"] = agents.get(a["assignee"]["id"], a["assignee"]["id"])
-        else:
-            a["assignee"]["name"] = wfs.get(a["assignee"]["id"], a["assignee"]["id"])
-
-
-def build_work_items(db: Session, user: dict, *, date_from: str, date_to: str,
-                     tz_s: str, automation_id: str = "", origin: str = "",
-                     agent_id: str = "") -> list[dict]:
-    """投影日期区间内全部 WorkItem。
-
-    可下推筛选（automation_id/origin/agent_id/数据范围/日期）在 SQL 完成；
-    status/attentionOnly/q 为投影后计算筛选（由路由层应用）。
-    子 Run 聚合仅针对候选 TaskRun ID 集合（不扫全表）。
-    """
-    start, _ = day_bounds(date_from, tz_s)
-    _, end = day_bounds(date_to, tz_s)
-
-    occ_q = select(ScheduleOccurrence).where(
-        ScheduleOccurrence.planned_at >= start, ScheduleOccurrence.planned_at < end)
-    run_q = select(TaskRun).where(
-        (TaskRun.created_at >= start) & (TaskRun.created_at < end)
-        | (TaskRun.started_at >= start) & (TaskRun.started_at < end)
-        | (TaskRun.started_at < start) & (TaskRun.status.in_(_ACTIVE_RUN_STATUS))
-        | (TaskRun.ended_at >= start) & (TaskRun.ended_at < end))
-    if automation_id:
-        occ_q = occ_q.where(ScheduleOccurrence.task_id == automation_id)
-        run_q = run_q.where(TaskRun.task_id == automation_id)
-    if origin:
-        if origin == "schedule":
-            run_q = run_q.where(TaskRun.trigger == "schedule")
-        else:
-            occ_q = occ_q.where(ScheduleOccurrence.id == "-")
-            run_q = run_q.where(TaskRun.trigger == origin)
-    if agent_id:
-        vids = {r[0] for r in db.execute(
-            select(AnalysisTaskVersion.id).where(
-                AnalysisTaskVersion.agent_id == agent_id)).all()}
-        run_q = run_q.where(TaskRun.task_version_id.in_(vids or {"-"}))
-        tids = {r[0] for r in db.execute(
-            select(AnalysisTask.id).where(
-                AnalysisTask.current_version_id.in_(vids or {"-"}))).all()}
-        occ_q = occ_q.where(ScheduleOccurrence.task_id.in_(tids or {"-"}))
-
-    occs = db.execute(occ_q).scalars().all()
-    runs = db.execute(run_q).scalars().all()
-    runs_by_id = {r.id: r for r in runs}
-
-    # occurrence 已关联但 run 不在窗口集合：补拉，避免丢卡
-    missing = {o.task_run_id for o in occs if o.task_run_id} - set(runs_by_id)
-    if missing:
-        for r in db.execute(select(TaskRun).where(TaskRun.id.in_(missing))).scalars().all():
-            runs_by_id[r.id] = r
-
-    # 数据范围：按所属 AutomationDefinition 的 created_by 服务端过滤
-    task_ids = {o.task_id for o in occs if o.task_id} | {r.task_id for r in runs_by_id.values()}
-    tasks = {t.id: t for t in db.execute(
-        select(AnalysisTask).where(AnalysisTask.id.in_(task_ids or {"-"}))).scalars().all()}
-    members = data_scope_members(db, user)
-    if members is not None:
-        allowed = {tid for tid, t in tasks.items() if (t.created_by or "") in members}
-        occs = [o for o in occs if (o.task_id or "") in allowed]
-        runs_by_id = {rid: r for rid, r in runs_by_id.items() if r.task_id in allowed}
-        tasks = {tid: t for tid, t in tasks.items() if tid in allowed}
-
-    # 冻结版本优先：TaskRun 用 task_version_id；occurrence-only 用定义当前版本
-    version_ids = {r.task_version_id for r in runs_by_id.values() if r.task_version_id}
-    version_ids |= {t.current_version_id for t in tasks.values() if t.current_version_id}
-    versions = {v.id: v for v in db.execute(
-        select(AnalysisTaskVersion).where(
-            AnalysisTaskVersion.id.in_(version_ids or {"-"}))).scalars().all()}
-
-    run_ids = set(runs_by_id)
-    active_counts = dict(db.execute(
-        select(Run.task_run_id, func.count(Run.id)).where(
-            Run.task_run_id.in_(run_ids or {"-"}),
-            Run.status.in_(_ACTIVE_RUN_STATUS)).group_by(Run.task_run_id)).all())
-    child_totals = dict(db.execute(
-        select(Run.task_run_id, func.count(Run.id)).where(
-            Run.task_run_id.in_(run_ids or {"-"})).group_by(Run.task_run_id)).all())
-
-    def _version_for(tr: TaskRun | None, task: AnalysisTask | None):
-        if tr is not None:
-            return versions.get(tr.task_version_id) if tr.task_version_id else None
-        return versions.get(task.current_version_id) if task and task.current_version_id else None
-
+def _items_from_inputs(inp: ProjectionInputs) -> list[dict]:
     items: list[dict] = []
     seen_run_ids: set[str] = set()
-    for occ in occs:
-        tr = runs_by_id.get(occ.task_run_id) if occ.task_run_id else None
+    for occ in inp.occs:
+        tr = inp.runs_by_id.get(occ.task_run_id) if occ.task_run_id else None
         if tr is None and occ.status in ("cancelled", "skipped"):
             continue  # 取消/跳过的空 occurrence 不投影（领域文档记录）
-        task = tasks.get(occ.task_id or "")
-        items.append(_build_item(tr, occ, task, _version_for(tr, task),
-                                 active_counts.get(tr.id, 0) if tr else 0,
-                                 child_totals.get(tr.id, 0) if tr else 0))
+        task = inp.tasks.get(occ.task_id or "")
+        version = (inp.versions.get(tr.task_version_id) if tr is not None and tr.task_version_id
+                   else (inp.versions.get(task.current_version_id)
+                         if task is not None and task.current_version_id else None))
+        items.append(_build_item(tr, occ, task, version,
+                                 inp.active_counts.get(tr.id, 0) if tr else 0,
+                                 inp.child_totals.get(tr.id, 0) if tr else 0,
+                                 inp.agent_names, inp.workflow_names))
         if tr is not None:
             seen_run_ids.add(tr.id)
-    for rid, tr in runs_by_id.items():
+    for rid, tr in inp.runs_by_id.items():
         if rid in seen_run_ids:
             continue
-        items.append(_build_item(tr, None, tasks.get(tr.task_id), _version_for(tr, None),
-                                 active_counts.get(rid, 0), child_totals.get(rid, 0)))
+        task = inp.tasks.get(tr.task_id)
+        version = inp.versions.get(tr.task_version_id) if tr.task_version_id else None
+        items.append(_build_item(tr, None, task, version,
+                                 inp.active_counts.get(rid, 0), inp.child_totals.get(rid, 0),
+                                 inp.agent_names, inp.workflow_names))
         seen_run_ids.add(rid)
-
-    _resolve_names(db, items)
     # 时间倒序（时间切片分页）：避免状态排序使后置泳道整页消失
     items.sort(key=lambda w: (
         datetime.fromisoformat(w["scheduledAt"] or w["startedAt"] or w["createdAt"]
@@ -357,33 +385,93 @@ def build_work_items(db: Session, user: dict, *, date_from: str, date_to: str,
     return items
 
 
+def build_work_items(db: Session, user: dict, *, date_from: str, date_to: str,
+                     tz_s: str, automation_id: str = "", origin: str = "",
+                     agent_id: str = "") -> list[dict]:
+    start, _ = day_bounds(date_from, tz_s)
+    _, end = day_bounds(date_to, tz_s)
+    inp = _load_projection_inputs(db, user, start, end, automation_id, origin, agent_id)
+    return _items_from_inputs(inp)
+
+
+def project_batch(db: Session, user: dict, run_ids: list[str]) -> list[dict]:
+    """P1-04：真批量投影（常量级 SQL）。返回顺序与 run_ids 输入顺序一致；
+    不存在或跨团队 ID 静默跳过（列表语义）。"""
+    if not run_ids:
+        return []
+    runs = {r.id: r for r in db.execute(
+        select(TaskRun).where(TaskRun.id.in_(run_ids))).scalars().all()}
+    task_ids = {r.task_id for r in runs.values()}
+    tasks = {t.id: t for t in db.execute(
+        select(AnalysisTask).where(AnalysisTask.id.in_(task_ids or {"-"}))).scalars().all()}
+    members = data_scope_members(db, user)
+    version_ids = {r.task_version_id for r in runs.values() if r.task_version_id}
+    versions = {v.id: v for v in db.execute(
+        select(AnalysisTaskVersion).where(
+            AnalysisTaskVersion.id.in_(version_ids or {"-"}))).scalars().all()}
+    active_counts = dict(db.execute(
+        select(Run.task_run_id, func.count(Run.id)).where(
+            Run.task_run_id.in_(set(run_ids)),
+            Run.status.in_(_ACTIVE_RUN_STATUS)).group_by(Run.task_run_id)).all())
+    child_totals = dict(db.execute(
+        select(Run.task_run_id, func.count(Run.id)).where(
+            Run.task_run_id.in_(set(run_ids))).group_by(Run.task_run_id)).all())
+    agent_ids = {v.agent_id for v in versions.values()
+                 if v.execution_target_type == "agent" and v.agent_id}
+    wf_ids = {v.workflow_id for v in versions.values()
+              if v.execution_target_type == "workflow" and v.workflow_id}
+    agent_names = {a.id: a.name for a in db.execute(
+        select(Agent).where(Agent.id.in_(agent_ids or {"-"}))).scalars().all()}
+    workflow_names = {w.id: w.name for w in db.execute(
+        select(Workflow).where(Workflow.id.in_(wf_ids or {"-"}))).scalars().all()}
+
+    out: list[dict] = []
+    for rid in run_ids:
+        tr = runs.get(rid)
+        if tr is None:
+            continue
+        task = tasks.get(tr.task_id)
+        if task is None:
+            continue
+        if members is not None and (task.created_by or "") not in members:
+            continue
+        version = versions.get(tr.task_version_id) if tr.task_version_id else None
+        out.append(_build_item(tr, None, task, version,
+                               active_counts.get(rid, 0), child_totals.get(rid, 0),
+                               agent_names, workflow_names))
+    return out
+
+
 def project_single(db: Session, tr: TaskRun | None, occ: ScheduleOccurrence | None) -> dict | None:
-    """单条投影（详情/by-task-runs 用）。cancelled/skipped 空 occurrence 返回 None（不投影）。"""
+    """单条投影（详情用）。cancelled/skipped 空 occurrence 返回 None（不投影）。"""
     if tr is None and occ is None:
         return None
     if tr is None and occ is not None and occ.status in ("cancelled", "skipped"):
         return None
-    task_id = tr.task_id if tr is not None else (occ.task_id if occ is not None else None)
-    task = db.get(AnalysisTask, task_id) if task_id else None
-    version = None
-    if tr is not None and tr.task_version_id:
-        version = db.get(AnalysisTaskVersion, tr.task_version_id)
-    elif tr is None and task is not None and task.current_version_id:
-        version = db.get(AnalysisTaskVersion, task.current_version_id)
-    child_active = child_total = 0
     if tr is not None:
-        child_total = db.execute(select(func.count(Run.id)).where(
-            Run.task_run_id == tr.id)).scalar() or 0
-        child_active = db.execute(select(func.count(Run.id)).where(
-            Run.task_run_id == tr.id, Run.status.in_(_ACTIVE_RUN_STATUS))).scalar() or 0
-    item = _build_item(tr, occ, task, version, child_active, child_total)
-    _resolve_names(db, [item])
+        batch = project_batch(db, {"role": "admin", "username": "system", "data_scope": "all"},
+                              [tr.id])
+        return batch[0] if batch else None
+    task_id = occ.task_id
+    task = db.get(AnalysisTask, task_id) if task_id else None
+    version = db.get(AnalysisTaskVersion, task.current_version_id) \
+        if task is not None and task.current_version_id else None
+    agent_names: dict = {}
+    workflow_names: dict = {}
+    if version is not None:
+        if version.execution_target_type == "agent" and version.agent_id:
+            a = db.get(Agent, version.agent_id)
+            agent_names = {version.agent_id: a.name if a else version.agent_id}
+        elif version.workflow_id:
+            w = db.get(Workflow, version.workflow_id)
+            workflow_names = {version.workflow_id: w.name if w else version.workflow_id}
+    item = _build_item(None, occ, task, version, 0, 0, agent_names, workflow_names)
     return item
 
 
 def filter_work_items(items: list[dict], *, status: str = "", q: str = "",
                       attention_only: bool = False) -> list[dict]:
-    """投影后计算筛选（status/attentionOnly/q）。automationId/origin/agentId 已下推 SQL。"""
+    """投影后计算筛选（status/attentionOnly/q）。automationId/origin/agentId/scope 已下推 SQL。"""
     out = items
     if status:
         out = [w for w in out if w["status"] == status]
@@ -402,3 +490,57 @@ def count_by_status(items: list[dict]) -> dict:
     for w in items:
         counts[w["status"]] = counts.get(w["status"], 0) + 1
     return counts
+
+
+# ---------- P1-01：digest 复用投影事实集 + 1s TTL 共享缓存 ----------
+
+_DIGEST_CACHE: dict[tuple, tuple[float, str]] = {}
+DIGEST_CACHE_TTL = 1.0
+
+
+def _facts_digest(inp: ProjectionInputs) -> str:
+    """对投影所依赖的全部批量事实取摘要：任何影响 WorkItem 可见 DTO 的字段变化都会改变 digest。"""
+    facts: list[tuple] = []
+    for r in inp.runs_by_id.values():
+        facts.append(("run", r.id, r.status, r.delivery_status, r.total, r.succeeded_count,
+                      r.failed_count, r.skipped_count, r.cancelled_count,
+                      r.started_at.isoformat() if r.started_at else None,
+                      r.ended_at.isoformat() if r.ended_at else None,
+                      r.created_at.isoformat() if r.created_at else None,
+                      r.task_version_id, r.task_id))
+    for o in inp.occs:
+        facts.append(("occ", o.id, o.status, o.task_run_id,
+                      o.planned_at.isoformat() if o.planned_at else None,
+                      json.dumps(o.error, sort_keys=True, default=str) if o.error else None))
+    for t in inp.tasks.values():
+        facts.append(("task", t.id, t.name, t.description, t.created_by, t.current_version_id))
+    for v in inp.versions.values():
+        facts.append(("ver", v.id, v.execution_target_type, v.agent_id, v.workflow_id))
+    for k, v in inp.active_counts.items():
+        facts.append(("act", k, v))
+    for k, v in inp.child_totals.items():
+        facts.append(("tot", k, v))
+    for k, v in inp.agent_names.items():
+        facts.append(("ag", k, v))
+    for k, v in inp.workflow_names.items():
+        facts.append(("wf", k, v))
+    payload = json.dumps(sorted(map(list, facts)), sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def compute_stream_digest(db: Session, user: dict, date_from: str, date_to: str,
+                          tz_s: str, use_cache: bool = True) -> str:
+    start, _ = day_bounds(date_from, tz_s)
+    _, end = day_bounds(date_to, tz_s)
+    members = data_scope_members(db, user)
+    scope_key = "all" if members is None else hashlib.sha256(
+        json.dumps(sorted(members)).encode()).hexdigest()[:16]
+    key = (scope_key, start.isoformat(), end.isoformat(), tz_s)
+    if use_cache:
+        hit = _DIGEST_CACHE.get(key)
+        if hit and (time.monotonic() - hit[0]) < DIGEST_CACHE_TTL:
+            return hit[1]
+    inp = _load_projection_inputs(db, user, start, end)
+    digest = _facts_digest(inp)
+    _DIGEST_CACHE[key] = (time.monotonic(), digest)
+    return digest
