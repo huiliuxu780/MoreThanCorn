@@ -9,7 +9,7 @@ from .legacy_agent_archive import LegacyAgentArchivedError
 from .runner import start_worker
 from .routers import (admin, agents, alerts, analytics, auth_routes, automations,
                       business, forms, governance, operations, registry, resources,
-                      runs, runtime_providers, workflows)
+                      runs, runtime_providers, work_items, workflows)
 
 # 鉴权白名单：登录与探活不需要身份
 _PUBLIC_PATHS = ("/api/auth/login", "/healthz", "/readyz", "/openapi.json", "/docs")
@@ -140,6 +140,7 @@ app.include_router(runs.router)
 app.include_router(business.router)
 app.include_router(automations.router)  # MTC-002A：自主任务 canonical API（兼容层，同表同数据）
 app.include_router(operations.router)  # SDD 13：运行中心（today/history/stream/detail）
+app.include_router(work_items.router)  # MTC-002B：WorkItemProjection 统一读模型（只读）
 app.include_router(governance.router)
 app.include_router(resources.router)
 app.include_router(admin.router)

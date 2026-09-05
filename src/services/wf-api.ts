@@ -886,6 +886,10 @@ export async function realAgentAnalysis(): Promise<AgentAnalysisData> {
 import type {
   AnalysisTaskDTO, AutomationDefinitionDTO, QualityResultDetailDTO, ResultRuleDetailDTO, ResultRuleSetDTO,
   ResultRuleVersionDTO, TaskRunDTO, TaskRunResultDTO, TaskRunRunDTO, TaskVersionDTO,
+  WorkItemDTO, WorkItemListResponse,
+} from "@/services/api-types"
+export type {
+  WorkItemAttention, WorkItemDTO, WorkItemListResponse, WorkItemPhase, WorkItemStatus,
 } from "@/services/api-types"
 import type { DataAsset } from "@/domain/types"
 
@@ -1195,6 +1199,26 @@ export const opsApi = {
       { method: "POST", body: "{}" }),
   streamUrl: (timezone = "Asia/Shanghai") =>
     `${WF_BASE}/api/operations/task-runs/stream?timezone=${encodeURIComponent(timezone)}`,
+}
+
+/* ---------- MTC-002B：WorkItem canonical 只读 API ---------- */
+export const workItemsApi = {
+  list: (params: {
+    dateFrom?: string; dateTo?: string; timezone?: string; status?: string
+    automationId?: string; agentId?: string; q?: string; origin?: string
+    attentionOnly?: boolean; page?: number; pageSize?: number
+  } = {}) => {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === "" || v === false) continue
+      qs.set(k, k === "attentionOnly" ? "only" : String(v))
+    }
+    return req<WorkItemListResponse>(`/api/work-items?${qs.toString()}`)
+  },
+  get: (workItemId: string) => req<WorkItemDTO>(`/api/work-items/${workItemId}`),
+  /** SSE 仅发 refresh 信号；前端收到后重拉列表，失败降级轮询 */
+  streamUrl: (timezone = "Asia/Shanghai") =>
+    `${WF_BASE}/api/work-items/stream?timezone=${encodeURIComponent(timezone)}`,
 }
 
 export async function realQualityDetail(id: string): Promise<Record<string, unknown>> {

@@ -36,6 +36,23 @@ export const UI_TERMS = {
   },
 } as const
 
+/** MTC-002B：WorkItem 主状态中文映射（固定五组，顺序即泳道顺序）。 */
+export const WORK_ITEM_STATUS_LABELS: Record<string, string> = {
+  needs_action: "需要操作",
+  running: "执行中",
+  completed: "已完成",
+  queued: "排队中",
+  failed_cancelled: "失败/取消",
+}
+
+export const WORK_ITEM_STATUS_ORDER = [
+  "needs_action", "running", "completed", "queued", "failed_cancelled",
+] as const
+
+export const WORK_ITEM_ORIGIN_LABELS: Record<string, string> = {
+  manual: "手动", schedule: "调度", api: "API", backfill: "回填", unknown: "未知",
+}
+
 /** 状态中文文案。状态文字必须始终存在，颜色只是辅助语义。 */
 export const STATUS_LABELS: Record<string, string> = {
   // Agent / Tool Version / Data Asset lifecycle / Result Rules

@@ -10,25 +10,23 @@ import {
 import { ErrorState } from "@/components/app/list-state"
 import { PageContainer, PageHeader } from "@/components/app/page"
 import { formatCompactDateTime } from "@/lib/time"
-import { opsApi, type OpsBoard, type OpsBoardCard } from "@/services/wf-api"
+import {
+  WORK_ITEM_ORIGIN_LABELS, WORK_ITEM_STATUS_LABELS,
+} from "@/config/ui-terms"
+import { workItemsApi, type WorkItemDTO, type WorkItemStatus } from "@/services/wf-api"
 
-const COLUMNS: { key: OpsBoardCard["stage"]; label: string }[] = [
-  { key: "upcoming", label: "即将运行" },
-  { key: "queued", label: "排队中" },
-  { key: "running", label: "执行中" },
-  { key: "delivering", label: "结果投递" },
-  { key: "attention", label: "需关注" },
-  { key: "completed", label: "已完成" },
+/** MTC-002B：五泳道固定顺序；Delivery 不再是一级状态（技术详情见 /operations/task-runs/:id）。 */
+const LANES: { key: WorkItemStatus; badge: "warning" | "info" | "success" | "neutral" | "danger" }[] = [
+  { key: "needs_action", badge: "warning" },
+  { key: "running", badge: "info" },
+  { key: "completed", badge: "success" },
+  { key: "queued", badge: "neutral" },
+  { key: "failed_cancelled", badge: "danger" },
 ]
 
-const STAGE_TEXT: Record<OpsBoardCard["stage"], string> = {
-  upcoming: "计划中", queued: "排队中", running: "执行中",
-  delivering: "投递中", attention: "需关注", completed: "已完成",
-}
-
-function liveDuration(card: OpsBoardCard): string {
-  if (card.durationMs == null) return "—"
-  const s = Math.round(card.durationMs / 1000)
+function liveDuration(w: WorkItemDTO): string {
+  if (w.durationMs == null) return "—"
+  const s = Math.round(w.durationMs / 1000)
   return s >= 60 ? `${Math.floor(s / 60)}m${s % 60}s` : `${s}s`
 }
 
@@ -36,10 +34,9 @@ export default function OperationsTodayPage() {
   const navigate = useNavigate()
   const [date, setDate] = useState("")
   const [q, setQ] = useState("")
-  const [trigger, setTrigger] = useState("")
-  const [environment, setEnvironment] = useState("")
+  const [origin, setOrigin] = useState("")
   const [attentionOnly, setAttentionOnly] = useState(false)
-  const [board, setBoard] = useState<OpsBoard | null>(null)
+  const [resp, setResp] = useState<Awaited<ReturnType<typeof workItemsApi.list>> | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<string | null>(null)
   const [channel, setChannel] = useState<"sse" | "polling">("sse")
@@ -48,43 +45,36 @@ export default function OperationsTodayPage() {
 
   const load = useCallback(async () => {
     try {
-      const b = await opsApi.today({ date: date || undefined, q: q || undefined,
-        trigger, environment, attention: attentionOnly ? "only" : "" })
-      setBoard(b)
+      const r = await workItemsApi.list({
+        dateFrom: date || undefined, q: q || undefined, origin: origin || undefined,
+        attentionOnly: attentionOnly || undefined, pageSize: 200,
+      })
+      setResp(r)
       setLastUpdated(new Date().toISOString())
       setError(null)
     } catch (e) {
       setError((e as Error).message)
     }
-  }, [date, q, trigger, environment, attentionOnly])
+  }, [date, q, origin, attentionOnly])
 
-  // 实时更新：SSE 优先；断线降级 5s 轮询；页面失焦降频（SDD §8.8）
+  // 实时：SSE 只发 refresh 信号 → 重拉列表；断线降级 5s 轮询；SSE 失败不报错页面
   useEffect(() => {
     let cancelled = false
     const startPolling = () => {
       if (pollRef.current != null) return
       setChannel("polling")
-      const tick = async () => {
-        if (document.hidden) return
-        await load()
-      }
-      pollRef.current = window.setInterval(tick, 5000)
+      pollRef.current = window.setInterval(() => {
+        if (!document.hidden) void load()
+      }, 5000)
     }
     const stopPolling = () => {
       if (pollRef.current != null) { window.clearInterval(pollRef.current); pollRef.current = null }
     }
     try {
-      const es = new EventSource(opsApi.streamUrl())
+      const es = new EventSource(workItemsApi.streamUrl())
       esRef.current = es
-      es.addEventListener("board", (ev) => {
-        if (cancelled) return
-        try {
-          const data = JSON.parse((ev as MessageEvent).data) as { board: OpsBoard }
-          setBoard(data.board)
-          setLastUpdated(new Date().toISOString())
-          setChannel("sse")
-          setError(null)
-        } catch { /* ignore */ }
+      es.addEventListener("refresh", () => {
+        if (!cancelled) void load()
       })
       es.onerror = () => { es.close(); esRef.current = null; stopPolling(); startPolling() }
     } catch {
@@ -102,16 +92,13 @@ export default function OperationsTodayPage() {
 
   useEffect(() => { void load() }, [load])
 
-  const openCard = (card: OpsBoardCard) => {
-    if (card.taskRunId) navigate(`/operations/task-runs/${card.taskRunId}`)
-    else navigate(`/autonomous-tasks/${card.task.id}`)
-  }
+  const openCard = (w: WorkItemDTO) => navigate(w.links.primary)
 
   return (
     <PageContainer wide className="space-y-4">
       <PageHeader
         title="今日运行"
-        description={`业务日期 ${board?.date ?? "今天"} · 时区 ${board?.timezone ?? "Asia/Shanghai"} · 一张卡 = 一个 TaskRun 批次或未触发计划`}
+        description={`业务日期 ${resp?.businessDate ?? "今天"} · 时区 ${resp?.timezone ?? "Asia/Shanghai"} · 一张卡 = 一件工作（批次或未触发计划）`}
         actions={
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <RefreshCw className="size-3.5" />
@@ -124,108 +111,94 @@ export default function OperationsTodayPage() {
         }
       />
 
-      {/* 顶部轻量筛选与日期控制（参考 Square UI；状态写入组件态，历史页写 URL） */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1.5">
           <CalendarDays className="size-4 text-muted-foreground" />
           <Input type="date" className="h-8 w-40" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
-        <Input placeholder="搜索 Task / TaskRun" className="h-8 w-48" value={q} onChange={(e) => setQ(e.target.value)} />
-        <Select value={trigger || "all"} onValueChange={(v) => setTrigger(v === "all" ? "" : v)}>
-          <SelectTrigger className="h-8 w-32"><SelectValue placeholder="Trigger" /></SelectTrigger>
+        <Input placeholder="搜索自主任务 / 批次" className="h-8 w-48" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Select value={origin || "all"} onValueChange={(v) => setOrigin(v === "all" ? "" : v)}>
+          <SelectTrigger className="h-8 w-32"><SelectValue placeholder="触发方式" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">全部 Trigger</SelectItem>
-            <SelectItem value="schedule">schedule</SelectItem>
-            <SelectItem value="manual">manual</SelectItem>
-            <SelectItem value="api">api</SelectItem>
-            <SelectItem value="backfill">backfill</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={environment || "all"} onValueChange={(v) => setEnvironment(v === "all" ? "" : v)}>
-          <SelectTrigger className="h-8 w-32"><SelectValue placeholder="Environment" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">全部环境</SelectItem>
-            <SelectItem value="sandbox">sandbox</SelectItem>
-            <SelectItem value="prod">prod</SelectItem>
+            <SelectItem value="all">全部触发</SelectItem>
+            <SelectItem value="schedule">调度</SelectItem>
+            <SelectItem value="manual">手动</SelectItem>
+            <SelectItem value="api">API</SelectItem>
+            <SelectItem value="backfill">回填</SelectItem>
           </SelectContent>
         </Select>
         <Button variant={attentionOnly ? "default" : "outline"} size="sm"
           onClick={() => setAttentionOnly((v) => !v)}>
-          <CircleAlert className="size-3.5" /> 仅看需关注
+          <CircleAlert className="size-3.5" /> 仅看需要操作
         </Button>
         <div className="ml-auto flex items-center gap-1.5 text-xs">
-          {COLUMNS.map((c) => (
-            <Badge key={c.key} variant={c.key === "attention" ? "destructive" : "secondary"}>
-              {c.label} {board?.summary?.[c.key] ?? 0}
+          {LANES.map((l) => (
+            <Badge key={l.key} variant={l.badge}>
+              {WORK_ITEM_STATUS_LABELS[l.key]} {resp?.counts?.[l.key] ?? 0}
             </Badge>
           ))}
         </div>
       </div>
 
-      {error && !board ? <ErrorState title="看板加载失败" onRetry={() => void load()} /> : null}
+      {error && !resp ? <ErrorState title="看板加载失败" onRetry={() => void load()} /> : null}
 
-      {/* 六列固定看板：不拖拽、不手工加卡（SDD §10.3/§10.4） */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        {COLUMNS.map((col) => {
-          const cards = board?.columns?.[col.key] ?? []
+      {/* 五泳道固定看板：不拖拽、不手工加卡（Awake 视觉属 MTC-003） */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        {LANES.map((lane) => {
+          const cards = (resp?.items ?? []).filter((w) => w.status === lane.key)
           return (
-            <div key={col.key} className="space-y-2 rounded-lg border bg-muted/20 p-2">
+            <div key={lane.key} className="space-y-2 rounded-lg border bg-muted/20 p-2" data-lane={lane.key}>
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-1.5 text-sm font-medium">
-                  {col.key === "attention" ? <CircleAlert className="size-4 text-destructive" /> :
-                    col.key === "running" || col.key === "delivering" ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> :
+                  {lane.key === "needs_action" ? <CircleAlert className="size-4 text-status-warning" /> :
+                    lane.key === "running" ? <Loader2 className="size-4 animate-spin text-status-running" /> :
                       <span className="size-2 rounded-full bg-muted-foreground/50" aria-hidden />}
-                  {col.label}
+                  {WORK_ITEM_STATUS_LABELS[lane.key]}
                 </div>
                 <span className="text-xs tabular-nums text-muted-foreground">{cards.length}</span>
               </div>
               {cards.length === 0 ? (
                 <div className="rounded-md border border-dashed px-2 py-4 text-center text-xs text-muted-foreground">空</div>
-              ) : cards.map((card) => (
+              ) : cards.map((w) => (
                 <button
-                  key={card.id}
+                  key={w.id}
                   type="button"
-                  onClick={() => openCard(card)}
+                  data-workitem-id={w.id}
+                  data-status={w.status}
+                  onClick={() => openCard(w)}
                   className="w-full space-y-1.5 rounded-md border bg-card p-2.5 text-left text-xs shadow-sm transition-colors hover:border-primary/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div className="truncate text-sm font-medium" title={card.task.name}>{card.task.name}</div>
-                    <span className={card.stage === "attention" ? "font-medium text-destructive" : "text-muted-foreground"}>
-                      {STAGE_TEXT[card.stage]}
-                    </span>
+                    <div className="truncate text-sm font-medium" title={w.title}>{w.title}</div>
+                    <Badge variant={LANES.find((l) => l.key === w.status)?.badge ?? "secondary"}>
+                      {WORK_ITEM_STATUS_LABELS[w.status]}
+                    </Badge>
                   </div>
+                  {w.assignee ? (
+                    <div className="truncate text-muted-foreground">
+                      {w.assignee.name}（{w.assignee.type === "agent" ? "Agent" : "Workflow"}）
+                    </div>
+                  ) : null}
                   <div className="text-muted-foreground">
-                    {card.plannedAt ? `计划 ${formatCompactDateTime(card.plannedAt)}` : ""}
-                    {card.startedAt ? ` · 启动 ${formatCompactDateTime(card.startedAt)}` : ""}
+                    {WORK_ITEM_ORIGIN_LABELS[w.origin] ?? w.origin}
+                    {w.scheduledAt ? ` · 计划于 ${formatCompactDateTime(w.scheduledAt)}` : ""}
+                    {w.startedAt ? ` · 启动 ${formatCompactDateTime(w.startedAt)}` : ""}
                   </div>
-                  <div className="text-muted-foreground">{card.trigger} · {card.environment}</div>
-                  {card.kind === "task_run" ? (
-                    <>
-                      <div className="flex items-center justify-between tabular-nums">
-                        <span>执行 {card.execution.succeeded} / {card.execution.total}</span>
-                        <span>{liveDuration(card)}</span>
-                      </div>
-                      <div className="flex items-center justify-between tabular-nums text-muted-foreground">
-                        <span>投递 {card.delivery.succeeded + card.delivery.failed} / {card.execution.succeeded}</span>
-                        <span>{card.delivery.status}</span>
-                      </div>
-                    </>
+                  {w.kind === "task_run" ? (
+                    <div className="flex items-center justify-between tabular-nums">
+                      <span>执行 {w.progress.succeeded} / {w.progress.total}</span>
+                      <span>{liveDuration(w)}</span>
+                    </div>
                   ) : (
-                    <div className="text-muted-foreground">尚未触发 TaskRun</div>
+                    <div className="text-muted-foreground">等待调度</div>
                   )}
-                  {card.attention ? (
-                    <div className="rounded bg-destructive/10 px-1.5 py-1 text-destructive">
-                      {card.attention.message}
+                  {w.attention.required ? (
+                    <div className="rounded bg-status-warning/10 px-1.5 py-1 text-status-warning">
+                      {w.attention.message}
                     </div>
                   ) : null}
                 </button>
               ))}
-              {col.key === "completed" && board?.completedTruncated ? (
-                <button type="button" className="w-full rounded-md border border-dashed px-2 py-1.5 text-center text-xs text-muted-foreground hover:bg-muted/50"
-                  onClick={() => navigate("/operations/task-runs")}>
-                  仅显示最近 20 个 · 跳批次历史
-                </button>
-              ) : null}
             </div>
           )
         })}

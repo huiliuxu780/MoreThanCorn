@@ -2,6 +2,7 @@ import { ArrowLeft, History, MoreHorizontal, Play } from "lucide-react"
 import { useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -25,8 +26,15 @@ import { TableFrame } from "@/components/app/table-frame"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { formatCompactDateTime } from "@/lib/time"
 import { taskVersionSummary } from "@/domain/task-mapper"
-import { bizApi } from "@/services/wf-api"
+import { WORK_ITEM_STATUS_LABELS } from "@/config/ui-terms"
+import { bizApi, workItemsApi, type WorkItemStatus } from "@/services/wf-api"
 import { rbac } from "@/services/rbac"
+
+/** MTC-002B：WorkItem 主状态 → Badge 变体（与 /tasks 五泳道一致）。 */
+const WI_BADGE: Record<WorkItemStatus, "warning" | "info" | "success" | "neutral" | "danger"> = {
+  needs_action: "warning", running: "info", completed: "success",
+  queued: "neutral", failed_cancelled: "danger",
+}
 
 export default function TaskDetailPage() {
   const { taskId = "" } = useParams()
@@ -35,6 +43,16 @@ export default function TaskDetailPage() {
   // 09 P0-B4：运行历史=该任务的 TaskRun 批次（不再借工作流 Run 冒充）
   const { data: taskRuns, retry: retryRuns } = useAsyncData(
     () => bizApi.taskRuns(taskId).catch(() => []),
+    [taskId],
+  )
+
+  // MTC-002B：任务状态列读统一 WorkItem 状态（后端集中映射）；投递细节仅技术详情页可见
+  const { data: workItems } = useAsyncData(
+    () => workItemsApi.list({
+      automationId: taskId, pageSize: 200,
+      dateFrom: new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10),
+      dateTo: new Date().toISOString().slice(0, 10),
+    }).then((r) => r.items).catch(() => []),
     [taskId],
   )
 
@@ -51,6 +69,8 @@ export default function TaskDetailPage() {
 
   const version = task.taskVersion
   const latestRun = taskRuns?.[0]
+  const workStatusByRun: Record<string, WorkItemStatus> = {}
+  for (const w of workItems ?? []) if (w.taskRunId) workStatusByRun[w.taskRunId] = w.status
 
   return (
     <PageContainer wide className="space-y-5">
@@ -148,13 +168,12 @@ export default function TaskDetailPage() {
                 <TableHead className="text-right">输入</TableHead>
                 <TableHead className="text-right">成功</TableHead>
                 <TableHead className="text-right">失败</TableHead>
-                <TableHead>执行状态</TableHead>
-                <TableHead>投递状态</TableHead>
+                <TableHead>任务状态</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {(taskRuns ?? []).length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="py-6 text-center text-sm text-muted-foreground">尚未执行过批次</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="py-6 text-center text-sm text-muted-foreground">尚未执行过批次</TableCell></TableRow>
               ) : (taskRuns ?? []).slice(0, 5).map((tr) => (
                 <TableRow key={tr.id} className="cursor-pointer hover:bg-muted/50"
                   onClick={() => navigate(`/operations/task-runs/${tr.id}`)}>
@@ -163,8 +182,15 @@ export default function TaskDetailPage() {
                   <TableCell className="text-right tabular-nums">{tr.total}</TableCell>
                   <TableCell className="text-right tabular-nums">{tr.succeeded}</TableCell>
                   <TableCell className="text-right tabular-nums">{tr.failed}</TableCell>
-                  <TableCell><StatusBadge status={tr.status} context="run" /></TableCell>
-                  <TableCell><span className="rounded border px-1.5 py-0.5 text-[11px]">{tr.delivery?.status ?? "not_configured"}</span></TableCell>
+                  <TableCell>
+                    {workStatusByRun[tr.id] ? (
+                      <Badge variant={WI_BADGE[workStatusByRun[tr.id]]}>
+                        {WORK_ITEM_STATUS_LABELS[workStatusByRun[tr.id]]}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

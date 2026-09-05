@@ -95,10 +95,11 @@ await openPage("/settings?section=general", 900)
 check("设置占位为「功能尚未启用」", await page.evaluate(() => document.body.innerText.includes("「通用」功能尚未启用")))
 await page.screenshot({ path: `${OUT}/05-settings-copy.png` })
 
-/* 五张截图互不重复（字节大小两两不同） */
+/* 五张截图互不重复：比较纯 SHA-256（不含文件名） */
+import { createHash } from "node:crypto"
 const shots = ["01-autonomous-tasks-list.png", "02-autonomous-task-new.png", "03-autonomous-task-detail-with-runs.png", "04-autonomous-task-edit.png", "05-settings-copy.png"]
-const sizes = shots.map((f) => `${f}:${fs.statSync(`${OUT}/${f}`).size}`)
-check("五张截图均为独立文件（大小互不相同）", new Set(sizes).size === sizes.length, sizes.join(" "))
+const hashes = shots.map((f) => createHash("sha256").update(fs.readFileSync(`${OUT}/${f}`)).digest("hex"))
+check("五张截图 SHA-256 互不相同", new Set(hashes).size === hashes.length, hashes.map((h) => h.slice(0, 8)).join(" "))
 
 await browser.close()
 const failed = results.filter((r) => !r.ok)

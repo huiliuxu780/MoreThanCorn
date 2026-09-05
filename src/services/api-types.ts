@@ -319,3 +319,83 @@ export interface AuthUserDTO {
   role: "admin" | "operator" | "viewer"
   displayName?: string
 }
+
+/* ---------- MTC-002B：WorkItemProjection 统一读模型 ---------- */
+
+/** 用户可见主状态（固定五组；顺序即泳道顺序；API 返回稳定 enum，中文由前端映射）。 */
+export type WorkItemStatus =
+  | "needs_action"
+  | "running"
+  | "completed"
+  | "queued"
+  | "failed_cancelled"
+
+export type WorkItemPhase =
+  | "scheduled"
+  | "queued"
+  | "executing"
+  | "result_processing"
+  | "done"
+  | "failed"
+  | "cancelled"
+  | "attention"
+
+export interface WorkItemAttention {
+  required: boolean
+  code: string | null
+  message: string | null
+  severity: "warning" | "critical" | null
+}
+
+export interface WorkItemDTO {
+  id: string
+  kind: "task_run" | "schedule_occurrence"
+  automationId: string
+  taskRunId: string | null
+  scheduleOccurrenceId: string | null
+  title: string
+  description: string | null
+  status: WorkItemStatus
+  phase: WorkItemPhase
+  origin: string
+  assignee: {
+    type: "agent" | "workflow"
+    id: string
+    name: string
+    avatarUrl?: string | null
+  } | null
+  progress: {
+    total: number
+    completed: number
+    succeeded: number
+    failed: number
+    skipped: number
+    cancelled: number
+    percent: number | null
+  }
+  attention: WorkItemAttention
+  scheduledAt: string | null
+  createdAt: string | null
+  updatedAt: string | null
+  startedAt: string | null
+  finishedAt: string | null
+  durationMs: number | null
+  /** 诊断数据：原始执行/投递/计划状态与冲突码；不作为看板状态展示 */
+  diagnostics: {
+    executionStatus: string | null
+    deliveryStatus: string | null
+    occurrenceStatus: string | null
+    conflictCodes: string[]
+  }
+  links: { primary: string; automation: string; taskRun: string | null }
+}
+
+export interface WorkItemListResponse {
+  items: WorkItemDTO[]
+  total: number
+  page: number
+  pageSize: number
+  businessDate: string
+  timezone: string
+  counts: Record<WorkItemStatus, number>
+}
