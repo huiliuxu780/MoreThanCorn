@@ -81,7 +81,7 @@ export default function TaskRunDetailPage() {
                   <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(d.id); toast.success("已复制批次 ID") }}>
                     <Copy className="size-3.5" /> 复制批次 ID
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate(`/config/tasks/${d.taskId}`)}>查看 Task 定义</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate(`/autonomous-tasks/${d.taskId}`)}>查看 Task 定义</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </>

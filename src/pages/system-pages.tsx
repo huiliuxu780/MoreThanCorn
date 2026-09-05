@@ -12,7 +12,7 @@ export function ForbiddenPage() {
           当前账号没有该页面的查看权限。如需访问，请联系系统管理员授权。
         </p>
         <Button asChild variant="outline" size="sm" className="mt-2">
-          <Link to="/quality/overview">返回质量总览</Link>
+          <Link to="/tasks">返回任务工作台</Link>
         </Button>
       </div>
     </PageContainer>
@@ -29,7 +29,7 @@ export function NotFoundPage() {
           你访问的地址不存在或已经被移除。
         </p>
         <Button asChild variant="outline" size="sm" className="mt-2">
-          <Link to="/quality/overview">返回质量总览</Link>
+          <Link to="/tasks">返回任务工作台</Link>
         </Button>
       </div>
     </PageContainer>

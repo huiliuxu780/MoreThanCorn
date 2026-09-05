@@ -167,7 +167,7 @@ export default function WfAgentEditorPage() {
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col">
       <div className="flex h-12 shrink-0 items-center gap-3 border-b bg-white px-4" style={{ borderColor: CARD }}>
-        <button onClick={() => navigate("/config/agents")}><ArrowLeft className="size-4" style={{ color: INK2 }} /></button>
+        <button onClick={() => navigate("/agents")}><ArrowLeft className="size-4" style={{ color: INK2 }} /></button>
         <img src={avatarFor(agent.id, agent.avatar)} alt="" className="size-6 rounded-md object-cover" />
         <span className="text-[15px] font-semibold" style={{ color: INK }}>{agent.name}</span>
         <span className="rounded px-1.5 py-0.5 text-[11px]" style={{ background: "#FFF4EA", color: "#F97E2B" }}>{agent.typeLabel}</span>

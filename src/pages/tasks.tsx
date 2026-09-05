@@ -83,7 +83,7 @@ export default function TasksPage() {
         actions={
           canManage ? (
             <Button asChild>
-              <Link to="/config/tasks/new">
+              <Link to="/autonomous-tasks/new">
                 <Plus className="size-4" /> 新建任务
               </Link>
             </Button>
@@ -133,7 +133,7 @@ export default function TasksPage() {
           <EmptyState
             title="暂无分析任务"
             description="创建第一个分析任务，开始对生产数据执行质量评价"
-            action={canManage ? <Button asChild><Link to="/config/tasks/new">新建任务</Link></Button> : null}
+            action={canManage ? <Button asChild><Link to="/autonomous-tasks/new">新建任务</Link></Button> : null}
           />
         )
       ) : (
@@ -155,7 +155,7 @@ export default function TasksPage() {
                   const policy = task.taskVersion?.workflowVersionPolicy ?? task.workflowVersionPolicy
                   const et = (task as { executionTargetType?: string; agentName?: string | null; moduleKey?: string | null })
                   return (
-                    <TableRow key={task.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/config/tasks/${task.id}`)}>
+                    <TableRow key={task.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/autonomous-tasks/${task.id}`)}>
                       <TableCell>
                         <div className="text-sm font-medium">{task.name}</div>
                         {task.description ? <div className="line-clamp-1 max-w-md text-xs text-muted-foreground">{task.description}</div> : null}

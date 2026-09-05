@@ -55,7 +55,7 @@ export default function TaskDetailPage() {
   return (
     <PageContainer wide className="space-y-5">
       <div>
-        <Button variant="ghost" size="sm" className="gap-1 px-2" onClick={() => navigate("/config/tasks")}>
+        <Button variant="ghost" size="sm" className="gap-1 px-2" onClick={() => navigate("/autonomous-tasks")}>
           <ArrowLeft className="size-4" /> 分析任务
         </Button>
         <PageHeader
@@ -101,7 +101,7 @@ export default function TaskDetailPage() {
                 >
                   {isActive ? "暂停" : "启用"}
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => navigate(`/config/tasks/${task.id}/edit`)}>编辑</Button>
+                <Button variant="outline" size="sm" onClick={() => navigate(`/autonomous-tasks/${task.id}/edit`)}>编辑</Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button>

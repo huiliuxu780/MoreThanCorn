@@ -18,16 +18,16 @@ const badgeVariants = cva(
           "border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
         ghost: "[a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
         link: "text-primary underline-offset-4 [a&]:hover:underline",
-        /** 全局状态语义 token（Implementation Spec §2.1）。 */
+        /** 全局状态语义 token（MTC-001：统一走 --status-*，Running 不用品牌蓝）。 */
         neutral:
           "border-border bg-muted text-muted-foreground dark:bg-muted/60",
-        info: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/15 dark:text-blue-300",
+        info: "border-status-running/30 bg-status-running/10 text-status-running",
         success:
-          "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300",
+          "border-status-success/30 bg-status-success/10 text-status-success",
         warning:
-          "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300",
+          "border-status-warning/30 bg-status-warning/10 text-status-warning",
         danger:
-          "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/15 dark:text-red-300",
+          "border-status-danger/30 bg-status-danger/10 text-status-danger",
       },
     },
     defaultVariants: {

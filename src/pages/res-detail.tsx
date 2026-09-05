@@ -181,7 +181,7 @@ export default function ResDetailPage() {
                 {refs.length === 0 && <tr><td colSpan={3} className="px-3.5 py-6 text-center text-xs text-muted-foreground">暂无引用</td></tr>}
                 {refs.map((r, i) => (
                   <tr key={i} className="cursor-pointer border-b last:border-0 hover:bg-muted/40"
-                    onClick={() => r.workflowId && navigate(`/config/workflows/${r.workflowId}`)}>
+                    onClick={() => r.workflowId && navigate(`/workflows/${r.workflowId}`)}>
                     <td className="px-3.5 py-2 font-medium">{r.workflowName ?? r.label ?? "-"}</td>
                     <td className="px-3.5 py-2 text-xs text-muted-foreground">{r.version ? `${r.version} · ` : ""}{r.nodeName ?? r.kind}</td>
                     <td className="px-3.5 py-2 text-xs text-muted-foreground">{r.kind}</td>
@@ -251,7 +251,7 @@ export default function ResDetailPage() {
 
       <ConfirmDeleteDialog open={delOpen} name={dto.name} onConfirm={doDelete} onClose={() => setDelOpen(false)} />
       <DeleteBlockedDialog open={!!blocked} name={dto.name} refs={blocked?.refs ?? []} onClose={() => setBlocked(null)}
-        onViewRefs={(r) => r.workflowId && navigate(`/config/workflows/${r.workflowId}`)} />
+        onViewRefs={(r) => r.workflowId && navigate(`/workflows/${r.workflowId}`)} />
     </PageContainer>
   )
 }

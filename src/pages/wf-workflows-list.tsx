@@ -47,11 +47,11 @@ export default function WfWorkflowsPage() {
     if (!name.trim()) return
     const wf = await wfApi.create(name.trim(), "")
     setOpen(false)
-    navigate(`/config/workflows/${wf.id}`)
+    navigate(`/workflows/${wf.id}`)
   }
 
   const onAction = (w: WfRow, action: ResourceAction) => {
-    if (action === "edit") navigate(`/config/workflows/${w.id}`)
+    if (action === "edit") navigate(`/workflows/${w.id}`)
     else if (action === "delete") setDelTarget(w)
   }
 
@@ -104,7 +104,7 @@ export default function WfWorkflowsPage() {
                 updatedAt: w.updatedAt,
               }}
               actions={["edit", "delete"]}
-              onOpen={() => navigate(`/config/workflows/${w.id}`)}
+              onOpen={() => navigate(`/workflows/${w.id}`)}
               onAction={(a) => onAction(w, a)}
             />
           ))}

@@ -204,7 +204,7 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
 
       <DeleteBlockedDialog open={!!blocked} name={blocked?.name ?? ""} refs={blocked?.refs ?? []}
         onClose={() => setBlocked(null)}
-        onViewRefs={(r) => { if (r.workflowId) { setBlocked(null); navigate(`/config/workflows/${r.workflowId}`) } }} />
+        onViewRefs={(r) => { if (r.workflowId) { setBlocked(null); navigate(`/workflows/${r.workflowId}`) } }} />
     </PageContainer>
   )
 }

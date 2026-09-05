@@ -5,6 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>企业智能质量平台</title>
+    <!-- MTC-001：首帧主题引导——在 React/CSS 加载前落定 light/dark，避免刷新闪白。
+         读取与 next-themes 相同的 localStorage key（mtc-theme），缺省跟随系统。 -->
+    <style>
+      html { background: #faf9f7; }
+      html.dark { background: #101216; }
+    </style>
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("mtc-theme")
+          var dark =
+            stored === "dark" ||
+            ((stored === null || stored === "system") &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches)
+          if (dark) document.documentElement.classList.add("dark")
+          document.documentElement.style.colorScheme = dark ? "dark" : "light"
+        } catch (e) {
+          /* localStorage 不可用时保持浅色 */
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

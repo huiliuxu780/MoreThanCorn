@@ -148,7 +148,7 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
     <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col">
       {/* 头部 */}
       <div className="flex h-12 shrink-0 items-center gap-3 border-b bg-white px-4" style={{ borderColor: CARD }}>
-        <button onClick={() => navigate("/config/agents")}><ArrowLeft className="size-4" style={{ color: INK2 }} /></button>
+        <button onClick={() => navigate("/agents")}><ArrowLeft className="size-4" style={{ color: INK2 }} /></button>
         <img src={avatarFor(agent.id, agent.avatar)} alt="" className="size-6 rounded-md object-cover" />
         <span className="text-[15px] font-semibold" style={{ color: INK }}>{agent.name}</span>
         <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-600">Module</span>
@@ -302,7 +302,7 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
                             </span>
                             {r.runId && (
                               <button className="text-[10px] underline" style={{ color: INK3 }}
-                                onClick={() => navigate(`/config/agents/${agent.id}/runs/${r.runId}`)}>Run ↗</button>
+                                onClick={() => navigate(`/agents/${agent.id}/runs/${r.runId}`)}>Run ↗</button>
                             )}
                           </div>
                         ))}
@@ -404,7 +404,7 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
                       <div className="flex items-center gap-2">状态：<b>{result.status}</b>
                         {result.runId && (
                           <Button variant="outline" size="sm" className="ml-auto h-6 text-[10px]"
-                            onClick={() => navigate(`/config/agents/${agent.id}/runs/${result.runId}`)}>查看 Run 详情 ↗</Button>
+                            onClick={() => navigate(`/agents/${agent.id}/runs/${result.runId}`)}>查看 Run 详情 ↗</Button>
                         )}
                       </div>
                       {result.output && <pre className="max-h-40 overflow-auto text-[10px]" style={{ color: INK2 }}>{JSON.stringify(result.output, null, 1)}</pre>}

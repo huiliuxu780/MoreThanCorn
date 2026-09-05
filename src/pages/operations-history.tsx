@@ -161,7 +161,7 @@ export default function OperationsHistoryPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => navigate(`/operations/task-runs/${it.id}`)}>批次详情</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => navigate(`/config/tasks/${it.taskId}`)}>Task 定义</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate(`/autonomous-tasks/${it.taskId}`)}>Task 定义</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>

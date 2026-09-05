@@ -134,6 +134,11 @@ function permsFor(role: Role): Set<Permission> {
   return new Set([...VIEW_PERMS, ...MANAGE_PERMS, ...PUBLISH_PERMS, ...ADMIN_PERMS])
 }
 
+/** MTC-001：设置页「权限与安全」展示角色真实权限列表（前端矩阵，服务端仍是最终强制点）。 */
+export function permissionsFor(role: Role): Permission[] {
+  return [...permsFor(role)]
+}
+
 export const rbac = {
   can(permission: Permission): boolean {
     return permsFor(currentRole()).has(permission)

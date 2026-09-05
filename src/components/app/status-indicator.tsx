@@ -10,23 +10,24 @@ import {
 import type { StatusTone } from "@/domain/types"
 import { cn } from "@/lib/utils"
 
+/* MTC-001：状态色统一走 --status-* token，明暗两套值由 CSS 变量切换。 */
 const toneText: Record<StatusTone, string> = {
   neutral: "text-muted-foreground",
-  info: "text-blue-600 dark:text-blue-400",
-  success: "text-emerald-600 dark:text-emerald-400",
-  warning: "text-amber-600 dark:text-amber-400",
-  danger: "text-red-600 dark:text-red-400",
+  info: "text-status-running",
+  success: "text-status-success",
+  warning: "text-status-warning",
+  danger: "text-status-danger",
 }
 
 const toneBlock: Record<StatusTone, string> = {
   neutral: "border-border bg-muted/50 text-foreground",
-  info: "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200",
+  info: "border-status-running/30 bg-status-running/10 text-status-running",
   success:
-    "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200",
+    "border-status-success/30 bg-status-success/10 text-status-success",
   warning:
-    "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200",
+    "border-status-warning/30 bg-status-warning/10 text-status-warning",
   danger:
-    "border-red-200 bg-red-50 text-red-900 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200",
+    "border-status-danger/30 bg-status-danger/10 text-status-danger",
 }
 
 /** Icon + Label 的状态指示（Implementation Spec §2.1）。 */

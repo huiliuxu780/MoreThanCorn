@@ -70,7 +70,7 @@ export function AgentRunsPanel({ agentId }: { agentId: string }) {
             <span className="text-[13px] font-medium" style={{ color: INK }}>事件时间线（span 按 run 聚合）</span>
             {/* R8-UI：跳转 agent 视角 Run Detail（三卡/阶段/CallRecord/质检卡） */}
             <Button variant="outline" size="sm" className="h-7 text-xs"
-              onClick={() => navigate(`/config/agents/${agentId}/runs/${selected}`)}>Run 详情 ↗</Button>
+              onClick={() => navigate(`/agents/${agentId}/runs/${selected}`)}>Run 详情 ↗</Button>
           </div>
           <div className="space-y-1">
             {events.map((e, i) => (

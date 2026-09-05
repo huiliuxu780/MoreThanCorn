@@ -2212,7 +2212,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
     <div className="relative flex h-full flex-col" style={{ background: C.canvas }}>
       {/* 顶栏（16 §2） */}
       <div className="z-30 flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1 border-b bg-white px-4 py-1" style={{ borderColor: C.cardBorder }}>
-        <button onClick={() => navigate(agentMeta ? "/config/agents" : "/config/workflows")}><ArrowLeft className="size-4" style={{ color: C.ink2 }} /></button>
+        <button onClick={() => navigate(agentMeta ? "/agents" : "/workflows")}><ArrowLeft className="size-4" style={{ color: C.ink2 }} /></button>
         {agentMeta && avatar ? (
           <img src={avatar} alt={agentMeta.name} className="size-8 shrink-0 rounded-md object-cover" />
         ) : (

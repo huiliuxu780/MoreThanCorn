@@ -1,25 +1,38 @@
 import type { StatusTone } from "@/domain/types"
 
-/** 导航与业务对象的固定文案。导航结构冻结，不允许新增一级入口。 */
+/**
+ * 导航与业务对象的固定文案。
+ * MTC-001：一级导航冻结为 任务 / 自主任务 / Agent / 能力与资源 / Workflow 五项，
+ * 底部固定 主题 / 设置 / 账号。不允许新增一级入口。
+ */
 export const UI_TERMS = {
   productName: "企业智能质量平台",
   productSubtitle: "AI Quality Intelligence",
   navigation: {
-    quality: "智能质检",
-    agentQuality: "坐席质检",
+    /* ---- MTC-001 一级入口（冻结） ---- */
+    tasksWorkbench: "任务",
+    autonomousTasks: "自主任务",
+    agents: "Agent",
+    resourcesHub: "能力与资源",
+    workflows: "Workflow",
+    /* ---- MTC-001 底部固定项 ---- */
+    theme: "主题",
+    settings: "设置",
+    account: "账号",
+    /* ---- 二级/遗留页面标签 ---- */
+    qualityCenter: "质量中心",
     qualityOverview: "质量总览",
     qualityResults: "质量结果",
     agentAnalysis: "坐席分析",
-    config: "配置管理",
-    tasks: "分析任务",
-    agents: "Agents",
-    tools: "Tools",
+    batchHistory: "批次历史",
     aiResources: "AI Resources",
     dataResources: "Data Resources",
     dataAssets: "数据定义",
     resultRules: "结果规则",
-    settings: "Settings",
+    forms: "表单",
     connections: "Connections",
+    auditLog: "审计日志",
+    governance: "发布治理",
   },
 } as const
 

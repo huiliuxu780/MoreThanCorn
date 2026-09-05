@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react"
-import { Navigate, Route, Routes, useParams } from "react-router-dom"
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom"
 import { AppShell } from "@/components/app/app-shell"
 import { TableSkeleton } from "@/components/app/list-state"
 
@@ -12,11 +12,11 @@ const TaskWizardPage = lazy(() => import("@/pages/task-wizard"))
 const TaskDetailPage = lazy(() => import("@/pages/task-detail"))
 const TaskEditPage = lazy(() => import("@/pages/task-edit"))
 const RunDetailPage = lazy(() => import("@/pages/run-detail"))
-// SDD 13：运行中心（今日运行/批次历史/批次详情）canonical routes
-const OperationsTodayPage = lazy(() => import("@/pages/operations-today"))
+// SDD 13：运行中心（批次历史/批次详情）canonical routes；今日运行 → MTC-001 /tasks
 const OperationsHistoryPage = lazy(() => import("@/pages/operations-history"))
 const TaskRunDetailPage = lazy(() => import("@/pages/task-run-detail"))
-// A-14：agent 轨道 mock 双轨已清退——/config/agents 固定走真 API 页面
+const OperationsTodayPage = lazy(() => import("@/pages/operations-today"))
+// A-14：agent 轨道 mock 双轨已清退——/agents 固定走真 API 页面
 const WfAgentsPage = lazy(() => import("@/pages/wf-agents-list"))
 const WfAgentEditorPage = lazy(() => import("@/pages/wf-agent-editor"))
 const WfWorkflowsPage = lazy(() => import("@/pages/wf-workflows-list"))
@@ -35,6 +35,9 @@ const ResWizardPage = lazy(() => import("@/pages/res-wizard"))
 const ResDetailPage = lazy(() => import("@/pages/res-detail"))
 const DataDefinitionsPage = lazy(() => import("@/pages/data-definitions"))
 const DataDefinitionEditorPage = lazy(() => import("@/pages/data-definition-editor"))
+// MTC-001：能力与资源 Hub + 系统设置
+const ResourcesHubPage = lazy(() => import("@/pages/resources-hub"))
+const SettingsPage = lazy(() => import("@/pages/settings"))
 const ForbiddenPage = lazy(() =>
   import("@/pages/system-pages").then((m) => ({ default: m.ForbiddenPage })),
 )
@@ -60,6 +63,16 @@ function RunRedirect() {
   return <Navigate to={`/operations/runs/${runId}`} replace />
 }
 
+/**
+ * MTC-001：旧路由前缀 → 新 canonical 前缀（保留子路径与查询参数）。
+ * 例：/config/tasks/42/edit?x=1 → /autonomous-tasks/42/edit?x=1
+ */
+function PrefixRedirect({ from, to }: { from: string; to: string }) {
+  const location = useLocation()
+  const rest = location.pathname.slice(from.length)
+  return <Navigate to={`${to}${rest}${location.search}`} replace />
+}
+
 function RouteFallback() {
   return (
     <div className="mx-auto w-full max-w-[1400px] px-5 py-5">
@@ -71,7 +84,9 @@ function RouteFallback() {
 }
 
 /**
- * 固定 Route Map（Handoff §3 / Implementation Spec §1）。
+ * MTC-001 Route Map：
+ * 一级路由 = /tasks /autonomous-tasks /agents /resources /workflows /settings。
+ * 旧路由不删除： promoted 树走 replace redirect，其余页面原路径保留挂载。
  * Version / Revision History 使用 Sheet，不创建独立 route。
  */
 export function App() {
@@ -79,43 +94,49 @@ export function App() {
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route element={<AppShell />}>
-          <Route index element={<Navigate to="/quality/overview" replace />} />
+          <Route index element={<Navigate to="/tasks" replace />} />
 
+          {/* ---- MTC-001 一级入口 ---- */}
+          {/* 任务工作台（暂复用 Operations Today；看板重做属 MTC-003） */}
+          <Route path="/tasks" element={<OperationsTodayPage />} />
+          {/* 自主任务（承接原 AnalysisTask 页面树） */}
+          <Route path="/autonomous-tasks" element={<TasksPage />} />
+          <Route path="/autonomous-tasks/new" element={<TaskWizardPage />} />
+          <Route path="/autonomous-tasks/:taskId" element={<TaskDetailPage />} />
+          <Route path="/autonomous-tasks/:taskId/edit" element={<TaskEditPage />} />
+          <Route path="/autonomous-tasks/:taskId/runs/:runId" element={<RunRedirect />} />
+          <Route path="/autonomous-tasks/:taskId/batches/:taskRunId" element={<TaskRunRedirect />} />
+          {/* Agent 管理 */}
+          <Route path="/agents" element={<WfAgentsPage />} />
+          <Route path="/agents/:agentId/runs/:runId" element={<RunDetailPage />} />
+          <Route path="/agents/:agentId" element={<WfAgentEditorPage />} />
+          {/* 能力与资源 Hub（完整版属 MTC-011/012） */}
+          <Route path="/resources" element={<ResourcesHubPage />} />
+          {/* Workflow */}
+          <Route path="/workflows" element={<WfWorkflowsPage />} />
+          <Route path="/workflows/:agentId" element={<WfWorkflowEditorPage />} />
+          {/* 系统设置 */}
+          <Route path="/settings" element={<SettingsPage />} />
+
+          {/* ---- 保留挂载（非一级入口，URL/深链可达） ---- */}
           {/* 智能质检 */}
           <Route path="/quality/overview" element={<QualityOverviewPage />} />
           <Route path="/quality/results" element={<QualityResultsPage />} />
           <Route path="/quality/results/:interactionId" element={<QualityResultDetailPage />} />
           <Route path="/quality/agent-analysis" element={<AgentAnalysisPage />} />
 
-          {/* 配置管理：分析任务 */}
-          <Route path="/config/tasks" element={<TasksPage />} />
-          <Route path="/config/tasks/new" element={<TaskWizardPage />} />
-          <Route path="/config/tasks/:taskId" element={<TaskDetailPage />} />
-          <Route path="/config/tasks/:taskId/edit" element={<TaskEditPage />} />
-          {/* SDD 13 §10.2：旧路由 replace redirect 到 canonical route */}
-          <Route path="/config/tasks/:taskId/runs/:runId" element={<RunRedirect />} />
-          <Route path="/config/tasks/:taskId/batches/:taskRunId" element={<TaskRunRedirect />} />
-
-          {/* SDD 13：运行中心 */}
-          <Route path="/operations/task-runs/today" element={<OperationsTodayPage />} />
+          {/* 运行中心：批次历史 / 批次详情 / Run 详情 */}
+          <Route path="/operations/task-runs/today" element={<Navigate to="/tasks" replace />} />
           <Route path="/operations/task-runs" element={<OperationsHistoryPage />} />
           <Route path="/operations/task-runs/:taskRunId" element={<TaskRunDetailPage />} />
           <Route path="/operations/runs/:runId" element={<RunDetailPage />} />
 
-          {/* 配置管理：Agents */}
-          <Route path="/config/agents" element={<WfAgentsPage />} />
-          {/* R8-UI：agent 视角 Run Detail（测试面板试运行可达） */}
-          <Route path="/config/agents/:agentId/runs/:runId" element={<RunDetailPage />} />
-          <Route path="/config/agents/:agentId" element={<WfAgentEditorPage />} />
-
-          {/* 配置管理：工作流 */}
-          <Route path="/config/workflows" element={<WfWorkflowsPage />} />
+          {/* 表单（Workflow 输入契约） */}
           <Route path="/config/forms" element={<WfFormsPage />} />
           <Route path="/config/forms/new" element={<WfFormEditorPage />} />
           <Route path="/config/forms/:formId" element={<WfFormEditorPage />} />
-          <Route path="/config/workflows/:agentId" element={<WfWorkflowEditorPage />} />
 
-          {/* 配置管理：AI Resources / Data Resources（资源管理一期） */}
+          {/* AI Resources / Data Resources（资源管理一期） */}
           <Route path="/config/ai-resources" element={<ResAiResourcesPage />} />
           <Route path="/config/ai-resources/new" element={<ResWizardPage scope="ai" />} />
           <Route path="/config/ai-resources/:type/:id" element={<ResDetailPage />} />
@@ -128,19 +149,22 @@ export function App() {
           <Route path="/config/tools/new" element={<Navigate to="/config/ai-resources/new" replace />} />
           <Route path="/config/tools/:toolId" element={<ToolRedirect />} />
 
-          {/* 配置管理：数据定义（Data Definition 实体迭代） */}
+          {/* 数据定义 / 结果规则 */}
           <Route path="/config/data-assets" element={<DataDefinitionsPage />} />
           <Route path="/config/data-assets/:defId" element={<DataDefinitionEditorPage />} />
-
-          {/* 配置管理：结果规则 */}
           <Route path="/config/result-rules" element={<ResultRulesPage />} />
           <Route path="/config/result-rules/:ruleSetId" element={<ResultRuleEditorPage />} />
 
-          {/* 系统级设置 */}
+          {/* 系统级设置子页（保留原路径） */}
           <Route path="/settings/connections" element={<WfConnectionsPage />} />
           <Route path="/settings/audit" element={<AuditLogPage />} />
           <Route path="/settings/governance" element={<ReleaseGovernancePage />} />
           <Route path="/settings/models" element={<Navigate to="/config/ai-resources?tab=models" replace />} />
+
+          {/* ---- MTC-001 旧路由 → 新 canonical（replace redirect，页面不删除） ---- */}
+          <Route path="/config/tasks/*" element={<PrefixRedirect from="/config/tasks" to="/autonomous-tasks" />} />
+          <Route path="/config/agents/*" element={<PrefixRedirect from="/config/agents" to="/agents" />} />
+          <Route path="/config/workflows/*" element={<PrefixRedirect from="/config/workflows" to="/workflows" />} />
 
           <Route path="/403" element={<ForbiddenPage />} />
           <Route path="*" element={<NotFoundPage />} />

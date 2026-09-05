@@ -74,7 +74,7 @@ export default function WfAgentsListPage() {
       toast.success(`已创建 Module Agent「${a.name}」`)
       setCreateOpen(false); setFName("")
       load()
-      navigate(`/config/agents/${a.id}`)
+      navigate(`/agents/${a.id}`)
     } catch (e) {
       toast.error((e as Error).message.replace(/^\d+:\s*/, "").replace(/^"|"$/g, "") || "创建失败")
     } finally { setCreating(false) }
@@ -146,7 +146,7 @@ export default function WfAgentsListPage() {
             tabIndex={0}
             className="group flex flex-col rounded-xl border bg-white p-5 text-left shadow-sm transition-shadow hover:shadow-md"
             style={{ borderColor: "#EDF0F4" }}
-            onClick={() => navigate(`/config/agents/${w.id}`)}
+            onClick={() => navigate(`/agents/${w.id}`)}
           >
             <div className="flex items-start gap-3">
               <img src={avatarFor(w.id, w.avatar)} alt={w.name} className="size-14 shrink-0 rounded-lg object-cover" />
@@ -169,7 +169,7 @@ export default function WfAgentsListPage() {
                   ><MoreHorizontal className="size-3.5 text-neutral-400" /></button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenuItem onClick={() => navigate(`/config/agents/${w.id}`)}>查看详情</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate(`/agents/${w.id}`)}>查看详情</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

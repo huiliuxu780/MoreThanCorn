@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react"
-import { LogOut, PanelLeft, ShieldCheck } from "lucide-react"
 import { Outlet, useLocation } from "react-router-dom"
 import { toast } from "sonner"
 import { UI_TERMS } from "@/config/ui-terms"
@@ -7,37 +6,97 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Toaster } from "@/components/ui/sonner"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { NAV_GROUPS } from "@/components/app/app-sidebar"
+import { Separator } from "@/components/ui/separator"
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { AppSidebar } from "@/components/app/app-sidebar"
 import {
   currentRole, currentUsername, initAuth, isAuthenticated, isAuthRequired,
-  login, logout, rbac, ROLES, setRole, type Role,
+  login, logout, setRole, type Role,
 } from "@/services/rbac"
-import { NavLink } from "react-router-dom"
 import { Breadcrumbs, type BreadcrumbEntry } from "@/components/app/page"
 
-/** 工作区级路由自带全高 Header，不使用全局顶栏。 */
+/** 工作区级路由自带全高 Header，不使用全局面包屑。 */
 const WORKSPACE_PATTERNS = [
   /^\/quality\/results\/[^/]+$/,
-  /^\/config\/agents\/[^/]+$/,
+  /^\/agents\/[^/]+$/,
 ]
 
 function isWorkspaceRoute(pathname: string): boolean {
   return WORKSPACE_PATTERNS.some((pattern) => pattern.test(pathname))
 }
 
-/** 从当前路径推导面包屑（列表 → 详情层级）。 */
+/** 从当前路径推导面包屑（MTC-001 新路由树；遗留挂载页面保留推导）。 */
 export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
   const { pathname } = useLocation()
   const resultsQuery = "?tab=&page=1"
   const segments = pathname.split("/").filter(Boolean)
 
   const crumbs: BreadcrumbEntry[] = [
-    { label: UI_TERMS.productName, href: "/quality/overview" },
+    { label: UI_TERMS.productName, href: "/tasks" },
   ]
 
-  if (segments[0] === "quality") {
-    crumbs.push({ label: UI_TERMS.navigation.quality })
+  const first = segments[0]
+
+  if (first === "tasks") {
+    crumbs.push({ label: UI_TERMS.navigation.tasksWorkbench })
+  } else if (first === "autonomous-tasks") {
+    crumbs.push({
+      label: UI_TERMS.navigation.autonomousTasks,
+      href: segments[1] ? "/autonomous-tasks" : undefined,
+    })
+    if (segments[1] === "new") crumbs.push({ label: "新建自主任务" })
+    else if (segments[1]) {
+      crumbs.push({
+        label: segments[1],
+        href: segments[2] ? `/autonomous-tasks/${segments[1]}` : undefined,
+      })
+      if (segments[2] === "edit") crumbs.push({ label: "编辑任务" })
+      if (segments[2] === "runs" && segments[3]) crumbs.push({ label: `Run ${segments[3]}` })
+      if (segments[2] === "batches" && segments[3]) crumbs.push({ label: `批次 ${segments[3]}` })
+    }
+  } else if (first === "agents") {
+    crumbs.push({
+      label: UI_TERMS.navigation.agents,
+      href: segments[1] ? "/agents" : undefined,
+    })
+    if (segments[1]) {
+      crumbs.push({
+        label: "Agent Designer",
+        href: segments[2] ? `/agents/${segments[1]}` : undefined,
+      })
+      if (segments[2] === "runs" && segments[3]) crumbs.push({ label: `Run ${segments[3]}` })
+    }
+  } else if (first === "resources") {
+    crumbs.push({ label: UI_TERMS.navigation.resourcesHub })
+  } else if (first === "workflows") {
+    crumbs.push({
+      label: UI_TERMS.navigation.workflows,
+      href: segments[1] ? "/workflows" : undefined,
+    })
+    if (segments[1]) crumbs.push({ label: "画布" })
+  } else if (first === "settings") {
+    crumbs.push({
+      label: UI_TERMS.navigation.settings,
+      href: segments[1] ? "/settings" : undefined,
+    })
+    if (segments[1] === "connections") crumbs.push({ label: UI_TERMS.navigation.connections })
+    else if (segments[1] === "audit") crumbs.push({ label: UI_TERMS.navigation.auditLog })
+    else if (segments[1] === "governance") crumbs.push({ label: UI_TERMS.navigation.governance })
+  } else if (first === "operations") {
+    /* 批次历史/批次详情/Run 详情仍挂载，归属「任务」工作台域 */
+    crumbs.push({ label: UI_TERMS.navigation.tasksWorkbench, href: "/tasks" })
+    if (segments[1] === "task-runs") {
+      crumbs.push({
+        label: UI_TERMS.navigation.batchHistory,
+        href: segments[2] ? "/operations/task-runs" : undefined,
+      })
+      if (segments[2]) crumbs.push({ label: `批次 ${segments[2]}` })
+    } else if (segments[1] === "runs" && segments[2]) {
+      crumbs.push({ label: `Run ${segments[2]}` })
+    }
+  } else if (first === "quality") {
+    /* 遗留挂载：不再是一级入口，面包屑保留可达路径 */
+    crumbs.push({ label: UI_TERMS.navigation.qualityCenter })
     if (segments[1] === "overview") {
       crumbs.push({ label: UI_TERMS.navigation.qualityOverview })
     } else if (segments[1] === "results") {
@@ -49,71 +108,46 @@ export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
     } else if (segments[1] === "agent-analysis") {
       crumbs.push({ label: UI_TERMS.navigation.agentAnalysis })
     }
-  } else if (segments[0] === "config") {
-    crumbs.push({ label: UI_TERMS.navigation.config })
-    if (segments[1] === "tasks") {
+  } else if (first === "config") {
+    /* 遗留挂载的子页面：归属新的一级域 */
+    if (segments[1] === "forms") {
+      crumbs.push({ label: UI_TERMS.navigation.workflows, href: "/workflows" })
       crumbs.push({
-        label: UI_TERMS.navigation.tasks,
-        href: segments[2] ? "/config/tasks" : undefined,
+        label: UI_TERMS.navigation.forms,
+        href: segments[2] ? "/config/forms" : undefined,
       })
-      if (segments[2] === "new") crumbs.push({ label: "新建分析任务" })
-      else if (segments[2]) {
+      if (segments[2]) crumbs.push({ label: segments[2] === "new" ? "新建表单" : segments[2] })
+    } else {
+      crumbs.push({ label: UI_TERMS.navigation.resourcesHub, href: "/resources" })
+      if (segments[1] === "ai-resources") {
         crumbs.push({
-          label: segments[2],
-          href: segments[3] ? `/config/tasks/${segments[2]}` : undefined,
+          label: UI_TERMS.navigation.aiResources,
+          href: segments[2] ? "/config/ai-resources" : undefined,
         })
-        if (segments[3] === "edit") crumbs.push({ label: "编辑任务" })
-        if (segments[3] === "runs" && segments[4]) {
-          crumbs.push({ label: `Run ${segments[4]}` })
-        }
+        if (segments[2] === "new") crumbs.push({ label: "创建资源" })
+        else if (segments[2]) crumbs.push({ label: segments[3] ?? segments[2] })
+      } else if (segments[1] === "data-resources") {
+        crumbs.push({
+          label: UI_TERMS.navigation.dataResources,
+          href: segments[2] ? "/config/data-resources" : undefined,
+        })
+        if (segments[2] === "new") crumbs.push({ label: "创建资源" })
+        else if (segments[2]) crumbs.push({ label: segments[3] ?? segments[2] })
+      } else if (segments[1] === "data-assets") {
+        crumbs.push({
+          label: UI_TERMS.navigation.dataAssets,
+          href: segments[2] ? "/config/data-assets" : undefined,
+        })
+        if (segments[2]) crumbs.push({ label: segments[2] })
+      } else if (segments[1] === "result-rules") {
+        crumbs.push({
+          label: UI_TERMS.navigation.resultRules,
+          href: segments[2] ? "/config/result-rules" : undefined,
+        })
+        if (segments[2]) crumbs.push({ label: segments[2] })
       }
-    } else if (segments[1] === "agents") {
-      crumbs.push({
-        label: UI_TERMS.navigation.agents,
-        href: segments[2] ? "/config/agents" : undefined,
-      })
-      if (segments[2]) crumbs.push({ label: "Agent Designer" })
-    } else if (segments[1] === "tools") {
-      crumbs.push({
-        label: UI_TERMS.navigation.tools,
-        href: segments[2] ? "/config/tools" : undefined,
-      })
-      if (segments[2] === "new") crumbs.push({ label: "创建 API Tool" })
-      else if (segments[2]) crumbs.push({ label: segments[2] })
-    } else if (segments[1] === "ai-resources") {
-      crumbs.push({
-        label: "AI Resources",
-        href: segments[2] ? "/config/ai-resources" : undefined,
-      })
-      if (segments[2] === "new") crumbs.push({ label: "创建资源" })
-      else if (segments[2]) crumbs.push({ label: segments[3] ?? segments[2] })
-    } else if (segments[1] === "data-resources") {
-      crumbs.push({
-        label: "Data Resources",
-        href: segments[2] ? "/config/data-resources" : undefined,
-      })
-      if (segments[2] === "new") crumbs.push({ label: "创建资源" })
-      else if (segments[2]) crumbs.push({ label: segments[3] ?? segments[2] })
-    } else if (segments[1] === "data-assets") {
-      crumbs.push({
-        label: UI_TERMS.navigation.dataAssets,
-        href: segments[2] ? "/config/data-assets" : undefined,
-      })
-      if (segments[2] === "new") crumbs.push({ label: "创建数据资产" })
-      else if (segments[2]) crumbs.push({ label: segments[2] })
-    } else if (segments[1] === "result-rules") {
-      crumbs.push({
-        label: UI_TERMS.navigation.resultRules,
-        href: segments[2] ? "/config/result-rules" : undefined,
-      })
-      if (segments[2]) crumbs.push({ label: segments[2] })
     }
-  } else if (segments[0] === "settings") {
-    crumbs.push({ label: UI_TERMS.navigation.settings })
-    if (segments[1] === "connections") {
-      crumbs.push({ label: UI_TERMS.navigation.connections })
-    }
-  } else if (segments[0] === "403") {
+  } else if (first === "403") {
     crumbs.push({ label: "无访问权限" })
   }
 
@@ -121,58 +155,10 @@ export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
 }
 
 /**
- * Application Shell（Design Spec §8.1 冻结：shadcn sidebar-03）。
- * 固定左侧导航 + 顶部面包屑 Header + 内容区。
+ * Application Shell（MTC-001）：
+ * 左侧可折叠侧边栏（展开有文字 / 收起有 Tooltip）+ 顶部面包屑 + 内容区。
+ * 身份与主题入口收敛到侧边栏底部（主题 / 设置 / 账号）。
  */
-
-
-/** 单层窄轨导航（shadcn studio dashboard-sidebar-04 同构：icon+label 竖排，组间分隔线）。 */
-const RAIL_SHORT: Record<string, string> = {
-  Connections: "连接",
-  数据定义: "数据",
-  结果规则: "规则",
-  坐席分析: "坐席",
-  分析任务: "任务",
-  "AI Resources": "AI资源",
-  "Data Resources": "数据资源",
-}
-
-function AppRail() {
-  // 08-26 用户反馈：导航栏固定视口，不随页面滚动
-  return (
-    <aside className="sticky top-0 flex h-dvh w-20 shrink-0 flex-col items-stretch overflow-y-auto border-r bg-sidebar py-3" data-testid="app-rail">
-      <div className="mb-2 flex justify-center">
-        <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <ShieldCheck className="size-4.5" />
-        </div>
-      </div>
-      {NAV_GROUPS.map((group, gi) => {
-        const items = (group.items ?? group.subItems ?? []).filter((i) => rbac.can(i.permission))
-        if (items.length === 0) return null
-        return (
-          <div key={group.label} className={gi > 0 ? "mt-2 border-t pt-2" : ""} style={{ borderColor: "var(--sidebar-border)" }}>
-            {items.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                title={item.label}
-                className={({ isActive }) =>
-                  `mx-1.5 flex flex-col items-center gap-1 rounded-lg py-2 text-[11px] transition-colors ${
-                    isActive ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "text-muted-foreground hover:bg-sidebar-accent/60"
-                  }`
-                }
-              >
-                <item.icon className="size-4.5" />
-                <span className="max-w-full truncate px-0.5">{RAIL_SHORT[item.label] ?? item.label}</span>
-              </NavLink>
-            ))}
-          </div>
-        )
-      })}
-    </aside>
-  )
-}
-
 export function AppShell() {
   const { pathname } = useLocation()
   const workspace = isWorkspaceRoute(pathname)
@@ -196,6 +182,13 @@ export function AppShell() {
 
   const setRoleAndReload = (r: Role) => { setRole(r); setRoleState(r) }
 
+  const handleLogout = () => {
+    logout()
+    setAuthed(false)
+    setRoleState(currentRole())
+    toast.success("已登出")
+  }
+
   const doLogin = async () => {
     setLoggingIn(true)
     try {
@@ -213,48 +206,26 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex min-h-svh w-full">
-      <AppRail />
-      <div className="flex min-h-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+    <SidebarProvider>
+      <AppSidebar
+        authed={authed}
+        needLogin={needLogin}
+        role={role}
+        onRoleChange={setRoleAndReload}
+        onLogout={handleLogout}
+        onLoginRequest={() => setLoginOpen(true)}
+      />
+      <SidebarInset>
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+          <SidebarTrigger aria-label="展开或收起侧边栏" />
+          <Separator orientation="vertical" className="mr-1 h-4" />
           {!workspace && <Breadcrumbs items={breadcrumbs} />}
-          <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-            {authed ? (
-              /* 已登录：显示身份与登出（09 P0-10） */
-              <div className="flex items-center gap-2">
-                <span className="flex items-center gap-1">
-                  <ShieldCheck className="size-3.5" aria-hidden />
-                  {currentUsername()} · {currentRole()}
-                </span>
-                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => { logout(); setAuthed(false); setRoleState(currentRole()); toast.success("已登出") }}>
-                  <LogOut className="size-3.5" /> 登出
-                </Button>
-              </div>
-            ) : needLogin ? (
-              /* 服务端强制登录但未登录：引导登录 */
-              <Button size="sm" className="h-7 text-xs" onClick={() => setLoginOpen(true)}>登录</Button>
-            ) : (
-              /* 开发匿名态：本地角色切换（原型调试） */
-              <div className="flex items-center gap-1">
-                <ShieldCheck className="size-3.5" aria-hidden />
-                <Select value={role} onValueChange={(v) => setRoleAndReload(v as Role)}>
-                  <SelectTrigger className="h-7 w-[150px] text-xs" title="当前角色（RBAC）">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ROLES.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <PanelLeft className="hidden size-4" aria-hidden />
-          </div>
         </header>
         <div className="flex min-h-0 flex-1 flex-col">
           <Outlet />
         </div>
         <Toaster position="bottom-right" richColors />
-      </div>
+      </SidebarInset>
 
       {/* 登录对话框（09 P0-10） */}
       <Dialog open={loginOpen || (needLogin && !authed)} onOpenChange={(o) => setLoginOpen(o)}>
@@ -274,6 +245,6 @@ export function AppShell() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </SidebarProvider>
   )
 }

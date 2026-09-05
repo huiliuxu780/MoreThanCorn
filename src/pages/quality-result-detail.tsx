@@ -622,7 +622,7 @@ export default function QualityResultDetailPage() {
               </div>
               <p className="text-xs text-muted-foreground">
                 {detail.taskRunId && detail.taskId ? (
-                  <Link className="underline underline-offset-4" to={`/config/tasks/${detail.taskId}`}>
+                  <Link className="underline underline-offset-4" to={`/autonomous-tasks/${detail.taskId}`}>
                     查看任务与批次
                   </Link>
                 ) : (

@@ -77,7 +77,7 @@ export default function TaskEditPage() {
   return (
     <PageContainer className="max-w-3xl space-y-5">
       <div>
-        <Button variant="ghost" size="sm" className="gap-1 px-2" onClick={() => navigate(`/config/tasks/${task.id}`)}>
+        <Button variant="ghost" size="sm" className="gap-1 px-2" onClick={() => navigate(`/autonomous-tasks/${task.id}`)}>
           <ArrowLeft className="size-4" /> {task.name}
         </Button>
         <PageHeader className="mt-2" title="编辑任务" description="单页表单：修改某一项配置时不强迫重复走向导" />
@@ -96,7 +96,7 @@ export default function TaskEditPage() {
       </div>
 
       <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={() => navigate(`/config/tasks/${task.id}`)}>取消</Button>
+        <Button variant="outline" onClick={() => navigate(`/autonomous-tasks/${task.id}`)}>取消</Button>
         <Button
           disabled={saving}
           onClick={async () => {
@@ -106,7 +106,7 @@ export default function TaskEditPage() {
               const payload = buildTaskPayload(form)
               const r = await bizApi.updateTask(task.id, payload)
               toast.success(`已保存为配置版本 V${r.taskVersion.versionNo}`)
-              navigate(`/config/tasks/${task.id}`)
+              navigate(`/autonomous-tasks/${task.id}`)
             } catch (e) {
               toast.error(`保存失败：${(e as Error).message}`)
             } finally {

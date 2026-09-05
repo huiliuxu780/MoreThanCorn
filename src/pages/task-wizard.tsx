@@ -63,7 +63,7 @@ export default function TaskWizardPage() {
   return (
     <PageContainer className="max-w-3xl space-y-6">
       <div>
-        <Button variant="ghost" size="sm" className="gap-1 px-2" onClick={() => navigate("/config/tasks")}>
+        <Button variant="ghost" size="sm" className="gap-1 px-2" onClick={() => navigate("/autonomous-tasks")}>
           <ArrowLeft className="size-4" /> 分析任务
         </Button>
         <PageHeader className="mt-2" title="新建分析任务" description="按依赖顺序完成任务配置" />
@@ -166,7 +166,7 @@ export default function TaskWizardPage() {
                   })
                 }
                 toast.success(`任务已创建（配置版本 V${t.taskVersion.versionNo}）`)
-                navigate(`/config/tasks/${t.id}`)
+                navigate(`/autonomous-tasks/${t.id}`)
               } catch (e) {
                 toast.error(`创建失败：${(e as Error).message}`)
               } finally {

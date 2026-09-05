@@ -54,8 +54,8 @@ const STAGE_ZH: Record<string, string> = {
   identify: "识别", plan: "计划", execute: "执行", barrier: "屏障", synthesize: "总结",
 }
 
-/** R8-UI：双视角路由——任务视角 /config/tasks/:taskId/runs/:runId 与
- *  agent 视角 /config/agents/:agentId/runs/:runId（测试面板试运行可达）。 */
+/** R8-UI：双视角路由——任务视角 /autonomous-tasks/:taskId/runs/:runId 与
+ *  agent 视角 /agents/:agentId/runs/:runId（测试面板试运行可达）。 */
 export default function RunDetailPage() {
   const { taskId = "", runId = "", agentId = "" } = useParams()
   const navigate = useNavigate()
@@ -66,7 +66,7 @@ export default function RunDetailPage() {
   const delivery = detail?.delivery ?? null
   const domainLinks = detail?.domainLinks ?? []
   const rawOutput = detail?.rawOutput ?? null
-  const runPath = (rid: string) => agentId ? `/config/agents/${agentId}/runs/${rid}` : `/config/tasks/${taskId}/runs/${rid}`
+  const runPath = (rid: string) => agentId ? `/agents/${agentId}/runs/${rid}` : `/autonomous-tasks/${taskId}/runs/${rid}`
   const { params, update } = useListQuery(50)
   const filters = useMemo(() => parseListFilters(params.filters), [params.filters])
   const [events, setEvents] = useState<TraceEvent[]>([])
@@ -116,7 +116,7 @@ export default function RunDetailPage() {
     <PageContainer wide className="space-y-5">
       <div>
         <Button variant="ghost" size="sm" className="gap-1 px-2"
-          onClick={() => navigate(agentId ? "/config/agents" : `/config/tasks/${taskId}`)}>
+          onClick={() => navigate(agentId ? "/agents" : `/autonomous-tasks/${taskId}`)}>
           <ArrowLeft className="size-4" /> {agentId ? "返回 Agents" : run.taskName}
         </Button>
         <PageHeader
@@ -186,7 +186,7 @@ export default function RunDetailPage() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(run.id); toast.success("已复制 Run ID") }}>复制 Run ID</DropdownMenuItem>
-                  {!agentId && <DropdownMenuItem onClick={() => navigate(`/config/tasks/${taskId}`)}>查看 Task</DropdownMenuItem>}
+                  {!agentId && <DropdownMenuItem onClick={() => navigate(`/autonomous-tasks/${taskId}`)}>查看 Task</DropdownMenuItem>}
                   <DropdownMenuItem onClick={() => setTab("trace")}>查看运行 Trace</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

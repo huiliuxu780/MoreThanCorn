@@ -104,7 +104,7 @@ export default function OperationsTodayPage() {
 
   const openCard = (card: OpsBoardCard) => {
     if (card.taskRunId) navigate(`/operations/task-runs/${card.taskRunId}`)
-    else navigate(`/config/tasks/${card.task.id}`)
+    else navigate(`/autonomous-tasks/${card.task.id}`)
   }
 
   return (
