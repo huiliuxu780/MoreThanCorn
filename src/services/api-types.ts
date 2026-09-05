@@ -119,33 +119,57 @@ export interface AutomationExecutionConfigDTO {
 }
 
 /**
- * MTC-002A：自主任务领域 DTO（/api/automations canonical 形状）。
- * 前半为旧 /api/tasks 兼容字段，后半为 canonical 新增字段（旧接口不返回，故可选）。
+ * MTC-002A-R：canonical DTO——只描述 /api/automations 的真实响应。
+ * nullability 以后端 automation_dtos.automation_definition_dto 实际输出为准：
+ * agent 型任务 workflowId=null；workflowVersionId 仅 pinned 策略有值；
+ * 不含任何 legacy-only 字段（taskVersion/workflowVersionPolicy/dataAssetId/dataDefinitionId）。
  */
 export interface AutomationDefinitionDTO {
   id: string
   name: string
   description: string
-  workflowId: string
+  status: AutomationDefinitionStatus | string
+  agentId: string | null
+  workflowId: string | null
+  workflowVersionId: string | null
+  inputConfig: AutomationInputConfigDTO
+  scheduleConfig: AutomationScheduleConfigDTO | null
+  executionConfig: AutomationExecutionConfigDTO
+  createdAt: string | null
+  updatedAt: string | null
+  createdBy: string | null
+  version: number | null
+}
+
+/**
+ * MTC-002A-R：legacy DTO——描述 /api/tasks 真实响应（列表投影 + 详情快照的并集）。
+ * 列表独有：executionTarget/executionTargetType/agentName/moduleKey/currentVersionNo/lastTaskRun/schedule；
+ * 详情独有：taskVersion。optional/nullable 以实际响应为准。
+ */
+export interface LegacyAnalysisTaskDTO {
+  id: string
+  name: string
+  description: string
+  workflowId: string | null
   workflowVersionPolicy: WorkflowVersionPolicy | string
   dataAssetId: string
   dataDefinitionId: string | null
-  status: TaskStatus | AutomationDefinitionStatus | string
-  taskVersion: TaskVersionDTO | null
+  scope: Record<string, unknown> | string
+  sampling: Record<string, unknown> | string
+  dataWindow: Record<string, unknown> | string
+  status: TaskStatus | string
   executionTarget?: ExecutionTargetDTO | null
-  agentId?: string | null
-  workflowVersionId?: string | null
-  inputConfig?: AutomationInputConfigDTO | null
-  scheduleConfig?: AutomationScheduleConfigDTO | null
-  executionConfig?: AutomationExecutionConfigDTO | null
-  createdAt?: string | null
-  updatedAt?: string | null
-  createdBy?: string
-  version?: number | null
+  executionTargetType?: string
+  agentName?: string | null
+  moduleKey?: string | null
+  currentVersionNo?: number | null
+  lastTaskRun?: { id: string; status: string; createdAt: string } | null
+  schedule?: Record<string, unknown> | string
+  taskVersion?: TaskVersionDTO | null
 }
 
-/** @deprecated Use AutomationDefinitionDTO（MTC-002A：产品名收敛为自主任务） */
-export type AnalysisTaskDTO = AutomationDefinitionDTO
+/** @deprecated Use AutomationDefinitionDTO for /api/automations；/api/tasks 用 LegacyAnalysisTaskDTO */
+export type AnalysisTaskDTO = LegacyAnalysisTaskDTO
 
 export interface TaskRunDTO {
   id: string

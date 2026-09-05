@@ -40,7 +40,7 @@ export default function TaskEditPage() {
       name: task.name,
       description: task.description ?? "",
       targetType: isAgent ? "agent" : "workflow",
-      agentId: isAgent ? (et?.agentId ?? "") : task.workflowId,
+      agentId: isAgent ? (et?.agentId ?? "") : (task.workflowId ?? ""),
       agentVersionPolicy: et?.versionPolicy === "pinned" ? "pinned"
         : et?.versionPolicy === "latest_prod_release" ? "latest_prod" : "latest_sandbox",
       versionPolicy: (v?.workflowVersionPolicy ?? task.workflowVersionPolicy) === "pinned" ? "Fixed" : "Latest Published",

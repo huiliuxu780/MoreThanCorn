@@ -153,7 +153,7 @@ export default function TasksPage() {
                 {filteredItems.map((task) => {
                   const assetName = dataAssets.find((a) => a.id === task.dataAssetId)?.name ?? task.dataAssetId.slice(0, 8)
                   const policy = task.taskVersion?.workflowVersionPolicy ?? task.workflowVersionPolicy
-                  const et = (task as { executionTargetType?: string; agentName?: string | null; moduleKey?: string | null })
+                  const et = task
                   return (
                     <TableRow key={task.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/autonomous-tasks/${task.id}`)}>
                       <TableCell>
@@ -165,12 +165,13 @@ export default function TasksPage() {
                           <><div className="text-sm">{et.agentName ?? "—"}</div>
                             <div className="text-xs text-muted-foreground">Module：{et.moduleKey ?? "—"}</div></>
                         ) : (
-                          <><div className="text-sm">{wfName(task.workflowId)}</div>
+                          <><div className="text-sm">{wfName(task.workflowId ?? "")}</div>
                             <div className="text-xs text-muted-foreground">{policy === "pinned" ? "Fixed（钉住版本）" : "Latest Published"}</div></>
                         )}
                       </TableCell>
                       <TableCell className="text-sm tabular-nums">
-                        {task.taskVersion ? `V${task.taskVersion.versionNo}` : "—"}
+                        {/* MTC-002A-R：legacy 列表投影给 currentVersionNo（详情才有 taskVersion） */}
+                        {task.currentVersionNo != null ? `V${task.currentVersionNo}` : "—"}
                       </TableCell>
                       <TableCell className="text-sm">{assetName}</TableCell>
                       <TableCell><StatusBadge status={task.status} /></TableCell>

@@ -74,10 +74,13 @@ def start_automation_run(aid: str, payload: dict | None = None,
 
 @router.get("/api/automations/{aid}/runs")
 def list_automation_runs(aid: str, page: int = 1, pageSize: int = 50,
-                         db: Session = Depends(get_db)):
-    return biz.list_task_runs(tid=aid, page=page, pageSize=pageSize, db=db)
+                         db: Session = Depends(get_db),
+                         user: dict = Depends(require_role())):
+    """MTC-002A-R：门禁在共享读取函数内（_load_task_scoped），与 legacy 同一路径。"""
+    return biz.list_task_runs(tid=aid, page=page, pageSize=pageSize, db=db, user=user)
 
 
 @router.get("/api/automations/{aid}/schedules")
-def list_automation_schedules(aid: str, db: Session = Depends(get_db)):
-    return biz.list_task_schedules(tid=aid, db=db)
+def list_automation_schedules(aid: str, db: Session = Depends(get_db),
+                              user: dict = Depends(require_role())):
+    return biz.list_task_schedules(tid=aid, db=db, user=user)

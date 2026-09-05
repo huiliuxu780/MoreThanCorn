@@ -1029,12 +1029,23 @@ def backfill_task(tid: str, payload: dict, db: Session = Depends(get_db),
             "dataSnapshotId": resolved.get("dataSnapshotId") or tr.data_snapshot_id}
 
 
-@router.get("/api/tasks/{tid}/schedules")
-def list_task_schedules(tid: str, db: Session = Depends(get_db)):
-    """09 P1-01：任务级调度列表。"""
+def _load_task_scoped(db: Session, user: dict, tid: str) -> AnalysisTask:
+    """MTC-002A-R：子资源读取统一门禁——不存在 404；存在但跨团队（team scope）403。
+
+    legacy 与 canonical（/api/automations）的 runs/schedules 共用本函数，避免两处漂移。
+    """
     t = db.get(AnalysisTask, tid)
     if not t:
         raise HTTPException(404, "任务不存在")
+    assert_task_readable(db, user, t)
+    return t
+
+
+@router.get("/api/tasks/{tid}/schedules")
+def list_task_schedules(tid: str, db: Session = Depends(get_db),
+                        user: dict = Depends(require_role())):
+    """09 P1-01：任务级调度列表。MTC-002A-R：纳入团队数据范围门禁。"""
+    _load_task_scoped(db, user, tid)
     rows = db.query(Schedule).filter_by(task_id=tid).order_by(Schedule.created_at.desc()).all()
     return {"items": [{"id": s.id, "name": s.name, "cron": s.cron_expr, "timezone": s.timezone,
                        "enabled": s.enabled,
@@ -1044,12 +1055,11 @@ def list_task_schedules(tid: str, db: Session = Depends(get_db)):
 
 
 @router.get("/api/tasks/{tid}/runs")
-def list_task_runs(tid: str, page: int = 1, pageSize: int = 50, db: Session = Depends(get_db)):
-    """09 P1-10：真分页。"""
+def list_task_runs(tid: str, page: int = 1, pageSize: int = 50, db: Session = Depends(get_db),
+                   user: dict = Depends(require_role())):
+    """09 P1-10：真分页。MTC-002A-R：纳入团队数据范围门禁。"""
     from ..models import TaskRun
-    t = db.get(AnalysisTask, tid)
-    if not t:
-        raise HTTPException(404, "任务不存在")
+    _load_task_scoped(db, user, tid)
     q = db.query(TaskRun).filter_by(task_id=tid).order_by(TaskRun.created_at.desc())
     total = q.count()
     rows = q.offset((page - 1) * pageSize).limit(pageSize).all()
