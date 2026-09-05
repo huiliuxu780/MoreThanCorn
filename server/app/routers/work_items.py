@@ -24,7 +24,8 @@ from ..auth import assert_task_readable, require_role
 from ..db import get_db
 from ..models import AnalysisTask, ScheduleOccurrence, TaskRun
 from ..work_item_projection import (ORIGINS, STATUS_ORDER, build_work_items,
-                                    count_by_status, day_bounds, filter_work_items,
+                                    count_by_status, filter_work_items,
+                                    parse_work_item_date_range,
                                     project_single)  # noqa: F401  (project_single 供详情使用)
 
 router = APIRouter(prefix="/api/work-items", tags=["work-items"])
@@ -32,18 +33,7 @@ router = APIRouter(prefix="/api/work-items", tags=["work-items"])
 _DEFAULT_TZ = "Asia/Shanghai"
 
 
-_DATE_RE = __import__("re").compile(r"^\d{4}-\d{2}-\d{2}$")
-
-
-def _valid_date(value: str, field: str) -> str:
-    """P2：只接受 YYYY-MM-DD；带时间/非法格式一律 422。"""
-    if not _DATE_RE.match(value):
-        raise HTTPException(422, f"{field} 必须是 YYYY-MM-DD（收到：{value}）")
-    try:
-        datetime.fromisoformat(value)
-    except ValueError:
-        raise HTTPException(422, f"{field} 不是真实日期（收到：{value}）")
-    return value
+# MTC-002B-R3 P2：日期契约唯一实现位于 work_item_projection.parse_work_item_date_range
 
 
 def _valid_tz(value: str) -> str:
@@ -65,11 +55,8 @@ def list_work_items(dateFrom: str = "", dateTo: str = "", timezone: str = _DEFAU
                     page: int = 1, pageSize: int = 50,
                     db: Session = Depends(get_db),
                     user: dict = Depends(require_role())):
-    tz_s = _valid_tz(timezone or _DEFAULT_TZ)
-    date_from = _valid_date(dateFrom, "dateFrom") if dateFrom else _business_date(tz_s)
-    date_to = _valid_date(dateTo, "dateTo") if dateTo else date_from
-    if date_from > date_to:
-        raise HTTPException(422, f"dateFrom 不能晚于 dateTo（{date_from} > {date_to}）")
+    date_from, date_to, tz_s, _start, _end = parse_work_item_date_range(
+        dateFrom, dateTo, timezone or _DEFAULT_TZ, _business_date)
     if status and status not in STATUS_ORDER:
         raise HTTPException(422, f"status 必须是 {list(STATUS_ORDER)} 之一")
     if origin and origin not in ORIGINS:
@@ -143,9 +130,9 @@ async def work_items_stream(request: Request, dateFrom: str = "", dateTo: str = 
                             timezone: str = _DEFAULT_TZ,
                             user: dict = Depends(require_role())):
     """SSE：fetch+Bearer 授权；digest 使用当前用户数据范围（不硬编码 admin/all）。"""
-    tz_s = _valid_tz(timezone or _DEFAULT_TZ)
-    d_from = _valid_date(dateFrom, "dateFrom") if dateFrom else _business_date(tz_s)
-    d_to = _valid_date(dateTo, "dateTo") if dateTo else d_from
+    # P2：与 list 共用同一日期契约（非法即 422，不进入流）
+    d_from, d_to, tz_s, _s, _e = parse_work_item_date_range(
+        dateFrom, dateTo, timezone or _DEFAULT_TZ, _business_date)
     return StreamingResponse(
         work_items_stream_iter(user, d_from, d_to, tz_s,
                                is_disconnected=request.is_disconnected),

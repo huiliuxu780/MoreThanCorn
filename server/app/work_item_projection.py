@@ -155,6 +155,39 @@ def project_work_item_status(tr: TaskRun | None, occ: ScheduleOccurrence | None,
             "conflict_codes": conflicts or ["UNKNOWN_DELIVERY_STATUS"]}
 
 
+_DATE_RE = __import__("re").compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def parse_work_item_date_range(date_from: str, date_to: str, tz: str, default_date_fn):
+    """MTC-002B-R3 P2：list 与 stream 共享的日期范围契约。
+
+    规则：只接受 YYYY-MM-DD；非法/带时间字符串 422；无效 IANA 时区 422；
+    dateFrom > dateTo 422；默认 dateTo = dateFrom。返回 (date_from, date_to, tz_s, start, end)。
+    """
+    from fastapi import HTTPException
+    try:
+        ZoneInfo(tz)
+    except Exception:  # noqa: BLE001
+        raise HTTPException(422, f"timezone 必须是有效 IANA 时区（收到：{tz}）")
+
+    def _check(v: str, field: str) -> str:
+        if not _DATE_RE.match(v):
+            raise HTTPException(422, f"{field} 必须是 YYYY-MM-DD（收到：{v}）")
+        try:
+            datetime.fromisoformat(v)
+        except ValueError:
+            raise HTTPException(422, f"{field} 不是真实日期（收到：{v}）")
+        return v
+
+    d_from = _check(date_from, "dateFrom") if date_from else default_date_fn(tz)
+    d_to = _check(date_to, "dateTo") if date_to else d_from
+    if d_from > d_to:
+        raise HTTPException(422, f"dateFrom 不能晚于 dateTo（{d_from} > {d_to}）")
+    start, _ = day_bounds(d_from, tz)
+    _, end = day_bounds(d_to, tz)
+    return d_from, d_to, tz, start, end
+
+
 def day_bounds(date_s: str, tz_s: str) -> tuple[datetime, datetime]:
     zone = ZoneInfo(tz_s)
     day = datetime.fromisoformat(date_s)

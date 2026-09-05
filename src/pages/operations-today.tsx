@@ -196,7 +196,12 @@ export default function OperationsTodayPage() {
               </div>
               {cards.length === 0 ? (
                 <div className="rounded-md border border-dashed px-2 py-4 text-center text-xs text-muted-foreground">空</div>
-              ) : cards.map((w) => (
+              ) : cards.map((w) => {
+                // MTC-002B-R3：是否已有真实执行的唯一权威判断是 taskRunId != null；
+                // kind=schedule_occurrence 仅表示稳定身份来自调度计划，不等于“尚未执行”。
+                const hasExecution = w.taskRunId !== null
+                const isUnfiredSchedule = w.kind === "schedule_occurrence" && w.taskRunId === null
+                return (
                 <button
                   key={w.id}
                   type="button"
@@ -218,16 +223,30 @@ export default function OperationsTodayPage() {
                   ) : null}
                   <div className="text-muted-foreground">
                     {WORK_ITEM_ORIGIN_LABELS[w.origin] ?? w.origin}
-                    {w.scheduledAt ? ` · 计划于 ${formatCompactDateTime(w.scheduledAt)}` : ""}
+                    {isUnfiredSchedule && w.scheduledAt ? ` · 计划于 ${formatCompactDateTime(w.scheduledAt)}` : ""}
                     {w.startedAt ? ` · 启动 ${formatCompactDateTime(w.startedAt)}` : ""}
+                    {w.finishedAt ? ` · 完成 ${formatCompactDateTime(w.finishedAt)}` : ""}
                   </div>
-                  {w.kind === "task_run" ? (
-                    <div className="flex items-center justify-between tabular-nums">
-                      <span>执行 {w.progress.succeeded} / {w.progress.total}</span>
-                      <span>{liveDuration(w)}</span>
-                    </div>
+                  {hasExecution ? (
+                    <>
+                      <div className="flex items-center justify-between tabular-nums">
+                        <span>执行 {w.progress.succeeded} / {w.progress.total}</span>
+                        <span>{liveDuration(w)}</span>
+                      </div>
+                      {w.kind === "schedule_occurrence" && w.scheduledAt ? (
+                        <div className="text-muted-foreground">
+                          原计划：{formatCompactDateTime(w.scheduledAt)}
+                        </div>
+                      ) : null}
+                    </>
                   ) : (
-                    <div className="text-muted-foreground">等待调度</div>
+                    <div className="text-muted-foreground">
+                      {w.status === "needs_action"
+                        ? (w.diagnostics?.occurrenceStatus === "missed"
+                          ? "计划时间已到但未触发批次"
+                          : "调度已标记触发，但执行批次缺失")
+                        : "等待调度"}
+                    </div>
                   )}
                   {w.attention.required ? (
                     <div className="rounded bg-status-warning/10 px-1.5 py-1 text-status-warning">
@@ -235,7 +254,8 @@ export default function OperationsTodayPage() {
                     </div>
                   ) : null}
                 </button>
-              ))}
+                )
+              })}
             </div>
           )
         })}

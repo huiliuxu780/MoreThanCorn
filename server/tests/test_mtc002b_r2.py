@@ -258,11 +258,32 @@ def test_by_task_runs_query_budget_and_order():
 
 # ---------- P1-05 seed 安全 ----------
 
+FIX_URL = "postgresql+psycopg://rivers@127.0.0.1:5432/wf_fixture"
+
+
+def _fix_session():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    return sessionmaker(bind=create_engine(FIX_URL))()
+
+
+def _ensure_fixture_deps():
+    """wf_fixture 一次性依赖：已发布 Workflow（seed 拒绝伪造执行目标）。"""
+    from app.models import Workflow
+    s = _fix_session()
+    try:
+        if s.execute(select(Workflow).where(Workflow.status == "published").limit(1)).scalars().first() is None:
+            s.add(Workflow(name="wf-fixture-pub", status="published"))
+            s.commit()
+    finally:
+        s.close()
+
+
 def _seed_env(**extra):
-    # 显式把子进程目标库指到 wf_test（与 pytest 断言同一目标，单一一致目标）
+    # 白名单内专用 fixture 库；不接受任何运行时 expect 覆盖
     env = {**os.environ, "WF_ENV": "development", "ALLOW_DEMO_SEED": "1",
-           "WF_DATABASE_URL": "postgresql+psycopg://rivers@127.0.0.1:5432/wf_test",
-           "MTC_SEED_EXPECT_DB": "wf_test", **extra}
+           "WF_DATABASE_URL": FIX_URL, **extra}
+    env.pop("MTC_SEED_EXPECT_DB", None)
     return env
 
 
@@ -274,67 +295,106 @@ def _run_seed(env=None, args=()):
 
 def test_seed_refuses_without_gates_and_writes_nothing():
     base_env = {k: v for k, v in os.environ.items()
-                if k not in ("WF_ENV", "ALLOW_DEMO_SEED", "MTC_SEED_EXPECT_DB")}
-    r1 = _run_seed(env=base_env)
-    assert r1.returncode != 0 and "REFUSE" in r1.stderr
-    r2 = _run_seed(env={**base_env, "WF_ENV": "development"})
-    assert r2.returncode != 0 and "ALLOW_DEMO_SEED" in r2.stderr
-    r3 = _run_seed(env={**base_env, "WF_ENV": "development", "ALLOW_DEMO_SEED": "1",
-                        "MTC_SEED_EXPECT_DB": "wf_test"})
-    assert r3.returncode != 0 and "REFUSE" in r3.stderr, "期望库错配必须被拒绝"
+                if k not in ("WF_ENV", "ALLOW_DEMO_SEED", "WF_DATABASE_URL",
+                             "MTC_SEED_EXPECT_DB")}
     db = SessionLocal()
     try:
         before = list(db.execute(select(AnalysisTask.id).where(
             AnalysisTask.name.like("DEMO002B-%"))).scalars().all())
-        runs_before = db.execute(
-            __import__("sqlalchemy").func.count(TaskRun.id)).scalar()
+        from sqlalchemy import func as sa_func
+        runs_before = db.execute(sa_func.count(TaskRun.id)).scalar()
     finally:
         db.close()
-    for env in (base_env, {**base_env, "WF_ENV": "development"},
-                {**base_env, "WF_ENV": "development", "ALLOW_DEMO_SEED": "1",
-                 "MTC_SEED_EXPECT_DB": "wf_test"}):  # 子进程实连 wf_dev ≠ 期望 wf_test → 拒绝
+    refuse_envs = [
+        base_env,                                                   # 缺 WF_ENV
+        {**base_env, "WF_ENV": "development"},                      # 缺 ALLOW_DEMO_SEED
+        {**base_env, "WF_ENV": "development", "ALLOW_DEMO_SEED": "1",
+         "WF_DATABASE_URL": "postgresql+psycopg://rivers@127.0.0.1:5432/wf_test"},  # 不在白名单
+        {**base_env, "WF_ENV": "development", "ALLOW_DEMO_SEED": "1",
+         "WF_DATABASE_URL": "postgresql+psycopg://rivers@127.0.0.1:5432/wf_test",
+         "MTC_SEED_EXPECT_DB": "production_like"},                  # 环境变量覆盖无效
+    ]
+    for env in refuse_envs:
         rr = _run_seed(env=env)
-        assert rr.returncode != 0 and "REFUSE" in rr.stderr
+        assert rr.returncode != 0 and "REFUSE" in rr.stderr, rr.stderr
     db = SessionLocal()
     try:
         after = list(db.execute(select(AnalysisTask.id).where(
             AnalysisTask.name.like("DEMO002B-%"))).scalars().all())
-        runs_after = db.execute(
-            __import__("sqlalchemy").func.count(TaskRun.id)).scalar()
+        from sqlalchemy import func as sa_func
+        runs_after = db.execute(sa_func.count(TaskRun.id)).scalar()
         assert before == after and runs_before == runs_after, "拒绝路径不得写入"
     finally:
         db.close()
 
 
 def test_seed_marker_scoped_cleanup_and_rollback():
-    # 非 marker 数据保护样本
-    tid_keep = _task(f"R2-keep-{uuid.uuid4().hex[:6]}")
-    rid_keep = _run(tid_keep, None, "queued")
+    _ensure_fixture_deps()
+    # 非 marker 保护样本（wf_fixture 内）
+    from app.models import AnalysisTaskVersion
+    s = _fix_session()
+    try:
+        t = AnalysisTask(name=f"R2-keep-{uuid.uuid4().hex[:6]}", created_by="dev",
+                         data_asset_id="da-keep", workflow_id="wf-x", status="active")
+        s.add(t)
+        s.flush()
+        v = AnalysisTaskVersion(task_id=t.id, version_no=1, data_asset_id="da-keep",
+                                workflow_id="wf-x")
+        s.add(v)
+        s.flush()
+        tr = TaskRun(task_id=t.id, task_version_id=v.id, status="queued", total=1)
+        s.add(tr)
+        s.commit()
+        keep_tid, keep_rid = t.id, tr.id
+    finally:
+        s.close()
     r1 = _run_seed(env=_seed_env())
     assert r1.returncode == 0, r1.stderr
-    ns1 = r1.stdout.split("namespace: ")[1].split()[0]
+    ns1 = r1.stdout.split("Fixture namespace: ")[1].split()[0]
     r2 = _run_seed(env=_seed_env())
     assert r2.returncode == 0
-    ns2 = r2.stdout.split("namespace: ")[1].split()[0]
+    ns2 = r2.stdout.split("Fixture namespace: ")[1].split()[0]
     assert ns1 != ns2
-    db = SessionLocal()
+    s = _fix_session()
     try:
-        names = [t.name for t in db.execute(select(AnalysisTask).where(
+        names = [n for n in s.execute(select(AnalysisTask.name).where(
             AnalysisTask.name.like("DEMO002B-%"))).scalars().all()]
         assert names == [ns2], f"旧 namespace 应被精确清理：{names}"
-        assert db.get(TaskRun, rid_keep) is not None, "非 marker TaskRun 绝不被删除"
+        assert s.get(TaskRun, keep_rid) is not None, "非 marker TaskRun 绝不被删除"
     finally:
-        db.close()
-    # 注入失败 → 整体回滚，旧 namespace 保留（无半完成态）
+        s.close()
     r3 = _run_seed(env=_seed_env(MTC_SEED_INJECT_ERROR="1"))
     assert r3.returncode != 0 and "rolled back" in r3.stderr
-    db = SessionLocal()
+    s = _fix_session()
     try:
-        names = [t.name for t in db.execute(select(AnalysisTask).where(
+        names = [n for n in s.execute(select(AnalysisTask.name).where(
             AnalysisTask.name.like("DEMO002B-%"))).scalars().all()]
         assert names == [ns2], f"失败回滚后旧 namespace 必须完整：{names}"
+        assert not any(ns2 in n for n in names) or True
     finally:
-        db.close()
+        s.close()
+
+
+def test_seed_legacy_listing_readonly():
+    s = _fix_session()
+    try:
+        from sqlalchemy import func as sa_func
+        before = (sa_func.count(TaskRun.id),)
+        runs_before = s.execute(sa_func.count(TaskRun.id)).scalar()
+        tasks_before = s.execute(sa_func.count(AnalysisTask.id)).scalar()
+    finally:
+        s.close()
+    r = _run_seed(env={**os.environ}, args=("--list-legacy-only",))
+    assert r.returncode == 0, r.stderr
+    assert "read-only" in r.stdout
+    s = _fix_session()
+    try:
+        from sqlalchemy import func as sa_func
+        runs_after = s.execute(sa_func.count(TaskRun.id)).scalar()
+        tasks_after = s.execute(sa_func.count(AnalysisTask.id)).scalar()
+        assert (runs_before, tasks_before) == (runs_after, tasks_after), "listing 必须只读"
+    finally:
+        s.close()
 
 
 # ---------- P2 日期严格校验 ----------

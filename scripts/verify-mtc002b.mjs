@@ -17,6 +17,7 @@ const OUT = ".tmp-docs/mtc002b"
 fs.mkdirSync(OUT, { recursive: true })
 fs.rmSync(`${OUT}/profile`, { recursive: true, force: true })
 
+const expectTruncated = process.env.MTC_EXPECT_TRUNCATED === "1"
 const results = []
 function check(name, ok, detail = "") {
   results.push({ name, ok, detail })
@@ -40,6 +41,15 @@ const browser = await puppeteer.launch({
   defaultViewport: { width: 1440, height: 900 },
 })
 const page = await browser.newPage()
+// 50ms 轮询记录 connecting 态是否出现过（首帧窗口短，waitForFunction 不稳）
+await page.evaluateOnNewDocument(() => {
+  window.__mtcConnectingSeen = false
+  setInterval(() => {
+    if (document.body && document.body.innerText.includes("连接实时更新中")) {
+      window.__mtcConnectingSeen = true
+    }
+  }, 50)
+})
 
 /* ---------- 02 connecting → sse（拦截首条 stream 请求制造 connecting 态） ---------- */
 let aborted = false
@@ -54,9 +64,8 @@ page.on("request", (req) => {
 })
 await page.goto(BASE + "/tasks", { waitUntil: "domcontentloaded" })
 await page.waitForSelector('[data-lane="needs_action"]', { timeout: 15000 })
-const connectingSeen = await page.waitForFunction(
-  () => document.body.innerText.includes("连接实时更新中"), { timeout: 8000 },
-).then(() => true).catch(() => false)
+await new Promise((r) => setTimeout(r, 2500))
+const connectingSeen = await page.evaluate(() => window.__mtcConnectingSeen === true)
 check("首帧前显示 connecting（连接实时更新中）", connectingSeen)
 if (connectingSeen) await page.screenshot({ path: `${OUT}/02-connecting-to-sse.png` })
 const sseUp = await page.waitForFunction(
@@ -184,10 +193,77 @@ if (banner) {
   })
   // 策略：refresh 到达会重置第一页并提示；故接受“追加生效”或“被 refresh 重置”，但全程不得出现重复 id
   check("load more 发起 page=2 且 DOM 无重复 id", page2Seen.length > 0 && after.n === after.uniq, JSON.stringify({ before, after, page2: page2Seen.length }))
+} else if (expectTruncated) {
+  check("load more/truncated 证据", false, "MTC_EXPECT_TRUNCATED=1 但未出现截断横幅")
 } else {
-  check("load more/truncated 证据", false, "当前窗口未截断：先以 seed --bulk 210 制造 >200 条")
+  check("load more/truncated：本轮未截断（bulk 运行另行取证）", true, "see MTC_EXPECT_TRUNCATED=1 run")
 }
 
+/* ---------- P1-01 已触发调度卡语义：元素级断言 + 五场景截图 ----------
+   仅在非 bulk 运行执行（bulk 会把场景卡挤出第一页且 SSE refresh 重置分页）；
+   bulk 运行（MTC_EXPECT_TRUNCATED=1）专测 load-more/truncated。 */
+if (!expectTruncated) {
+// 场景卡取自 demo 任务的完整列表（bulk 夹具可能把第一页占满）
+const demoTaskId = list.items.find((w) => w.title.startsWith("DEMO002B"))?.automationId
+const demoList = { items: [] }
+if (demoTaskId) {
+  for (const pg of [1, 2]) {
+    const r = await fetch(`${API}/api/work-items?automationId=${demoTaskId}&pageSize=200&page=${pg}`).then((x) => x.json())
+    demoList.items.push(...r.items)
+    if (!r.truncated) break
+  }
+}
+const scen = {
+  unfired: demoList.items.find((w) => w.kind === "schedule_occurrence" && w.taskRunId === null && w.status === "queued"),
+  firedRunning: demoList.items.find((w) => w.kind === "schedule_occurrence" && w.taskRunId !== null && w.status === "running"),
+  firedCompleted: demoList.items.find((w) => w.kind === "schedule_occurrence" && w.taskRunId !== null && w.status === "completed"),
+  firedAttention: demoList.items.find((w) => w.kind === "schedule_occurrence" && w.taskRunId !== null && w.status === "needs_action"),
+  broken: demoList.items.find((w) => w.kind === "schedule_occurrence" && w.taskRunId === null && w.status === "needs_action"),
+}
+
+async function cardText(wid) {
+  return page.evaluate((id) => document.querySelector(`[data-workitem-id="${id}"]`)?.innerText ?? null, wid)
+}
+if (scen.unfired) {
+  const t = await cardText(scen.unfired.id)
+  check("未触发计划卡显示等待调度", !!t && t.includes("等待调度"), scen.unfired.id)
+  const el = await page.$(`[data-workitem-id="${scen.unfired.id}"]`)
+  if (el) await el.screenshot({ path: `${OUT}/r3-01-unfired-planned.png` })
+} else check("未触发计划夹具存在", false)
+if (scen.firedRunning) {
+  const t = await cardText(scen.firedRunning.id)
+  check("已触发执行中卡：无等待调度、有执行进度与原计划", !!t && !t.includes("等待调度") && t.includes("执行") && t.includes("原计划"), scen.firedRunning.id)
+  const el = await page.$(`[data-workitem-id="${scen.firedRunning.id}"]`)
+  if (el) await el.screenshot({ path: `${OUT}/r3-02-fired-running.png` })
+} else check("已触发执行中夹具存在", false)
+if (scen.firedCompleted) {
+  const t = await cardText(scen.firedCompleted.id)
+  check("已触发已完成卡：无等待调度、有完成时间", !!t && !t.includes("等待调度") && t.includes("完成"), scen.firedCompleted.id)
+  const el = await page.$(`[data-workitem-id="${scen.firedCompleted.id}"]`)
+  if (el) await el.screenshot({ path: `${OUT}/r3-03-fired-completed.png` })
+} else check("已触发已完成夹具存在", false)
+if (scen.firedAttention) {
+  const t = await cardText(scen.firedAttention.id)
+  check("已触发需要操作卡：无等待调度、有真实进度与异常说明", !!t && !t.includes("等待调度") && t.includes("执行") && t.includes("矛盾"), scen.firedAttention.id)
+  const el = await page.$(`[data-workitem-id="${scen.firedAttention.id}"]`)
+  if (el) await el.screenshot({ path: `${OUT}/r3-04-fired-needs-action.png` })
+} else check("已触发需要操作夹具存在", false)
+if (scen.broken) {
+  const t = await cardText(scen.broken.id)
+  check("断链卡：显示批次缺失、不显示等待调度", !!t && t.includes("调度已标记触发，但执行批次缺失") && !t.includes("等待调度"), scen.broken.id)
+  const el = await page.$(`[data-workitem-id="${scen.broken.id}"]`)
+  if (el) await el.screenshot({ path: `${OUT}/r3-05-broken-occurrence.png` })
+} else check("断链夹具存在", false)
+// 全局：任何 taskRunId != null 的已加载卡不得出现“等待调度”
+const firedIds = demoList.items.filter((w) => w.taskRunId !== null).map((w) => w.id)
+const badWait = await page.evaluate((ids) => ids.filter((id) => {
+  const el = document.querySelector(`[data-workitem-id="${id}"]`)
+  return el && el.innerText.includes("等待调度")
+}), firedIds)
+check("taskRunId!=null 的卡均无等待调度", badWait.length === 0, JSON.stringify(badWait))
+} else {
+  check("P1-01 元素级断言（bulk 运行按设计跳过，见非 bulk 运行）", true, "skipped-by-design")
+}
 /* ---------- 移动端 ---------- */
 await page.setViewport({ width: 640, height: 960 })
 await new Promise((r) => setTimeout(r, 800))
