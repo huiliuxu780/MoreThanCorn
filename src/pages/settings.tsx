@@ -47,7 +47,7 @@ function NotAvailable({ feature }: { feature: string }) {
     <div className="rounded-lg border border-dashed bg-card p-8 text-center">
       <Badge variant="neutral" className="mb-3">暂未开放</Badge>
       <p className="text-sm text-muted-foreground">
-        「{feature}」设置项暂未开放，将在后续任务中提供。当前没有任何隐藏生效的配置。
+        「{feature}」该功能尚未启用。当前没有任何隐藏生效的配置。
       </p>
     </div>
   )

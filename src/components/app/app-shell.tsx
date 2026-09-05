@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { Menu } from "lucide-react"
 import { Outlet, useLocation } from "react-router-dom"
 import { toast } from "sonner"
 import { UI_TERMS } from "@/config/ui-terms"
@@ -6,9 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Toaster } from "@/components/ui/sonner"
-import { Separator } from "@/components/ui/separator"
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
-import { AppSidebar } from "@/components/app/app-sidebar"
+import { AppRail, MobileNavSheet } from "@/components/app/app-sidebar"
 import {
   currentRole, currentUsername, initAuth, isAuthenticated, isAuthRequired,
   login, logout, setRole, type Role,
@@ -155,9 +154,10 @@ export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
 }
 
 /**
- * Application Shell（MTC-001）：
- * 左侧可折叠侧边栏（展开有文字 / 收起有 Tooltip）+ 顶部面包屑 + 内容区。
- * 身份与主题入口收敛到侧边栏底部（主题 / 设置 / 账号）。
+ * Application Shell（MTC-001R）：
+ * 桌面 ≥768px 固定 80px 单层窄轨（图标+短标签，不可展开/收起）；
+ * <768px 使用 Sheet 抽屉导航。顶部仅面包屑，无侧栏 toggle。
+ * 身份与主题入口收敛在窄轨底部（主题 / 设置 / 账号）。
  */
 export function AppShell() {
   const { pathname } = useLocation()
@@ -171,6 +171,14 @@ export function AppShell() {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [loggingIn, setLoggingIn] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const burgerRef = useRef<HTMLButtonElement>(null)
+
+  const handleMobileNavChange = (open: boolean) => {
+    setMobileNavOpen(open)
+    // MTC-001R：Sheet 关闭后焦点回到触发器（Radix 在自定义触发下不保证）
+    if (!open) requestAnimationFrame(() => burgerRef.current?.focus())
+  }
 
   useEffect(() => {
     initAuth().then(() => {
@@ -205,27 +213,39 @@ export function AppShell() {
     }
   }
 
+  const navProps = {
+    authed,
+    needLogin,
+    role,
+    onRoleChange: setRoleAndReload,
+    onLogout: handleLogout,
+    onLoginRequest: () => setLoginOpen(true),
+  }
+
   return (
-    <SidebarProvider>
-      <AppSidebar
-        authed={authed}
-        needLogin={needLogin}
-        role={role}
-        onRoleChange={setRoleAndReload}
-        onLogout={handleLogout}
-        onLoginRequest={() => setLoginOpen(true)}
-      />
-      <SidebarInset>
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75">
-          <SidebarTrigger aria-label="展开或收起侧边栏" />
-          <Separator orientation="vertical" className="mr-1 h-4" />
+    <div className="flex min-h-svh w-full">
+      <AppRail {...navProps} />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+          <Button
+            ref={burgerRef}
+            variant="ghost"
+            size="icon"
+            className="size-8 md:hidden"
+            aria-label="打开导航"
+            onClick={() => setMobileNavOpen(true)}
+          >
+            <Menu className="size-4.5" />
+          </Button>
           {!workspace && <Breadcrumbs items={breadcrumbs} />}
         </header>
         <div className="flex min-h-0 flex-1 flex-col">
           <Outlet />
         </div>
         <Toaster position="bottom-right" richColors />
-      </SidebarInset>
+      </div>
+
+      <MobileNavSheet open={mobileNavOpen} onOpenChange={handleMobileNavChange} {...navProps} />
 
       {/* 登录对话框（09 P0-10） */}
       <Dialog open={loginOpen || (needLogin && !authed)} onOpenChange={(o) => setLoginOpen(o)}>
@@ -245,6 +265,6 @@ export function AppShell() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </SidebarProvider>
+    </div>
   )
 }

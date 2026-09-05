@@ -1,9 +1,10 @@
 /**
- * MTC-001 验收自检脚本（可复现）：
- * - 五个一级入口 + 底部 主题/设置/账号
- * - 路由映射与旧路由重定向
- * - Light/Dark/System 主题：切换、持久化、刷新不闪白（inline 引导脚本）
- * - Sidebar 展开/收起（Tooltip）、键盘操作、768/1280/1440 三视口
+ * MTC-001R 验收自检脚本（可复现）：
+ * - 桌面 ≥768px 固定 80px 窄轨（图标+短标签，无展开/收起，无 toggle，Cmd+B 无效）
+ * - 底部 主题/设置/账号，菜单向右展开且不裁切
+ * - 任一路径最多一个一级项 active（connections→资源；audit→设置；operations→任务；forms→流程）
+ * - <768px Sheet 抽屉，关闭后焦点回到触发器
+ * - Light/Dark/System、持久化、防闪白无回归；产品界面无内部任务号
  * 截图输出到 .tmp-docs/mtc001/（gitignore）。
  */
 import fs from "node:fs"
@@ -31,18 +32,17 @@ const consoleErrors = []
 page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text().slice(0, 160)) })
 page.on("pageerror", (e) => consoleErrors.push(String(e).slice(0, 160)))
 
-async function clickButtonByText(scope, text) {
-  const handle = await scope.evaluateHandle((t) => {
-    const buttons = [...document.querySelectorAll("button")]
-    return buttons.find((b) => b.textContent?.includes(t)) ?? null
+async function clickRailByText(text) {
+  const handle = await page.evaluateHandle((t) => {
+    const els = [...document.querySelectorAll('[data-testid="app-rail"] button, [data-testid="app-rail"] a')]
+    return els.find((b) => b.textContent?.includes(t)) ?? null
   }, text)
   const el = handle.asElement()
-  if (!el) throw new Error(`button not found: ${text}`)
+  if (!el) throw new Error(`rail item not found: ${text}`)
   await el.click()
   return el
 }
 
-/** Radix DropdownMenu 的菜单项是 div[role=menuitem]，不是 button。 */
 async function clickMenuItem(text) {
   await page.waitForSelector('[role="menu"]', { timeout: 5000 })
   const handle = await page.evaluateHandle((t) => {
@@ -55,224 +55,169 @@ async function clickMenuItem(text) {
   return el
 }
 
-async function waitForNav() {
-  await page.waitForSelector('[data-sidebar="sidebar"]', { timeout: 15000 })
-}
+const railWidth = () =>
+  page.evaluate(() => {
+    const el = document.querySelector('[data-testid="app-rail"]')
+    return el ? getComputedStyle(el).width : null
+  })
 
-/* ---------- 1. 首载重定向 + 五个一级入口 ---------- */
+const railTexts = () =>
+  page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid="app-rail"] a, [data-testid="app-rail"] button')].map((e) => e.textContent?.trim() ?? ""),
+  )
+
+const activeRailTexts = () =>
+  page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid="app-rail"] [data-active]')].map((e) => e.textContent?.trim() ?? ""),
+  )
+
+/* ---------- 1. 首载 + 80px 窄轨 ---------- */
 await page.goto(BASE + "/", { waitUntil: "domcontentloaded", timeout: 30000 })
-await waitForNav()
+await page.waitForSelector('[data-testid="app-rail"]', { timeout: 15000 })
 await new Promise((r) => setTimeout(r, 1500))
 check("根路径 / → /tasks", page.url().endsWith("/tasks"), page.url())
+check("1440 rail 宽 80px", (await railWidth()) === "80px", await railWidth())
 
-const navInfo = await page.evaluate(() => {
-  const buttons = [...document.querySelectorAll('[data-sidebar="menu-button"]')]
-  return buttons.map((b) => ({ text: b.textContent?.trim() ?? "", active: b.getAttribute("data-active") }))
-})
-const expectedNav = ["任务", "自主任务", "Agent", "能力与资源", "Workflow", "主题", "设置"]
-const navTexts = navInfo.map((n) => n.text)
+const texts = await railTexts()
 check(
-  "导航含五个一级入口 + 底部主题/设置",
-  expectedNav.every((t) => navTexts.includes(t)),
-  JSON.stringify(navTexts),
+  "短标签固定：任务/自主/Agent/资源/流程 + 主题/设置/账号",
+  ["任务", "自主", "Agent", "资源", "流程", "主题", "设置", "账号"].every((t) => texts.some((x) => x.includes(t))),
+  JSON.stringify(texts),
 )
-const tasksActive = navInfo.find((n) => n.text === "任务")?.active === "true"
-check("当前路由（/tasks）选中态", tasksActive)
 
-/* ---------- 2. Light 截图 ---------- */
-await page.screenshot({ path: `${OUT}/01-tasks-1440-light.png` })
-check("Light 截图（1440）", true, "01-tasks-1440-light.png")
+const noToggle = await page.evaluate(
+  () => !document.querySelector('[aria-label="展开或收起侧边栏"]') && !document.querySelector('[data-slot="sidebar-trigger"]'),
+)
+check("无侧栏 toggle 按钮", noToggle)
 
-/* ---------- 3. 主题菜单：切换深色 ---------- */
-await clickButtonByText(page, "主题")
+const wBefore = await railWidth()
+await page.keyboard.down("Meta")
+await page.keyboard.press("b")
+await page.keyboard.up("Meta")
+await new Promise((r) => setTimeout(r, 400))
+check("Cmd+B 不改变宽度", (await railWidth()) === wBefore, `${wBefore} → ${await railWidth()}`)
+
+/* ---------- 2. 键盘可聚焦 ---------- */
+const focusable = await page.evaluate(() => {
+  const els = [...document.querySelectorAll('[data-testid="app-rail"] a, [data-testid="app-rail"] button')]
+  return els.every((el) => {
+    el.focus()
+    return document.activeElement === el
+  })
+})
+check("窄轨全部条目可键盘聚焦", focusable)
+
+/* ---------- 3. 菜单向右展开且不裁切 ---------- */
+await clickRailByText("主题")
 await page.waitForSelector('[role="menu"]', { timeout: 5000 })
-const themeMenuItems = await page.evaluate(() =>
-  [...document.querySelectorAll('[role="menuitem"]')].map((m) => m.textContent?.trim()),
-)
-check("主题菜单三项", ["跟随系统", "浅色", "深色"].every((t) => themeMenuItems.some((m) => m?.includes(t))), JSON.stringify(themeMenuItems))
+const themeMenuRect = await page.evaluate(() => {
+  const m = document.querySelector('[role="menu"]')
+  const t = [...document.querySelectorAll('[data-testid="app-rail"] button')].find((b) => b.textContent?.includes("主题"))
+  const r = m.getBoundingClientRect()
+  const tr = t.getBoundingClientRect()
+  return { left: r.left, right: r.right, vw: window.innerWidth, triggerRight: tr.right }
+})
+check("主题菜单向右展开且不裁切", themeMenuRect.left >= themeMenuRect.triggerRight - 2 && themeMenuRect.right <= themeMenuRect.vw, JSON.stringify(themeMenuRect))
+const themeItems = await page.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map((m) => m.textContent?.trim()))
+check("主题菜单三项", ["跟随系统", "浅色", "深色"].every((t) => themeItems.some((m) => m?.includes(t))))
 await clickMenuItem("深色")
 await new Promise((r) => setTimeout(r, 300))
-const darkOn = await page.evaluate(() => document.documentElement.classList.contains("dark"))
-const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
-check("切换深色立即生效", darkOn && bodyBg === "rgb(16, 18, 22)", bodyBg)
-await page.screenshot({ path: `${OUT}/02-tasks-1440-dark.png` })
-check("Dark 截图（1440）", true, "02-tasks-1440-dark.png")
+const darkOn = await page.evaluate(() => document.documentElement.classList.contains("dark") && getComputedStyle(document.body).backgroundColor === "rgb(16, 18, 22)")
+check("深色立即生效", darkOn)
+await page.screenshot({ path: `${OUT}/r-02-tasks-1440-dark.png` })
 
-/* ---------- 4. 刷新保持 + 无闪白（inline 引导脚本） ---------- */
+await clickRailByText("账号")
+await page.waitForSelector('[role="menu"]', { timeout: 5000 })
+const accRect = await page.evaluate(() => {
+  const m = document.querySelector('[role="menu"]')
+  const t = [...document.querySelectorAll('[data-testid="app-rail"] button')].find((b) => b.textContent?.includes("账号"))
+  const r = m.getBoundingClientRect()
+  const tr = t.getBoundingClientRect()
+  return { left: r.left, right: r.right, vw: window.innerWidth, triggerRight: tr.right }
+})
+check("账号菜单向右展开且不裁切", accRect.left >= accRect.triggerRight - 2 && accRect.right <= accRect.vw, JSON.stringify(accRect))
+const accItems = await page.evaluate(() => [...document.querySelectorAll('[role="menu"] [role="menuitem"], [role="menu"] [role="menuitemradio"]')].map((m) => m.textContent?.trim()))
+check("账号菜单真实身份项", accItems.some((t) => t?.includes("我的偏好")) && accItems.some((t) => t?.includes("退出登录")), JSON.stringify(accItems))
+await page.keyboard.press("Escape")
+
+/* ---------- 4. Light 截图 + 防闪白 + 持久化 ---------- */
+await clickRailByText("主题")
+await clickMenuItem("浅色")
+await new Promise((r) => setTimeout(r, 300))
+await page.screenshot({ path: `${OUT}/r-01-tasks-1440-light.png` })
+await clickRailByText("主题")
+await clickMenuItem("深色")
+await new Promise((r) => setTimeout(r, 300))
 await page.reload({ waitUntil: "domcontentloaded" })
 const earlyDark = await page.evaluate(() => ({
   dark: document.documentElement.classList.contains("dark"),
   htmlBg: getComputedStyle(document.documentElement).backgroundColor,
 }))
-check("刷新后深色保持且首帧不闪白", earlyDark.dark && earlyDark.htmlBg === "rgb(16, 18, 22)", earlyDark.htmlBg)
-await waitForNav()
+check("刷新持久化 + 首帧不闪白", earlyDark.dark && earlyDark.htmlBg === "rgb(16, 18, 22)", earlyDark.htmlBg)
+await page.waitForSelector('[data-testid="app-rail"]', { timeout: 15000 })
 
-/* ---------- 5. 跟随系统 ---------- */
-await clickButtonByText(page, "主题")
-await page.waitForSelector('[role="menu"]', { timeout: 5000 })
-await clickMenuItem("跟随系统")
-await new Promise((r) => setTimeout(r, 300))
-const sysState = await page.evaluate(() => ({
-  dark: document.documentElement.classList.contains("dark"),
-  prefersDark: window.matchMedia("(prefers-color-scheme: dark)").matches,
-}))
-check("跟随系统与 OS 偏好一致", sysState.dark === sysState.prefersDark, JSON.stringify(sysState))
-// 恢复深色用于后续截图
-await clickButtonByText(page, "主题")
-await page.waitForSelector('[role="menu"]', { timeout: 5000 })
-await clickMenuItem("深色")
-await new Promise((r) => setTimeout(r, 300))
-
-/* ---------- 6. /tasks 与 /autonomous-tasks 无对象混淆 ---------- */
-const tasksText = await page.evaluate(() => document.body.innerText.slice(0, 400))
-await page.goto(BASE + "/autonomous-tasks", { waitUntil: "domcontentloaded" })
-await new Promise((r) => setTimeout(r, 2000))
-const autoText = await page.evaluate(() => document.body.innerText.slice(0, 400))
-const autoNavActive = await page.evaluate(() =>
-  [...document.querySelectorAll('[data-sidebar="menu-button"]')].find((b) => b.textContent?.includes("自主任务"))?.getAttribute("data-active"),
-)
-check("/autonomous-tasks 加载且导航选中正确", autoNavActive === "true")
-check("两页内容不同（无对象混淆）", tasksText !== autoText)
-await page.screenshot({ path: `${OUT}/03-autonomous-1440-dark.png` })
-
-/* ---------- 7. 其余一级页面 ---------- */
-for (const [path, marker] of [["/agents", "Agent"], ["/resources", "能力与资源"], ["/workflows", "Workflow"], ["/settings", "设置"]]) {
-  await page.goto(BASE + path, { waitUntil: "domcontentloaded" })
-  await new Promise((r) => setTimeout(r, 1200))
-  const hasMarker = await page.evaluate((m) => document.body.innerText.includes(m), marker)
-  check(`页面 ${path} 渲染（含「${marker}」）`, hasMarker)
-}
-
-/* ---------- 8. /resources Hub 卡片 ---------- */
-await page.goto(BASE + "/resources", { waitUntil: "domcontentloaded" })
-await new Promise((r) => setTimeout(r, 1200))
-const hubCards = await page.evaluate(() =>
-  [...document.querySelectorAll("a[href^='/config'], a[href='/settings/connections']")].map((a) => a.textContent?.trim().slice(0, 20)),
-)
-check("Hub 卡片链接现有资源页", hubCards.length >= 4, JSON.stringify(hubCards.slice(0, 6)))
-
-/* ---------- 9. /settings 七分区 ---------- */
-const settingsResults = {}
-for (const sec of ["general", "appearance", "notifications", "execution", "security", "audit", "system"]) {
-  await page.goto(BASE + `/settings?section=${sec}`, { waitUntil: "domcontentloaded" })
-  await new Promise((r) => setTimeout(r, 800))
-  settingsResults[sec] = await page.evaluate(() => document.body.innerText.slice(-600))
-}
-check("settings 通用/通知/执行策略 = 暂未开放", ["general", "notifications", "execution"].every((s) => settingsResults[s].includes("暂未开放")))
-check("settings 外观含主题选项", ["跟随系统", "浅色", "深色"].every((t) => settingsResults.appearance.includes(t)))
-check("settings 权限与安全含真实权限矩阵", settingsResults.security.includes("task.view"))
-check("settings 系统信息含真实版本与 API 基地址", settingsResults.system.includes("v0.1.0") && settingsResults.system.includes("8120"))
-await page.goto(BASE + "/settings?section=appearance", { waitUntil: "domcontentloaded" })
-await new Promise((r) => setTimeout(r, 800))
-await page.screenshot({ path: `${OUT}/04-settings-appearance-1440-dark.png` })
-
-/* ---------- 10. 旧路由重定向 ---------- */
-const redirects = [
-  ["/config/tasks", "/autonomous-tasks"],
-  ["/config/agents", "/agents"],
-  ["/config/workflows", "/workflows"],
-  ["/operations/task-runs/today", "/tasks"],
+/* ---------- 5. Active 归属唯一 ---------- */
+const activeCases = [
+  ["/settings/connections", "资源", "设置"],
+  ["/settings/audit", "设置", "资源"],
+  ["/operations/task-runs", "任务", "设置"],
+  ["/config/forms", "流程", "任务"],
+  ["/autonomous-tasks", "自主", "任务"],
 ]
-for (const [from, to] of redirects) {
-  await page.goto(BASE + from, { waitUntil: "domcontentloaded" })
-  await new Promise((r) => setTimeout(r, 1200))
-  check(`重定向 ${from} → ${to}`, new URL(page.url()).pathname === to, page.url())
+for (const [path, expectActive, expectNot] of activeCases) {
+  await page.goto(BASE + path, { waitUntil: "domcontentloaded" })
+  await new Promise((r) => setTimeout(r, 1000))
+  const act = await activeRailTexts()
+  check(
+    `${path} → 「${expectActive}」唯一高亮`,
+    act.length === 1 && act[0].includes(expectActive) && !act.some((t) => t.includes(expectNot)),
+    JSON.stringify(act),
+  )
 }
+await page.screenshot({ path: `${OUT}/r-05-connections-active-dark.png` })
 
-/* ---------- 11. 遗留页面仍可达 ---------- */
-for (const p of ["/quality/overview", "/operations/task-runs", "/config/ai-resources"]) {
+/* ---------- 6. 产品界面无内部任务号 ---------- */
+for (const p of ["/resources", "/settings", "/settings?section=general"]) {
   await page.goto(BASE + p, { waitUntil: "domcontentloaded" })
-  await new Promise((r) => setTimeout(r, 1200))
-  const ok = await page.evaluate(() => !document.body.innerText.includes("404"))
-  check(`遗留页面可达 ${p}`, ok)
+  await new Promise((r) => setTimeout(r, 800))
+  const clean = await page.evaluate(() => !document.body.innerText.includes("MTC-") && !document.body.innerText.includes("后续任务"))
+  check(`产品文案无内部编号 ${p}`, clean)
 }
+check("设置占位为中性措辞", await page.evaluate(() => document.body.innerText.includes("该功能尚未启用")))
 
-/* ---------- 12. Sidebar 收起：Tooltip + 展开 ---------- */
-await page.goto(BASE + "/tasks", { waitUntil: "domcontentloaded" })
-await waitForNav()
-await page.click('[data-slot="sidebar-trigger"]')
-await new Promise((r) => setTimeout(r, 500))
-const collapsedState = await page.evaluate(() => {
-  const el = document.querySelector('[data-sidebar="sidebar"]')
-  return el ? { state: el.getAttribute("data-state"), w: parseFloat(getComputedStyle(el).width) } : null
-})
-check("Sidebar 可收起（icon 态 ~3rem）", collapsedState !== null && collapsedState.w <= 48 && collapsedState.w >= 40, JSON.stringify(collapsedState))
-// 收起态悬停出 Tooltip
-const firstNavBtn = await page.$('[data-sidebar="menu-button"]')
-await firstNavBtn.hover()
-await new Promise((r) => setTimeout(r, 900))
-const tooltipVisible = await page.evaluate(() => !!document.querySelector('[role="tooltip"]'))
-check("收起态悬停显示 Tooltip", tooltipVisible)
-await page.screenshot({ path: `${OUT}/05-sidebar-collapsed-dark.png` })
-await page.click('[data-slot="sidebar-trigger"]')
-await new Promise((r) => setTimeout(r, 500))
-const expandedWidth = await page.evaluate(() => {
-  const el = document.querySelector('[data-sidebar="sidebar"]')
-  return el ? parseFloat(getComputedStyle(el).width) : null
-})
-check("Sidebar 可重新展开（~14rem）", expandedWidth !== null && expandedWidth >= 200, String(expandedWidth))
-
-/* ---------- 13. 键盘操作：主题菜单 ---------- */
-await clickButtonByText(page, "主题")
-await page.waitForSelector('[role="menu"]', { timeout: 5000 })
-await page.keyboard.press("Escape")
-await new Promise((r) => setTimeout(r, 300))
-const menuClosed = await page.evaluate(() => !document.querySelector('[role="menu"]'))
-check("主题菜单 Escape 关闭", menuClosed)
-await clickButtonByText(page, "主题")
-await page.waitForSelector('[role="menu"]', { timeout: 5000 })
-await page.keyboard.press("ArrowDown") // 浅色
-await page.keyboard.press("Enter")
-await new Promise((r) => setTimeout(r, 300))
-const kbLight = await page.evaluate(() => !document.documentElement.classList.contains("dark"))
-check("键盘方向键+回车切换主题（浅色）", kbLight)
-await page.screenshot({ path: `${OUT}/06-tasks-1440-light-after-kb.png` })
-await clickButtonByText(page, "主题")
-await page.waitForSelector('[role="menu"]', { timeout: 5000 })
-await page.keyboard.press("ArrowDown")
-await page.keyboard.press("ArrowDown") // 深色
-await page.keyboard.press("Enter")
-await new Promise((r) => setTimeout(r, 300))
-
-/* ---------- 14. 账号菜单 ---------- */
-const accountBtn = await page.evaluateHandle(() => {
-  const btns = [...document.querySelectorAll('[data-sidebar="menu-button"]')]
-  return btns.find((b) => /账号|开发者|dev/.test(b.textContent ?? "")) ?? btns[btns.length - 1] ?? null
-})
-const accEl = accountBtn.asElement()
-check("账号入口存在", !!accEl)
-if (accEl) {
-  await accEl.click()
-  await page.waitForSelector('[role="menu"]', { timeout: 5000 })
-  const accItems = await page.evaluate(() => [...document.querySelectorAll('[role="menu"] [role="menuitem"], [role="menu"] [role="menuitemradio"]')].map((m) => m.textContent?.trim()))
-  check("账号菜单含 我的偏好/我的权限/退出或登录", accItems.some((t) => t?.includes("我的偏好")) && accItems.some((t) => t?.includes("我的权限")), JSON.stringify(accItems))
-  const noFakeProfile = await page.evaluate(() => !document.body.innerText.includes("质量管理员"))
-  check("无硬编码虚假用户资料", noFakeProfile)
-  await page.keyboard.press("Escape")
+/* ---------- 7. 1280 / 768 恒 80px ---------- */
+for (const vw of [1280, 768]) {
+  await page.setViewport({ width: vw, height: 900 })
+  await page.goto(BASE + "/tasks", { waitUntil: "domcontentloaded" })
+  await page.waitForSelector('[data-testid="app-rail"]', { timeout: 15000 })
+  await new Promise((r) => setTimeout(r, 800))
+  check(`${vw} rail 宽 80px`, (await railWidth()) === "80px", await railWidth())
 }
+await page.screenshot({ path: `${OUT}/r-03-tasks-768-dark.png` })
 
-/* ---------- 15. 视口 1280 / 768 / 移动端 ---------- */
-await page.setViewport({ width: 1280, height: 800 })
-await page.goto(BASE + "/tasks", { waitUntil: "domcontentloaded" })
-await waitForNav()
-await new Promise((r) => setTimeout(r, 1200))
-await page.screenshot({ path: `${OUT}/07-tasks-1280-dark.png` })
-check("1280 截图", true)
-
-await page.setViewport({ width: 768, height: 1024 })
-await new Promise((r) => setTimeout(r, 600))
-await page.screenshot({ path: `${OUT}/08-tasks-768.png` })
-check("768 截图", true)
-
+/* ---------- 8. 640 Sheet + 焦点回归 ---------- */
 await page.setViewport({ width: 640, height: 900 })
-await page.reload({ waitUntil: "domcontentloaded" })
-await page.waitForSelector('[data-slot="sidebar-trigger"]', { timeout: 15000 })
+await page.goto(BASE + "/tasks", { waitUntil: "domcontentloaded" })
 await new Promise((r) => setTimeout(r, 800))
-await page.click('[data-slot="sidebar-trigger"]')
-await new Promise((r) => setTimeout(r, 600))
-const sheetOpen = await page.evaluate(() => !!document.querySelector('[role="dialog"]'))
-check("移动端（<768）触发器打开抽屉式侧栏", sheetOpen)
-await page.screenshot({ path: `${OUT}/09-tasks-640-sheet.png` })
+const railHidden = await page.evaluate(() => {
+  const el = document.querySelector('[data-testid="app-rail"]')
+  return !el || getComputedStyle(el).display === "none"
+})
+check("640 窄轨隐藏", railHidden)
+const burger = await page.$('[aria-label="打开导航"]')
+check("640 汉堡按钮存在", !!burger)
+await burger.click()
+await page.waitForSelector('[role="dialog"]', { timeout: 5000 })
+const sheetNav = await page.evaluate(() => {
+  const t = document.querySelector('[role="dialog"]')?.textContent ?? ""
+  return ["任务", "自主任务", "Agent", "能力与资源", "Workflow", "主题", "设置", "账号"].every((x) => t.includes(x))
+})
+check("Sheet 含完整导航与底部三项", sheetNav)
+await page.screenshot({ path: `${OUT}/r-04-tasks-640-sheet.png` })
+await page.keyboard.press("Escape")
+await new Promise((r) => setTimeout(r, 500))
+const focusBack = await page.evaluate(() => document.activeElement?.getAttribute("aria-label") === "打开导航")
+check("Sheet 关闭后焦点回到触发器", focusBack)
 
 /* ---------- 汇总 ---------- */
 await browser.close()

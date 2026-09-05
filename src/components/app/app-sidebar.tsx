@@ -19,19 +19,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom"
 import { useTheme } from "next-themes"
 import { UI_TERMS } from "@/config/ui-terms"
 import { currentUsername, rbac, ROLES, type Permission, type Role } from "@/services/rbac"
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarRail,
-  useSidebar,
-} from "@/components/ui/sidebar"
+import { cn } from "@/lib/utils"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,6 +30,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 
 export interface NavItem {
   label: string
@@ -101,25 +90,56 @@ export const NAV_ITEMS: NavItem[] = [
   },
 ]
 
-/** 底部「主题」：跟随系统 / 浅色 / 深色，切换立即生效并持久化（next-themes）。 */
-function ThemeMenu() {
+/** MTC-001R：固定窄轨短标签（产品冻结文案）。 */
+const RAIL_SHORT: Record<string, string> = {
+  "/tasks": "任务",
+  "/autonomous-tasks": "自主",
+  "/agents": "Agent",
+  "/resources": "资源",
+  "/workflows": "流程",
+}
+
+export type TopNavKey = "tasks" | "autonomous" | "agents" | "resources" | "workflows" | "settings"
+
+const NAV_KEY_BY_TO: Record<string, TopNavKey> = {
+  "/tasks": "tasks",
+  "/autonomous-tasks": "autonomous",
+  "/agents": "agents",
+  "/resources": "resources",
+  "/workflows": "workflows",
+}
+
+/**
+ * MTC-001R：任一路径最多一个一级项 active。
+ * - /settings/connections → 能力与资源；其余 /settings/** → 设置；
+ * - /operations/** → 任务；/config/forms/** → Workflow。
+ */
+export function computeActiveNav(pathname: string): TopNavKey | null {
+  if (pathname === "/settings" || pathname.startsWith("/settings/")) {
+    return pathname.startsWith("/settings/connections") ? "resources" : "settings"
+  }
+  for (const item of NAV_ITEMS) {
+    if (item.activePrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+      return NAV_KEY_BY_TO[item.to]
+    }
+  }
+  return null
+}
+
+const THEME_OPTIONS = [
+  { value: "system", label: "跟随系统", icon: Monitor },
+  { value: "light", label: "浅色", icon: Sun },
+  { value: "dark", label: "深色", icon: Moon },
+] as const
+
+/** 主题菜单内容（跟随系统 / 浅色 / 深色），触发器由调用方提供。 */
+function ThemeMenu({ trigger, side = "right" }: { trigger: React.ReactNode; side?: "right" | "top" }) {
   const { theme, setTheme } = useTheme()
-  const options = [
-    { value: "system", label: "跟随系统", icon: Monitor },
-    { value: "light", label: "浅色", icon: Sun },
-    { value: "dark", label: "深色", icon: Moon },
-  ]
-  const current = options.find((o) => o.value === theme) ?? options[0]
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <SidebarMenuButton tooltip={UI_TERMS.navigation.theme}>
-          <current.icon className="size-4" />
-          <span>{UI_TERMS.navigation.theme}</span>
-        </SidebarMenuButton>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start" className="min-w-40">
-        {options.map((o) => (
+      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+      <DropdownMenuContent side={side} align="start" sideOffset={8} className="min-w-40">
+        {THEME_OPTIONS.map((o) => (
           <DropdownMenuItem key={o.value} onSelect={() => setTheme(o.value)}>
             <o.icon className="size-4" />
             {o.label}
@@ -141,10 +161,19 @@ export interface AccountMenuProps {
 }
 
 /**
- * 底部「账号」：真实身份字段渲染。
+ * 账号菜单：真实身份字段渲染。
  * /api/auth/me 当前仅提供 username/role(displayName)，无邮箱/部门字段——按任务要求不展示。
  */
-function AccountMenu({ authed, needLogin, role, onRoleChange, onLogout, onLoginRequest }: AccountMenuProps) {
+function AccountMenu({
+  trigger,
+  side = "right",
+  authed,
+  needLogin,
+  role,
+  onRoleChange,
+  onLogout,
+  onLoginRequest,
+}: AccountMenuProps & { trigger: React.ReactNode; side?: "right" | "top" }) {
   const navigate = useNavigate()
   const username = authed ? currentUsername() : "dev"
   const roleLabel = ROLES.find((r) => r.value === role)?.label ?? role
@@ -152,18 +181,8 @@ function AccountMenu({ authed, needLogin, role, onRoleChange, onLogout, onLoginR
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <SidebarMenuButton tooltip={`${UI_TERMS.navigation.account}：${username}`} className="data-[state=open]:bg-sidebar-accent">
-          <span
-            aria-hidden
-            className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground"
-          >
-            {initial}
-          </span>
-          <span className="min-w-0 flex-1 truncate text-left">{authed ? username : "开发者（未登录）"}</span>
-        </SidebarMenuButton>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start" className="min-w-56">
+      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+      <DropdownMenuContent side={side} align="start" sideOffset={8} className="min-w-56">
         <DropdownMenuLabel className="flex items-center gap-2 font-normal">
           <span
             aria-hidden
@@ -220,94 +239,211 @@ function AccountMenu({ authed, needLogin, role, onRoleChange, onLogout, onLoginR
   )
 }
 
-export interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
-  authed: boolean
-  needLogin: boolean
-  role: Role
-  onRoleChange: (role: Role) => void
-  onLogout: () => void
-  onLoginRequest: () => void
+export type AppNavProps = AccountMenuProps
+
+/** 窄轨单项：图标 + 11px 短标签纵向排列。 */
+function RailLink({ item, active }: { item: NavItem; active: boolean }) {
+  return (
+    <NavLink
+      to={item.to}
+      title={item.label}
+      data-active={active || undefined}
+      className={cn(
+        "mx-1.5 flex flex-col items-center gap-1 rounded-lg py-2 text-[11px] transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        active
+          ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+          : "text-muted-foreground hover:bg-sidebar-accent/60",
+      )}
+    >
+      <item.icon className="size-4.5" />
+      <span className="max-w-full truncate px-0.5">{RAIL_SHORT[item.to] ?? item.label}</span>
+    </NavLink>
+  )
+}
+
+function RailBottomButton({
+  active,
+  title,
+  children,
+  ...props
+}: React.ComponentProps<"button"> & { active?: boolean; title?: string }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      data-active={active || undefined}
+      className={cn(
+        "mx-1.5 flex flex-col items-center gap-1 rounded-lg py-2 text-[11px] transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        active
+          ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+          : "text-muted-foreground hover:bg-sidebar-accent/60",
+      )}
+      {...props}
+    >
+      {children}
+    </button>
+  )
 }
 
 /**
- * MTC-001 应用侧边栏（shadcn Sidebar，collapsible="icon"）：
- * 展开有文字，收起有 Tooltip；底部固定 主题 / 设置 / 账号。
+ * MTC-001R：桌面固定 80px 单层窄轨（≥768px 恒显，不可展开/收起）。
+ * 底部固定 主题 / 设置 / 账号，菜单向右展开。
  */
-export function AppSidebar({
-  authed,
-  needLogin,
-  role,
-  onRoleChange,
-  onLogout,
-  onLoginRequest,
-  ...props
-}: AppSidebarProps) {
+export function AppRail(props: AppNavProps) {
   const { pathname } = useLocation()
-  const { state } = useSidebar()
-  const isActive = (item: NavItem) =>
-    item.activePrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+  const active = computeActiveNav(pathname)
+  const { theme } = useTheme()
+  const ThemeIcon = THEME_OPTIONS.find((o) => o.value === theme)?.icon ?? Monitor
+  const username = props.authed ? currentUsername() : "dev"
+  const initial = username.slice(0, 1).toUpperCase() || "?"
 
   return (
-    <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader className="h-14 justify-center border-b px-4">
-        <div className="flex items-center gap-2.5">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-brand-anchor text-white">
-            <ShieldCheck className="size-4.5" />
-          </div>
-          {state !== "collapsed" ? (
-            <div className="min-w-0 leading-tight">
-              <div className="truncate text-sm font-semibold">{UI_TERMS.productName}</div>
-              <div className="truncate text-[11px] text-muted-foreground">
-                {UI_TERMS.productSubtitle}
-              </div>
-            </div>
-          ) : null}
+    <aside
+      className="sticky top-0 hidden h-dvh w-20 shrink-0 flex-col items-stretch overflow-y-auto border-r bg-sidebar py-3 md:flex"
+      data-testid="app-rail"
+    >
+      <div className="mb-2 flex justify-center">
+        <div className="flex size-9 items-center justify-center rounded-lg bg-brand-anchor text-white">
+          <ShieldCheck className="size-4.5" />
         </div>
-      </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {NAV_ITEMS.filter((item) => rbac.can(item.permission)).map((item) => (
-                <SidebarMenuItem key={item.to}>
-                  <SidebarMenuButton asChild tooltip={item.label} isActive={isActive(item)}>
-                    <NavLink to={item.to}>
-                      <item.icon className="size-4" />
-                      <span>{item.label}</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-      <SidebarFooter className="border-t p-2">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <ThemeMenu />
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip={UI_TERMS.navigation.settings} isActive={pathname.startsWith("/settings")}>
-              <NavLink to="/settings">
-                <Settings className="size-4" />
-                <span>{UI_TERMS.navigation.settings}</span>
-              </NavLink>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <AccountMenu
-              authed={authed}
-              needLogin={needLogin}
-              role={role}
-              onRoleChange={onRoleChange}
-              onLogout={onLogout}
-              onLoginRequest={onLoginRequest}
-            />
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
-      <SidebarRail />
-    </Sidebar>
+      </div>
+      {NAV_ITEMS.filter((item) => rbac.can(item.permission)).map((item) => (
+        <RailLink key={item.to} item={item} active={active === NAV_KEY_BY_TO[item.to]} />
+      ))}
+      <div className="mt-auto flex flex-col border-t pt-2" style={{ borderColor: "var(--sidebar-border)" }}>
+        <ThemeMenu
+          trigger={
+            <RailBottomButton title={UI_TERMS.navigation.theme}>
+              <ThemeIcon className="size-4.5" />
+              <span>{UI_TERMS.navigation.theme}</span>
+            </RailBottomButton>
+          }
+        />
+        <NavLink
+          to="/settings"
+          title={UI_TERMS.navigation.settings}
+          data-active={active === "settings" || undefined}
+          className={cn(
+            "mx-1.5 flex flex-col items-center gap-1 rounded-lg py-2 text-[11px] transition-colors",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            active === "settings"
+              ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+              : "text-muted-foreground hover:bg-sidebar-accent/60",
+          )}
+        >
+          <Settings className="size-4.5" />
+          <span>{UI_TERMS.navigation.settings}</span>
+        </NavLink>
+        <AccountMenu
+          {...props}
+          trigger={
+            <RailBottomButton title={`${UI_TERMS.navigation.account}：${username}`}>
+              <span
+                aria-hidden
+                className="flex size-6 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground"
+              >
+                {initial}
+              </span>
+              <span className="max-w-full truncate px-0.5">{UI_TERMS.navigation.account}</span>
+            </RailBottomButton>
+          }
+        />
+      </div>
+    </aside>
+  )
+}
+
+/** MTC-001R：<768px 移动端 Sheet 导航（不永久占用窄屏宽度）。 */
+export function MobileNavSheet({ open, onOpenChange, ...props }: AppNavProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { pathname } = useLocation()
+  const active = computeActiveNav(pathname)
+  const { theme } = useTheme()
+  const ThemeIcon = THEME_OPTIONS.find((o) => o.value === theme)?.icon ?? Monitor
+  const username = props.authed ? currentUsername() : "dev"
+  const initial = username.slice(0, 1).toUpperCase() || "?"
+  const close = () => onOpenChange(false)
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="left" className="w-72 gap-0 overflow-y-auto p-0">
+        <SheetHeader className="border-b px-4 py-3 text-left">
+          <SheetTitle className="flex items-center gap-2.5">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-brand-anchor text-white">
+              <ShieldCheck className="size-4" />
+            </span>
+            <span className="text-sm font-semibold">{UI_TERMS.productName}</span>
+          </SheetTitle>
+          <SheetDescription className="sr-only">主导航</SheetDescription>
+        </SheetHeader>
+        <nav aria-label="主导航" className="p-2">
+          {NAV_ITEMS.filter((item) => rbac.can(item.permission)).map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={close}
+              data-active={active === NAV_KEY_BY_TO[item.to] || undefined}
+              className={cn(
+                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                active === NAV_KEY_BY_TO[item.to]
+                  ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                  : "text-muted-foreground hover:bg-sidebar-accent/60",
+              )}
+            >
+              <item.icon className="size-4" />
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+        <div className="border-t p-2" style={{ borderColor: "var(--sidebar-border)" }}>
+          <ThemeMenu
+            side="right"
+            trigger={
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ThemeIcon className="size-4" />
+                {UI_TERMS.navigation.theme}
+              </button>
+            }
+          />
+          <NavLink
+            to="/settings"
+            onClick={close}
+            data-active={active === "settings" || undefined}
+            className={cn(
+              "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+              active === "settings"
+                ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                : "text-muted-foreground hover:bg-sidebar-accent/60",
+            )}
+          >
+            <Settings className="size-4" />
+            {UI_TERMS.navigation.settings}
+          </NavLink>
+          <AccountMenu
+            {...props}
+            side="right"
+            trigger={
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span
+                  aria-hidden
+                  className="flex size-6 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground"
+                >
+                  {initial}
+                </span>
+                {UI_TERMS.navigation.account}
+                <span className="ml-auto truncate text-xs">{username}</span>
+              </button>
+            }
+          />
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }

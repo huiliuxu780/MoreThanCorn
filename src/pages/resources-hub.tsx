@@ -102,7 +102,7 @@ export default function ResourcesHubPage() {
         ))}
       </div>
       <p className="mt-4 text-xs text-muted-foreground">
-        统一资源模型、资源绑定与完整 Hub 体验将在后续任务（MTC-011 / MTC-012）中交付。
+        本页聚合平台当前可用的能力与资源入口；统一资源模型与资源绑定管理将随后续版本开放。
       </p>
     </PageContainer>
   )
