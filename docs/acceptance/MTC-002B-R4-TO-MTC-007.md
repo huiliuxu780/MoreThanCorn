@@ -66,7 +66,7 @@ workflow-inspector / workflow-runstate / 768 / 640-sheet / theme-toggle。
 
 | 组 | 结果 |
 |---|---|
-| 后端完整回归 ×3（94 collected/次） | 见 `/tmp/final2-battery-{1,2,3}.log`（三次全绿为准；budget 断言为子线性上界，可检出 per-id 查询爆炸，容忍环境常量因子噪声） |
+| 后端完整回归 ×3（94 collected/次） | 见 `/tmp/final4-battery-{1,2,3}.log`（三次全绿为准；N+1 断言为结构性检测：project_batch 会话连接内禁止单 id 等值查询） |
 | `npm test`（vitest） | 34 / 34 |
 | `npm run typecheck` | 0 错 |
 | `npx eslint`（全部改动文件） | 0 error |
