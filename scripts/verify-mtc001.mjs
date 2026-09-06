@@ -122,7 +122,7 @@ const themeItems = await page.evaluate(() => [...document.querySelectorAll('[rol
 check("主题菜单三项", ["跟随系统", "浅色", "深色"].every((t) => themeItems.some((m) => m?.includes(t))))
 await clickMenuItem("深色")
 await new Promise((r) => setTimeout(r, 300))
-const darkOn = await page.evaluate(() => document.documentElement.classList.contains("dark") && getComputedStyle(document.body).backgroundColor === "rgb(16, 18, 22)")
+const darkOn = await page.evaluate(() => document.documentElement.classList.contains("dark") && getComputedStyle(document.body).backgroundColor === "rgb(8, 9, 9)")
 check("深色立即生效", darkOn)
 await page.screenshot({ path: `${OUT}/r-02-tasks-1440-dark.png` })
 
@@ -153,7 +153,7 @@ const earlyDark = await page.evaluate(() => ({
   dark: document.documentElement.classList.contains("dark"),
   htmlBg: getComputedStyle(document.documentElement).backgroundColor,
 }))
-check("刷新持久化 + 首帧不闪白", earlyDark.dark && earlyDark.htmlBg === "rgb(16, 18, 22)", earlyDark.htmlBg)
+check("刷新持久化 + 首帧不闪白", earlyDark.dark && earlyDark.htmlBg === "rgb(8, 9, 9)", earlyDark.htmlBg)
 await page.waitForSelector('[data-testid="app-rail"]', { timeout: 15000 })
 
 /* ---------- 5. Active 归属唯一 ---------- */
@@ -161,7 +161,7 @@ const activeCases = [
   ["/settings/connections", "资源", "设置"],
   ["/settings/audit", "设置", "资源"],
   ["/operations/task-runs", "任务", "设置"],
-  ["/config/forms", "流程", "任务"],
+  ["/config/forms", "资源", "任务"],
   ["/autonomous-tasks", "自主", "任务"],
 ]
 for (const [path, expectActive, expectNot] of activeCases) {

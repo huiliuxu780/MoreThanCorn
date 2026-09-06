@@ -1,0 +1,53 @@
+<!doctype html><html class=""><head><meta charset="utf-8"><title>能力与资源</title><style>
+:root{--bg:#FFFFFF;--surface:#FFFFFF;--muted:#F6F6F4;--border:#E7E7E3;--ink:#111211;--ink2:#686D69;--brand:#2F7D4B;--brand-soft:#EDF8F0;--run:#42A9D6;--ok:#42B883;--warn:#E6A53A;--danger:#E06363}
+.dark{--bg:#080909;--surface:#101211;--muted:#181B19;--border:#292D2A;--ink:#FAFAF8;--ink2:#A7ADA8;--brand:#76D596;--brand-soft:#183523;--run:#5ABCE4;--ok:#62CD97;--warn:#F0BA58;--danger:#EC7777}
+*{box-sizing:border-box;margin:0;font-family:'DM Sans',system-ui,sans-serif}
+body{background:var(--bg);color:var(--ink);display:flex;min-height:100vh}
+.rail{width:80px;border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:12px 6px;gap:4px;position:sticky;top:0;height:100vh}
+.rail .logo{width:36px;height:36px;border-radius:10px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+.rail a{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--ink2);text-decoration:none;padding:8px 4px;border-radius:8px;width:100%}
+.rail a.on{background:var(--brand-soft);color:var(--brand)}
+.rail .foot{margin-top:auto;display:flex;flex-direction:column;gap:4px;width:100%}
+main{flex:1;padding:20px 24px}
+h1{font-size:20px;font-weight:600}
+.sub{color:var(--ink2);font-size:12px;margin:4px 0 16px}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.bar input,.bar select{height:32px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--ink);padding:0 10px;font-size:12px}
+.btn{height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--ink);font-size:12px;cursor:pointer}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.seg{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:var(--surface);padding:6px 12px;font-size:12px;color:var(--ink2);cursor:pointer}
+.seg button.on{background:var(--muted);color:var(--ink)}
+.chip{font-size:11px;border-radius:999px;padding:2px 8px;border:1px solid var(--border);color:var(--ink2)}
+.chip.warn{color:var(--warn);border-color:var(--warn)}
+.chip.run{color:var(--run);border-color:var(--run)}
+.chip.ok{color:var(--ok);border-color:var(--ok)}
+.chip.danger{color:var(--danger);border-color:var(--danger)}
+.lanes{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+.lane{border:1px solid var(--border);border-radius:10px;background:var(--muted);padding:8px;min-height:320px}
+.lane h3{font-size:12px;font-weight:600;display:flex;justify-content:space-between;padding:4px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:8px;font-size:12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.card .t{font-weight:600;font-size:13px;display:flex;justify-content:space-between;gap:6px}
+.card .m{color:var(--ink2);margin-top:4px}
+.prog{height:6px;border-radius:4px;background:var(--muted);margin-top:6px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--brand)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{text-align:left;padding:8px;border-bottom:1px solid var(--border)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.tile{border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:14px;font-size:12px}
+.tile b{font-size:13px}
+.drawer{position:fixed;right:0;top:0;bottom:0;width:440px;background:var(--surface);border-left:1px solid var(--border);padding:16px;font-size:12px;overflow:auto}
+.canvas{display:grid;grid-template-columns:200px 1fr 320px;gap:12px;height:70vh}
+.pane{border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:10px;overflow:auto}
+.node{border:1px solid var(--border);border-radius:8px;padding:8px;margin:8px auto;width:180px;background:var(--surface);font-size:12px}
+.node.run{border-color:var(--run);box-shadow:0 0 0 3px color-mix(in srgb,var(--run) 25%,transparent)}
+.kv{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border)}
+</style></head>
+<body><aside class="rail"><div class="logo">M</div><a class="" href="#"><span>▦</span>任务</a><a class="" href="#"><span>⇄</span>自主</a><a class="" href="#"><span>◉</span>Agent</a><a class="on" href="#"><span>▣</span>资源</a><a class="" href="#"><span>⑂</span>流程</a>
+<div class="foot"><a href="#"><span>◐</span>主题</a><a href="#"><span>⚙</span>设置</a><a href="#"><span>◍</span>账号</a></div></aside>
+<main><h1>能力与资源</h1><div class="sub">MTC v3 原型 · 真实页面以 MoreThanCorn 实现为准</div><div class="grid"><div class="tile"><b>AI 资源</b><div class="m">模型 3 · Provider 2 · Tool 5</div><div class="m">消费规模：2 个 Agent</div></div>
+<div class="tile"><b>数据资源</b><div class="m">Datasource 4 · Definition 6</div><div class="m">消费规模：3 个自主任务</div></div>
+<div class="tile"><b>连接</b><div class="m">Connection 3 · Secret 永不展示</div></div>
+<div class="tile"><b>结果规则</b><div class="m">RuleSet 2</div></div>
+<div class="tile"><b>Workflow 输入表单</b><div class="m">Form 2</div></div>
+<div class="tile"><b>Workflow</b><div class="m">Workflow 3 · 被 3 个自主任务引用</div></div></div></main></body></html>
