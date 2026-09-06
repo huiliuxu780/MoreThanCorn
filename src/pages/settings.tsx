@@ -11,6 +11,8 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sun,
+  Sunrise,
+  MoonStar,
 } from "lucide-react"
 import { Link, useSearchParams } from "react-router-dom"
 import { useTheme } from "next-themes"
@@ -59,6 +61,8 @@ function AppearanceSection() {
     { value: "system", label: "跟随系统", icon: Monitor, desc: "自动匹配操作系统的浅色 / 深色外观" },
     { value: "light", label: "浅色", icon: Sun, desc: "极白中性浅色主题（低饱和薄荷绿品牌色）" },
     { value: "dark", label: "深色", icon: Moon, desc: "极黑中性深色主题（低饱和薄荷绿品牌色）" },
+    { value: "light-parchment", label: "浅色羊皮纸", icon: Sunrise, desc: "暖白羊皮纸浅色主题（品牌色与浅色同源）" },
+    { value: "dark-parchment", label: "深色羊皮纸", icon: MoonStar, desc: "暖黑羊皮纸深色主题（品牌色与深色同源）" },
   ]
   return (
     <div className="space-y-4">

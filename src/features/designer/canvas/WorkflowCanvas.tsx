@@ -7,7 +7,7 @@ import {
   type Connection, type Edge, type Node, type NodeChange, type OnNodesChange,
 } from "@xyflow/react"
 import { C } from "@/components/wf/controls"
-import { useUiTheme } from "../theme/workflow-theme"
+import { baseMode, useUiTheme } from "../theme/workflow-theme"
 import { nodeTypes } from "./WorkflowNodeCard"
 import { CanvasControls } from "./CanvasControls"
 import { WorkflowMiniMap } from "./WorkflowMiniMap"
@@ -44,7 +44,7 @@ export function WorkflowCanvas(props: WorkflowCanvasProps) {
     <div className="relative flex-1" data-testid="wf-canvas-root">
       <ReactFlow
         nodes={nodes} edges={edges} nodeTypes={nodeTypes}
-        colorMode={ui}
+        colorMode={baseMode(ui)}
         onNodesChange={(chs: NodeChange[]) => onNodesChange(chs)}
         onConnect={onConnect}
         onReconnect={onReconnect}

@@ -1,6 +1,6 @@
 /**
  * MTC-002B-R2 验收门禁（可复现）：
- * - 五泳道固定顺序 + 无投递一级语义 + 80px rail；
+ * - 五泳道固定顺序 + 无投递一级语义 + 72px rail；
  * - connecting → 真实 SSE（首帧 refresh + sequence 递增为真证据，非文案断言）；
  * - 日期切换：旧日期流不因新日期变化刷新；页面日期控件切换有截图；
  * - needs_action 冲突卡元素级截图；load more / truncated 真实证据（需 seed --bulk）；
@@ -84,7 +84,7 @@ const forbidden = await page.evaluate(() => {
 })
 check("无即将运行/结果投递/已投递/raw delivery 文案", forbidden.length === 0, forbidden.join(","))
 const railW = await page.evaluate(() => getComputedStyle(document.querySelector('[data-testid="app-rail"]')).width)
-check("80px rail 无回归", railW === "80px", railW)
+check("72px rail 无回归", railW === "72px", railW)
 await page.screenshot({ path: `${OUT}/01-five-lanes-light.png` })
 
 /* ---------- 真实首帧 + sequence 递增（页面内 fetch 流） ---------- */

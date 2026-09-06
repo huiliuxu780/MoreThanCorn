@@ -8,9 +8,11 @@ import {
   LogOut,
   Monitor,
   Moon,
+  MoonStar,
   Settings,
   ShieldCheck,
   Sun,
+  Sunrise,
   UserRound,
   Workflow,
 } from "lucide-react"
@@ -126,10 +128,13 @@ export function computeActiveNav(pathname: string): TopNavKey | null {
   return null
 }
 
+/** 09-06 原站对齐：四套主题（data-theme 机制），与 index.css token 块一一对应。 */
 const THEME_OPTIONS = [
   { value: "system", label: "跟随系统", icon: Monitor },
   { value: "light", label: "浅色", icon: Sun },
   { value: "dark", label: "深色", icon: Moon },
+  { value: "light-parchment", label: "浅色羊皮纸", icon: Sunrise },
+  { value: "dark-parchment", label: "深色羊皮纸", icon: MoonStar },
 ] as const
 
 /** 主题菜单内容（跟随系统 / 浅色 / 深色），触发器由调用方提供。 */
@@ -241,7 +246,12 @@ function AccountMenu({
 
 export type AppNavProps = AccountMenuProps
 
-/** 窄轨单项：图标 + 11px 短标签纵向排列。 */
+/** 09-07 源块对齐（shadcn dashboard-sidebar-04 收起态实测）：
+ *  项 56×62 / 内边距 8 / 图标 20 / 标签 12px / 图标-标签间距 10 / 圆角 8。 */
+const RAIL_ITEM_CLS =
+  "flex w-14 flex-col items-center gap-2.5 rounded-[8px] p-2 text-xs transition-colors"
+
+/** 窄轨单项：图标 + 12px 短标签纵向排列。 */
 function RailLink({ item, active }: { item: NavItem; active: boolean }) {
   return (
     <NavLink
@@ -249,15 +259,15 @@ function RailLink({ item, active }: { item: NavItem; active: boolean }) {
       title={item.label}
       data-active={active || undefined}
       className={cn(
-        "mx-1.5 flex flex-col items-center gap-1 rounded-lg py-2 text-[11px] transition-colors",
+        RAIL_ITEM_CLS,
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         active
           ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-          : "text-muted-foreground hover:bg-sidebar-accent/60",
+          : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
       )}
     >
-      <item.icon className="size-4.5" />
-      <span className="max-w-full truncate px-0.5">{RAIL_SHORT[item.to] ?? item.label}</span>
+      <item.icon className="size-5" />
+      <span className="max-w-full truncate">{RAIL_SHORT[item.to] ?? item.label}</span>
     </NavLink>
   )
 }
@@ -274,11 +284,11 @@ function RailBottomButton({
       title={title}
       data-active={active || undefined}
       className={cn(
-        "mx-1.5 flex flex-col items-center gap-1 rounded-lg py-2 text-[11px] transition-colors",
+        RAIL_ITEM_CLS,
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         active
           ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-          : "text-muted-foreground hover:bg-sidebar-accent/60",
+          : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
       )}
       {...props}
     >
@@ -288,7 +298,8 @@ function RailBottomButton({
 }
 
 /**
- * MTC-001R：桌面固定 80px 单层窄轨（≥768px 恒显，不可展开/收起）。
+ * MTC-001R + 09-07 源块对齐：桌面固定 72px 单层窄轨（≥768px 恒显，不可展开/收起），
+ * 度量同 shadcn dashboard-sidebar-04 收起态（轨 72 / 项 56×62 / logo 行 48）。
  * 底部固定 主题 / 设置 / 账号，菜单向右展开。
  */
 export function AppRail(props: AppNavProps) {
@@ -301,22 +312,24 @@ export function AppRail(props: AppNavProps) {
 
   return (
     <aside
-      className="sticky top-0 hidden h-dvh w-20 shrink-0 flex-col items-stretch overflow-y-auto border-r bg-sidebar py-3 md:flex"
+      className="sticky top-0 hidden h-dvh w-18 shrink-0 flex-col items-stretch overflow-y-auto border-r bg-sidebar pb-2 md:flex"
       data-testid="app-rail"
     >
-      <div className="mb-2 flex justify-center">
-        <div className="flex size-9 items-center justify-center rounded-lg bg-brand text-primary-foreground">
-          <ShieldCheck className="size-4.5" />
+      <div className="flex h-12 items-center justify-center">
+        <div className="flex size-8 items-center justify-center rounded-lg bg-brand text-primary-foreground">
+          <ShieldCheck className="size-4" />
         </div>
       </div>
-      {NAV_ITEMS.filter((item) => rbac.can(item.permission)).map((item) => (
-        <RailLink key={item.to} item={item} active={active === NAV_KEY_BY_TO[item.to]} />
-      ))}
-      <div className="mt-auto flex flex-col border-t pt-2" style={{ borderColor: "var(--sidebar-border)" }}>
+      <nav aria-label="主导航" className="flex flex-col gap-1 px-2 pt-2">
+        {NAV_ITEMS.filter((item) => rbac.can(item.permission)).map((item) => (
+          <RailLink key={item.to} item={item} active={active === NAV_KEY_BY_TO[item.to]} />
+        ))}
+      </nav>
+      <div className="mt-auto flex flex-col gap-1 border-t px-2 pt-2" style={{ borderColor: "var(--sidebar-border)" }}>
         <ThemeMenu
           trigger={
             <RailBottomButton title={UI_TERMS.navigation.theme}>
-              <ThemeIcon className="size-4.5" />
+              <ThemeIcon className="size-5" />
               <span>{UI_TERMS.navigation.theme}</span>
             </RailBottomButton>
           }
@@ -326,14 +339,14 @@ export function AppRail(props: AppNavProps) {
           title={UI_TERMS.navigation.settings}
           data-active={active === "settings" || undefined}
           className={cn(
-            "mx-1.5 flex flex-col items-center gap-1 rounded-lg py-2 text-[11px] transition-colors",
+            RAIL_ITEM_CLS,
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             active === "settings"
               ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-              : "text-muted-foreground hover:bg-sidebar-accent/60",
+              : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           )}
         >
-          <Settings className="size-4.5" />
+          <Settings className="size-5" />
           <span>{UI_TERMS.navigation.settings}</span>
         </NavLink>
         <AccountMenu
@@ -342,11 +355,11 @@ export function AppRail(props: AppNavProps) {
             <RailBottomButton title={`${UI_TERMS.navigation.account}：${username}`}>
               <span
                 aria-hidden
-                className="flex size-6 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground"
+                className="flex size-5 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground"
               >
                 {initial}
               </span>
-              <span className="max-w-full truncate px-0.5">{UI_TERMS.navigation.account}</span>
+              <span className="max-w-full truncate">{UI_TERMS.navigation.account}</span>
             </RailBottomButton>
           }
         />
@@ -388,7 +401,7 @@ export function MobileNavSheet({ open, onOpenChange, ...props }: AppNavProps & {
                 "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
                 active === NAV_KEY_BY_TO[item.to]
                   ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                  : "text-muted-foreground hover:bg-sidebar-accent/60",
+                  : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               )}
             >
               <item.icon className="size-4" />
@@ -417,7 +430,7 @@ export function MobileNavSheet({ open, onOpenChange, ...props }: AppNavProps & {
               "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
               active === "settings"
                 ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                : "text-muted-foreground hover:bg-sidebar-accent/60",
+                : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
             )}
           >
             <Settings className="size-4" />

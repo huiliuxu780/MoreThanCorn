@@ -10,7 +10,8 @@ import "@xyflow/react/dist/style.css"
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ThemeProvider
-      attribute="class"
+      attribute="data-theme"
+      themes={["light", "dark", "light-parchment", "dark-parchment"]}
       defaultTheme="system"
       enableSystem
       storageKey="mtc-theme"

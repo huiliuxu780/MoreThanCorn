@@ -11,7 +11,9 @@ import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme()
+  // 09-06 四主题机制：Sonner 只认 light/dark/system——羊皮纸主题归并到各自明暗基座
+  const { resolvedTheme } = useTheme()
+  const theme: ToasterProps["theme"] = resolvedTheme?.startsWith("dark") ? "dark" : "light"
 
   return (
     <Sonner

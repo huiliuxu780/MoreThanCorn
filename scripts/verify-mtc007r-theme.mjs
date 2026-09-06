@@ -169,8 +169,8 @@ function assertSurfaces(mode, s) {
 if (wfId) {
   /* ---- Light ---- */
   await openCanvas("light")
-  const isLight = await page.evaluate(() => !document.documentElement.classList.contains("dark"))
-  check("light 模式 html 无 .dark", isLight)
+  const isLight = await page.evaluate(() => document.documentElement.getAttribute("data-theme") === "light")
+  check("light 模式 html[data-theme=light]", isLight)
   await shot("designer-light.png")
   const openedL = await openInspector()
   check("light Inspector 可打开", openedL)
@@ -179,8 +179,8 @@ if (wfId) {
 
   /* ---- Dark（同 workflow 同视口） ---- */
   await openCanvas("dark")
-  const isDark = await page.evaluate(() => document.documentElement.classList.contains("dark"))
-  check("dark 模式 html.dark 生效", isDark)
+  const isDark = await page.evaluate(() => document.documentElement.getAttribute("data-theme") === "dark")
+  check("dark 模式 html[data-theme=dark] 生效", isDark)
   await shot("designer-dark.png")
   const openedD = await openInspector()
   check("dark Inspector 可打开", openedD)

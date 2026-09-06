@@ -1,15 +1,18 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is([data-theme="dark"] *, [data-theme="dark-parchment"] *));
 
 /*
- * 主题 Token（Theme-R 终版）：极白中性浅色 / 极黑中性深色 + 低饱和薄荷绿品牌色。
+ * 主题 Token（Theme-R 终版 + 09-06 原站对齐修订）：
+ * 四套主题走 <html data-theme=…>：light / dark / light-parchment / dark-parchment，
+ * 中性骨架参照 QoderWake 原站实测值转录，品牌色/状态色保持本项目薄荷绿体系不变。
  * 规则：
- * - 品牌绿（--brand-*）只用于选中、主操作、Focus 与品牌识别；品牌绿不承担状态语义，
- *   且与成功绿（--status-success）是两个独立 token；
+ * - 品牌绿（--brand-*）只用于主操作、Focus 与品牌识别；导航选中/悬浮一律中性
+ *   （--sidebar-accent = fill-secondary 档，选中仅加字重，原站交互规格）；
+ *   品牌绿不承担状态语义，且与成功绿（--status-success）是两个独立 token；
  * - Running 等运行状态一律走 --status-*；
- * - 深色模式禁止残留浅色值：所有 token 在 .dark 下必须有对应深色定义；
+ * - 深色主题（dark / dark-parchment）禁止残留浅色值：所有 token 必须有对应深色定义；
  * - 页面禁止散落硬编码颜色——新增颜色先落到这里的 token（含 Workflow 画布 --wf-*）。
  */
 :root {
@@ -77,13 +80,14 @@
   --sidebar-foreground: var(--text-primary);
   --sidebar-primary: var(--brand-primary);
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: var(--brand-soft);
-  --sidebar-accent-foreground: var(--brand-primary);
+  /* 09-06 原站对齐：导航选中/悬浮同底（fill-secondary 档中性灰），选中仅加字重 */
+  --sidebar-accent: #ECECE8;
+  --sidebar-accent-foreground: var(--text-primary);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--brand-primary);
 }
 
-.dark {
+[data-theme="dark"] {
   /* ---- 极黑中性骨架；禁止残留 Light token ---- */
   --background: #080909;
   --surface: #101211;
@@ -142,8 +146,141 @@
   --sidebar-foreground: var(--text-primary);
   --sidebar-primary: var(--brand-primary);
   --sidebar-primary-foreground: #07110A;
-  --sidebar-accent: var(--brand-soft);
-  --sidebar-accent-foreground: var(--brand-primary);
+  /* 09-06 原站对齐：深色导航选中/悬浮同底（原站 #1a1a1a→#363636 的等价明度步进） */
+  --sidebar-accent: #2A2E2B;
+  --sidebar-accent-foreground: var(--text-primary);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--brand-primary);
+}
+
+/* ---- 09-06 原站对齐：羊皮纸浅色（暖白中性骨架，参照原站 light-parchment 实测值）；
+       品牌/状态色与 light 同源，禁止另行发明 ---- */
+[data-theme="light-parchment"] {
+  --background: #FDFCFA;
+  --surface: #FAF9F6;
+  --surface-muted: #F7F4EF;
+  --surface-raised: #FFFEFC;
+  --border: #E5E1D9;
+  --text-primary: #202116;
+  --text-secondary: #4A463C;
+
+  --brand-primary: #2F7D4B;
+  --brand-hover: #25663D;
+  --brand-soft: #EDF8F0;
+  --brand-subtle: #DDF2E3;
+
+  --status-running: #42A9D6;
+  --status-success: #42B883;
+  --status-warning: #E6A53A;
+  --status-danger: #E06363;
+
+  --status-running-soft: #EDF4F9;
+  --status-success-soft: #ECF7F0;
+  --status-warning-soft: #FAF3E5;
+  --status-danger-soft: #FBEFEF;
+
+  --wf-canvas: #F4F1EA;
+  --wf-canvas-dot: #DCD7CB;
+  --wf-edge: #B0A998;
+  --wf-console: #3B4557;
+  --wf-console-inset: #2A3242;
+
+  --foreground: var(--text-primary);
+  --card: var(--surface);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--brand-primary);
+  --primary-foreground: #FFFFFF;
+  --secondary: var(--surface-muted);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--surface-muted);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--surface-muted);
+  --accent-foreground: var(--text-primary);
+  --selected: var(--brand-soft);
+  --selected-foreground: var(--brand-primary);
+  --destructive: var(--status-danger);
+  --destructive-foreground: #FFFFFF;
+  --input: var(--border);
+  --ring: var(--brand-primary);
+  --chart-1: var(--brand-primary);
+  --chart-2: var(--status-running);
+  --chart-3: var(--status-success);
+  --chart-4: var(--status-warning);
+  --chart-5: var(--brand-hover);
+  --sidebar: var(--surface-muted);
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-primary: var(--brand-primary);
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #EDE8E0;
+  --sidebar-accent-foreground: var(--text-primary);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--brand-primary);
+}
+
+/* ---- 09-06 原站对齐：羊皮纸深色（暖黑中性骨架，参照原站 dark-parchment 实测值）；
+       品牌/状态色与 dark 同源；禁止残留浅色值 ---- */
+[data-theme="dark-parchment"] {
+  --background: #1A1814;
+  --surface: #1E1C18;
+  --surface-muted: #252220;
+  --surface-raised: #2C2824;
+  --border: #3D3930;
+  --text-primary: #FAF9F6;
+  --text-secondary: #C9C4B8;
+
+  --brand-primary: #76D596;
+  --brand-hover: #96E3AF;
+  --brand-soft: #183523;
+  --brand-subtle: #21472E;
+
+  --status-running: #5ABCE4;
+  --status-success: #62CD97;
+  --status-warning: #F0BA58;
+  --status-danger: #EC7777;
+
+  --status-running-soft: #14262F;
+  --status-success-soft: #12291C;
+  --status-warning-soft: #2E2515;
+  --status-danger-soft: #2E1A1A;
+
+  --wf-canvas: #1F1C17;
+  --wf-canvas-dot: #322E26;
+  --wf-edge: #5A5347;
+  --wf-console: #1B201D;
+  --wf-console-inset: #121614;
+
+  --foreground: var(--text-primary);
+  --card: var(--surface);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--brand-primary);
+  --primary-foreground: #07110A;
+  --secondary: var(--surface-muted);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--surface-muted);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--surface-raised);
+  --accent-foreground: var(--text-primary);
+  --selected: var(--brand-soft);
+  --selected-foreground: var(--brand-primary);
+  --destructive: var(--status-danger);
+  --destructive-foreground: #FFFFFF;
+  --input: var(--border);
+  --ring: var(--brand-primary);
+  --chart-1: var(--brand-primary);
+  --chart-2: var(--status-running);
+  --chart-3: var(--status-success);
+  --chart-4: var(--status-warning);
+  --chart-5: var(--brand-hover);
+  --sidebar: var(--surface-muted);
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-primary: var(--brand-primary);
+  --sidebar-primary-foreground: #07110A;
+  --sidebar-accent: #363228;
+  --sidebar-accent-foreground: var(--text-primary);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--brand-primary);
 }

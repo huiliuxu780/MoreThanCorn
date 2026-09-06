@@ -5,22 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>企业智能质量平台</title>
-    <!-- MTC-001：首帧主题引导——在 React/CSS 加载前落定 light/dark，避免刷新闪白。
+    <!-- MTC-001：首帧主题引导——在 React/CSS 加载前落定 data-theme（四套主题），避免刷新闪白。
          读取与 next-themes 相同的 localStorage key（mtc-theme），缺省跟随系统。 -->
     <style>
       html { background: #FFFFFF; }
-      html.dark { background: #080909; }
+      html[data-theme="dark"] { background: #080909; }
+      html[data-theme="light-parchment"] { background: #FDFCFA; }
+      html[data-theme="dark-parchment"] { background: #1A1814; }
     </style>
     <script>
       (function () {
         try {
           var stored = localStorage.getItem("mtc-theme")
-          var dark =
-            stored === "dark" ||
-            ((stored === null || stored === "system") &&
-              window.matchMedia("(prefers-color-scheme: dark)").matches)
-          if (dark) document.documentElement.classList.add("dark")
-          document.documentElement.style.colorScheme = dark ? "dark" : "light"
+          var known = ["light", "dark", "light-parchment", "dark-parchment"]
+          var theme = known.indexOf(stored) >= 0 ? stored : null
+          if (!theme) {
+            theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+          }
+          document.documentElement.setAttribute("data-theme", theme)
+          document.documentElement.style.colorScheme = theme.indexOf("dark") === 0 ? "dark" : "light"
         } catch (e) {
           /* localStorage 不可用时保持浅色 */
         }

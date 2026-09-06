@@ -1,6 +1,6 @@
 /**
  * MTC-001R 验收自检脚本（可复现）：
- * - 桌面 ≥768px 固定 80px 窄轨（图标+短标签，无展开/收起，无 toggle，Cmd+B 无效）
+ * - 桌面 ≥768px 固定 72px 窄轨（图标+短标签，无展开/收起，无 toggle，Cmd+B 无效）
  * - 底部 主题/设置/账号，菜单向右展开且不裁切
  * - 任一路径最多一个一级项 active（connections→资源；audit→设置；operations→任务；forms→流程）
  * - <768px Sheet 抽屉，关闭后焦点回到触发器
@@ -71,12 +71,12 @@ const activeRailTexts = () =>
     [...document.querySelectorAll('[data-testid="app-rail"] [data-active]')].map((e) => e.textContent?.trim() ?? ""),
   )
 
-/* ---------- 1. 首载 + 80px 窄轨 ---------- */
+/* ---------- 1. 首载 + 72px 窄轨 ---------- */
 await page.goto(BASE + "/", { waitUntil: "domcontentloaded", timeout: 30000 })
 await page.waitForSelector('[data-testid="app-rail"]', { timeout: 15000 })
 await new Promise((r) => setTimeout(r, 1500))
 check("根路径 / → /tasks", page.url().endsWith("/tasks"), page.url())
-check("1440 rail 宽 80px", (await railWidth()) === "80px", await railWidth())
+check("1440 rail 宽 72px", (await railWidth()) === "72px", await railWidth())
 
 const texts = await railTexts()
 check(
@@ -119,10 +119,10 @@ const themeMenuRect = await page.evaluate(() => {
 })
 check("主题菜单向右展开且不裁切", themeMenuRect.left >= themeMenuRect.triggerRight - 2 && themeMenuRect.right <= themeMenuRect.vw, JSON.stringify(themeMenuRect))
 const themeItems = await page.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map((m) => m.textContent?.trim()))
-check("主题菜单三项", ["跟随系统", "浅色", "深色"].every((t) => themeItems.some((m) => m?.includes(t))))
+check("主题菜单五项", ["跟随系统", "浅色", "深色", "浅色羊皮纸", "深色羊皮纸"].every((t) => themeItems.some((m) => m?.includes(t))))
 await clickMenuItem("深色")
 await new Promise((r) => setTimeout(r, 300))
-const darkOn = await page.evaluate(() => document.documentElement.classList.contains("dark") && getComputedStyle(document.body).backgroundColor === "rgb(8, 9, 9)")
+const darkOn = await page.evaluate(() => document.documentElement.getAttribute("data-theme") === "dark" && getComputedStyle(document.body).backgroundColor === "rgb(8, 9, 9)")
 check("深色立即生效", darkOn)
 await page.screenshot({ path: `${OUT}/r-02-tasks-1440-dark.png` })
 
@@ -150,7 +150,7 @@ await clickMenuItem("深色")
 await new Promise((r) => setTimeout(r, 300))
 await page.reload({ waitUntil: "domcontentloaded" })
 const earlyDark = await page.evaluate(() => ({
-  dark: document.documentElement.classList.contains("dark"),
+  dark: document.documentElement.getAttribute("data-theme") === "dark",
   htmlBg: getComputedStyle(document.documentElement).backgroundColor,
 }))
 check("刷新持久化 + 首帧不闪白", earlyDark.dark && earlyDark.htmlBg === "rgb(8, 9, 9)", earlyDark.htmlBg)
@@ -191,7 +191,7 @@ for (const vw of [1280, 768]) {
   await page.goto(BASE + "/tasks", { waitUntil: "domcontentloaded" })
   await page.waitForSelector('[data-testid="app-rail"]', { timeout: 15000 })
   await new Promise((r) => setTimeout(r, 800))
-  check(`${vw} rail 宽 80px`, (await railWidth()) === "80px", await railWidth())
+  check(`${vw} rail 宽 72px`, (await railWidth()) === "72px", await railWidth())
 }
 await page.screenshot({ path: `${OUT}/r-03-tasks-768-dark.png` })
 

@@ -183,7 +183,7 @@ export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
 
 /**
  * Application Shell（MTC-001R）：
- * 桌面 ≥768px 固定 80px 单层窄轨（图标+短标签，不可展开/收起）；
+ * 桌面 ≥768px 固定 72px 单层窄轨（图标+短标签，不可展开/收起；09-07 源块对齐 sidebar-04 收起态）；
  * <768px 使用 Sheet 抽屉导航。顶部仅面包屑，无侧栏 toggle。
  * 身份与主题入口收敛在窄轨底部（主题 / 设置 / 账号）。
  */
