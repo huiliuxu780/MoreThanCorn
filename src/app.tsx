@@ -134,34 +134,36 @@ export function App() {
           <Route path="/operations/runs/:runId" element={<RunDetailPage />} />
 
           {/* 表单（Workflow 输入契约） */}
-          <Route path="/config/forms" element={<WfFormsPage />} />
-          <Route path="/config/forms/new" element={<WfFormEditorPage />} />
-          <Route path="/config/forms/:formId" element={<WfFormEditorPage />} />
+          {/* MTC-006：能力与资源 canonical 子路由 */}
+          <Route path="/resources/ai" element={<ResAiResourcesPage />} />
+          <Route path="/resources/ai/new" element={<ResWizardPage scope="ai" />} />
+          <Route path="/resources/ai/:type/:id" element={<ResDetailPage />} />
+          <Route path="/resources/data" element={<ResDataResourcesPage />} />
+          <Route path="/resources/data/new" element={<ResWizardPage scope="data" />} />
+          <Route path="/resources/data/:type/:id" element={<ResDetailPage />} />
+          <Route path="/resources/connections" element={<WfConnectionsPage />} />
+          <Route path="/resources/rules" element={<ResultRulesPage />} />
+          <Route path="/resources/rules/:ruleSetId" element={<ResultRuleEditorPage />} />
+          <Route path="/resources/forms" element={<WfFormsPage />} />
+          <Route path="/resources/forms/new" element={<WfFormEditorPage />} />
+          <Route path="/resources/forms/:formId" element={<WfFormEditorPage />} />
 
-          {/* AI Resources / Data Resources（资源管理一期） */}
-          <Route path="/config/ai-resources" element={<ResAiResourcesPage />} />
-          <Route path="/config/ai-resources/new" element={<ResWizardPage scope="ai" />} />
-          <Route path="/config/ai-resources/:type/:id" element={<ResDetailPage />} />
-          <Route path="/config/data-resources" element={<ResDataResourcesPage />} />
-          <Route path="/config/data-resources/new" element={<ResWizardPage scope="data" />} />
-          <Route path="/config/data-resources/:type/:id" element={<ResDetailPage />} />
-
-          {/* 旧入口收敛：Tools / Models → AI Resources（重定向） */}
-          <Route path="/config/tools" element={<Navigate to="/config/ai-resources?tab=tools" replace />} />
-          <Route path="/config/tools/new" element={<Navigate to="/config/ai-resources/new" replace />} />
+          {/* 旧入口 replace redirect（深链/历史保留） */}
+          <Route path="/config/ai-resources/*" element={<PrefixRedirect from="/config/ai-resources" to="/resources/ai" />} />
+          <Route path="/config/data-resources/*" element={<PrefixRedirect from="/config/data-resources" to="/resources/data" />} />
+          <Route path="/config/result-rules/*" element={<PrefixRedirect from="/config/result-rules" to="/resources/rules" />} />
+          <Route path="/config/forms/*" element={<PrefixRedirect from="/config/forms" to="/resources/forms" />} />
+          <Route path="/settings/connections" element={<Navigate to="/resources/connections" replace />} />
+          <Route path="/config/tools" element={<Navigate to="/resources/ai?tab=tools" replace />} />
+          <Route path="/config/tools/new" element={<Navigate to="/resources/ai/new" replace />} />
           <Route path="/config/tools/:toolId" element={<ToolRedirect />} />
-
-          {/* 数据定义 / 结果规则 */}
-          <Route path="/config/data-assets" element={<DataDefinitionsPage />} />
-          <Route path="/config/data-assets/:defId" element={<DataDefinitionEditorPage />} />
-          <Route path="/config/result-rules" element={<ResultRulesPage />} />
-          <Route path="/config/result-rules/:ruleSetId" element={<ResultRuleEditorPage />} />
-
-          {/* 系统级设置子页（保留原路径） */}
-          <Route path="/settings/connections" element={<WfConnectionsPage />} />
+          <Route path="/settings/models" element={<Navigate to="/resources/ai?tab=models" replace />} />
           <Route path="/settings/audit" element={<AuditLogPage />} />
           <Route path="/settings/governance" element={<ReleaseGovernancePage />} />
-          <Route path="/settings/models" element={<Navigate to="/config/ai-resources?tab=models" replace />} />
+
+          {/* 数据定义（深链保留） */}
+          <Route path="/config/data-assets" element={<DataDefinitionsPage />} />
+          <Route path="/config/data-assets/:defId" element={<DataDefinitionEditorPage />} />
 
           {/* ---- MTC-001 旧路由 → 新 canonical（replace redirect，页面不删除） ---- */}
           <Route path="/config/tasks/*" element={<PrefixRedirect from="/config/tasks" to="/autonomous-tasks" />} />
