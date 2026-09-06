@@ -54,26 +54,30 @@ function AgentCard({ r, role, onOpen, onChat, onConfig }: {
 }) {
   const lc = lifecycleOf(r)
   return (
-    <div className="group relative flex flex-col items-center gap-2 rounded-lg border bg-surface p-4 text-center shadow-sm transition-colors hover:border-brand/50 hover:bg-surface-raised">
+    <div className="group relative flex flex-col rounded-lg border bg-surface px-4 pt-5 pb-0 text-center shadow-sm transition-colors hover:border-brand/50 hover:bg-surface-raised">
       <span className="absolute right-3 top-3">
         <Badge variant={lc.variant}>{lc.label}</Badge>
       </span>
       <button
         type="button"
         onClick={onOpen}
-        className="flex w-full flex-col items-center gap-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+        className="flex w-full flex-col items-center gap-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
       >
         <img src={avatarFor(r.id, r.avatar)} alt="" className="size-12 rounded-full object-cover" />
-        <span className="w-full truncate text-base font-medium leading-6">{r.name}</span>
-        <span className="flex max-w-full items-center gap-1 truncate rounded-lg px-1.5 py-0.5 text-xs leading-[14px] text-(--text-tertiary)">
-          {role}
+        <span className="flex w-full flex-col gap-1">
+          <span className="flex w-full min-w-0 items-center justify-center gap-2">
+            <span className="truncate text-base font-medium leading-6">{r.name}</span>
+            <span className="flex shrink-0 items-center gap-1 truncate rounded-lg px-1.5 py-0.5 text-xs leading-[14px] text-(--text-tertiary)">
+              {role}
+            </span>
+          </span>
+          {r.description
+            ? <span className="line-clamp-2 w-full text-xs leading-[18px] text-(--text-tertiary)">{r.description}</span>
+            : null}
         </span>
-        {r.description
-          ? <span className="line-clamp-2 w-full text-xs leading-[18px] text-(--text-tertiary)">{r.description}</span>
-          : null}
       </button>
       {/* 台账 §7：footer 同格堆叠交叉淡入淡出（原站实测：hover 统计淡出/动作淡入，卡高恒定 212） */}
-      <div className="grid w-full">
+      <div className="relative mt-1 grid w-full py-1.5">
         <div className="col-start-1 row-start-1 grid grid-cols-[1fr_auto_1fr] items-center border-t py-3 transition-opacity duration-200 group-hover:opacity-0">
           <Stat label="任务数" value={String(r.runCount ?? 0)} />
           <span className="h-[18px] w-px bg-border" />
@@ -157,7 +161,7 @@ export default function WfAgentsListPage() {
 
   return (
     <PageContainer wide>
-      <div className="max-w-[960px] space-y-4">
+      <div className="space-y-4" style={{ maxWidth: "calc(100vw - 240px)" }}>
       <PageHeader
         title="Agent"
         description={`有身份、有角色、有能力、有工作状态的数字员工${archivedTotal > 0 ? ` · 旧版 Agent 已封存 ${archivedTotal} 个，仅历史查询` : ""}`}
