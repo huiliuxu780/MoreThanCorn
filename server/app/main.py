@@ -7,9 +7,9 @@ from sqlalchemy import text
 from .config import auth_enforced, is_production
 from .legacy_agent_archive import LegacyAgentArchivedError
 from .runner import start_worker
-from .routers import (admin, agents, alerts, analytics, auth_routes, automations,
-                      business, forms, governance, operations, registry, resources,
-                      runs, runtime_providers, work_items, workflows)
+from .routers import (admin, agent_caps, agents, alerts, analytics, auth_routes,
+                      automations, business, forms, governance, operations, registry,
+                      resources, runs, runtime_providers, work_items, workflows)
 
 # 鉴权白名单：登录与探活不需要身份
 _PUBLIC_PATHS = ("/api/auth/login", "/healthz", "/readyz", "/openapi.json", "/docs")
@@ -145,6 +145,8 @@ app.include_router(governance.router)
 app.include_router(resources.router)
 app.include_router(admin.router)
 app.include_router(agents.router)
+app.include_router(agent_caps.router)  # 09-07：Skill/记忆/对话/run-stats 一等实体 API
+app.include_router(agent_caps.download_router)
 app.include_router(runtime_providers.router)
 app.include_router(forms.router)
 

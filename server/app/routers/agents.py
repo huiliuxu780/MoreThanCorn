@@ -1,5 +1,6 @@
 """Agent 层 API（三型 + 运行层 + 版本/发布，uiux/05 设计 + SDD 02）。"""
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -43,6 +44,7 @@ def create_agent(payload: dict, db: Session = Depends(get_db),
     _check_name(payload.get("name", ""))
     agent = Agent(name=payload["name"], type="module", description=payload.get("description", ""),
                   module_key=mod.key, module_version=mod.version,
+                  avatar=payload.get("avatar") or None,
                   config={"spec": payload.get("spec") or {},
                           "modelRef": payload.get("modelRef") or {}})
     db.add(agent)
@@ -78,6 +80,11 @@ def list_agents(page: int = 1, pageSize: int = 20, search: str = "", archived: s
         q = q.filter(Agent.name.ilike(f"%{search}%"))
     total = q.count()
     rows = q.order_by(Agent.updated_at.desc()).offset((page - 1) * pageSize).limit(pageSize).all()
+    # 09-07：列表卡统计行真数据（单聚合查询，避免 N+1）
+    ids = [a.id for a in rows]
+    agg = {r[0]: (int(r[1]), r[2]) for r in db.execute(
+        select(Run.agent_id, func.count(Run.id), func.max(Run.created_at))
+        .where(Run.agent_id.in_(ids)).group_by(Run.agent_id)).all()} if ids else {}
     items = []
     for a in rows:
         latest = (db.query(AgentVersion).filter_by(agent_id=a.id)
@@ -88,11 +95,15 @@ def list_agents(page: int = 1, pageSize: int = 20, search: str = "", archived: s
             return v.version_no if v else None
         items.append({"id": a.id, "name": a.name, "type": a.type, "typeLabel": TYPE_LABEL[a.type],
                       "status": a.status, "workflowId": a.workflow_id, "avatar": a.avatar,
+                      "description": a.description or "",
                       "archived": bool(a.archived),
                       "moduleKey": a.module_key, "moduleVersion": a.module_version,
                       "latestVersion": latest.version_no if latest else None,
                       "sandboxVersion": _env_ver(a.sandbox_version_id),
                       "prodVersion": _env_ver(a.prod_version_id),
+                      "runCount": agg.get(a.id, (0, None))[0],
+                      "lastRunAt": agg.get(a.id, (0, None))[1].isoformat()
+                      if agg.get(a.id, (0, None))[1] else None,
                       "updatedAt": a.updated_at.isoformat()})
     return {"items": items, "total": total, "page": page, "pageSize": pageSize}
 
@@ -269,6 +280,12 @@ def mounts_health(aid: str, db: Session = Depends(get_db)):
     items = []
     for s in cfg.get("skills", []):
         items.append({"kind": "skill", "name": s, "valid": True})
+    # 09-07：一等实体 Skill 挂载真校验（agent_skill → skill.status）
+    from ..models import AgentSkill, SkillResource
+    for link in db.execute(select(AgentSkill).where(AgentSkill.agent_id == a.id)).scalars():
+        s = db.get(SkillResource, link.skill_id)
+        items.append({"kind": "skill", "name": s.name if s else link.skill_id,
+                      "valid": bool(s and s.status == "ready")})
     for tname in cfg.get("tools", []):
         t = db.get(Tool, tname) or db.query(Tool).filter_by(name=tname).first()
         items.append({"kind": "tool", "name": tname, "valid": bool(t and t.status in ("ready", "enabled"))})

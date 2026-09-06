@@ -11,17 +11,17 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import (AnalysisTask, CallRecord, Connection, DataAsset, DataDefinition,
-                     Datasource, EvalSample, KnowledgeSource, McpServer, Model,
-                     ModelProvider, ResourceChangeLog, Tool, ToolVersion, Workflow,
-                     WorkflowVersion)
+from .models import (AnalysisTask, AgentSkill, CallRecord, Connection, DataAsset,
+                     DataDefinition, Datasource, EvalSample, KnowledgeSource, McpServer,
+                     Model, ModelProvider, ResourceChangeLog, SkillResource, Tool,
+                     ToolVersion, Workflow, WorkflowVersion)
 
-AI_TYPES = ("model", "tool", "mcp", "knowledge")
+AI_TYPES = ("model", "tool", "mcp", "knowledge", "skill")
 DATA_TYPES = ("datasource", "asset")
 TYPES = AI_TYPES + DATA_TYPES
 
 CLS = {"model": Model, "tool": Tool, "mcp": McpServer, "knowledge": KnowledgeSource,
-       "datasource": Datasource, "asset": DataAsset}
+       "datasource": Datasource, "asset": DataAsset, "skill": SkillResource}
 
 
 def _status_of(obj) -> str:
@@ -96,6 +96,12 @@ def references(db: Session, rtype: str, rid: str) -> list[dict]:
     elif rtype == "definition":
         for t in db.execute(select(AnalysisTask).where(AnalysisTask.data_definition_id == rid)).scalars():
             refs.append({"kind": "analysis_task", "label": t.name, "id": t.id})
+    elif rtype == "skill":
+        from .models import Agent
+        for link in db.execute(select(AgentSkill).where(AgentSkill.skill_id == rid)).scalars():
+            a = db.get(Agent, link.agent_id)
+            refs.append({"kind": "agent_skill", "label": a.name if a else link.agent_id,
+                         "id": link.agent_id})
     elif rtype == "connection":
         for t in db.execute(select(Tool).where(Tool.connection_id == rid)).scalars():
             refs.append({"kind": "tool", "label": t.name, "id": t.id})
@@ -188,6 +194,9 @@ def to_dto(db: Session, rtype: str, obj) -> dict:
         meta = {"kind": obj.kind, "slices": obj.slice_count,
                 "embedding": emb.display_name if emb else ""}
         usage["calls7d"] = calls_7d(db, obj.id)
+    elif rtype == "skill":
+        meta = {"category": obj.category, "source": obj.source,
+                "chars": len(obj.content or "")}
     elif rtype == "datasource":
         meta = {"dsType": obj.type, "location": obj.location,
                 "connection": _conn_name(db, obj.connection_id),

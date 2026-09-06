@@ -415,6 +415,87 @@ class Release(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+# ---------- Agent 能力一等实体（09-07 重构 g047） ----------
+
+
+class SkillResource(Base):
+    """Skill 市场条目（registry kind=skill）：content 为 SKILL.md 全文。"""
+    __tablename__ = "skill"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(Text, default="")
+    category: Mapped[str] = mapped_column(String(32), default="")
+    content: Mapped[str] = mapped_column(Text, default="")
+    source: Mapped[str] = mapped_column(String(16), default="market")  # market|upload
+    status: Mapped[str] = mapped_column(String(16), default="ready")
+    extra: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AgentSkill(Base):
+    """Agent 已安装 Skill（per-agent 挂载，唯一约束防重复安装）。"""
+    __tablename__ = "agent_skill"
+    __table_args__ = (UniqueConstraint("agent_id", "skill_id", name="uq_agent_skill"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agent.id"), index=True)
+    skill_id: Mapped[str] = mapped_column(ForeignKey("skill.id"), index=True)
+    installed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AgentMemory(Base):
+    """Agent 全局记忆文档（单行/Agent；保存即版本快照）。"""
+    __tablename__ = "agent_memory"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agent.id"), unique=True, index=True)
+    content: Mapped[str] = mapped_column(Text, default="")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    updated_by: Mapped[str] = mapped_column(String(64), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AgentMemoryRevision(Base):
+    """记忆版本快照（版本管理 dialog 数据源）。"""
+    __tablename__ = "agent_memory_revision"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    memory_id: Mapped[str] = mapped_column(ForeignKey("agent_memory.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    content: Mapped[str] = mapped_column(Text, default="")
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AgentChatSession(Base):
+    """对话工作区会话（左栏历史列表）。"""
+    __tablename__ = "agent_chat_session"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agent.id"), index=True)
+    title: Mapped[str] = mapped_column(String(120), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AgentChatMessage(Base):
+    """对话消息；assistant 行随 chat-turn run 流式落库（streaming→done/failed）。"""
+    __tablename__ = "agent_chat_message"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    session_id: Mapped[str] = mapped_column(ForeignKey("agent_chat_session.id"), index=True)
+    role: Mapped[str] = mapped_column(String(16))  # user|assistant
+    content: Mapped[str] = mapped_column(Text, default="")
+    attachments: Mapped[list] = mapped_column(JSONB, default=list)
+    model_id: Mapped[str] = mapped_column(String(64), default="")
+    run_id: Mapped[str | None] = mapped_column(ForeignKey("run.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="done")  # streaming|done|failed
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class AgentRuntimeProvider(Base):
     """Runtime Provider 注册表（SDD 10 §5.3）：与 ModelProvider 禁止合表。
 

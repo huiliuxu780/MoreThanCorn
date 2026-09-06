@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from ..auth import require_admin, require_operator
 from ..db import get_db
 from ..models import (Connection, DataAsset, DataDefinition, Datasource, KnowledgeSource,
-                      McpServer, Model, Tool, ToolVersion)
+                      McpServer, Model, SkillResource, Tool, ToolVersion)
 from ..resource_registry import (AI_TYPES, DATA_TYPES, assert_deletable, change_log,
                                  list_resources, log_change, references, set_status, to_dto)
 from ..resource_tests import run_test
@@ -18,7 +18,8 @@ from ..resource_tests import run_test
 router = APIRouter(tags=["resources"])
 
 COLL = {"models": "model", "tools": "tool", "mcp-servers": "mcp",
-        "knowledge-sources": "knowledge", "datasources": "datasource", "assets": "asset"}
+        "knowledge-sources": "knowledge", "datasources": "datasource", "assets": "asset",
+        "skills": "skill"}
 
 
 def _rtype(coll: str) -> str:
@@ -118,6 +119,12 @@ def _create(db: Session, rtype: str, p: dict) -> dict:
                               embedding_model_id=p.get("embeddingModelId"),
                               source_config=p.get("sourceConfig", {}),
                               status="enabled" if tested else "disabled")
+    elif rtype == "skill":
+        if not p.get("name"):
+            raise HTTPException(422, "skill name 必填")
+        obj = SkillResource(name=p["name"], description=p.get("description", ""),
+                            category=p.get("category", ""), content=p.get("content", ""),
+                            source=p.get("source", "upload"), status="ready")
     elif rtype == "datasource":
         if p.get("type") not in ("mysql", "postgresql", "oss", "http"):
             raise HTTPException(422, "datasource 类型非法")
@@ -182,6 +189,8 @@ def _config_of(db: Session, rtype: str, obj) -> dict:
     if rtype == "knowledge":
         return {"kind": obj.kind, "embeddingModelId": obj.embedding_model_id,
                 "sourceConfig": obj.source_config, "sliceCount": obj.slice_count}
+    if rtype == "skill":
+        return {"category": obj.category, "source": obj.source, "content": obj.content}
     if rtype == "datasource":
         conn = db.get(Connection, obj.connection_id) if obj.connection_id else None
         return {"type": obj.type, "location": obj.location, "config": obj.config,
@@ -236,6 +245,8 @@ def update_resource(coll: str, rid: str, payload: dict, db: Session = Depends(ge
                 ("connectionId", "connection_id"), ("env", "env")],
         "knowledge": [("name", "name"), ("description", "description"), ("kind", "kind"),
                       ("embeddingModelId", "embedding_model_id"), ("sourceConfig", "source_config")],
+        "skill": [("name", "name"), ("description", "description"), ("category", "category"),
+                  ("content", "content")],
         "datasource": [("name", "name"), ("description", "description"), ("type", "type"),
                        ("connectionId", "connection_id"), ("location", "location"), ("config", "config")],
         "asset": [("name", "name"), ("description", "description"), ("datasourceId", "datasource_id"),

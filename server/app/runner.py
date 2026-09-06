@@ -1621,6 +1621,9 @@ def _dispatch_job(jtype: str, payload: dict) -> None:
     elif jtype == "result-delivery":  # SDD 13 §7.2：目标表投递 Outbox worker
         from .delivery import process_result_delivery
         process_result_delivery(payload)
+    elif jtype == "chat-turn":  # 09-07 Agent 能力重构：对话 turn 流式执行
+        from .agent_chat import execute_chat_turn
+        execute_chat_turn(payload)
     else:
         execute_run(payload["run_id"], resume=payload.get("resume"))
 
