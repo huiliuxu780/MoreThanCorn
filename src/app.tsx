@@ -18,6 +18,7 @@ const TaskRunDetailPage = lazy(() => import("@/pages/task-run-detail"))
 const OperationsTodayPage = lazy(() => import("@/pages/operations-today"))
 // A-14：agent 轨道 mock 双轨已清退——/agents 固定走真 API 页面
 const WfAgentsPage = lazy(() => import("@/pages/wf-agents-list"))
+const AgentCreatePage = lazy(() => import("@/pages/agent-create"))
 const WfAgentEditorPage = lazy(() => import("@/pages/wf-agent-editor"))
 const WfWorkflowsPage = lazy(() => import("@/pages/wf-workflows-list"))
 const WfFormsPage = lazy(() => import("@/pages/wf-forms"))
@@ -108,6 +109,7 @@ export function App() {
           <Route path="/autonomous-tasks/:taskId/batches/:taskRunId" element={<TaskRunRedirect />} />
           {/* Agent 管理 */}
           <Route path="/agents" element={<WfAgentsPage />} />
+          <Route path="/agents/new" element={<AgentCreatePage />} />
           <Route path="/agents/:agentId/runs/:runId" element={<RunDetailPage />} />
           <Route path="/agents/:agentId" element={<WfAgentEditorPage />} />
           {/* 能力与资源 Hub（完整版属 MTC-011/012） */}

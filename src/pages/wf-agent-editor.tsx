@@ -1,11 +1,11 @@
 /** Agent 编辑器路由：三型分发。
  *  R-Archive（SDD 10）：旧三类 Agent 已只读封存——本页退化为只读详情：
  *  移除保存/发布/停灰度/预览运行/编辑锁等全部写入口；历史版本、运行、结果仍可查看。 */
-import { ArrowLeft } from "lucide-react"
 import { useEffect, useState } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useParams } from "react-router-dom"
 
 import { AgentEvalPanel, AgentEvolutionPanel, AgentRunsPanel, AgentVersionsPanel } from "@/components/agent-ops-panels"
+import { AgentLifecycleShell } from "@/features/agents/AgentLifecycleShell"
 import { useAgentVersionState } from "@/components/agent-publish-dialog"
 import { Label } from "@/components/ui/label"
 import { resApi } from "@/services/resource-api"
@@ -133,12 +133,23 @@ function ArchivedAutonomousView({ agent }: { agent: AgentInfo }) {
 }
 
 /* ---------- 路由分发 ---------- */
+const RELEASE_PANELS = (agentId: string) => (
+  <div className="grid gap-4 lg:grid-cols-2">
+    <AgentEvalPanel agentId={agentId} />
+    <AgentVersionsPanel agentId={agentId} />
+  </div>
+)
+const OBSERVE_PANELS = (agentId: string) => (
+  <div className="grid gap-4 lg:grid-cols-2">
+    <AgentRunsPanel agentId={agentId} />
+    <AgentEvolutionPanel agentId={agentId} />
+  </div>
+)
+
 export default function WfAgentEditorPage() {
   const { agentId = "" } = useParams()
-  const navigate = useNavigate()
   const [agent, setAgent] = useState<AgentInfo | null>(null)
   const [legacy, setLegacy] = useState(false)
-  const [tab, setTab] = useState<"build" | "runs" | "eval" | "versions">("build")
   const vs = useAgentVersionState(agent && agent.type === "autonomous" ? agent.id : undefined)
   useEffect(() => {
     agentApi.get(agentId).then(setAgent).catch((e) => { if (String((e as Error).message).startsWith("404")) setLegacy(true) })
@@ -146,56 +157,56 @@ export default function WfAgentEditorPage() {
   if (legacy) return <WfDesignerPage workflowId={agentId} />
   if (!agent) return <div className="p-8 text-sm" style={{ color: INK2 }}>加载中…</div>
 
-  // R4：领域 Module Agent → 配置页（身份/模型/指令只读/资源 + 测试面板 + 发布绑定）
+  // R4：领域 Module Agent → 三段生命周期壳（搭建=配置页；发布=评测+版本；观测=运行+进化）
   if (agent.type === "module") {
-    return <ModuleAgentConfigPage agent={agent} />
+    return (
+      <AgentLifecycleShell
+        agent={agent}
+        role={agent.typeLabel}
+        build={<ModuleAgentConfigPage agent={agent} />}
+        release={RELEASE_PANELS(agent.id)}
+        observe={OBSERVE_PANELS(agent.id)}
+      />
+    )
   }
 
   // 对话编排 / 专家组：画布只读（R-Archive：封存后不可编辑/发布，成员与节点仅查看）
   if (agent.type === "dialogue" || agent.type === "expert-group") {
     const avatar = avatarFor(agent.id, agent.avatar)
     return (
-      <div className="h-[calc(100dvh-3.5rem)] min-h-0">
-        <WfDesignerPage workflowId={agent.workflowId ?? agentId} agentId={agent.id}
-          agentMeta={{ name: agent.name, typeLabel: agent.typeLabel, agentType: agent.type }}
-          avatar={avatar} readOnly />
-      </div>
+      <AgentLifecycleShell
+        agent={agent}
+        build={
+          <div className="h-[70vh] min-h-0">
+            <WfDesignerPage workflowId={agent.workflowId ?? agentId} agentId={agent.id}
+              agentMeta={{ name: agent.name, typeLabel: agent.typeLabel, agentType: agent.type }}
+              avatar={avatar} readOnly />
+          </div>
+        }
+        release={RELEASE_PANELS(agent.id)}
+        observe={OBSERVE_PANELS(agent.id)}
+      />
     )
   }
 
-  // 自主规划：四 Tab 壳层（SDD D-1；R-Archive 后搭建 Tab 为只读详情）
+  // 自主规划（封存只读）：三段生命周期壳
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col">
-      <div className="flex h-12 shrink-0 items-center gap-3 border-b bg-white px-4" style={{ borderColor: CARD }}>
-        <button onClick={() => navigate("/agents")}><ArrowLeft className="size-4" style={{ color: INK2 }} /></button>
-        <img src={avatarFor(agent.id, agent.avatar)} alt="" className="size-6 rounded-md object-cover" />
-        <span className="text-[15px] font-semibold" style={{ color: INK }}>{agent.name}</span>
-        <span className="rounded px-1.5 py-0.5 text-[11px]" style={{ background: "#FFF4EA", color: "#F97E2B" }}>{agent.typeLabel}</span>
-        <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-600">已封存 · 只读</span>
-        <span className="rounded border px-1.5 py-0.5 text-[11px]" style={{ borderColor: CARD, color: INK2 }}>
+    <AgentLifecycleShell
+      agent={agent}
+      versionChip={
+        <span className="rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground">
           {vs.latest ? `V${vs.latest.versionNo}` : "草稿"}
         </span>
-        {vs.envs.sandbox != null && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-600">沙箱 V{vs.envs.sandbox}</span>}
-        {vs.envs.prod != null && <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[11px] text-blue-600">线上 V{vs.envs.prod}</span>}
-        <div className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg p-0.5" style={{ background: "#F1F3F7" }}>
-          {([["build", "Agent搭建"], ["runs", "运行观测"], ["eval", "效果评测"], ["versions", "版本指标"]] as const).map(([k, label]) => (
-            <button key={k} className="rounded-md px-3 py-1 text-[13px]"
-              style={tab === k ? { background: "#fff", color: INK, boxShadow: "0 1px 3px rgba(31,35,41,.12)" } : { color: INK2 }}
-              onClick={() => setTab(k)}>{label}</button>
-          ))}
-        </div>
-      </div>
-      <div className="min-h-0 flex-1">
-        {tab === "build" && <ArchivedAutonomousView agent={agent} />}
-        {tab === "runs" && <AgentRunsPanel agentId={agent.id} />}
-        {tab === "eval" && <AgentEvalPanel agentId={agent.id} />}
-        {tab === "versions" && (
-          <div className="grid h-full grid-cols-2 divide-x" style={{ borderColor: CARD }}>
-            <AgentVersionsPanel agentId={agent.id} />
-            <AgentEvolutionPanel agentId={agent.id} />
-          </div>
-        )}
-      </div>
-    </div>
+      }
+      envChips={
+        <>
+          {vs.envs.sandbox != null && <span className="rounded bg-brand-soft px-1.5 py-0.5 text-[11px] text-selected-foreground">沙箱 V{vs.envs.sandbox}</span>}
+          {vs.envs.prod != null && <span className="rounded bg-brand-soft px-1.5 py-0.5 text-[11px] text-selected-foreground">线上 V{vs.envs.prod}</span>}
+        </>
+      }
+      build={<ArchivedAutonomousView agent={agent} />}
+      release={RELEASE_PANELS(agent.id)}
+      observe={OBSERVE_PANELS(agent.id)}
+    />
   )
 }
