@@ -5,7 +5,7 @@ import CodeMirror from "@uiw/react-codemirror"
 import { python } from "@codemirror/lang-python"
 import { useAgentVersionState } from "@/components/agent-publish-dialog"
 import { AgentVersionDiffDialog } from "@/components/agent-version-diff"
-import { avatarFor, AVATARS } from "./wf-agents-list"
+import { avatarFor, AVATARS } from "@/pages/wf-agents-list"
 import { WORKFLOW_ICONS, WfIcon } from "@/components/wf/wf-icons"
 import { ConversationPanel, MemorySchemaForm } from "@/components/agent-common-config"
 import { useNavigate, useParams } from "react-router-dom"
@@ -676,6 +676,7 @@ function ConfigDrawer(props: {
     }
     setVarTarget(null)
   }
+  const hasSchemaProps = !!((def?.schema as NodeCfgLoose | undefined)?.properties) && Object.keys(((def?.schema as NodeCfgLoose).properties ?? {})).length > 0
   return (
     <div className="absolute inset-y-0 right-0 z-20 w-[360px] max-w-[92vw] overflow-y-auto border-l bg-white px-4" style={{ borderColor: C.cardBorder }}>
       <div className="sticky top-0 z-10 flex items-center gap-2 bg-white py-3">
@@ -687,6 +688,8 @@ function ConfigDrawer(props: {
         <button onClick={onClose}><X className="size-4 text-neutral-500" /></button>
       </div>
       <p className="pb-2 text-xs leading-5" style={{ color: C.ink2 }}>{NODE_DESC[node.type] ?? "节点配置"}</p>
+      {/* 手写专项表单仅作 schema 缺失回落（MTC-007 单 schema 主路径） */}
+      {!hasSchemaProps ? (<>
       {/* 06-master-spec §2.4：抽屉内节点级问题清单（与顶栏检查 Popover 同源） */}
       {issues.length > 0 && (
         <div className="mb-2 space-y-1 rounded-md border px-2 py-1.5" style={{ borderColor: C.danger, background: "#FEF0F0" }}>
@@ -1214,12 +1217,15 @@ function ConfigDrawer(props: {
       {node.type === "loop" && <LoopSection cfg={cfg} set={set} nodes={nodes} edges={edges} selfId={node.id} defs={defs} />}
       {node.type === "wait-review" && <WaitReviewSection cfg={cfg} set={set} nodes={nodes} edges={edges} selfId={node.id} defs={defs} />}
       {node.type === "data-read" && <DataReadSection cfg={cfg} set={set} />}
+      </>) : null}
       {/* 07-SDD §2.6：健壮性 + 输出变量统一区（全节点） */}
       {node.type !== "input" && <RobustnessSection node={node} onChange={onChange} />}
       {node.type !== "input" && <OutputVarsSection def={def} />}
       {/* SDD C-3：无专项表单的节点按注册表 schema 通用渲染 */}
-      {!["input", "llm", "tool", "knowledge-retrieval", "mcp-call", "condition", "end", "workflow-exec", "workflow-fixed", "workflow-select", "loop", "wait-review", "data-read", "agent-select", "agent", "agent-exec", "code-write", "query-rewrite", "decision-class"].includes(node.type) && (
+      {hasSchemaProps ? (
         <GenericSchemaForm def={def} cfg={cfg} set={set} node={node} onChange={onChange} nodes={nodes} edges={edges} defs={defs} />
+      ) : (
+        <p className="py-2 text-xs" style={{ color: C.ink2 }}>该节点暂无 schema 定义（暂未启用）</p>
       )}
     </div>
   )

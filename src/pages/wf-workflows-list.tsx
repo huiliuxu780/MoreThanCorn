@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { useListQuery } from "@/hooks/use-list-query"
-import { wfApi } from "@/services/wf-api"
+import { bizApi, wfApi } from "@/services/wf-api"
 
 interface WfRow {
   id: string; name: string; status: string; updatedAt: string;
@@ -34,11 +34,30 @@ export default function WfWorkflowsPage() {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
   const [delTarget, setDelTarget] = useState<WfRow | null>(null)
+  // MTC-007：真实节点数（并行 detail）与引用数（自主任务聚合），禁止假 0
+  const [nodeCounts, setNodeCounts] = useState<Record<string, number | undefined>>({})
+  const [refs, setRefs] = useState<Record<string, number>>({})
 
   useEffect(() => {
     setLoading(true)
     wfApi.list({ page: params.page, pageSize: params.pageSize, search: search || undefined })
-      .then((r) => { setRows(r.items as WfRow[]); setTotal(r.total) })
+      .then((r) => {
+        setRows(r.items as WfRow[]); setTotal(r.total)
+        const items = r.items as WfRow[]
+        Promise.all(items.map((w) => wfApi.get(w.id).catch(() => null))).then((details) => {
+          const m: Record<string, number | undefined> = {}
+          items.forEach((w, i) => { m[w.id] = details[i]?.definition?.graph?.nodes?.length })
+          setNodeCounts(m)
+        })
+        bizApi.tasks().then((ts) => {
+          const m: Record<string, number> = {}
+          for (const t of ts) {
+            const wid = t.workflowId ?? (t.executionTarget?.type === "workflow" ? t.executionTarget.workflowId ?? undefined : undefined)
+            if (wid) m[wid] = (m[wid] ?? 0) + 1
+          }
+          setRefs(m)
+        }).catch(() => undefined)
+      })
       .catch(() => setRows([]))
       .finally(() => setLoading(false))
   }, [params.page, params.pageSize, search])
@@ -97,10 +116,10 @@ export default function WfWorkflowsPage() {
                   lifecycleLabel: w.status === "published" ? "已发布" : "草稿",
                   lifecycleTone: w.status === "published" ? "success" : "warning",
                   currentVersion: w.versionCount || undefined,
-                  nodeCount: w.nodeCount ?? 0,
-                  boundAgent: (w.agentRefCount ?? 0) > 0,
+                  nodeCount: nodeCounts[w.id] ?? w.nodeCount,
+                  boundAgent: (refs[w.id] ?? w.agentRefCount ?? 0) > 0,
                 },
-                usage: { refCount: w.agentRefCount ?? 0, calls7d: 0 },
+                usage: { refCount: refs[w.id] ?? w.agentRefCount ?? 0, calls7d: 0 },
                 updatedAt: w.updatedAt,
               }}
               actions={["edit", "delete"]}

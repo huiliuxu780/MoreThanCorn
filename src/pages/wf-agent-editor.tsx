@@ -10,7 +10,7 @@ import { useAgentVersionState } from "@/components/agent-publish-dialog"
 import { Label } from "@/components/ui/label"
 import { resApi } from "@/services/resource-api"
 import { agentApi, wfApi, type AgentInfo } from "@/services/wf-api"
-import WfDesignerPage from "./wf-designer"
+import WfDesignerPage from "@/features/designer/DesignerPage"
 import ModuleAgentConfigPage from "./module-agent-config"
 import { avatarFor } from "./wf-agents-list"
 
