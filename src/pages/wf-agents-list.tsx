@@ -3,15 +3,13 @@
  * 声明偏差：控件高度沿用我方 h-8 全局规格；segment 浅色用中性 token（原站浅色不可见=缺陷）。 */
 import { useCallback, useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { MessageCircleMore, MoreHorizontal, Plus } from "lucide-react"
+import { MessageCircleMore, Plus, Settings2, Share2 } from "lucide-react"
+import { toast } from "sonner"
 import { useListQuery } from "@/hooks/use-list-query"
 import { Pagination } from "@/components/app/pagination"
 import { agentApi, pagedApi } from "@/services/wf-api"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -51,7 +49,9 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 /** 卡片（台账 §1/§1b 修正版）：r6/pad16/gap8/统计行 h45；名称行纯居中，
  *  生命周期徽章占原站右上角空槽（absolute）；开卡按钮不嵌套交互元素。 */
-function AgentCard({ r, role, onOpen, onChat }: { r: AgentRow; role: string; onOpen: () => void; onChat?: () => void }) {
+function AgentCard({ r, role, onOpen, onChat, onConfig }: {
+  r: AgentRow; role: string; onOpen: () => void; onChat?: () => void; onConfig: () => void
+}) {
   const lc = lifecycleOf(r)
   return (
     <div className="group relative flex flex-col items-center gap-2 rounded-lg border bg-surface p-4 text-center shadow-sm transition-colors hover:border-brand/50 hover:bg-surface-raised">
@@ -72,27 +72,27 @@ function AgentCard({ r, role, onOpen, onChat }: { r: AgentRow; role: string; onO
           ? <span className="line-clamp-2 w-full text-xs leading-[18px] text-(--text-tertiary)">{r.description}</span>
           : null}
       </button>
-      <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center border-t py-3">
-        <Stat label="任务数" value={String(r.runCount ?? 0)} />
-        <span className="h-[18px] w-px bg-border" />
-        <Stat label="最近运行" value={r.lastRunAt ? formatCompactDateTime(r.lastRunAt) : "暂无"} />
-      </div>
-      <div className="hidden w-full items-center justify-center gap-3 group-hover:flex">
-        {onChat ? (
-          <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-0 text-[13px] font-medium" onClick={onChat}>
-            <MessageCircleMore className="size-4" /> 对话
+      {/* 台账 §7：footer 同格堆叠交叉淡入淡出（原站实测：hover 统计淡出/动作淡入，卡高恒定 212） */}
+      <div className="grid w-full">
+        <div className="col-start-1 row-start-1 grid grid-cols-[1fr_auto_1fr] items-center border-t py-3 transition-opacity duration-200 group-hover:opacity-0">
+          <Stat label="任务数" value={String(r.runCount ?? 0)} />
+          <span className="h-[18px] w-px bg-border" />
+          <Stat label="最近运行" value={r.lastRunAt ? formatCompactDateTime(r.lastRunAt) : "暂无"} />
+        </div>
+        <div className="col-start-1 row-start-1 flex items-center gap-2 self-center opacity-0 pointer-events-none transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
+          <Button variant="ghost" size="icon" className="size-8 shrink-0" aria-label="配置" onClick={onConfig}>
+            <Settings2 className="size-4" />
           </Button>
-        ) : null}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-8" aria-label="更多操作">
-              <MoreHorizontal className="size-4" />
+          <Button variant="ghost" size="icon" className="size-8 shrink-0" aria-label="复制 ID"
+            onClick={() => { void navigator.clipboard.writeText(r.id); toast.success("已复制 ID") }}>
+            <Share2 className="size-4" />
+          </Button>
+          {onChat ? (
+            <Button size="sm" className="h-8 min-w-0 flex-1 gap-1.5" onClick={onChat}>
+              <MessageCircleMore className="size-4" /> 对话
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="center">
-            <DropdownMenuItem onClick={() => navigator.clipboard.writeText(r.id)}>复制 ID</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          ) : null}
+        </div>
       </div>
     </div>
   )
@@ -217,6 +217,7 @@ export default function WfAgentsListPage() {
               {filtered.map((r) => (
                 <AgentCard key={r.id} r={r} role={roleOf(r)}
                   onOpen={() => navigate(`/agents/${r.id}`)}
+                  onConfig={() => navigate(`/agents/${r.id}/config`)}
                   onChat={r.archived ? undefined : () => navigate(`/agents/${r.id}/chat`)} />
               ))}
             </div>
