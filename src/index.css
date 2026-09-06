@@ -361,6 +361,35 @@
 /* 08-26 用户反馈：按钮悬浮手势 */
 button:not(:disabled) { cursor: pointer; }
 
+/* 09-07 原站对齐：汇总带执行者空闲 zzz 漂移（颜色走 --text-secondary token，双主题自动翻转） */
+.mtc-zzz {
+  position: relative;
+  display: inline-block;
+  width: 28px;
+  height: 18px;
+  overflow: hidden;
+  color: var(--text-secondary);
+}
+.mtc-zzz span {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-start: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  opacity: 0;
+  will-change: opacity, transform;
+  animation: mtc-zzz 7.2s linear infinite;
+}
+.mtc-zzz span:nth-child(2) { animation-delay: -2.7s; }
+.mtc-zzz span:nth-child(3) { animation-delay: -4.8s; }
+@keyframes mtc-zzz {
+  0% { opacity: 0; transform: translate3d(0, -4px, 0) scale(0.2); }
+  20% { opacity: 0.7; transform: translate3d(6px, -5px, 0) scale(0.6); }
+  45% { opacity: 1; transform: translate3d(12px, -6px, 0) scale(0.9); }
+  70%, 100% { opacity: 0; transform: translate3d(20px, -7px, 0) scale(1); }
+}
+
 /* 08-26 用户反馈：画布空白处抓手手势 */
 .react-flow__pane { cursor: grab; }
 .react-flow__pane:active { cursor: grabbing; }

@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from ..auth import assert_task_readable, require_role
 from ..db import get_db
 from ..models import AnalysisTask, ScheduleOccurrence, TaskRun
-from ..work_item_projection import (ORIGINS, STATUS_ORDER, build_work_items,
+from ..work_item_projection import (ORIGINS, STATUS_ALIASES, STATUS_ORDER, build_work_items,
                                     count_by_status, filter_work_items,
                                     parse_work_item_date_range,
                                     project_single)  # noqa: F401  (project_single 供详情使用)
@@ -57,8 +57,8 @@ def list_work_items(dateFrom: str = "", dateTo: str = "", timezone: str = _DEFAU
                     user: dict = Depends(require_role())):
     date_from, date_to, tz_s, _start, _end = parse_work_item_date_range(
         dateFrom, dateTo, timezone or _DEFAULT_TZ, _business_date)
-    if status and status not in STATUS_ORDER:
-        raise HTTPException(422, f"status 必须是 {list(STATUS_ORDER)} 之一")
+    if status and status not in STATUS_ORDER and status not in STATUS_ALIASES:
+        raise HTTPException(422, f"status 必须是 {list(STATUS_ORDER)} 或别名 {list(STATUS_ALIASES)} 之一")
     if origin and origin not in ORIGINS:
         raise HTTPException(422, f"origin 必须是 {list(ORIGINS)} 之一")
     if attentionOnly and attentionOnly != "only":

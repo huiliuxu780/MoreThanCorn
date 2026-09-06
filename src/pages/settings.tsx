@@ -72,7 +72,8 @@ function AppearanceSection() {
           与左侧导航底部「主题」菜单联动，切换立即生效并在刷新后保持。
         </p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="主题">
+      {/* 09-07：五主题一行收齐（3 列会把羊皮纸两张挤到第二行留空位） */}
+      <div className="grid gap-3 md:grid-cols-5" role="radiogroup" aria-label="主题">
         {options.map((o) => {
           const active = theme === o.value
           return (

@@ -128,34 +128,30 @@ await page.evaluate(() => { window.__mtcGo = true })
 const seqRes = await seqProbe
 check("SSE 真实首帧且 sequence 递增", !!seqRes && seqRes.s1 >= 1 && seqRes.s2 === seqRes.s1 + 1, JSON.stringify(seqRes))
 
-/* ---------- 03 日期切换：旧日期流不随新日期变化刷新 ---------- */
-const tomorrow = new Date(Date.now() + 86400000)
-const pad = (n) => String(n).padStart(2, "0")
-const tstr = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`
-// 日期切换真证据：页面切换业务日期后，SSE 请求必须携带 dateFrom 重建连接；
+/* ---------- 03 周期切换：今天→历史周期后 SSE 携带 dateFrom 重建 ---------- */
+// 周期切换真证据：页面切换数据周期后，SSE 请求必须携带 dateFrom 重建连接；
 // “旧日期终态变化不影响新日期 digest”的边界由 pytest test_digest_date_switch 覆盖。
 const streamReqs = []
 page.on("request", (req) => { if (req.url().includes("/api/work-items/stream")) streamReqs.push(req.url()) })
-// 页面日期控件切换截图（明日窗口可见 queued occurrence）
-await page.evaluate((val) => {
-  const el = document.querySelector('input[aria-label="业务日期"]')
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set
-  setter.call(el, val)
-  el.dispatchEvent(new Event("input", { bubbles: true }))
-  el.dispatchEvent(new Event("change", { bubbles: true }))
-}, tstr)
+// 页面周期控件切换截图（近 7 天窗口）
+await page.click('[aria-label="数据周期"]')
+await new Promise((r) => setTimeout(r, 400))
+await page.evaluate(() => {
+  const opt = [...document.querySelectorAll('[role="option"]')].find((o) => o.textContent?.includes("近 7 天"))
+  opt?.click()
+})
 await new Promise((r) => setTimeout(r, 1500))
-await page.screenshot({ path: `${OUT}/03-date-switch.png` })
+await page.screenshot({ path: `${OUT}/03-period-switch.png` })
 const dateStreamOk = await page.waitForFunction(
   () => window.__mtcStreamReqs?.some((u) => u.includes("dateFrom=")) , { timeout: 8000 },
 ).then(() => true).catch(() => false)
-check("日期切换后 SSE 携带 dateFrom 重建", dateStreamOk || streamReqs.some((u) => u.includes("dateFrom=")), JSON.stringify(streamReqs.slice(-2)))
+check("周期切换后 SSE 携带 dateFrom 重建", dateStreamOk || streamReqs.some((u) => u.includes("dateFrom=")), JSON.stringify(streamReqs.slice(-2)))
+// 切回今天
+await page.click('[aria-label="数据周期"]')
+await new Promise((r) => setTimeout(r, 400))
 await page.evaluate(() => {
-  const el = document.querySelector('input[aria-label="业务日期"]')
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set
-  setter.call(el, "")
-  el.dispatchEvent(new Event("input", { bubbles: true }))
-  el.dispatchEvent(new Event("change", { bubbles: true }))
+  const opt = [...document.querySelectorAll('[role="option"]')].find((o) => o.textContent?.includes("今天"))
+  opt?.click()
 })
 await new Promise((r) => setTimeout(r, 1200))
 

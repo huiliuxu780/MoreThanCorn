@@ -376,3 +376,18 @@ def test_work_item_detail_404_and_bad_prefix(auth_on):
     assert client.get("/api/work-items/taskrun:does-not-exist", headers=tok).status_code == 404
     assert client.get("/api/work-items/occurrence:does-not-exist", headers=tok).status_code == 404
     assert client.get("/api/work-items/noprefix", headers=tok).status_code == 422
+
+
+def test_status_alias_ended_filters_two_finished_states(auth_on):
+    """09-07 汇总带：status=ended 别名 = completed + failed_cancelled；单态筛选不受影响。"""
+    from app.work_item_projection import filter_work_items
+    items = [
+        {"id": str(i), "status": s, "title": "", "taskRunId": None, "attention": {"required": False}}
+        for i, s in enumerate(["completed", "failed_cancelled", "running", "needs_action", "queued"])
+    ]
+    ended = filter_work_items(items, status="ended")
+    assert {w["status"] for w in ended} == {"completed", "failed_cancelled"}
+    assert len(filter_work_items(items, status="running")) == 1
+    tok = _hdr(_tok("admin", "admin"))
+    assert client.get("/api/work-items?status=ended", headers=tok).status_code == 200
+    assert client.get("/api/work-items?status=bogus", headers=tok).status_code == 422

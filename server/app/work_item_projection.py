@@ -39,6 +39,8 @@ from .models import (Agent, AnalysisTask, AnalysisTaskVersion, Run,
 
 #: 用户可见主状态（固定五组，顺序即看板泳道顺序）
 STATUS_ORDER = ("needs_action", "running", "completed", "queued", "failed_cancelled")
+# 09-07 任务工作台汇总带：聚合状态别名（ended = 已结束两态），单态筛选仍走 STATUS_ORDER
+STATUS_ALIASES = {"ended": ("completed", "failed_cancelled")}
 
 #: 长期 queued 的保留期（天）：超过该期限的 queued 批次不再进入当前看板（领域文档 §9）
 QUEUE_RETENTION_DAYS = 7
@@ -507,7 +509,8 @@ def filter_work_items(items: list[dict], *, status: str = "", q: str = "",
     """投影后计算筛选（status/attentionOnly/q）。automationId/origin/agentId/scope 已下推 SQL。"""
     out = items
     if status:
-        out = [w for w in out if w["status"] == status]
+        allowed = STATUS_ALIASES.get(status, (status,))
+        out = [w for w in out if w["status"] in allowed]
     if attention_only:
         out = [w for w in out if w["attention"]["required"]]
     if q:
