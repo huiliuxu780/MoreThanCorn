@@ -177,6 +177,27 @@ if (conflict) {
 }
 
 /* ---------- 05 load more / truncated ---------- */
+/* ---------- R4 静默更新：20s 活跃窗口内无 toast、滚动保持、无重复 id、seq 递增 ---------- */
+await page.evaluate(() => window.scrollTo(0, 250))
+const seqBefore = await page.evaluate(() => Number(document.querySelector("[data-sse-seq]")?.getAttribute("data-sse-seq") ?? 0))
+if (demo) {
+  await fetch(`${API}/api/tasks/${demo.automationId}/runs`, {
+    method: "POST", body: "{}",
+    headers: { "Idempotency-Key": `demo002b-r4-${Date.now()}`, "Content-Type": "application/json" },
+  })
+}
+await new Promise((r) => setTimeout(r, 20000))
+const obs = await page.evaluate(() => ({
+  toasts: document.querySelectorAll("[data-sonner-toast]").length,
+  scrollY: window.scrollY,
+  ids: [...document.querySelectorAll("[data-workitem-id]")].map((e) => e.getAttribute("data-workitem-id")),
+  seq: Number(document.querySelector("[data-sse-seq]")?.getAttribute("data-sse-seq") ?? 0),
+}))
+check("R4 静默更新：20s 内无 toast", obs.toasts === 0, String(obs.toasts))
+check("R4 静默更新：滚动位置保持", obs.scrollY === 250, String(obs.scrollY))
+check("R4 静默更新：卡片 id 无重复", new Set(obs.ids).size === obs.ids.length)
+check("R4 流持续送达 refresh（seq 递增）", obs.seq > seqBefore, `${seqBefore} → ${obs.seq}`)
+
 const banner = await page.$('[data-testid="load-more"]')
 if (banner) {
   const before = await page.evaluate(() => document.querySelectorAll("[data-workitem-id]").length)
@@ -214,11 +235,11 @@ if (demoTaskId) {
   }
 }
 const scen = {
-  unfired: demoList.items.find((w) => w.kind === "schedule_occurrence" && w.taskRunId === null && w.status === "queued"),
+  unfired: demoList.items.find((w) => w.kind === "schedule_occurrence" && w.taskRunId === null && w.diagnostics.occurrenceStatus === "planned"),
   firedRunning: demoList.items.find((w) => w.kind === "schedule_occurrence" && w.taskRunId !== null && w.status === "running"),
   firedCompleted: demoList.items.find((w) => w.kind === "schedule_occurrence" && w.taskRunId !== null && w.status === "completed"),
   firedAttention: demoList.items.find((w) => w.kind === "schedule_occurrence" && w.taskRunId !== null && w.status === "needs_action"),
-  broken: demoList.items.find((w) => w.kind === "schedule_occurrence" && w.taskRunId === null && w.status === "needs_action"),
+  broken: demoList.items.find((w) => w.kind === "schedule_occurrence" && w.taskRunId === null && (w.diagnostics.occurrenceStatus === "started" || w.diagnostics.occurrenceStatus === "firing")),
 }
 
 async function cardText(wid) {

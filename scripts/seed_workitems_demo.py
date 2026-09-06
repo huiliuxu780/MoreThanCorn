@@ -200,7 +200,11 @@ def main() -> None:
                          cron_expr="0 0 1 1 *", timezone="Asia/Shanghai", enabled=True)
         db.add(sched)
         db.flush()
-        plan = now + timedelta(hours=2)
+        # 未触发计划须保持在未来（否则过宽限期转 missed）且落在本业务日：
+        # 取今日 23:45（若已不足 10 分钟则退化为 now+15m，极窄深夜窗口除外）
+        plan = now.replace(hour=23, minute=45, second=0, microsecond=0)
+        if plan <= now + timedelta(minutes=10):
+            plan = now + timedelta(minutes=15)
         db.add(ScheduleOccurrence(schedule_id=sched.id, task_id=task.id, status="planned",
                                   planned_at=plan.astimezone(timezone.utc),
                                   timezone="Asia/Shanghai",

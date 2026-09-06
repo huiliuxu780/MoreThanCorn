@@ -1,6 +1,5 @@
 import { CalendarDays, CircleAlert, Loader2, RefreshCw } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { toast } from "sonner"
 import { useNavigate } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -52,6 +51,9 @@ export default function OperationsTodayPage() {
     attentionOnly: attentionOnly || undefined, pageSize: 200, page: pg,
   }), [date, q, origin, attentionOnly])
 
+  const pageRef = useRef(1)
+  const reconcileTimer = useRef<number | null>(null)
+
   const load = useCallback(async () => {
     try {
       const r = await workItemsApi.list(listParams(1))
@@ -59,6 +61,35 @@ export default function OperationsTodayPage() {
       setItems(r.items)
       setTotal(r.total)
       setPage(1)
+      pageRef.current = 1
+      setLastUpdated(new Date().toISOString())
+      setError(null)
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }, [listParams])
+
+  // MTC-002B-R4：静默原地 reconcile——重拉已加载页范围(1..N)并按 id 去重、保持服务端
+  // 排序与滚动位置；不重置上下文、不 toast。供 SSE refresh（合流后）与降级轮询共用。
+  const reconcile = useCallback(async () => {
+    try {
+      const pages = pageRef.current
+      const fetched: WorkItemDTO[] = []
+      let lastResp: Awaited<ReturnType<typeof workItemsApi.list>> | null = null
+      for (let pg = 1; pg <= pages; pg++) {
+        const r = await workItemsApi.list(listParams(pg))
+        lastResp = r
+        fetched.push(...r.items)
+        if (r.items.length < 200) break
+      }
+      if (lastResp) {
+        setResp(lastResp)
+        setTotal(lastResp.total)
+      }
+      setItems(() => {
+        const seen = new Set<string>()
+        return fetched.filter((w) => (seen.has(w.id) ? false : (seen.add(w.id), true)))
+      })
       setLastUpdated(new Date().toISOString())
       setError(null)
     } catch (e) {
@@ -77,6 +108,7 @@ export default function OperationsTodayPage() {
       })
       setTotal(r.total)
       setPage(page + 1)
+      pageRef.current = page + 1
       setLastUpdated(new Date().toISOString())
     } catch (e) {
       setError((e as Error).message)
@@ -91,7 +123,7 @@ export default function OperationsTodayPage() {
       if (pollRef.current != null) return
       setChannel("polling")
       pollRef.current = window.setInterval(() => {
-        if (!document.hidden) void load()
+        if (!document.hidden) void reconcile()
       }, 5000)
     }
     const stopPolling = () => {
@@ -104,9 +136,13 @@ export default function OperationsTodayPage() {
         setChannel("sse")
         setLastSeq(seq)
         stopPolling()
-        // P2：refresh 到达 → 重置第一页并提示，避免已加载页与新增数据交叠漏项
-        void load()
-        toast.info("列表已更新")
+        // R4：合流窗口 2.5s——多次 refresh 只做一次静默 reconcile；不打断用户、不 toast
+        if (reconcileTimer.current == null) {
+          reconcileTimer.current = window.setTimeout(() => {
+            reconcileTimer.current = null
+            if (!cancelled) void reconcile()
+          }, 2500)
+        }
       },
       {
         onError: () => { if (!cancelled) { setChannel("polling"); startPolling() } },
@@ -121,9 +157,13 @@ export default function OperationsTodayPage() {
       cancelled = true
       ctrl.abort()
       stopPolling()
+      if (reconcileTimer.current != null) {
+        window.clearTimeout(reconcileTimer.current)
+        reconcileTimer.current = null
+      }
       document.removeEventListener("visibilitychange", onVis)
     }
-  }, [load, date])
+  }, [load, reconcile, date])
 
   useEffect(() => { void load() }, [load])
 
