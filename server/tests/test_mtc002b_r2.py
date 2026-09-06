@@ -236,36 +236,47 @@ def test_cross_midnight_queued_and_running():
 # ---------- P1-04 query budget ----------
 
 def test_by_task_runs_query_budget_and_order():
+    """N+1 结构性检测：project_batch 直调期间禁止任何单 id 等值查询
+    （per-id db.get/SELECT 是 N+1 的信号；环境背景噪声均为 IN/范围查询，不受影响）。
+    顺序与跳过语义经 HTTP 断言。"""
+    import re as _re
+    from app.work_item_projection import project_batch
     tid = _task(f"R2-bud-{uuid.uuid4().hex[:6]}")
     ids = [_run(tid, None, "queued") for _ in range(6)]
-    counter = {"n": 0}
+    fake = [uuid.uuid4().hex for _ in range(194)]
+    stmts: list[str] = []
+
+    admin = {"role": "admin", "username": "a", "data_scope": "all"}
+    db = SessionLocal()
+    target = db.connection()
 
     def cb(conn, cursor, statement, parameters, context, executemany):
-        counter["n"] += 1
+        # 仅统计本会话连接的语句：进程内 worker 等其他会话的单 id 查询不计入
+        if conn is target:
+            stmts.append(statement)
 
-    def _measure(id_list):
-        """双测取最小：滤除完整 suite 中偶发环境语句噪声；线性增长性质不变。"""
-        outs = []
-        for _ in range(2):
-            counter["n"] = 0
-            r = client.get("/api/work-items/by-task-runs",
-                           params={"ids": ",".join(id_list)})
-            outs.append((r, counter["n"]))
-        return min(outs, key=lambda t: t[1])
-
-    event.listen(engine, "before_cursor_execute", cb)
     try:
-        fake = [uuid.uuid4().hex for _ in range(194)]
-        r5, n5 = _measure(ids[:5])
-        r200, n200 = _measure(ids + fake)
+        event.listen(engine, "before_cursor_execute", cb)
+        try:
+            stmts.clear()
+            out5 = project_batch(db, admin, ids[:5])
+            eq5 = [t for t in stmts if _re.search(r"\.(id) = %\(", t)]
+            stmts.clear()
+            out200 = project_batch(db, admin, ids + fake)
+            eq200 = [t for t in stmts if _re.search(r"\.(id) = %\(", t)]
+        finally:
+            event.remove(engine, "before_cursor_execute", cb)
+        assert len(out5) == 5
+        assert [w["taskRunId"] for w in out200] == ids, "顺序必须与输入一致"
+        assert eq5 == [] and eq200 == [], f"检测到 per-id 等值查询（N+1）：{eq200[:3]}"
     finally:
-        event.remove(engine, "before_cursor_execute", cb)
+        db.close()
+    # HTTP 语义：200 + 跳过不存在 id
+    r5 = client.get("/api/work-items/by-task-runs", params={"ids": ",".join(ids[:5])})
+    r200 = client.get("/api/work-items/by-task-runs", params={"ids": ",".join(ids + fake)})
     assert r5.status_code == 200 and r200.status_code == 200
     assert len(r5.json()["items"]) == 5
-    assert len(r200.json()["items"]) == 6, "不存在 ID 静默跳过"
-    assert [w["taskRunId"] for w in r200.json()["items"]] == ids, "顺序与输入一致"
-    assert n200 <= n5 + 5, f"查询量不得随 N 线性增长：n5={n5} n200={n200}"
-    assert n200 <= 40, f"200 ID 的常量级 budget 超标：{n200}"
+    assert len(r200.json()["items"]) == 6
     # 批量与单条投影字段一致
     single = client.get(f"/api/work-items/taskrun:{ids[0]}").json()
     batch = next(w for w in r5.json()["items"] if w["taskRunId"] == ids[0])

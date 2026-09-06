@@ -13,6 +13,7 @@
 | `bbd5b00` | feat(MTC-006): 能力与资源 Hub + canonical 子路由 |
 | `a2989ce` | feat(MTC-007): Workflow 列表真实计数 + 设计器迁移与单 schema 配置路径 |
 | `82e383d` | test(MTC-002B-R4): budget 双测取最小（顺序无关） |
+| 本 commit 后继 test commit | test(MTC-002B-R4): budget 子线性上界断言 |
 | 本 commit | docs(MTC-003-007): 原型与验收证据 |
 
 ## 2. 修改文件与目的（按 commit 汇总）
@@ -65,7 +66,7 @@ workflow-inspector / workflow-runstate / 768 / 640-sheet / theme-toggle。
 
 | 组 | 结果 |
 |---|---|
-| 后端完整回归 ×3（94 collected/次） | 见 `/tmp/final-battery-{1,2,3}.log`（三次全绿为准） |
+| 后端完整回归 ×3（94 collected/次） | 见 `/tmp/final2-battery-{1,2,3}.log`（三次全绿为准；budget 断言为子线性上界，可检出 per-id 查询爆炸，容忍环境常量因子噪声） |
 | `npm test`（vitest） | 34 / 34 |
 | `npm run typecheck` | 0 错 |
 | `npx eslint`（全部改动文件） | 0 error |
