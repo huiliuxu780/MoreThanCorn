@@ -49,31 +49,35 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
+/** 卡片（台账 §1/§1b 修正版）：r6/pad16/gap8/统计行 h45；名称行纯居中，
+ *  生命周期徽章占原站右上角空槽（absolute）；开卡按钮不嵌套交互元素。 */
 function AgentCard({ r, role, onOpen, onChat }: { r: AgentRow; role: string; onOpen: () => void; onChat?: () => void }) {
   const lc = lifecycleOf(r)
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group flex flex-col items-center gap-2 rounded-md border bg-surface p-4 text-center shadow-sm transition-colors hover:border-brand/50 hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
-    >
-      <img src={avatarFor(r.id, r.avatar)} alt="" className="size-12 rounded-full object-cover" />
-      <div className="flex w-full min-w-0 items-center justify-center gap-2">
-        <span className="truncate text-base font-medium leading-6">{r.name}</span>
+    <div className="group relative flex flex-col items-center gap-2 rounded-lg border bg-surface p-4 text-center shadow-sm transition-colors hover:border-brand/50 hover:bg-surface-raised">
+      <span className="absolute right-3 top-3">
         <Badge variant={lc.variant}>{lc.label}</Badge>
-      </div>
-      <span className="flex max-w-full items-center gap-1 truncate rounded-lg px-1.5 py-0.5 text-xs leading-[14px] text-(--text-tertiary)">
-        {role}
       </span>
-      {r.description
-        ? <p className="line-clamp-2 w-full text-xs leading-[18px] text-(--text-tertiary)">{r.description}</p>
-        : null}
-      <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center border-t pt-3">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex w-full flex-col items-center gap-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+      >
+        <img src={avatarFor(r.id, r.avatar)} alt="" className="size-12 rounded-full object-cover" />
+        <span className="w-full truncate text-base font-medium leading-6">{r.name}</span>
+        <span className="flex max-w-full items-center gap-1 truncate rounded-lg px-1.5 py-0.5 text-xs leading-[14px] text-(--text-tertiary)">
+          {role}
+        </span>
+        {r.description
+          ? <span className="line-clamp-2 w-full text-xs leading-[18px] text-(--text-tertiary)">{r.description}</span>
+          : null}
+      </button>
+      <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center border-t py-3">
         <Stat label="任务数" value={String(r.runCount ?? 0)} />
         <span className="h-[18px] w-px bg-border" />
         <Stat label="最近运行" value={r.lastRunAt ? formatCompactDateTime(r.lastRunAt) : "暂无"} />
       </div>
-      <div className="hidden w-full items-center justify-center gap-3 group-hover:flex" onClick={(e) => e.stopPropagation()}>
+      <div className="hidden w-full items-center justify-center gap-3 group-hover:flex">
         {onChat ? (
           <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-0 text-[13px] font-medium" onClick={onChat}>
             <MessageCircleMore className="size-4" /> 对话
@@ -90,7 +94,7 @@ function AgentCard({ r, role, onOpen, onChat }: { r: AgentRow; role: string; onO
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -99,7 +103,7 @@ function CreateCard() {
   return (
     <Link
       to="/agents/new"
-      className="flex min-h-[212px] flex-col items-center justify-center gap-2 rounded-md border border-dashed bg-surface p-4 text-center transition-colors hover:border-brand/60"
+      className="flex min-h-[212px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-surface p-4 text-center transition-colors hover:border-brand/60"
     >
       <svg viewBox="0 0 72 90" className="h-[90px] w-[72px]" aria-hidden="true">
         <rect x="14" y="10" width="44" height="56" rx="6" fill="var(--brand-soft)" stroke="var(--border)" transform="rotate(-8 36 38)" />
@@ -152,7 +156,8 @@ export default function WfAgentsListPage() {
       : (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "")))
 
   return (
-    <PageContainer wide className="space-y-4">
+    <PageContainer wide>
+      <div className="max-w-[960px] space-y-4">
       <PageHeader
         title="Agent"
         description={`有身份、有角色、有能力、有工作状态的数字员工${archivedTotal > 0 ? ` · 旧版 Agent 已封存 ${archivedTotal} 个，仅历史查询` : ""}`}
@@ -163,7 +168,7 @@ export default function WfAgentsListPage() {
         }
       />
       {/* segment：使用中/已封存（台账 §4 token 化） */}
-      <div className="flex h-8 w-fit items-center gap-1 rounded-md bg-(--segment-bg) p-1">
+      <div className="flex h-8 w-fit items-center gap-1 rounded-lg bg-(--segment-bg) p-1">
         {(["active", "archived"] as const).map((s) => (
           <button
             key={s}
@@ -181,7 +186,7 @@ export default function WfAgentsListPage() {
         <Input placeholder="搜索名称或角色…" aria-label="搜索 Agent" className="h-8 w-[220px]"
           value={search} onChange={(e) => update({ search: e.target.value || undefined }, true)} />
         <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-8 w-44"><span className="shrink-0 text-(--text-tertiary)">运行时</span><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部运行时</SelectItem>
             <SelectItem value="module">领域 Module</SelectItem>
@@ -191,7 +196,7 @@ export default function WfAgentsListPage() {
           </SelectContent>
         </Select>
         <Select value={sort} onValueChange={(v) => setSort(v as "updated" | "name")}>
-          <SelectTrigger className="h-8 w-32"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-8 w-44"><span className="shrink-0 text-(--text-tertiary)">排序</span><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="updated">按更新时间</SelectItem>
             <SelectItem value="name">按名称</SelectItem>
@@ -203,11 +208,11 @@ export default function WfAgentsListPage() {
       {error ? <ErrorState title="Agent 加载失败" onRetry={load} />
         : loading ? <TableSkeleton rows={6} columns={4} />
           : filtered.length === 0 && statusFilter === "active" ? (
-            <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
+            <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,312px)]">
               <CreateCard />
             </div>
           ) : (
-            <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
+            <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,312px)]">
               {statusFilter === "active" ? <CreateCard /> : null}
               {filtered.map((r) => (
                 <AgentCard key={r.id} r={r} role={roleOf(r)}
@@ -220,6 +225,7 @@ export default function WfAgentsListPage() {
       <Pagination page={params.page ?? 1} pageSize={params.pageSize ?? 12} total={total}
         onPageChange={(p: number) => update({ page: p }, true)}
         onPageSizeChange={(ps: number) => update({ pageSize: ps, page: 1 }, true)} />
+      </div>
     </PageContainer>
   )
 }
