@@ -12,23 +12,26 @@ import { Textarea } from "@/components/ui/textarea"
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type NodeCfgLoose = Record<string, any>
 
+/** Theme-R：设计器色板全部由 index.css token 驱动（Light/Dark 同源）；
+ *  禁止再写死浅色 hex——状态色/透明度也一律从 semantic token 派生。 */
 export const C = {
-  canvas: "#EEF1F6",
-  dot: "#D9DEE7",
-  primary: "#3D6BFF",
-  orange: "#F97E2B",
-  tagBg: "#FFF4EA",
-  ink: "#1F2329",
-  ink2: "#5A6472",
-  ink3: "#B9C2CF",
-  chipBg: "#F1F3F7",
-  chipInk: "#7A8699",
-  cardBorder: "#EDF0F4",
-  danger: "#F56C6C",
+  canvas: "var(--wf-canvas)",
+  dot: "var(--wf-canvas-dot)",
+  primary: "var(--brand-primary)",
+  orange: "var(--status-warning)",
+  tagBg: "var(--status-warning-soft)",
+  ink: "var(--text-primary)",
+  ink2: "var(--text-secondary)",
+  ink3: "color-mix(in srgb, var(--text-secondary) 62%, transparent)",
+  chipBg: "var(--surface-muted)",
+  chipInk: "var(--text-secondary)",
+  cardBorder: "var(--border)",
+  danger: "var(--status-danger)",
 }
 
-/* Design Spec §8.5：黑白灰中性基底，禁止彩虹画布；icon 区分类型，颜色仅用于状态 */
-export const NEUTRAL = "#1F2329"
+/* Design Spec §8.5：中性基底，禁止彩虹画布；icon 区分类型，颜色仅用于状态。
+ * Theme-R：芯片底=前景色（浅色主题近黑/深色主题近白），其上 icon 一律用 text-background 反衬。 */
+export const NEUTRAL = "var(--text-primary)"
 export function TypeChip({ t }: { t: string }) {
   return (
     <span className="rounded px-1 text-[10px] leading-4" style={{ background: C.chipBg, color: C.chipInk }}>
@@ -114,22 +117,22 @@ export function VarCascader({ nodes, edges, selfId, defs, onPick }: {
     <div className="flex text-xs">
       <div className="w-28 border-r py-1" style={{ borderColor: C.cardBorder }}>
         {["system", ...(startNode ? [startNode.id] : []), ...ancNodes.map((n) => n.id)].map((id) => (
-          <button key={id} className={`flex w-full items-center justify-between px-2 py-1 hover:bg-neutral-50 ${gid === id ? "bg-neutral-100" : ""}`} onClick={() => setGroup(id)}>
-            {nameOf(id)} <ChevronRight className="size-3 text-neutral-400" />
+          <button key={id} className={`flex w-full items-center justify-between px-2 py-1 hover:bg-accent ${gid === id ? "bg-accent" : ""}`} onClick={() => setGroup(id)}>
+            {nameOf(id)} <ChevronRight className="size-3 text-muted-foreground" />
           </button>
         ))}
-        {!startNode && ancNodes.length === 0 && <div className="px-2 py-1 text-neutral-400">无可引用上游</div>}
+        {!startNode && ancNodes.length === 0 && <div className="px-2 py-1 text-muted-foreground">无可引用上游</div>}
       </div>
       <div className="w-40 py-1">
         {itemsFor(gid).map((it) => (
-          <button key={it.name} className="flex w-full items-center gap-1 px-2 py-1 hover:bg-neutral-50"
+          <button key={it.name} className="flex w-full items-center gap-1 px-2 py-1 hover:bg-accent"
             onClick={() => onPick(`{{${gid === "system" ? "system" : gid}.outputs.${it.name}}}`, it.type)}
             title={it.label}>
             {it.label ?? it.name} <TypeChip t={it.type === "array" ? "Arr" : it.type === "object" ? "Obj" : "Str"} />
           </button>
         ))}
-        {dynHint(gid) && <div className="px-2 py-1 text-neutral-400">输出由资源配置决定</div>}
-        {itemsFor(gid).length === 0 && !dynHint(gid) && <div className="px-2 py-1 text-neutral-400">无输出</div>}
+        {dynHint(gid) && <div className="px-2 py-1 text-muted-foreground">输出由资源配置决定</div>}
+        {itemsFor(gid).length === 0 && !dynHint(gid) && <div className="px-2 py-1 text-muted-foreground">无输出</div>}
       </div>
     </div>
   )
@@ -206,7 +209,7 @@ export function PromptArea({ value, onChange, nodes, edges, selfId, defs, placeh
         onChange={(e) => { onChange(e.target.value); if (e.target.value.endsWith("#")) setOpen(true) }}
       />
       {open && (
-        <div className="absolute left-0 top-full z-30 rounded-md border bg-white shadow-lg" style={{ borderColor: C.cardBorder }}>
+        <div className="absolute left-0 top-full z-30 rounded-md border bg-popover shadow-lg" style={{ borderColor: C.cardBorder }}>
           <VarCascader nodes={nodes} edges={edges} selfId={selfId} defs={defs}
             onPick={(v) => { onChange(value.replace(/#$/, "") + v); setOpen(false) }} />
         </div>
@@ -223,10 +226,10 @@ export function VarButton({ value, nodes, edges, selfId, defs, onPick }: {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button className="flex w-full items-center justify-between rounded-md border bg-white px-2 py-1.5 text-left text-xs"
+        <button className="flex w-full items-center justify-between rounded-md border bg-popover px-2 py-1.5 text-left text-xs"
           style={{ borderColor: value ? C.cardBorder : C.danger, color: value ? C.primary : C.ink3 }}>
           <span className="truncate">{value ? describeVar(value, nodes) : "选择变量"}</span>
-          <Settings className="size-3 text-neutral-400" />
+          <Settings className="size-3 text-muted-foreground" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start"><VarCascader nodes={nodes} edges={edges} selfId={selfId} defs={defs} onPick={onPick} /></PopoverContent>
@@ -251,15 +254,15 @@ export function ResourceSelect({ types, value, onPick, placeholder }: {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button className="flex w-full items-center gap-2 rounded-md border bg-white px-2 py-1.5 text-left text-xs" style={{ borderColor: C.cardBorder, color: C.ink }}>
+        <button className="flex w-full items-center gap-2 rounded-md border bg-popover px-2 py-1.5 text-left text-xs" style={{ borderColor: C.cardBorder, color: C.ink }}>
           <span className="flex-1 truncate">{items.find((i) => i.id === value)?.name ?? placeholder}</span>
-          <ChevronDown className="size-3.5 text-neutral-400" />
+          <ChevronDown className="size-3.5 text-muted-foreground" />
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-72 p-1" align="start">
         {items.length === 0 && <div className="px-2 py-1.5 text-xs" style={{ color: C.ink3 }}>暂无 Enabled 资源</div>}
         {items.map((m) => (
-          <button key={m.id} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-neutral-50" style={{ color: C.ink }} onClick={() => onPick(m)}>
+          <button key={m.id} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent" style={{ color: C.ink }} onClick={() => onPick(m)}>
             <span className="flex-1 truncate text-left">{m.name}</span>
             {value === m.id && <CheckCircle2 className="size-3.5" style={{ color: C.primary }} />}
           </button>

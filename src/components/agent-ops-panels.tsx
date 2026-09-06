@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { agentApi, runEventsList } from "@/services/wf-api"
 
-const INK = "#1F2329"; const INK2 = "#5A6472"; const INK3 = "#B9C2CF"; const CARD = "#EDF0F4"
+const INK = "var(--text-primary)"; const INK2 = "var(--text-secondary)"; const INK3 = "color-mix(in srgb, var(--text-secondary) 62%, transparent)"; const CARD = "var(--border)"
 
 /* ---------- 运行观测 ---------- */
 export function AgentRunsPanel({ agentId }: { agentId: string }) {
@@ -38,14 +38,14 @@ export function AgentRunsPanel({ agentId }: { agentId: string }) {
             /* E-3.4：首 token 耗时（首个流式增量 − 运行开始；无流式数据为 —） */
             ["首Token·平均", metrics.firstToken?.avgMs != null ? `${metrics.firstToken.avgMs}ms` : "—"],
             ["首Token·P50", metrics.firstToken?.p50Ms != null ? `${metrics.firstToken.p50Ms}ms` : "—"]].map(([l, v]) => (
-            <div key={String(l)} className="rounded-lg border bg-white p-3" style={{ borderColor: CARD }}>
+            <div key={String(l)} className="rounded-lg border bg-surface p-3" style={{ borderColor: CARD }}>
               <div className="text-[11px]" style={{ color: INK3 }}>{l}</div>
               <div className="pt-1 text-lg font-semibold" style={{ color: INK }}>{String(v)}</div>
             </div>
           ))}
         </div>
       )}
-      <div className="rounded-lg border bg-white" style={{ borderColor: CARD }}>
+      <div className="rounded-lg border bg-surface" style={{ borderColor: CARD }}>
         <div className="flex items-center justify-between border-b px-4 py-2 text-[13px] font-medium" style={{ borderColor: CARD, color: INK }}>
           <span>运行记录</span>
           <Button variant="outline" size="sm" className="h-7 text-xs" onClick={load}>刷新</Button>
@@ -53,11 +53,11 @@ export function AgentRunsPanel({ agentId }: { agentId: string }) {
         {runs.length === 0 && <div className="p-6 text-center text-xs" style={{ color: INK3 }}>暂无运行记录</div>}
         {runs.slice(0, 30).map((r) => (
           <button key={r.runId}
-            className={`flex w-full items-center gap-2 border-b px-4 py-2 text-left text-xs hover:bg-neutral-50 ${selected === r.runId ? "bg-neutral-50" : ""}`}
+            className={`flex w-full items-center gap-2 border-b px-4 py-2 text-left text-xs hover:bg-accent ${selected === r.runId ? "bg-accent" : ""}`}
             style={{ borderColor: CARD }} onClick={() => setSelected(r.runId)}>
-            <span className={`size-2 rounded-full ${r.status === "succeeded" ? "bg-emerald-400" : r.status === "failed" ? "bg-red-400" : "bg-amber-400"}`} />
+            <span className={`size-2 rounded-full ${r.status === "succeeded" ? "bg-status-success" : r.status === "failed" ? "bg-status-danger" : "bg-status-warning"}`} />
             <span className="font-mono" style={{ color: INK3 }}>{r.runId.slice(0, 8)}</span>
-            <span className="rounded bg-neutral-100 px-1" style={{ color: INK2 }}>{r.trigger}</span>
+            <span className="rounded bg-muted px-1" style={{ color: INK2 }}>{r.trigger}</span>
             <span className="flex-1 truncate" style={{ color: INK2 }}>{r.error?.message ?? ""}</span>
             <span style={{ color: INK3 }}>{r.durationMs != null ? `${r.durationMs}ms` : ""}</span>
             <span style={{ color: INK3 }}>{r.startedAt ? r.startedAt.replace("T", " ").slice(0, 16) : ""}</span>
@@ -65,7 +65,7 @@ export function AgentRunsPanel({ agentId }: { agentId: string }) {
         ))}
       </div>
       {selected && (
-        <div className="rounded-lg border bg-white p-4" style={{ borderColor: CARD }}>
+        <div className="rounded-lg border bg-surface p-4" style={{ borderColor: CARD }}>
           <div className="flex items-center justify-between pb-2">
             <span className="text-[13px] font-medium" style={{ color: INK }}>事件时间线（span 按 run 聚合）</span>
             {/* R8-UI：跳转 agent 视角 Run Detail（三卡/阶段/CallRecord/质检卡） */}
@@ -75,8 +75,8 @@ export function AgentRunsPanel({ agentId }: { agentId: string }) {
           <div className="space-y-1">
             {events.map((e, i) => (
               <div key={i} className="flex items-start gap-2 text-[11px]">
-                <span className="rounded bg-neutral-100 px-1 font-mono" style={{ color: INK2 }}>{e.type}</span>
-                <span className={`mt-0.5 rounded px-1 text-[10px] ${e.payload && (e.type === "llm_delta" || e.type === "reply_sent") ? "bg-blue-50 text-blue-600" : "bg-neutral-100 text-neutral-500"}`}>
+                <span className="rounded bg-muted px-1 font-mono" style={{ color: INK2 }}>{e.type}</span>
+                <span className={`mt-0.5 rounded px-1 text-[10px] ${e.payload && (e.type === "llm_delta" || e.type === "reply_sent") ? "bg-status-running-soft text-status-running" : "bg-muted text-muted-foreground"}`}>
                   {(e.type === "llm_delta" || e.type === "reply_sent") ? "CONTENT" : "CONTROL"}
                 </span>
                 <span className="flex-1 break-all" style={{ color: INK2 }}>
@@ -99,14 +99,14 @@ export function AgentEvalPanel({ agentId }: { agentId: string }) {
   }, [agentId])
   return (
     <div className="h-full space-y-4 overflow-y-auto p-6">
-      <div className="rounded-lg border bg-white p-4" style={{ borderColor: CARD }}>
+      <div className="rounded-lg border bg-surface p-4" style={{ borderColor: CARD }}>
         <div className="pb-2 text-[13px] font-medium" style={{ color: INK }}>评测集（样本 = 固定输入 + 可选期望答案）</div>
         {samples.length === 0 && <div className="py-4 text-center text-xs" style={{ color: INK3 }}>暂无样本记录</div>}
         {samples.map((s) => (
           <div key={s.id} className="flex items-center gap-2 border-b py-1.5 text-xs" style={{ borderColor: CARD }}>
             <span className="flex-1 truncate" style={{ color: INK2 }}>{s.name}</span>
             <span className="truncate font-mono" style={{ color: INK3 }}>{JSON.stringify(s.input).slice(0, 40)}</span>
-            {s.expected?.text && <span className="truncate rounded bg-emerald-50 px-1 text-[10px] text-emerald-600">期望：{s.expected.text.slice(0, 16)}</span>}
+            {s.expected?.text && <span className="truncate rounded bg-status-success-soft px-1 text-[10px] text-status-success">期望：{s.expected.text.slice(0, 16)}</span>}
           </div>
         ))}
         <div className="rounded bg-amber-50 px-3 py-2 text-xs text-amber-600">
@@ -125,14 +125,14 @@ export function AgentEvolutionPanel({ agentId }: { agentId: string }) {
   }, [agentId])
   return (
     <div className="h-full space-y-4 overflow-y-auto p-6">
-      <div className="rounded-lg border bg-white p-4" style={{ borderColor: CARD }}>
+      <div className="rounded-lg border bg-surface p-4" style={{ borderColor: CARD }}>
         <div className="pb-2 text-[13px] font-medium" style={{ color: INK }}>补丁历史</div>
         {patches.length === 0 && <p className="text-xs" style={{ color: INK3 }}>暂无补丁记录</p>}
         {patches.map((p) => (
           <div key={p.id} className="flex items-center gap-2 border-b py-1.5 text-xs" style={{ borderColor: CARD }}>
-            <span className="rounded bg-neutral-100 px-1 text-[10px]" style={{ color: INK2 }}>{p.attribution}</span>
+            <span className="rounded bg-muted px-1 text-[10px]" style={{ color: INK2 }}>{p.attribution}</span>
             <span className="flex-1 truncate" style={{ color: INK2 }}>{p.reason}</span>
-            <span className={`rounded px-1 py-0.5 text-[10px] ${p.status === "applied" ? "bg-emerald-50 text-emerald-600" : p.status === "rejected" ? "bg-neutral-100 text-neutral-500" : "bg-blue-50 text-blue-600"}`}>
+            <span className={`rounded px-1 py-0.5 text-[10px] ${p.status === "applied" ? "bg-status-success-soft text-status-success" : p.status === "rejected" ? "bg-muted text-muted-foreground" : "bg-status-running-soft text-status-running"}`}>
               {p.status === "applied" ? "已应用" : p.status === "rejected" ? "已拒绝" : "待审批"}
             </span>
             <span style={{ color: INK3 }}>{p.createdAt.slice(0, 16).replace("T", " ")}</span>
@@ -157,11 +157,11 @@ export function AgentVersionsPanel({ agentId }: { agentId: string }) {
       {versions.map((v) => {
         const rels = releases.filter((r) => r.status === "active" && r.versionNo === v.versionNo)
         return (
-          <div key={v.versionId} className="rounded-lg border bg-white p-4" style={{ borderColor: CARD }}>
+          <div key={v.versionId} className="rounded-lg border bg-surface p-4" style={{ borderColor: CARD }}>
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold" style={{ color: INK }}>V{v.versionNo}</span>
               {rels.map((r) => (
-                <span key={r.environment} className={`rounded px-1.5 py-0.5 text-[10px] ${r.environment === "prod" ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"}`}>
+                <span key={r.environment} className={`rounded px-1.5 py-0.5 text-[10px] ${r.environment === "prod" ? "bg-status-running-soft text-status-running" : "bg-status-success-soft text-status-success"}`}>
                   {r.environment === "prod" ? "线上生效" : "沙箱生效"}
                 </span>
               ))}

@@ -57,8 +57,8 @@ function AppearanceSection() {
   const { theme, setTheme } = useTheme()
   const options = [
     { value: "system", label: "跟随系统", icon: Monitor, desc: "自动匹配操作系统的浅色 / 深色外观" },
-    { value: "light", label: "浅色", icon: Sun, desc: "温暖中性色浅色主题" },
-    { value: "dark", label: "深色", icon: Moon, desc: "低亮度深色主题" },
+    { value: "light", label: "浅色", icon: Sun, desc: "极白中性浅色主题（低饱和薄荷绿品牌色）" },
+    { value: "dark", label: "深色", icon: Moon, desc: "极黑中性深色主题（低饱和薄荷绿品牌色）" },
   ]
   return (
     <div className="space-y-4">

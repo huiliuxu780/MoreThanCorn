@@ -4,11 +4,13 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * MTC-001 主题 Token：温暖中性色 + 克莱因蓝方向。
+ * 主题 Token（Theme-R 终版）：极白中性浅色 / 极黑中性深色 + 低饱和薄荷绿品牌色。
  * 规则：
- * - 品牌蓝（--brand-*）只用于选中、主操作、Focus 与品牌识别；
- * - Running 等运行状态一律走 --status-*，品牌蓝不承担状态语义；
- * - 页面禁止散落硬编码颜色——新增颜色先落到这里的 token。
+ * - 品牌绿（--brand-*）只用于选中、主操作、Focus 与品牌识别；品牌绿不承担状态语义，
+ *   且与成功绿（--status-success）是两个独立 token；
+ * - Running 等运行状态一律走 --status-*；
+ * - 深色模式禁止残留浅色值：所有 token 在 .dark 下必须有对应深色定义；
+ * - 页面禁止散落硬编码颜色——新增颜色先落到这里的 token（含 Workflow 画布 --wf-*）。
  */
 :root {
   --radius: 0.375rem;
@@ -31,6 +33,20 @@
   --status-success: #42B883;
   --status-warning: #E6A53A;
   --status-danger: #E06363;
+
+  /* ---- Theme-R：状态软底（badge/chip 背景，双主题同源派生） ---- */
+  --status-running-soft: #EDF4F9;
+  --status-success-soft: #ECF7F0;
+  --status-warning-soft: #FAF3E5;
+  --status-danger-soft: #FBEFEF;
+
+  /* ---- Theme-R：Workflow 画布专用 token（designer 全表面 Light/Dark 驱动） ---- */
+  --wf-canvas: #F4F5F2;
+  --wf-canvas-dot: #D9DCD5;
+  --wf-edge: #A9B0A6;
+  /* 运行结果控制台：两种主题下均为深色终端面板（组件级恒定主题，非 Light-only 残留） */
+  --wf-console: #3B4557;
+  --wf-console-inset: #2A3242;
 
   /* ---- shadcn 语义映射 ---- */
   --foreground: var(--text-primary);
@@ -86,6 +102,17 @@
   --status-success: #62CD97;
   --status-warning: #F0BA58;
   --status-danger: #EC7777;
+
+  --status-running-soft: #14262F;
+  --status-success-soft: #12291C;
+  --status-warning-soft: #2E2515;
+  --status-danger-soft: #2E1A1A;
+
+  --wf-canvas: #0B0C0B;
+  --wf-canvas-dot: #262A27;
+  --wf-edge: #4C544E;
+  --wf-console: #1B201D;
+  --wf-console-inset: #121614;
 
   --foreground: var(--text-primary);
   --card: var(--surface);
@@ -174,6 +201,15 @@
   --color-status-success: var(--status-success);
   --color-status-warning: var(--status-warning);
   --color-status-danger: var(--status-danger);
+  --color-status-running-soft: var(--status-running-soft);
+  --color-status-success-soft: var(--status-success-soft);
+  --color-status-warning-soft: var(--status-warning-soft);
+  --color-status-danger-soft: var(--status-danger-soft);
+  --color-wf-canvas: var(--wf-canvas);
+  --color-wf-canvas-dot: var(--wf-canvas-dot);
+  --color-wf-edge: var(--wf-edge);
+  --color-wf-console: var(--wf-console);
+  --color-wf-console-inset: var(--wf-console-inset);
 }
 
 @layer base {
