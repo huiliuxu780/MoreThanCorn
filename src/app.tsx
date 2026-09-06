@@ -20,6 +20,7 @@ const OperationsTodayPage = lazy(() => import("@/pages/operations-today"))
 const WfAgentsPage = lazy(() => import("@/pages/wf-agents-list"))
 const AgentCreatePage = lazy(() => import("@/pages/agent-create"))
 const WfAgentEditorPage = lazy(() => import("@/pages/wf-agent-editor"))
+const AgentChatPage = lazy(() => import("@/pages/agent-chat"))
 const WfWorkflowsPage = lazy(() => import("@/pages/wf-workflows-list"))
 const WfFormsPage = lazy(() => import("@/pages/wf-forms"))
 const WfFormEditorPage = lazy(() => import("@/pages/wf-forms").then((m) => ({ default: m.WfFormEditorPage })))
@@ -112,6 +113,8 @@ export function App() {
           <Route path="/agents/new" element={<AgentCreatePage />} />
           <Route path="/agents/:agentId/runs/:runId" element={<RunDetailPage />} />
           <Route path="/agents/:agentId" element={<WfAgentEditorPage />} />
+          <Route path="/agents/:agentId/chat" element={<AgentChatPage />} />
+          <Route path="/agents/:agentId/:section" element={<WfAgentEditorPage />} />
           {/* 能力与资源 Hub（完整版属 MTC-011/012） */}
           <Route path="/resources" element={<ResourcesHubPage />} />
           {/* Workflow */}

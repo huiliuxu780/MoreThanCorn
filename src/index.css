@@ -26,6 +26,10 @@
   --border: #E7E7E3;
   --text-primary: #111211;
   --text-secondary: #686D69;
+  /* 09-07 台账 §4：三级文字色实测；segment 原站浅色不可见=缺陷，light 系用中性 token（声明偏差） */
+  --text-tertiary: #838280;
+  --segment-bg: var(--surface-muted);
+  --segment-active: var(--surface-raised);
 
   --brand-primary: #2F7D4B;
   --brand-hover: #25663D;
@@ -96,6 +100,10 @@
   --border: #292D2A;
   --text-primary: #FAFAF8;
   --text-secondary: #A7ADA8;
+  /* 09-07 台账 §1/§4 实测：dark segment 固定 rgba */
+  --text-tertiary: #7C7D7F;
+  --segment-bg: rgba(255, 255, 255, 0.08);
+  --segment-active: rgba(255, 255, 255, 0.12);
 
   --brand-primary: #76D596;
   --brand-hover: #96E3AF;
@@ -163,6 +171,9 @@
   --border: #E5E1D9;
   --text-primary: #202116;
   --text-secondary: #4A463C;
+  --text-tertiary: #6B665C;
+  --segment-bg: var(--surface-muted);
+  --segment-active: var(--surface-raised);
 
   --brand-primary: #2F7D4B;
   --brand-hover: #25663D;
@@ -229,6 +240,9 @@
   --border: #3D3930;
   --text-primary: #FAF9F6;
   --text-secondary: #C9C4B8;
+  --text-tertiary: #A8A296;
+  --segment-bg: rgba(255, 255, 255, 0.08);
+  --segment-active: rgba(255, 255, 255, 0.12);
 
   --brand-primary: #76D596;
   --brand-hover: #96E3AF;

@@ -8,7 +8,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { WORKFLOW_ICONS, WfIcon } from "@/components/wf/wf-icons"
-import { avatarFor, AVATARS } from "@/pages/wf-agents-list"
+import { AVATARS, avatarFor } from "@/lib/agent-avatar"
 import { C } from "@/components/wf/controls"
 import { wfApi } from "@/services/wf-api"
 import { toast } from "../toast"

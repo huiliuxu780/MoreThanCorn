@@ -53,7 +53,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
-export const AI_COLL = { model: "models", tool: "tools", mcp: "mcp-servers", knowledge: "knowledge-sources" } as const
+export const AI_COLL = { model: "models", tool: "tools", mcp: "mcp-servers", knowledge: "knowledge-sources", skill: "skills" } as const
 export const DATA_COLL = { datasource: "datasources", asset: "assets" } as const
 export type AiType = keyof typeof AI_COLL
 export type DataType = keyof typeof DATA_COLL

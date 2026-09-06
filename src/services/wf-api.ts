@@ -447,7 +447,7 @@ export const authApi = {
 export interface AgentInfo {
   id: string; name: string; type: string; typeLabel: string; status: string;
   workflowId: string | null; config: Record<string, unknown>; configRevision: number;
-  description: string; avatar?: string | null;
+  description: string; avatar?: string | null; archived?: boolean;
   moduleKey?: string | null; moduleVersion?: string | null
 }
 
@@ -476,7 +476,7 @@ export const agentApi = {
   get: (id: string) => req<AgentInfo>(`/api/agents/${id}`),
   // R4：Module Agent 创建与目录
   modules: () => req<{ items: { key: string; version: string; displayName: string; description: string; riskClass: string; providers: string[]; logicalTools: string[]; criteria: string[]; resultProjection?: string; producesQualityResult?: boolean; inputSchema?: { required?: string[]; properties?: Record<string, { type?: string }> }; outputSchema?: Record<string, unknown> }[] }>(`/api/agents/modules`),
-  create: (body: { name: string; moduleKey: string; moduleVersion?: string; description?: string; modelRef?: Record<string, unknown> }) =>
+  create: (body: { name: string; moduleKey: string; moduleVersion?: string; description?: string; avatar?: string; modelRef?: Record<string, unknown> }) =>
     req<{ id: string; name: string; type: string; moduleKey: string; moduleVersion: string; configRevision: number }>(`/api/agents`, {
       method: "POST", body: JSON.stringify(body) }),
   // R4：Module Agent 版本与 Release（Provider 绑定）
@@ -542,6 +542,52 @@ export const agentApi = {
   /* ---------- SDD D-3：进化（只读历史） ---------- */
   evolutionList: (id: string) =>
     req<{ id: string; attribution: string; reason: string; status: string; createdAt: string }[]>(`/api/agents/${id}/evolution`),
+  /* ---------- 09-07 Agent 能力重构：run-stats / Skill / 记忆 / 对话一等实体 ---------- */
+  runStats: (id: string) =>
+    req<{ sinceDays: number; running: number; done: number; pending: number;
+          byStatus: Record<string, number>; byTrigger: Record<string, number>;
+          byDay: { date: string; count: number }[] }>(`/api/agents/${id}/run-stats`),
+  skills: (id: string) =>
+    req<{ items: { id: string; name: string; description: string; status: string; installedAt: string;
+                   metadata: { category: string; source: string; chars: number } }[] }>(`/api/agents/${id}/skills`),
+  installSkill: (id: string, skillId: string) =>
+    req<{ id: string }>(`/api/agents/${id}/skills`, { method: "POST", body: JSON.stringify({ skillId }) }),
+  uninstallSkill: (id: string, skillId: string) =>
+    req<{ id: string }>(`/api/agents/${id}/skills/${skillId}`, { method: "DELETE" }),
+  memory: (id: string) =>
+    req<{ content: string; version: number; updatedAt: string; updatedBy: string }>(`/api/agents/${id}/memory`),
+  saveMemory: (id: string, content: string, note = "") =>
+    req<{ version: number; updatedAt: string }>(`/api/agents/${id}/memory`, {
+      method: "PUT", body: JSON.stringify({ content, note }) }),
+  memoryRevisions: (id: string) =>
+    req<{ items: { id: string; version: number; content: string; note: string; createdBy: string; createdAt: string }[] }>(
+      `/api/agents/${id}/memory/revisions`),
+  memoryTimeline: (id: string) =>
+    req<{ items: { type: string; note: string; at: string; name?: string; version?: number }[] }>(
+      `/api/agents/${id}/memory/timeline`),
+  chatSessions: (id: string) =>
+    req<{ items: { id: string; title: string; createdAt: string; updatedAt: string }[] }>(`/api/agents/${id}/chat/sessions`),
+  createChatSession: (id: string, title = "") =>
+    req<{ id: string; title: string }>(`/api/agents/${id}/chat/sessions`, {
+      method: "POST", body: JSON.stringify({ title }) }),
+  chatMessages: (id: string, sid: string) =>
+    req<{ items: { id: string; role: "user" | "assistant"; content: string;
+                   attachments: { id: string; name: string; size: number; mime: string }[];
+                   modelId: string; runId: string | null; status: string; createdAt: string }[] }>(
+      `/api/agents/${id}/chat/sessions/${sid}/messages`),
+  chatTurn: (id: string, sid: string, body: { text: string; modelId?: string; attachments?: { id: string; name: string; size: number; mime: string }[] }) =>
+    req<{ sessionId: string; userMessageId: string; assistantMessageId: string; runId: string }>(
+      `/api/agents/${id}/chat/sessions/${sid}/turns`, { method: "POST", body: JSON.stringify(body) }),
+  chatUpload: async (id: string, file: File) => {
+    const form = new FormData()
+    form.append("file", file)
+    const tok = wfApiToken()
+    const resp = await fetch(`${WF_BASE}/api/agents/${id}/chat/uploads`, {
+      method: "POST", headers: { ...(tok ? { Authorization: `Bearer ${tok}` } : {}) }, body: form,
+    })
+    if (!resp.ok) throw new Error(`上传失败（${resp.status}）`)
+    return resp.json() as Promise<{ id: string; name: string; size: number; mime: string }>
+  },
 }
 
 /* ---------- R8-UI：Runtime Providers 管理（SDD 10 §15.1 / 11 §7-②） ----------

@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { PageContainer, PageHeader } from "@/components/app/page"
 import { cn } from "@/lib/utils"
 import { agentApi, wfApi } from "@/services/wf-api"
-import { AVATARS, avatarFor } from "@/pages/wf-agents-list"
+import { AVATARS, avatarFor } from "@/lib/agent-avatar"
 
 interface ModuleMeta {
   key: string; version: string; displayName: string; description: string;
@@ -49,6 +49,7 @@ export default function AgentCreatePage() {
         moduleKey: picked || "blank",
         moduleVersion: mod?.version,
         description: description.trim() || undefined,
+        avatar: avatar || undefined,
         modelRef: model ? { modelId: model, provider: "openai-compatible" } : undefined,
       })
       toast.success(`已创建 Agent「${a.name}」`)
@@ -101,20 +102,22 @@ export default function AgentCreatePage() {
         </div>
         <div className="space-y-2">
           <Label>头像</Label>
-          <div className="flex flex-wrap gap-2">
-            {AVATARS.slice(0, 10).map((a) => (
+          <div className="grid w-fit grid-cols-6 gap-2">
+            {AVATARS.map((a) => (
               <button
                 key={a}
                 type="button"
                 aria-label={`选择头像 ${a}`}
                 onClick={() => setAvatar(a)}
-                className={cn("rounded-md border p-0.5", avatar === a ? "border-brand" : "border-transparent")}
+                className={cn("rounded-full border-2 p-0.5", avatar === a ? "border-brand" : "border-transparent")}
               >
-                <img src={a} alt="" className="size-8 rounded-md object-cover" />
+                <img src={a} alt="" className="size-10 rounded-full object-cover" />
               </button>
             ))}
           </div>
-          <div className="text-xs text-muted-foreground">预览：{avatarFor("preview", avatar || null)}</div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            预览：<img src={avatarFor("preview", avatar || null)} alt="" className="size-8 rounded-full object-cover" />
+          </div>
         </div>
         <div className="space-y-2">
           <Label htmlFor="agent-desc">描述</Label>

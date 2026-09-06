@@ -17,7 +17,7 @@ import { Breadcrumbs, type BreadcrumbEntry } from "@/components/app/page"
 /** 工作区级路由自带全高 Header，不使用全局面包屑。 */
 const WORKSPACE_PATTERNS = [
   /^\/quality\/results\/[^/]+$/,
-  /^\/agents\/[^/]+$/,
+  /^\/agents\/[^/]+(\/.*)?$/,  // 09-07：Agent 工作区子路由/对话工作区均全高
 ]
 
 function isWorkspaceRoute(pathname: string): boolean {
