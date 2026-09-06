@@ -84,14 +84,19 @@ await shot("agents-list.png")
 await go("/agents/new")
 await shot("agents-new.png")
 if (agentId) {
+  // 09-07 重构：三 tab 壳退役 → 二级侧栏九子页；断言侧栏项与子页可达
   await go(`/agents/${agentId}`)
-  await shot("agent-detail-build.png")
-  const observe = await page.evaluateHandle(() => [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "观测"))
-  if (observe.asElement()) {
-    await observe.asElement().click()
+  await shot("agent-detail-home.png")
+  const board = await page.evaluateHandle(() => [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "任务看板"))
+  if (board.asElement()) {
+    await board.asElement().click()
     await new Promise((r) => setTimeout(r, 1200))
-    await shot("agent-detail-observe.png")
-  } else check("Agent 观测 Tab", false)
+    await shot("agent-detail-board.png")
+  } else check("Agent 任务看板侧栏项", false)
+  const gov = await page.evaluateHandle(() => [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "发布治理"))
+  check("Agent 发布治理侧栏项", Boolean(gov.asElement()))
+  await go(`/agents/${agentId}/chat`)
+  await shot("agent-chat.png")
 } else check("Agent 夹具存在", false)
 
 /* 资源 */

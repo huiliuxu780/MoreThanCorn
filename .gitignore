@@ -32,3 +32,6 @@ runtimes/**/.workspaces/
 # 本地接口文档与一次性验收截图脚本。
 .tmp-docs/
 scripts/view-final.mjs
+
+# 09-07：对话附件落盘目录（运行时数据）
+server/var/

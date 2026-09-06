@@ -30,7 +30,8 @@ ok("列表：无「使用中/已归档」外的新建入口", !(await page.evalu
 await page.screenshot({ path: "/tmp/ra4-agents-list.png" });
 
 // 2. 取一个旧 Agent 详情（autonomous 或 dialogue）
-const agents = await (await fetch("http://127.0.0.1:8100/api/agents?pageSize=50")).json();
+// 09-07：封存验证须取封存列表（默认列表首条为活跃 module Agent）
+const agents = await (await fetch("http://127.0.0.1:8100/api/agents?archived=true&pageSize=50")).json();
 const first = agents.items?.[0];
 ok("前置：库中存在历史 Agent", !!first, first?.name ?? "none");
 if (first) {
@@ -42,7 +43,12 @@ if (first) {
   ok("详情：无「保存」按钮", !(await page.evaluate(() => [...document.querySelectorAll("button")].some((b) => b.innerText.trim() === "保存"))));
   ok("详情：无「试运行」按钮", !(await page.evaluate(() => [...document.querySelectorAll("button")].some((b) => b.innerText.trim() === "试运行"))));
   ok("详情：无「预览调试」面板", !t.includes("预览调试"));
-  ok("详情：历史 Tab 保留（运行观测/版本指标）", t.includes("运行观测") && t.includes("版本指标"));
+  // 09-07 重构：三 tab 壳退役 → 任务看板子页保留运行历史（运行记录列表）
+  await page.goto(`${BASE}/config/agents/${first.id}/board`, { waitUntil: "networkidle2", timeout: 30000 });
+  await new Promise((r) => setTimeout(r, 2000));
+  t = await page.evaluate(text);
+  ok("详情：任务看板子页保留运行历史", t.includes("运行记录") || t.includes("暂无运行记录"));
+  ok("详情：任务看板无写入口", !(await page.evaluate(() => [...document.querySelectorAll("button")].some((b) => b.innerText.trim() === "保存" || b.innerText.trim() === "发布"))));
   await page.screenshot({ path: "/tmp/ra4-agent-detail.png" });
   console.log("detail-agent:", first.type, first.id);
 }
