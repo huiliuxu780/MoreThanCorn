@@ -788,7 +788,13 @@ def list_tasks(page: int = 1, pageSize: int = 50, db: Session = Depends(get_db),
         .order_by(AnalysisTask.created_at.desc())
     total = q.count()
     rows = q.offset((page - 1) * pageSize).limit(pageSize).all()
-    from ..models import Agent, TaskRun
+    from ..models import Agent, Schedule, TaskRun
+    # MTC-004：调度摘要单查询（页内 task_id 集合），列表不再 N+1
+    sched_rows = db.execute(select(Schedule).where(
+        Schedule.task_id.in_([t.id for t in rows] or ["-"]))).scalars().all()
+    sched_by_task: dict = {}
+    for srow in sched_rows:
+        sched_by_task.setdefault(srow.task_id, srow)
     items = []
     for t in rows:
         v = db.get(AnalysisTaskVersion, t.current_version_id) if t.current_version_id else None
@@ -816,7 +822,17 @@ def list_tasks(page: int = 1, pageSize: int = 50, db: Session = Depends(get_db),
                       "status": t.status,
                       "currentVersionNo": v.version_no if v else None,
                       "lastTaskRun": {"id": last.id, "status": last.status,
-                                      "createdAt": last.created_at.isoformat()} if last else None})
+                                      "createdAt": last.created_at.isoformat()} if last else None,
+                      # MTC-004：调度摘要与最近活动（真实值；缺失为 null）
+                      "scheduleSummary": ({
+                          "cron": sched_by_task[t.id].cron_expr,
+                          "timezone": sched_by_task[t.id].timezone,
+                          "enabled": sched_by_task[t.id].enabled,
+                          "nextRunAt": sched_by_task[t.id].next_run_at.isoformat()
+                          if sched_by_task[t.id].next_run_at else None,
+                      } if t.id in sched_by_task else None),
+                      "lastActivityAt": (last.created_at if last else t.updated_at).isoformat()
+                      if (last or t.updated_at) else None})
     return {"items": items, "total": total, "page": page, "pageSize": pageSize}
 
 
@@ -1228,6 +1244,8 @@ def get_task(tid: str, db: Session = Depends(get_db),
     assert_task_readable(db, user, t)
     v = db.get(AnalysisTaskVersion, t.current_version_id) if t.current_version_id else None
     return {"id": t.id, "name": t.name, "description": t.description,
+            "createdAt": t.created_at.isoformat() if t.created_at else None,
+            "updatedAt": t.updated_at.isoformat() if t.updated_at else None,
             "workflowId": t.workflow_id,
             "workflowVersionPolicy": (v.workflow_version_policy if v else t.version_policy),
             "dataAssetId": t.data_asset_id, "dataDefinitionId": t.data_definition_id,

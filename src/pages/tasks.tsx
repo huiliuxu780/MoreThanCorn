@@ -9,13 +9,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { FilterBar, SearchField } from "@/components/app/filters"
 import { EmptyState, ErrorState, FilteredEmptyState, TableSkeleton } from "@/components/app/list-state"
 import { PageContainer, PageHeader } from "@/components/app/page"
 import { Pagination } from "@/components/app/pagination"
 import { StatusBadge } from "@/components/app/status-badge"
-import { TableFrame } from "@/components/app/table-frame"
+import { formatCompactDateTime } from "@/lib/time"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { useListQuery } from "@/hooks/use-list-query"
 import { parseListFilters, serializeListFilters } from "@/lib/list-filters"
@@ -125,7 +124,7 @@ export default function TasksPage() {
       {error ? (
         <ErrorState title="自主任务加载失败" onRetry={retry} />
       ) : loading ? (
-        <TableFrame><TableSkeleton rows={6} columns={6} /></TableFrame>
+        <div className="rounded-lg border bg-surface p-4"><TableSkeleton rows={6} columns={6} /></div>
       ) : !data || filteredItems.length === 0 ? (
         filters.status || filters.workflow || filters.asset || params.search ? (
           <FilteredEmptyState onClear={() => { setSearchInput(""); update({ filters: "", search: "" }, true) }} />
@@ -138,49 +137,46 @@ export default function TasksPage() {
         )
       ) : (
         <>
-          <TableFrame>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>任务名称</TableHead>
-                  <TableHead>执行目标</TableHead>
-                  <TableHead>配置版本</TableHead>
-                  <TableHead>Data Asset</TableHead>
-                  <TableHead>状态</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredItems.map((task) => {
-                  const assetName = dataAssets.find((a) => a.id === task.dataAssetId)?.name ?? task.dataAssetId.slice(0, 8)
-                  const policy = task.taskVersion?.workflowVersionPolicy ?? task.workflowVersionPolicy
-                  const et = task
-                  return (
-                    <TableRow key={task.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/autonomous-tasks/${task.id}`)}>
-                      <TableCell>
-                        <div className="text-sm font-medium">{task.name}</div>
-                        {task.description ? <div className="line-clamp-1 max-w-md text-xs text-muted-foreground">{task.description}</div> : null}
-                      </TableCell>
-                      <TableCell>
-                        {et.executionTargetType === "agent" ? (
-                          <><div className="text-sm">{et.agentName ?? "—"}</div>
-                            <div className="text-xs text-muted-foreground">Module：{et.moduleKey ?? "—"}</div></>
-                        ) : (
-                          <><div className="text-sm">{wfName(task.workflowId ?? "")}</div>
-                            <div className="text-xs text-muted-foreground">{policy === "pinned" ? "Fixed（钉住版本）" : "Latest Published"}</div></>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-sm tabular-nums">
-                        {/* MTC-002A-R：legacy 列表投影给 currentVersionNo（详情才有 taskVersion） */}
-                        {task.currentVersionNo != null ? `V${task.currentVersionNo}` : "—"}
-                      </TableCell>
-                      <TableCell className="text-sm">{assetName}</TableCell>
-                      <TableCell><StatusBadge status={task.status} /></TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </TableFrame>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {filteredItems.map((task) => {
+              const assetName = dataAssets.find((a) => a.id === task.dataAssetId)?.name ?? task.dataAssetId.slice(0, 8)
+              const policy = task.taskVersion?.workflowVersionPolicy ?? task.workflowVersionPolicy
+              return (
+                <button
+                  key={task.id}
+                  type="button"
+                  onClick={() => navigate(`/autonomous-tasks/${task.id}`)}
+                  className="space-y-2 rounded-lg border bg-surface p-4 text-left shadow-sm transition-colors hover:border-brand/50 hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="truncate text-sm font-medium">{task.name}</span>
+                    <StatusBadge status={task.status} />
+                  </div>
+                  {task.description ? (
+                    <div className="line-clamp-2 text-xs text-muted-foreground">{task.description}</div>
+                  ) : null}
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    <div>
+                      执行目标：{task.executionTargetType === "agent"
+                        ? `${task.agentName ?? "—"}（Module：${task.moduleKey ?? "—"}）`
+                        : `${wfName(task.workflowId ?? "")}（${policy === "pinned" ? "Fixed" : "Latest Published"}）`}
+                    </div>
+                    <div>输入：{assetName}</div>
+                    <div>
+                      调度：{task.scheduleSummary
+                        ? `${task.scheduleSummary.cron}（${task.scheduleSummary.enabled ? "启用" : "停用"}）· 下次 ${task.scheduleSummary.nextRunAt ? formatCompactDateTime(task.scheduleSummary.nextRunAt) : "—"}`
+                        : "仅手动 / API 触发"}
+                    </div>
+                    <div>
+                      最近运行：{task.lastTaskRun ? task.lastTaskRun.status : "暂无运行记录"}
+                      {" · 配置版本 V"}{task.currentVersionNo ?? "—"}
+                    </div>
+                    <div>最近活动：{task.lastActivityAt ? formatCompactDateTime(task.lastActivityAt) : "—"}</div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
           <Pagination
             page={data.page}
             pageSize={data.pageSize}

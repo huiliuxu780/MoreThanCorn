@@ -166,6 +166,11 @@ export interface LegacyAnalysisTaskDTO {
   lastTaskRun?: { id: string; status: string; createdAt: string } | null
   schedule?: Record<string, unknown> | string
   taskVersion?: TaskVersionDTO | null
+  /** MTC-004：调度摘要与最近活动（后端 list_tasks 附加；缺失为 null） */
+  scheduleSummary?: { cron: string; timezone: string; enabled: boolean; nextRunAt: string | null } | null
+  lastActivityAt?: string | null
+  createdAt?: string | null
+  updatedAt?: string | null
 }
 
 /** @deprecated Use AutomationDefinitionDTO for /api/automations；/api/tasks 用 LegacyAnalysisTaskDTO */

@@ -1,245 +1,239 @@
-import { ArrowLeft, History, MoreHorizontal, Play } from "lucide-react"
-import { useState } from "react"
+import { ArrowLeft, Pause, Play, MoreHorizontal as More } from "lucide-react"
 import { useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Progress } from "@/components/ui/progress"
 import { ErrorState, TableSkeleton } from "@/components/app/list-state"
 import { PageContainer, PageHeader, SectionHeader } from "@/components/app/page"
 import { StatusBadge } from "@/components/app/status-badge"
-import { TableFrame } from "@/components/app/table-frame"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { formatCompactDateTime } from "@/lib/time"
-import { taskVersionSummary } from "@/domain/task-mapper"
 import { WORK_ITEM_STATUS_LABELS } from "@/config/ui-terms"
 import { bizApi, workItemsApi, type WorkItemStatus } from "@/services/wf-api"
-import { rbac } from "@/services/rbac"
 
-/** MTC-002B：WorkItem 主状态 → Badge 变体（与 /tasks 五泳道一致）。 */
-const WI_BADGE: Record<WorkItemStatus, "warning" | "info" | "success" | "neutral" | "danger"> = {
-  needs_action: "warning", running: "info", completed: "success",
-  queued: "neutral", failed_cancelled: "danger",
-}
-
+/** MTC-004：自主任务详情 = 工作档案（非巨型表单）。最近运行复用 WorkItem 真值。 */
 export default function TaskDetailPage() {
   const { taskId = "" } = useParams()
   const navigate = useNavigate()
   const { data: task, loading, error, retry } = useAsyncData(() => bizApi.task(taskId), [taskId])
-  // 09 P0-B4：运行历史=该任务的 TaskRun 批次（不再借工作流 Run 冒充）
-  const { data: taskRuns, retry: retryRuns } = useAsyncData(
-    () => bizApi.taskRuns(taskId).catch(() => []),
+  const { data: versions } = useAsyncData(() => bizApi.taskVersions(taskId), [taskId])
+  const { data: schedules } = useAsyncData(() => bizApi.taskSchedules(taskId), [taskId])
+  const { data: recent } = useAsyncData(
+    () => workItemsApi.list({ automationId: taskId, pageSize: 5 }).then((r) => r.items),
     [taskId],
   )
-
-  // MTC-002B-R：任务状态列按 taskRunId 批量取 WorkItem（不再拉 90 天全投影）
-  const runIdsKey = (taskRuns ?? []).slice(0, 5).map((r) => r.id).join(",")
-  const { data: workItems } = useAsyncData(
-    () => (runIdsKey
-      ? workItemsApi.byTaskRuns(runIdsKey.split(",")).then((r) => r.items).catch(() => [])
-      : Promise.resolve([])),
-    [taskId, runIdsKey],
-  )
-
-  // 09 P1-01：历史窗口回填
-  const [backfillOpen, setBackfillOpen] = useState(false)
-  const [backfillStart, setBackfillStart] = useState("")
-  const [backfillEnd, setBackfillEnd] = useState("")
-
-  const canManage = rbac.can("task.manage")
-  const isActive = task?.status === "active"
+  const { data: assets } = useAsyncData(() => bizApi.assets(), [])
 
   if (error) return <PageContainer><ErrorState title="自主任务加载失败" onRetry={retry} /></PageContainer>
-  if (loading || !task) return <PageContainer><TableSkeleton rows={6} columns={6} /></PageContainer>
+  if (loading || !task) return <PageContainer><TableSkeleton rows={6} columns={4} /></PageContainer>
 
-  const version = task.taskVersion
-  const latestRun = taskRuns?.[0]
-  const workStatusByRun: Record<string, WorkItemStatus> = {}
-  for (const w of workItems ?? []) if (w.taskRunId) workStatusByRun[w.taskRunId] = w.status
+  const v = task.taskVersion
+  const et = v?.executionTarget ?? task.executionTarget
+  const assetName = assets?.find((a) => a.id === (v?.dataAssetId ?? task.dataAssetId))?.name
+    ?? (v?.dataAssetId ?? task.dataAssetId ?? "—")
+  const isActive = task.status === "active"
+
+  const runNow = async () => {
+    try {
+      const r = await bizApi.startTaskRun(task.id)
+      toast.success(`批次已启动（${r.taskRunId.slice(0, 8)}）`)
+    } catch (e) {
+      toast.error(`启动失败：${(e as Error).message}`)
+    }
+  }
+  const toggleStatus = async () => {
+    try {
+      const r = await bizApi.setTaskStatus(task.id, isActive ? "paused" : "active")
+      toast.success(r.status === "active" ? "自主任务已启用" : "自主任务已暂停")
+      retry()
+    } catch (e) {
+      toast.error(`操作失败：${(e as Error).message}`)
+    }
+  }
 
   return (
-    <PageContainer wide className="space-y-5">
+    <PageContainer wide className="space-y-6">
       <div>
         <Button variant="ghost" size="sm" className="gap-1 px-2" onClick={() => navigate("/autonomous-tasks")}>
           <ArrowLeft className="size-4" /> 自主任务
         </Button>
-        <PageHeader
-          className="mt-2"
-          title={task.name}
-          status={<StatusBadge status={task.status} />}
-          description={task.description}
-          actions={
-            canManage ? (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!isActive}
-                  onClick={async () => {
-                    // 09 §10.2：启动批次（异步；服务端返回解析后的版本）
-                    try {
-                      const r = await bizApi.startTaskRun(task.id)
-                      toast.success(`批次已启动（${r.taskRunId.slice(0, 8)}）：Workflow 版本 ${r.resolvedVersions.workflowVersionId?.slice(0, 8) ?? "latest"}`)
-                      retryRuns()
-                    } catch (e) {
-                      toast.error(`启动失败：${(e as Error).message}`)
-                    }
-                  }}
-                >
-                  <Play className="size-3.5" /> 立即执行
-                </Button>
-                <Button variant="outline" size="sm" disabled={!isActive} onClick={() => setBackfillOpen(true)}>
-                  <History className="size-3.5" /> 回填数据
-                </Button>
-                <Button
-                  variant={isActive ? "outline" : "default"}
-                  size="sm"
-                  onClick={async () => {
-                    try {
-                      const r = await bizApi.setTaskStatus(task.id, isActive ? "paused" : "active")
-                      toast.success(r.status === "active" ? "自主任务已启用" : "自主任务已暂停：不再创建新的批次（INV-10），已运行批次不受影响")
-                      retry()
-                    } catch (e) {
-                      toast.error(`操作失败：${(e as Error).message}`)
-                    }
-                  }}
-                >
-                  {isActive ? "暂停" : "启用"}
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => navigate(`/autonomous-tasks/${task.id}/edit`)}>编辑</Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(task.id); toast.success("已复制自主任务 ID") }}>复制任务 ID</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </>
-            ) : null
-          }
-        />
       </div>
+      <PageHeader
+        title={task.name}
+        status={<StatusBadge status={task.status} />}
+        description={task.description || "长期自动化工作定义"}
+        actions={
+          <>
+            <Button size="sm" variant="outline" disabled={!isActive} onClick={() => void runNow()}>
+              <Play className="size-3.5" /> 立即运行
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => navigate(`/autonomous-tasks/${task.id}/edit`)}>
+              编辑
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => void toggleStatus()}>
+              <Pause className="size-3.5" /> {isActive ? "暂停" : "启用"}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-8" aria-label="更多操作">
+                  <More className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(task.id); toast.success("已复制自主任务 ID") }}>
+                  复制 ID
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        }
+      />
 
-      {/* 当前配置版本快照（服务端返回，不用本地态冒充） */}
-      <div className="grid grid-cols-2 gap-x-6 gap-y-2.5 rounded-lg border bg-card px-4 py-3 md:grid-cols-4">
-        {version ? taskVersionSummary(version).map(({ label, value }) => (
-          <div key={label} className="min-w-0">
-            <div className="pb-0.5 text-[11px] text-muted-foreground">{label}</div>
-            <div className="truncate text-sm" title={value}>{value}</div>
+      <section className="space-y-2">
+        <SectionHeader title="工作概览" description="长期定义与其最近活动的摘要" />
+        <div className="grid gap-3 md:grid-cols-4">
+          <div className="rounded-lg border bg-surface p-3 text-xs">
+            <div className="text-muted-foreground">配置版本</div>
+            <div className="mt-1 text-sm font-medium">V{v?.versionNo ?? "—"}</div>
           </div>
-        )) : (
-          <div className="col-span-4 text-sm text-muted-foreground">该任务没有配置版本（旧数据待迁移）</div>
-        )}
-      </div>
+          <div className="rounded-lg border bg-surface p-3 text-xs">
+            <div className="text-muted-foreground">最近运行</div>
+            <div className="mt-1 text-sm font-medium">
+              {recent?.[0] ? WORK_ITEM_STATUS_LABELS[recent[0].status as WorkItemStatus] : "暂无运行记录"}
+            </div>
+          </div>
+          <div className="rounded-lg border bg-surface p-3 text-xs">
+            <div className="text-muted-foreground">下一次计划</div>
+            <div className="mt-1 text-sm font-medium">
+              {schedules?.[0]?.nextRunAt ? formatCompactDateTime(schedules[0].nextRunAt) : "—"}
+            </div>
+          </div>
+          <div className="rounded-lg border bg-surface p-3 text-xs">
+            <div className="text-muted-foreground">最近活动</div>
+            <div className="mt-1 text-sm font-medium">
+              {formatCompactDateTime(task.updatedAt ?? task.createdAt ?? "")}
+            </div>
+          </div>
+        </div>
+      </section>
 
-      {/* SDD 13 §10.1：Task 详情只保留最近 5 个批次摘要；完整运行历史在运行中心 */}
-      <div className="space-y-2">
+      <section className="space-y-2">
+        <SectionHeader title="执行目标" />
+        <div className="rounded-lg border bg-surface p-3 text-xs">
+          <div className="grid gap-2 md:grid-cols-3">
+            <span>类型：{et?.type === "agent" ? "领域 Agent" : "工作流"}</span>
+            <span>目标：{et?.type === "agent" ? (et.agentId ?? "—") : (et?.workflowId ?? task.workflowId ?? "—")}</span>
+            <span>
+              版本策略：{et?.type === "agent" ? (et.versionPolicy ?? "—") : (v?.workflowVersionPolicy ?? task.workflowVersionPolicy ?? "—")}
+              {et?.type === "agent" && et.versionPolicy === "pinned" ? `（${(et.pinnedAgentVersionId ?? "").slice(0, 8)}）` : ""}
+              {et?.type !== "agent" && v?.workflowVersionPolicy === "pinned" ? `（${(v?.pinnedWorkflowVersionId ?? "").slice(0, 8)}）` : ""}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <SectionHeader title="输入与数据范围" />
+        <div className="rounded-lg border bg-surface p-3 text-xs">
+          <div className="grid gap-2 md:grid-cols-3">
+            <span>数据资产：{assetName}</span>
+            <span>定义版本：{(v?.dataDefinitionVersionId ?? "—").toString().slice(0, 8)}</span>
+            <span>
+              范围：{(() => {
+                const sc = v?.scope as { conditions?: unknown[] } | undefined
+                return sc?.conditions?.length ? `${sc.conditions.length} 个条件` : "全部 Eligible Data"
+              })()}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <SectionHeader title="调度 / Trigger" />
+        {(schedules ?? []).length === 0 ? (
+          <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+            无调度配置：仅手动 / API 触发
+          </div>
+        ) : (
+          <ul className="space-y-1.5 text-xs">
+            {(schedules ?? []).map((s) => (
+              <li key={s.id} className="flex items-center justify-between rounded-md border bg-surface px-3 py-2">
+                <span className="font-mono">{s.cron}（{s.timezone}）</span>
+                <Badge variant={s.enabled ? "success" : "neutral"}>{s.enabled ? "启用" : "停用"}</Badge>
+                <span className="text-muted-foreground">
+                  下次：{s.nextRunAt ? formatCompactDateTime(s.nextRunAt) : "—"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="space-y-2">
         <SectionHeader
-          title="运行记录（最近批次）"
-          description="每个批次冻结一个 TaskVersion + DataSnapshot；完整历史见运行中心"
+          title="最近运行"
+          description="复用 WorkItem / TaskRun 真值（非前端猜测）"
           actions={
             <Button variant="outline" size="sm" onClick={() => navigate(`/operations/task-runs?taskId=${task.id}`)}>
               查看全部运行
             </Button>
           }
         />
-        <TableFrame>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>启动时间</TableHead>
-                <TableHead>触发</TableHead>
-                <TableHead className="text-right">输入</TableHead>
-                <TableHead className="text-right">成功</TableHead>
-                <TableHead className="text-right">失败</TableHead>
-                <TableHead>任务状态</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(taskRuns ?? []).length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="py-6 text-center text-sm text-muted-foreground">尚未执行过批次</TableCell></TableRow>
-              ) : (taskRuns ?? []).slice(0, 5).map((tr) => (
-                <TableRow key={tr.id} className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => navigate(`/operations/task-runs/${tr.id}`)}>
-                  <TableCell className="text-sm tabular-nums">{tr.startedAt ? formatCompactDateTime(tr.startedAt) : formatCompactDateTime(tr.createdAt)}</TableCell>
-                  <TableCell className="text-sm">{tr.trigger}</TableCell>
-                  <TableCell className="text-right tabular-nums">{tr.total}</TableCell>
-                  <TableCell className="text-right tabular-nums">{tr.succeeded}</TableCell>
-                  <TableCell className="text-right tabular-nums">{tr.failed}</TableCell>
-                  <TableCell>
-                    {workStatusByRun[tr.id] ? (
-                      <Badge variant={WI_BADGE[workStatusByRun[tr.id]]}>
-                        {WORK_ITEM_STATUS_LABELS[workStatusByRun[tr.id]]}
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableFrame>
-        {latestRun?.errorSummary?.errors?.length ? (
-          <div className="rounded-md border border-amber-300/60 bg-amber-50/40 px-3 py-2 text-xs dark:bg-amber-950/20">
-            最近批次失败原因示例：{latestRun.errorSummary.errors.slice(0, 3).map((e) => e.error).join("；")}
-          </div>
-        ) : null}
-      </div>
+        {(recent ?? []).length === 0 ? (
+          <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">暂无运行记录</div>
+        ) : (
+          <ul className="space-y-1.5 text-xs">
+            {(recent ?? []).map((w) => (
+              <li key={w.id} className="flex items-center gap-3 rounded-md border bg-surface px-3 py-2">
+                <Badge variant={w.status === "needs_action" ? "warning" : w.status === "running" ? "info" : w.status === "completed" ? "success" : w.status === "queued" ? "neutral" : "danger"}>
+                  {WORK_ITEM_STATUS_LABELS[w.status as WorkItemStatus]}
+                </Badge>
+                <span className="text-muted-foreground">
+                  {w.startedAt ? formatCompactDateTime(w.startedAt) : w.scheduledAt ? `计划 ${formatCompactDateTime(w.scheduledAt)}` : "—"}
+                </span>
+                {w.taskRunId !== null ? (
+                  <span className="flex flex-1 items-center gap-2">
+                    <Progress value={w.progress.percent ?? 0} className="h-1.5 flex-1" aria-label="执行进度" />
+                    <span className="tabular-nums">{w.progress.succeeded}/{w.progress.total}</span>
+                  </span>
+                ) : <span className="flex-1 text-muted-foreground">等待调度</span>}
+                <Button variant="ghost" size="sm" onClick={() => w.taskRunId && navigate(`/operations/task-runs/${w.taskRunId}`)}>
+                  详情
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
-      {/* 09 P1-01 回填 Sheet：历史窗口补跑（新批次，不覆盖历史） */}
-      <Sheet open={backfillOpen} onOpenChange={setBackfillOpen}>
-        <SheetContent className="w-[420px]">
-          <SheetHeader>
-            <SheetTitle>回填历史数据</SheetTitle>
-            <SheetDescription>为指定历史窗口补跑一个新批次；不覆盖既有批次与结果。</SheetDescription>
-          </SheetHeader>
-          <div className="mt-4 space-y-4">
-            <div className="space-y-1.5">
-              <div className="text-sm font-medium">时间范围（interaction 时间）</div>
-              <div className="flex items-center gap-2">
-                <Input type="date" value={backfillStart} onChange={(e) => setBackfillStart(e.target.value)} />
-                <span className="text-xs text-muted-foreground">→</span>
-                <Input type="date" value={backfillEnd} onChange={(e) => setBackfillEnd(e.target.value)} />
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">回填将创建新的 TaskRun（trigger=backfill），窗口外的交互不会被处理。</p>
-          </div>
-          <div className="mt-6 flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setBackfillOpen(false)}>取消</Button>
-            <Button
-              disabled={!backfillStart && !backfillEnd}
-              onClick={async () => {
-                setBackfillOpen(false)
-                try {
-                  const r = await bizApi.backfillTask(task.id, { start: backfillStart || undefined, end: backfillEnd || undefined })
-                  toast.success(`回填批次已启动（${r.taskRunId.slice(0, 8)}）`)
-                  retryRuns()
-                } catch (e) {
-                  toast.error(`回填失败：${(e as Error).message}`)
-                }
-              }}
-            >
-              开始回填
-            </Button>
-          </div>
-        </SheetContent>
-      </Sheet>
+      <section className="space-y-2">
+        <SectionHeader title="配置版本" description="不可变快照；编辑生成新版本" />
+        <ul className="space-y-1.5 text-xs">
+          {(versions ?? []).slice(0, 8).map((ver) => (
+            <li key={ver.id} className="flex items-center justify-between rounded-md border bg-surface px-3 py-2">
+              <span className="font-medium">V{ver.versionNo}</span>
+              <span className="text-muted-foreground">{ver.note || "—"}</span>
+              <span className="text-muted-foreground">{formatCompactDateTime(ver.createdAt)}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="space-y-2">
+        <SectionHeader title="活动记录" />
+        <ul className="space-y-1.5 text-xs text-muted-foreground">
+          <li>配置更新：{formatCompactDateTime(task.updatedAt ?? "")}</li>
+          {(recent ?? []).slice(0, 3).map((w) => (
+            <li key={w.id}>
+              运行 {w.id.slice(-8)}：{WORK_ITEM_STATUS_LABELS[w.status as WorkItemStatus]} · {w.updatedAt ? formatCompactDateTime(w.updatedAt) : "—"}
+            </li>
+          ))}
+        </ul>
+      </section>
     </PageContainer>
   )
 }
