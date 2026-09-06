@@ -49,7 +49,7 @@ export default function ResDetailPage() {
   const [editForm, setEditForm] = useState<{ name?: string; description?: string }>({})
 
   const domain = ["model", "tool", "mcp", "knowledge"].includes(type) ? "ai" : "data"
-  const listPath = `/config/${domain}-resources`
+  const listPath = `/resources/${domain}`
 
   const load = useCallback(() => {
     resApi.get(type, id).then((d) => { setDto(d); setEditForm({ name: d.name, description: d.description }) }).catch(() => setDto(null))

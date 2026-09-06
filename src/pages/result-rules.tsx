@@ -86,7 +86,7 @@ export default function ResultRulesPage() {
               </TableHeader>
               <TableBody>
                 {data.items.map((rule) => (
-                  <TableRow key={rule.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/config/result-rules/${rule.id}`)}>
+                  <TableRow key={rule.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/resources/rules/${rule.id}`)}>
                     <TableCell>
                       <div className="text-sm font-medium">{rule.name}</div>
                       <div className="line-clamp-1 max-w-md text-xs text-muted-foreground">{rule.description}</div>
@@ -128,7 +128,7 @@ export default function ResultRulesPage() {
                 const r = await bizApi.createRule({ name: name.trim(), description, rules: { scoreRules: [], issueRules: [] } })
                 setCreateOpen(false)
                 toast.success("已创建 Draft")
-                navigate(`/config/result-rules/${r.id}`)
+                navigate(`/resources/rules/${r.id}`)
               } catch (e) {
                 toast.error(`创建失败：${(e as Error).message}`)
               } finally {

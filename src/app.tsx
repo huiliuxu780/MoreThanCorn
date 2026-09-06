@@ -49,7 +49,7 @@ const NotFoundPage = lazy(() =>
 /** 旧 Tools 详情路由 → AI Resources Tool 详情。 */
 function ToolRedirect() {
   const { toolId } = useParams()
-  return <Navigate to={`/config/ai-resources/tool/${toolId}`} replace />
+  return <Navigate to={`/resources/ai/tool/${toolId}`} replace />
 }
 
 /** SDD 13 §10.2：旧批次路由 → canonical route（replace redirect，不维护双页面）。 */

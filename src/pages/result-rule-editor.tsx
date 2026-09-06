@@ -138,7 +138,7 @@ export default function ResultRuleEditorPage() {
   return (
     <PageContainer className="max-w-4xl space-y-5">
       <div>
-        <Button variant="ghost" size="sm" className="gap-1 px-2" onClick={() => navigate("/config/result-rules")}>
+        <Button variant="ghost" size="sm" className="gap-1 px-2" onClick={() => navigate("/resources/rules")}>
           <ArrowLeft className="size-4" /> 结果规则
         </Button>
         <PageHeader

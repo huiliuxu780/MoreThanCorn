@@ -429,7 +429,7 @@ export function WfFormEditorPage() {
       } else {
         const r = await formsApi.create({ name: name.trim(), key: key.trim() || undefined, description: desc, fields })
         toast.success("已创建")
-        navigate(`/config/forms/${r.id}`, { replace: true })
+        navigate(`/resources/forms/${r.id}`, { replace: true })
       }
     } catch (e) { toast.error((e as Error).message) }
   }
@@ -442,7 +442,7 @@ export function WfFormEditorPage() {
         description="Form=业务 Schema：输入契约+结果结构；字段 Key 稳定、创建后不可改"
         actions={
           <span className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate("/config/forms")}><ArrowLeft className="size-4" /> 返回</Button>
+            <Button variant="outline" size="sm" onClick={() => navigate("/resources/forms")}><ArrowLeft className="size-4" /> 返回</Button>
             <Button size="sm" onClick={save}><Save className="size-4" /> 保存</Button>
           </span>
         }
@@ -478,22 +478,22 @@ export default function WfFormsPage() {
       <PageHeader
         title="表单"
         description="工作流输入契约+业务结果结构：字段 Key 稳定、版本化、Binding 一级能力"
-        actions={<Button size="sm" onClick={() => navigate("/config/forms/new")}><Plus className="size-4" /> 新建表单</Button>}
+        actions={<Button size="sm" onClick={() => navigate("/resources/forms/new")}><Plus className="size-4" /> 新建表单</Button>}
       />
       {loading ? (
         <div className="py-10 text-center text-xs text-muted-foreground">加载中…</div>
       ) : rows.length === 0 ? (
-        <EmptyState title="暂无表单" action={<Button size="sm" onClick={() => navigate("/config/forms/new")}><Plus className="size-4" /> 新建表单</Button>} />
+        <EmptyState title="暂无表单" action={<Button size="sm" onClick={() => navigate("/resources/forms/new")}><Plus className="size-4" /> 新建表单</Button>} />
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {rows.map((f) => (
             <div key={f.id} className="rounded-lg border bg-white p-3 shadow-sm">
               <div className="flex items-center gap-2">
-                <button className="flex-1 truncate text-left text-sm font-medium hover:underline" onClick={() => navigate(`/config/forms/${f.id}`)}>{f.name}</button>
+                <button className="flex-1 truncate text-left text-sm font-medium hover:underline" onClick={() => navigate(`/resources/forms/${f.id}`)}>{f.name}</button>
                 {badge(f.status)}
                 {/* 08-26 用户反馈：行操作统一为同尺寸同色图标按钮+tooltip */}
                 <span className="flex items-center">
-                  <button title="编辑" className="rounded p-1 hover:bg-neutral-100" onClick={() => navigate(`/config/forms/${f.id}`)}>
+                  <button title="编辑" className="rounded p-1 hover:bg-neutral-100" onClick={() => navigate(`/resources/forms/${f.id}`)}>
                     <Pencil className="size-3.5 text-neutral-500" />
                   </button>
                   <button title="发布" className="rounded p-1 hover:bg-neutral-100" onClick={async () => {

@@ -129,7 +129,7 @@ export default function ResWizardPage({ scope }: { scope: "ai" | "data" }) {
   }
 
   const backToList = (withNew: boolean) => {
-    const base = scope === "ai" ? "/config/ai-resources" : "/config/data-resources"
+    const base = scope === "ai" ? "/resources/ai" : "/resources/data"
     navigate(withNew ? `${base}?tab=${type}&new=${createdId}` : `${base}?tab=${type}`)
   }
 
@@ -291,7 +291,7 @@ export default function ResWizardPage({ scope }: { scope: "ai" | "data" }) {
             <div className="text-base font-semibold">资源创建成功</div>
             <p className="text-sm text-muted-foreground">已通过测试并保存为 Enabled，可立即被 Workflow 节点选择。</p>
             <div className="flex justify-center gap-2">
-              <Button variant="outline" onClick={() => navigate(`/config/${scope === "ai" ? "ai" : "data"}-resources/${type}/${createdId}`)}>查看详情</Button>
+              <Button variant="outline" onClick={() => navigate(`/resources/${scope === "ai" ? "ai" : "data"}/${type}/${createdId}`)}>查看详情</Button>
               <Button onClick={() => backToList(true)}>返回资源列表</Button>
             </div>
           </div>

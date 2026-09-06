@@ -66,7 +66,35 @@ export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
       if (segments[2] === "runs" && segments[3]) crumbs.push({ label: `Run ${segments[3]}` })
     }
   } else if (first === "resources") {
-    crumbs.push({ label: UI_TERMS.navigation.resourcesHub })
+    /* MTC-006R：canonical 资源域面包屑（与旧 /config/* 分支同粒度；旧分支只服务 redirect 瞬间与 data-assets 遗留挂载） */
+    if (segments[1] === "forms") {
+      crumbs.push({ label: UI_TERMS.navigation.workflows, href: "/workflows" })
+      crumbs.push({
+        label: UI_TERMS.navigation.forms,
+        href: segments[2] ? "/resources/forms" : undefined,
+      })
+      if (segments[2]) crumbs.push({ label: segments[2] === "new" ? "新建表单" : segments[2] })
+    } else if (segments[1] === "connections") {
+      crumbs.push({ label: UI_TERMS.navigation.resourcesHub, href: "/resources" })
+      crumbs.push({ label: UI_TERMS.navigation.connections })
+    } else if (segments[1] === "rules") {
+      crumbs.push({ label: UI_TERMS.navigation.resourcesHub, href: "/resources" })
+      crumbs.push({
+        label: UI_TERMS.navigation.resultRules,
+        href: segments[2] ? "/resources/rules" : undefined,
+      })
+      if (segments[2]) crumbs.push({ label: segments[2] })
+    } else if (segments[1] === "ai" || segments[1] === "data") {
+      crumbs.push({ label: UI_TERMS.navigation.resourcesHub, href: "/resources" })
+      crumbs.push({
+        label: segments[1] === "ai" ? UI_TERMS.navigation.aiResources : UI_TERMS.navigation.dataResources,
+        href: segments[2] ? `/resources/${segments[1]}` : undefined,
+      })
+      if (segments[2] === "new") crumbs.push({ label: "创建资源" })
+      else if (segments[2]) crumbs.push({ label: segments[3] ?? segments[2] })
+    } else {
+      crumbs.push({ label: UI_TERMS.navigation.resourcesHub })
+    }
   } else if (first === "workflows") {
     crumbs.push({
       label: UI_TERMS.navigation.workflows,
@@ -113,7 +141,7 @@ export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
       crumbs.push({ label: UI_TERMS.navigation.workflows, href: "/workflows" })
       crumbs.push({
         label: UI_TERMS.navigation.forms,
-        href: segments[2] ? "/config/forms" : undefined,
+        href: segments[2] ? "/resources/forms" : undefined,
       })
       if (segments[2]) crumbs.push({ label: segments[2] === "new" ? "新建表单" : segments[2] })
     } else {
@@ -121,14 +149,14 @@ export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
       if (segments[1] === "ai-resources") {
         crumbs.push({
           label: UI_TERMS.navigation.aiResources,
-          href: segments[2] ? "/config/ai-resources" : undefined,
+          href: segments[2] ? "/resources/ai" : undefined,
         })
         if (segments[2] === "new") crumbs.push({ label: "创建资源" })
         else if (segments[2]) crumbs.push({ label: segments[3] ?? segments[2] })
       } else if (segments[1] === "data-resources") {
         crumbs.push({
           label: UI_TERMS.navigation.dataResources,
-          href: segments[2] ? "/config/data-resources" : undefined,
+          href: segments[2] ? "/resources/data" : undefined,
         })
         if (segments[2] === "new") crumbs.push({ label: "创建资源" })
         else if (segments[2]) crumbs.push({ label: segments[3] ?? segments[2] })
@@ -141,7 +169,7 @@ export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
       } else if (segments[1] === "result-rules") {
         crumbs.push({
           label: UI_TERMS.navigation.resultRules,
-          href: segments[2] ? "/config/result-rules" : undefined,
+          href: segments[2] ? "/resources/rules" : undefined,
         })
         if (segments[2]) crumbs.push({ label: segments[2] })
       }

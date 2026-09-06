@@ -94,7 +94,7 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
 
   const onAction = (dto: ResourceDTO, action: ResourceAction) => {
     if (action === "test") setTestTarget(dto)
-    else if (action === "edit") navigate(`/config/${domain === "ai" ? "ai" : "data"}-resources/${dto.type}/${dto.id}?edit=1`, { state: { from: "list", tab } })
+    else if (action === "edit") navigate(`/resources/${domain === "ai" ? "ai" : "data"}/${dto.type}/${dto.id}?edit=1`, { state: { from: "list", tab } })
     else if (action === "toggle") {
       const enabled = dto.status === "disabled"
       resApi.toggle(dto.type, dto.id, enabled)
@@ -129,7 +129,7 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
           : "管理自主任务与 Evaluation Agent 使用的数据资源。数据链：Datasource → Data Asset → Data Definition → 自主任务。"}
         actions={
           isProviders ? undefined : (
-            <Button onClick={() => navigate(domain === "ai" ? "/config/ai-resources/new" : "/config/data-resources/new")}>
+            <Button onClick={() => navigate(domain === "ai" ? "/resources/ai/new" : "/resources/data/new")}>
               <Plus className="size-4" /> 创建资源
             </Button>
           )
@@ -185,7 +185,7 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {data.map((dto) => (
                 <ResourceCard key={dto.id} dto={dto} highlighted={dto.id === highlight}
-                  onOpen={() => navigate(`/config/${domain === "ai" ? "ai" : "data"}-resources/${dto.type}/${dto.id}`)}
+                  onOpen={() => navigate(`/resources/${domain === "ai" ? "ai" : "data"}/${dto.type}/${dto.id}`)}
                   onAction={(a) => onAction(dto, a)} />
               ))}
             </div>
