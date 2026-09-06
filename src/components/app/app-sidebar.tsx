@@ -30,6 +30,9 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -137,13 +140,16 @@ const THEME_OPTIONS = [
   { value: "dark-parchment", label: "深色羊皮纸", icon: MoonStar },
 ] as const
 
-/** 主题菜单内容（跟随系统 / 浅色 / 深色），触发器由调用方提供。 */
-function ThemeMenu({ trigger, side = "right" }: { trigger: React.ReactNode; side?: "right" | "top" }) {
+/** 09-07：主题入口收进账号菜单（子菜单形态），窄轨/Sheet 底部不再单占坑位。 */
+function ThemeSubMenu() {
   const { theme, setTheme } = useTheme()
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-      <DropdownMenuContent side={side} align="start" sideOffset={8} className="min-w-40">
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger>
+        <Sun className="size-4" />
+        {UI_TERMS.navigation.theme}
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent sideOffset={8} className="min-w-40">
         {THEME_OPTIONS.map((o) => (
           <DropdownMenuItem key={o.value} onSelect={() => setTheme(o.value)}>
             <o.icon className="size-4" />
@@ -151,8 +157,8 @@ function ThemeMenu({ trigger, side = "right" }: { trigger: React.ReactNode; side
             {theme === o.value ? <Check className="ml-auto size-4" /> : null}
           </DropdownMenuItem>
         ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
   )
 }
 
@@ -200,6 +206,12 @@ function AccountMenu({
             <span className="block truncate text-xs text-muted-foreground">{roleLabel}</span>
           </span>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <ThemeSubMenu />
+        <DropdownMenuItem onSelect={() => navigate("/settings")}>
+          <Settings className="size-4" />
+          {UI_TERMS.navigation.settings}
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled>
           <UserRound className="size-4" />
@@ -305,8 +317,6 @@ function RailBottomButton({
 export function AppRail(props: AppNavProps) {
   const { pathname } = useLocation()
   const active = computeActiveNav(pathname)
-  const { theme } = useTheme()
-  const ThemeIcon = THEME_OPTIONS.find((o) => o.value === theme)?.icon ?? Monitor
   const username = props.authed ? currentUsername() : "dev"
   const initial = username.slice(0, 1).toUpperCase() || "?"
 
@@ -325,30 +335,8 @@ export function AppRail(props: AppNavProps) {
           <RailLink key={item.to} item={item} active={active === NAV_KEY_BY_TO[item.to]} />
         ))}
       </nav>
+      {/* 09-07：底部仅账号入口；主题/设置收进账号菜单 */}
       <div className="mt-auto flex flex-col gap-1 border-t px-2 pt-2" style={{ borderColor: "var(--sidebar-border)" }}>
-        <ThemeMenu
-          trigger={
-            <RailBottomButton title={UI_TERMS.navigation.theme}>
-              <ThemeIcon className="size-5" />
-              <span>{UI_TERMS.navigation.theme}</span>
-            </RailBottomButton>
-          }
-        />
-        <NavLink
-          to="/settings"
-          title={UI_TERMS.navigation.settings}
-          data-active={active === "settings" || undefined}
-          className={cn(
-            RAIL_ITEM_CLS,
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            active === "settings"
-              ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-              : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-          )}
-        >
-          <Settings className="size-5" />
-          <span>{UI_TERMS.navigation.settings}</span>
-        </NavLink>
         <AccountMenu
           {...props}
           trigger={
@@ -372,8 +360,6 @@ export function AppRail(props: AppNavProps) {
 export function MobileNavSheet({ open, onOpenChange, ...props }: AppNavProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { pathname } = useLocation()
   const active = computeActiveNav(pathname)
-  const { theme } = useTheme()
-  const ThemeIcon = THEME_OPTIONS.find((o) => o.value === theme)?.icon ?? Monitor
   const username = props.authed ? currentUsername() : "dev"
   const initial = username.slice(0, 1).toUpperCase() || "?"
   const close = () => onOpenChange(false)
@@ -409,33 +395,8 @@ export function MobileNavSheet({ open, onOpenChange, ...props }: AppNavProps & {
             </NavLink>
           ))}
         </nav>
+        {/* 09-07：底部仅账号入口；主题/设置收进账号菜单 */}
         <div className="border-t p-2" style={{ borderColor: "var(--sidebar-border)" }}>
-          <ThemeMenu
-            side="right"
-            trigger={
-              <button
-                type="button"
-                className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <ThemeIcon className="size-4" />
-                {UI_TERMS.navigation.theme}
-              </button>
-            }
-          />
-          <NavLink
-            to="/settings"
-            onClick={close}
-            data-active={active === "settings" || undefined}
-            className={cn(
-              "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
-              active === "settings"
-                ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-            )}
-          >
-            <Settings className="size-4" />
-            {UI_TERMS.navigation.settings}
-          </NavLink>
           <AccountMenu
             {...props}
             side="right"

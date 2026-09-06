@@ -1,8 +1,8 @@
 /**
  * MTC-001R 验收自检脚本（可复现）：
  * - 桌面 ≥768px 固定 72px 窄轨（图标+短标签，无展开/收起，无 toggle，Cmd+B 无效）
- * - 底部 主题/设置/账号，菜单向右展开且不裁切
- * - 任一路径最多一个一级项 active（connections→资源；audit→设置；operations→任务；forms→流程）
+ * - 底部仅账号入口（09-07：主题=账号菜单子菜单、设置=账号菜单项），菜单向右展开且不裁切
+ * - 任一路径最多一个一级项 active（connections→资源；operations→任务；forms→资源；/settings 其余无高亮）
  * - <768px Sheet 抽屉，关闭后焦点回到触发器
  * - Light/Dark/System、持久化、防闪白无回归；产品界面无内部任务号
  * 截图输出到 .tmp-docs/mtc001/（gitignore）。
@@ -80,8 +80,9 @@ check("1440 rail 宽 72px", (await railWidth()) === "72px", await railWidth())
 
 const texts = await railTexts()
 check(
-  "短标签固定：任务/自主/Agent/资源/流程 + 主题/设置/账号",
-  ["任务", "自主", "Agent", "资源", "流程", "主题", "设置", "账号"].every((t) => texts.some((x) => x.includes(t))),
+  "短标签固定：任务/自主/Agent/资源/流程 + 账号（09-07 主题/设置收进账号菜单）",
+  ["任务", "自主", "Agent", "资源", "流程", "账号"].every((t) => texts.some((x) => x.includes(t)))
+    && !texts.some((x) => x.includes("主题")) && !texts.some((x) => x.includes("设置")),
   JSON.stringify(texts),
 )
 
@@ -107,18 +108,38 @@ const focusable = await page.evaluate(() => {
 })
 check("窄轨全部条目可键盘聚焦", focusable)
 
-/* ---------- 3. 菜单向右展开且不裁切 ---------- */
-await clickRailByText("主题")
-await page.waitForSelector('[role="menu"]', { timeout: 5000 })
+/* ---------- 3. 菜单向右展开且不裁切（09-07：主题收进账号菜单子菜单） ---------- */
+async function openThemeSub() {
+  // 先确保无残留菜单（关闭动画约 150ms），避免抓到正在卸载的旧菜单节点
+  await page.keyboard.press("Escape")
+  await new Promise((r) => setTimeout(r, 400))
+  await clickRailByText("账号")
+  await page.waitForSelector('[role="menu"]', { timeout: 5000 })
+  await new Promise((r) => setTimeout(r, 400))
+  const subHandle = await page.evaluateHandle(() => {
+    const menus = [...document.querySelectorAll('[role="menu"]')]
+    const menu = menus[menus.length - 1]
+    return [...menu.querySelectorAll('[role="menuitem"]')].find((m) => m.textContent?.includes("主题")) ?? null
+  })
+  const subEl = subHandle.asElement()
+  if (!subEl) throw new Error("theme subtrigger not found in account menu")
+  await subEl.click()
+  await page.waitForFunction(() => document.querySelectorAll('[role="menu"]').length >= 2, { timeout: 5000 })
+}
+await openThemeSub()
 const themeMenuRect = await page.evaluate(() => {
-  const m = document.querySelector('[role="menu"]')
-  const t = [...document.querySelectorAll('[data-testid="app-rail"] button')].find((b) => b.textContent?.includes("主题"))
-  const r = m.getBoundingClientRect()
+  const menus = [...document.querySelectorAll('[role="menu"]')]
+  const sub = menus[menus.length - 1]
+  const t = [...document.querySelectorAll('[role="menuitem"]')].find((m) => m.textContent?.includes("主题"))
+  const r = sub.getBoundingClientRect()
   const tr = t.getBoundingClientRect()
   return { left: r.left, right: r.right, vw: window.innerWidth, triggerRight: tr.right }
 })
-check("主题菜单向右展开且不裁切", themeMenuRect.left >= themeMenuRect.triggerRight - 2 && themeMenuRect.right <= themeMenuRect.vw, JSON.stringify(themeMenuRect))
-const themeItems = await page.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].map((m) => m.textContent?.trim()))
+check("主题子菜单向右展开且不裁切", themeMenuRect.left >= themeMenuRect.triggerRight - 2 && themeMenuRect.right <= themeMenuRect.vw, JSON.stringify(themeMenuRect))
+const themeItems = await page.evaluate(() => {
+  const menus = [...document.querySelectorAll('[role="menu"]')]
+  return [...menus[menus.length - 1].querySelectorAll('[role="menuitem"]')].map((m) => m.textContent?.trim())
+})
 check("主题菜单五项", ["跟随系统", "浅色", "深色", "浅色羊皮纸", "深色羊皮纸"].every((t) => themeItems.some((m) => m?.includes(t))))
 await clickMenuItem("深色")
 await new Promise((r) => setTimeout(r, 300))
@@ -141,11 +162,11 @@ check("账号菜单真实身份项", accItems.some((t) => t?.includes("我的偏
 await page.keyboard.press("Escape")
 
 /* ---------- 4. Light 截图 + 防闪白 + 持久化 ---------- */
-await clickRailByText("主题")
+await openThemeSub()
 await clickMenuItem("浅色")
 await new Promise((r) => setTimeout(r, 300))
 await page.screenshot({ path: `${OUT}/r-01-tasks-1440-light.png` })
-await clickRailByText("主题")
+await openThemeSub()
 await clickMenuItem("深色")
 await new Promise((r) => setTimeout(r, 300))
 await page.reload({ waitUntil: "domcontentloaded" })
@@ -159,7 +180,6 @@ await page.waitForSelector('[data-testid="app-rail"]', { timeout: 15000 })
 /* ---------- 5. Active 归属唯一 ---------- */
 const activeCases = [
   ["/settings/connections", "资源", "设置"],
-  ["/settings/audit", "设置", "资源"],
   ["/operations/task-runs", "任务", "设置"],
   ["/config/forms", "资源", "任务"],
   ["/autonomous-tasks", "自主", "任务"],
@@ -174,6 +194,11 @@ for (const [path, expectActive, expectNot] of activeCases) {
     JSON.stringify(act),
   )
 }
+// 09-07：设置入口收进账号菜单 → /settings/**（connections 除外）窄轨无高亮
+await page.goto(BASE + "/settings/audit", { waitUntil: "domcontentloaded" })
+await new Promise((r) => setTimeout(r, 1000))
+const auditAct = await activeRailTexts()
+check("/settings/audit → 窄轨无高亮（设置入口在账号菜单内）", auditAct.length === 0, JSON.stringify(auditAct))
 await page.screenshot({ path: `${OUT}/r-05-connections-active-dark.png` })
 
 /* ---------- 6. 产品界面无内部任务号 ---------- */
@@ -210,11 +235,23 @@ await burger.click()
 await page.waitForSelector('[role="dialog"]', { timeout: 5000 })
 const sheetNav = await page.evaluate(() => {
   const t = document.querySelector('[role="dialog"]')?.textContent ?? ""
-  return ["任务", "自主任务", "Agent", "能力与资源", "Workflow", "主题", "设置", "账号"].every((x) => t.includes(x))
+  return ["任务", "自主任务", "Agent", "能力与资源", "Workflow", "账号"].every((x) => t.includes(x))
 })
-check("Sheet 含完整导航与底部三项", sheetNav)
+check("Sheet 含完整导航与账号入口", sheetNav)
+// 09-07：主题/设置收进账号菜单——打开断言（dialog 开场动画 settle 后再抓节点）
+await new Promise((r) => setTimeout(r, 500))
+const sheetAccHandle = await page.evaluateHandle(() =>
+  [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent?.includes("账号")) ?? null)
+const sheetAccEl = sheetAccHandle.asElement()
+if (!sheetAccEl) throw new Error("account trigger not found in sheet")
+await sheetAccEl.click()
+await page.waitForSelector('[role="menu"]', { timeout: 5000 })
+const sheetMenu = await page.evaluate(() => [...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map((m) => m.textContent?.trim()))
+check("Sheet 账号菜单含主题子菜单与设置", sheetMenu.some((t) => t?.includes("主题")) && sheetMenu.some((t) => t?.includes("设置")), JSON.stringify(sheetMenu))
 await page.screenshot({ path: `${OUT}/r-04-tasks-640-sheet.png` })
-await page.keyboard.press("Escape")
+await page.keyboard.press("Escape") // 关账号菜单
+await new Promise((r) => setTimeout(r, 300))
+await page.keyboard.press("Escape") // 关 Sheet
 await new Promise((r) => setTimeout(r, 500))
 const focusBack = await page.evaluate(() => document.activeElement?.getAttribute("aria-label") === "打开导航")
 check("Sheet 关闭后焦点回到触发器", focusBack)
