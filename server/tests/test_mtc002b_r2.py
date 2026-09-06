@@ -136,18 +136,29 @@ def test_digest_scope_isolation():
 
 
 def test_digest_date_switch():
-    """隔离窗口法：终态批次锚定 2020-01-01（该窗口仅本测试数据，免受环境背景数据干扰）。"""
+    """顺序无关的跨日期隔离验证。
+
+    锚定终态批次落在 2020-01-01（SH）窗口；跨日期隔离用 2020-01-02 / 2020-01-03
+    两个“环境数据永远不可能进入”的窗口验证——完整 suite 中任何前置测试的数据
+    （created_at=当下）都不会落入 2020 窗口，因此断言与运行顺序/环境数据无关。
+    不弱化属性：若终态子句丢失下界（created_at<end 即纳入），锚定批次会泄漏进
+    01-02/01-03 窗口，mutation 将改变其 digest，断言即失败。
+    """
     tid = _task(f"R2-dg4-{uuid.uuid4().hex[:6]}")
     anchor = datetime(2020, 1, 1, 10, 0, tzinfo=_tz.utc)
     rid = _run(tid, None, "succeeded", delivery="succeeded", succeeded=2,
                created_at=anchor, started_at=anchor, ended_at=anchor)
     from zoneinfo import ZoneInfo as _ZI
-    anchor_day = anchor.astimezone(_ZI(TZ)).date().isoformat()
-    today = _today()
-    anchored_before, today_before = _digest(ADMIN, anchor_day), _digest(ADMIN, today)
+    d_hit = anchor.astimezone(_ZI(TZ)).date().isoformat()
+    d_other1 = (anchor + timedelta(days=1)).astimezone(_ZI(TZ)).date().isoformat()
+    d_other2 = (anchor + timedelta(days=2)).astimezone(_ZI(TZ)).date().isoformat()
+    hit_before = _digest(ADMIN, d_hit)
+    other1_before = _digest(ADMIN, d_other1)
+    other2_before = _digest(ADMIN, d_other2)
     _mutate(rid, succeeded_count=1)
-    assert _digest(ADMIN, anchor_day) != anchored_before, "锚定日变化必须改变该日 digest"
-    assert _digest(ADMIN, today) == today_before, "锚定日变化不得影响其他日期 digest"
+    assert _digest(ADMIN, d_hit) != hit_before, "锚定日变化必须改变该日 digest"
+    assert _digest(ADMIN, d_other1) == other1_before, "锚定日变化不得影响其他日期 digest"
+    assert _digest(ADMIN, d_other2) == other2_before, "锚定日变化不得影响其他日期 digest"
 
 
 # ---------- P1-02 agent 跨版本 ----------

@@ -13,83 +13,24 @@
 :root {
   --radius: 0.375rem;
 
-  /* ---- 规范 token（Light） ---- */
-  --background: #faf9f7;
-  --surface: #ffffff;
-  --surface-muted: #f4f4f1;
-  --surface-raised: #ffffff;
-  --border: #e4e3df;
-  --text-primary: #17191d;
-  --text-secondary: #656970;
+  /* ---- MTC-003 主题：极白中性骨架 + 低饱和薄荷绿品牌色 ---- */
+  --background: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-muted: #F6F6F4;
+  --surface-raised: #FFFFFF;
+  --border: #E7E7E3;
+  --text-primary: #111211;
+  --text-secondary: #686D69;
 
-  --brand-anchor: #002fa7;
-  --brand-primary: #2448c8;
-  --brand-soft: #e8edff;
-  --brand-hover: #183aae;
-  --brand-strong: #1d3fb4;
+  --brand-primary: #2F7D4B;
+  --brand-hover: #25663D;
+  --brand-soft: #EDF8F0;
+  --brand-subtle: #DDF2E3;
 
-  --status-running: #168aad;
-  --status-success: #2e9b64;
-  --status-warning: #d99022;
-  --status-danger: #d94a4a;
-
-  /* ---- shadcn 语义映射 ---- */
-  --foreground: var(--text-primary);
-  --card: var(--surface);
-  --card-foreground: var(--text-primary);
-  --popover: var(--surface);
-  --popover-foreground: var(--text-primary);
-  --primary: var(--brand-primary);
-  --primary-foreground: #ffffff;
-  --secondary: var(--surface-muted);
-  --secondary-foreground: var(--text-primary);
-  --muted: var(--surface-muted);
-  --muted-foreground: var(--text-secondary);
-  /* accent 保持中性（菜单悬停等一般交互态）；选中态用 --selected（品牌软底） */
-  --accent: var(--surface-muted);
-  --accent-foreground: var(--text-primary);
-  --selected: var(--brand-soft);
-  --selected-foreground: var(--brand-primary);
-  --destructive: var(--status-danger);
-  --destructive-foreground: #ffffff;
-  --input: var(--border);
-  --ring: var(--brand-primary);
-  --chart-1: var(--brand-primary);
-  --chart-2: var(--status-success);
-  --chart-3: var(--status-warning);
-  --chart-4: var(--status-running);
-  --chart-5: var(--brand-hover);
-  --sidebar: var(--surface-muted);
-  --sidebar-foreground: var(--text-primary);
-  --sidebar-primary: var(--brand-primary);
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: var(--brand-soft);
-  --sidebar-accent-foreground: var(--brand-anchor);
-  --sidebar-border: var(--border);
-  --sidebar-ring: var(--brand-primary);
-}
-
-.dark {
-  /* ---- 规范 token（Dark） ---- */
-  --background: #101216;
-  --surface: #171a20;
-  --surface-muted: #f4f4f1; /* 仅语义占位；暗色下浮层/衬底用 --surface-raised */
-  --surface-raised: #1d2129;
-  --border: #2b303a;
-  --text-primary: #f5f4f1;
-  --text-secondary: #a3a7af;
-
-  --brand-primary: #6d89ff;
-  --brand-strong: #4164e8;
-  --brand-anchor: #8aa2ff;
-  --brand-soft: #1b2440;
-  --brand-hover: #8aa2ff;
-
-  /* 暗色下按同色相提亮，保证对比度（派生值） */
-  --status-running: #3fa9cd;
-  --status-success: #48b27e;
-  --status-warning: #e0a244;
-  --status-danger: #e06a6a;
+  --status-running: #42A9D6;
+  --status-success: #42B883;
+  --status-warning: #E6A53A;
+  --status-danger: #E06363;
 
   /* ---- shadcn 语义映射 ---- */
   --foreground: var(--text-primary);
@@ -98,28 +39,82 @@
   --popover: var(--surface-raised);
   --popover-foreground: var(--text-primary);
   --primary: var(--brand-primary);
-  --primary-foreground: #101216;
-  --secondary: var(--surface-raised);
+  --primary-foreground: #FFFFFF;
+  --secondary: var(--surface-muted);
   --secondary-foreground: var(--text-primary);
-  --muted: var(--surface-raised);
+  --muted: var(--surface-muted);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--surface-muted);
+  --accent-foreground: var(--text-primary);
+  --selected: var(--brand-soft);
+  --selected-foreground: var(--brand-primary);
+  --destructive: var(--status-danger);
+  --destructive-foreground: #FFFFFF;
+  --input: var(--border);
+  --ring: var(--brand-primary);
+  --chart-1: var(--brand-primary);
+  --chart-2: var(--status-running);
+  --chart-3: var(--status-success);
+  --chart-4: var(--status-warning);
+  --chart-5: var(--brand-hover);
+  --sidebar: var(--surface-muted);
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-primary: var(--brand-primary);
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: var(--brand-soft);
+  --sidebar-accent-foreground: var(--brand-primary);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--brand-primary);
+}
+
+.dark {
+  /* ---- 极黑中性骨架；禁止残留 Light token ---- */
+  --background: #080909;
+  --surface: #101211;
+  --surface-muted: #181B19;
+  --surface-raised: #151816;
+  --border: #292D2A;
+  --text-primary: #FAFAF8;
+  --text-secondary: #A7ADA8;
+
+  --brand-primary: #76D596;
+  --brand-hover: #96E3AF;
+  --brand-soft: #183523;
+  --brand-subtle: #21472E;
+
+  --status-running: #5ABCE4;
+  --status-success: #62CD97;
+  --status-warning: #F0BA58;
+  --status-danger: #EC7777;
+
+  --foreground: var(--text-primary);
+  --card: var(--surface);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--brand-primary);
+  --primary-foreground: #07110A;
+  --secondary: var(--surface-muted);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--surface-muted);
   --muted-foreground: var(--text-secondary);
   --accent: var(--surface-raised);
   --accent-foreground: var(--text-primary);
   --selected: var(--brand-soft);
   --selected-foreground: var(--brand-primary);
   --destructive: var(--status-danger);
-  --destructive-foreground: #ffffff;
+  --destructive-foreground: #FFFFFF;
   --input: var(--border);
   --ring: var(--brand-primary);
   --chart-1: var(--brand-primary);
-  --chart-2: var(--status-success);
-  --chart-3: var(--status-warning);
-  --chart-4: var(--status-running);
-  --chart-5: var(--brand-strong);
-  --sidebar: var(--background);
+  --chart-2: var(--status-running);
+  --chart-3: var(--status-success);
+  --chart-4: var(--status-warning);
+  --chart-5: var(--brand-hover);
+  --sidebar: var(--surface);
   --sidebar-foreground: var(--text-primary);
   --sidebar-primary: var(--brand-primary);
-  --sidebar-primary-foreground: #101216;
+  --sidebar-primary-foreground: #07110A;
   --sidebar-accent: var(--brand-soft);
   --sidebar-accent-foreground: var(--brand-primary);
   --sidebar-border: var(--border);
@@ -172,10 +167,9 @@
   --color-text-primary: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
   --color-brand: var(--brand-primary);
-  --color-brand-anchor: var(--brand-anchor);
   --color-brand-soft: var(--brand-soft);
+  --color-brand-subtle: var(--brand-subtle);
   --color-brand-hover: var(--brand-hover);
-  --color-brand-strong: var(--brand-strong);
   --color-status-running: var(--status-running);
   --color-status-success: var(--status-success);
   --color-status-warning: var(--status-warning);

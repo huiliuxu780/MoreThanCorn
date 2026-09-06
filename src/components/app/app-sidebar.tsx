@@ -305,7 +305,7 @@ export function AppRail(props: AppNavProps) {
       data-testid="app-rail"
     >
       <div className="mb-2 flex justify-center">
-        <div className="flex size-9 items-center justify-center rounded-lg bg-brand-anchor text-white">
+        <div className="flex size-9 items-center justify-center rounded-lg bg-brand text-primary-foreground">
           <ShieldCheck className="size-4.5" />
         </div>
       </div>
@@ -370,7 +370,7 @@ export function MobileNavSheet({ open, onOpenChange, ...props }: AppNavProps & {
       <SheetContent side="left" className="w-72 gap-0 overflow-y-auto p-0">
         <SheetHeader className="border-b px-4 py-3 text-left">
           <SheetTitle className="flex items-center gap-2.5">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-brand-anchor text-white">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-brand text-primary-foreground">
               <ShieldCheck className="size-4" />
             </span>
             <span className="text-sm font-semibold">{UI_TERMS.productName}</span>
