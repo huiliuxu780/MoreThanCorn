@@ -324,7 +324,8 @@ export function AppRail(props: AppNavProps) {
       className="sticky top-0 hidden h-dvh w-18 shrink-0 flex-col items-stretch overflow-y-auto border-r bg-sidebar pb-2 md:flex"
       data-testid="app-rail"
     >
-      <div className="flex h-12 items-center justify-center">
+      {/* 09-08：品牌行 h-14 与全局顶栏同行高，mark 中心与面包屑行中心对齐 */}
+      <div className="flex h-14 items-center justify-center">
         <CortexMark className="size-10" />
       </div>
       <nav aria-label="主导航" className="flex flex-col gap-1 px-2 pt-2">
