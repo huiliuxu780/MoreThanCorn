@@ -93,10 +93,10 @@ export function AgentWorkspaceShell({ agent, role, section, versionChip, envChip
               <button
                 type="button"
                 onClick={() => navigate(`/agents/${agent.id}/${item.key}`)}
-                className={`flex h-8 w-full items-center gap-2 rounded text-[13px] leading-5 transition-colors ${
+                className={`flex h-8 w-full items-center gap-2 rounded px-4 text-[13px] leading-5 transition-colors ${
                   section === item.key
                     ? "bg-(--detail-menu-active) font-medium text-[#FAFAF8]"
-                    : "px-4 text-muted-foreground hover:bg-(--fill-tertiary) hover:text-foreground"}`}
+                    : "text-muted-foreground hover:bg-(--fill-tertiary) hover:text-foreground"}`}
               >
                 <item.icon className="size-4" /> {item.label}
               </button>
