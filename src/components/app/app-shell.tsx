@@ -292,7 +292,7 @@ export function AppShell() {
       <Dialog open={loginOpen || (needLogin && !authed)} onOpenChange={(o) => setLoginOpen(o)}>
         <DialogContent>
           <DialogHeader>
-            <CortexLockup className="mb-1" markClass="size-8" />
+            <CortexLockup className="mb-1 h-8" />
             <DialogTitle>登录</DialogTitle>
             <DialogDescription>服务端已启用身份鉴权，请使用账号登录后继续。</DialogDescription>
           </DialogHeader>
