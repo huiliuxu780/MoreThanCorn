@@ -478,3 +478,26 @@ button[data-slot="select-trigger"].h-8 { height: 2rem !important; }
 @media (prefers-reduced-motion: reduce) {
   .slot-in { animation: none; }
 }
+
+/* ---- 09-07 动效：创建卡 chip hover 扇形散开（原站实测旋转 -18/-11/-4/4/11/18 + 阶梯 delay + shadow-2） ---- */
+.create-fan img { transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.15s ease; }
+.create-fan img:nth-child(1) { transform: rotate(-15deg); }
+.create-fan img:nth-child(2) { transform: rotate(-9deg); }
+.create-fan img:nth-child(3) { transform: rotate(-3deg); }
+.create-fan img:nth-child(4) { transform: rotate(3deg); }
+.create-fan img:nth-child(5) { transform: rotate(9deg); }
+.create-fan img:nth-child(6) { transform: rotate(15deg); }
+.group:hover .create-fan img,
+.group:focus-visible .create-fan img { box-shadow: 0 8px 24px rgb(0 0 0 / 0.14); }
+.group:hover .create-fan img:nth-child(1),
+.group:focus-visible .create-fan img:nth-child(1) { transform: translate(-46px, 10px) rotate(-18deg); }
+.group:hover .create-fan img:nth-child(2),
+.group:focus-visible .create-fan img:nth-child(2) { transform: translate(-28px, 2px) rotate(-11deg); transition-delay: 0.05s; }
+.group:hover .create-fan img:nth-child(3),
+.group:focus-visible .create-fan img:nth-child(3) { transform: translate(-10px, -6px) rotate(-4deg); transition-delay: 0.1s; }
+.group:hover .create-fan img:nth-child(4),
+.group:focus-visible .create-fan img:nth-child(4) { transform: translate(10px, -6px) rotate(4deg); transition-delay: 0.1s; }
+.group:hover .create-fan img:nth-child(5),
+.group:focus-visible .create-fan img:nth-child(5) { transform: translate(28px, 2px) rotate(11deg); transition-delay: 0.05s; }
+.group:hover .create-fan img:nth-child(6),
+.group:focus-visible .create-fan img:nth-child(6) { transform: translate(46px, 10px) rotate(18deg); }

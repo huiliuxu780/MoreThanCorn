@@ -25,6 +25,9 @@ DELTA_BATCH = 64  # llm_delta 事件批量阈值：缓冲到该字符数才落�
 def _system_prompt(db: Session, agent: Agent) -> str:
     cfg = agent.config or {}
     parts = [f"你是数字员工「{agent.name}」。"]
+    rp = (cfg.get("rolePrompt") or "").strip()
+    if rp:
+        parts.append(rp)
     if agent.description:
         parts.append(f"角色描述：{agent.description}")
     caps = cfg.get("capabilities") or []

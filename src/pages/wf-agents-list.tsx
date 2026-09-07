@@ -30,6 +30,7 @@ interface ModuleMeta { key: string; version: string; displayName: string; descri
 
 function lifecycleOf(r: AgentRow): { label: string; variant: "neutral" | "info" | "success" | "warning" } {
   if (r.archived) return { label: "已封存", variant: "neutral" }
+  if (r.type === "custom") return { label: "自定义角色", variant: "info" }
   if (r.prodVersion != null) return { label: `生产 V${r.prodVersion}`, variant: "success" }
   if (r.sandboxVersion != null) return { label: `沙箱 V${r.sandboxVersion}`, variant: "info" }
   if (r.latestVersion != null) return { label: `草稿 V${r.latestVersion}`, variant: "warning" }
@@ -64,7 +65,7 @@ function AgentCard({ r, role, onOpen, onChat, onConfig }: {
 }) {
   const lc = lifecycleOf(r)
   return (
-    <div className="group relative flex min-h-[212px] flex-col rounded-lg border bg-surface px-4 pt-5 pb-0 text-center shadow-sm transition-colors hover:shadow-md">
+    <div className="group relative flex min-h-[212px] flex-col rounded-lg border bg-surface px-4 pt-5 pb-0 text-center shadow-sm transition-[border-color,background-color,box-shadow] duration-200 hover:shadow-md">
       <span className="absolute right-3 top-3 z-10">
         <Badge variant={lc.variant}>{lc.label}</Badge>
       </span>
@@ -119,13 +120,13 @@ function CreateCard() {
   return (
     <Link
       to="/agents/new"
-      className="flex min-h-[212px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-surface p-4 text-center transition-colors hover:border-brand/60"
+      className="group flex min-h-[212px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-surface p-4 text-center transition-colors hover:border-brand/60"
     >
-      <span className="flex h-[104px] items-center justify-center" aria-hidden="true">
+      <span className="create-fan flex h-[104px] items-center justify-center" aria-hidden="true">
         {AVATARS.slice(0, 6).map((a, i) => (
           <img key={a} src={a} alt=""
             className="h-[93px] w-[74px] rounded-lg border bg-surface-raised object-cover shadow-sm"
-            style={{ transform: `rotate(${(i - 2.5) * 6}deg)`, marginLeft: i === 0 ? 0 : -58, zIndex: i }} />
+            style={{ marginLeft: i === 0 ? 0 : -58, zIndex: i }} />
         ))}
       </span>
       <span className="flex items-center gap-2 text-base leading-6 text-muted-foreground">

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { agentApi, type AgentInfo } from "@/services/wf-api"
 import WfDesignerPage from "@/features/designer/DesignerPage"
 import ModuleAgentConfigPage from "./module-agent-config"
+import { CustomAgentConfig } from "./agent-workspace/custom-config"
 import { avatarFor } from "@/lib/agent-avatar"
 import { AgentHomeSection } from "./agent-workspace/home"
 import { AgentBoardSection } from "./agent-workspace/board"
@@ -96,6 +97,7 @@ export default function WfAgentEditorPage() {
       case "knowledge": return <AgentMountsSection agent={agent} kind="knowledges" readOnly={archived} />
       case "governance": return <AgentGovernanceSection agentId={agent.id} />
       case "config":
+        if (agent.type === "custom") return <CustomAgentConfig agent={agent} />
         if (agent.type === "module") return <ModuleAgentConfigPage agent={agent} />
         if (agent.type === "dialogue" || agent.type === "expert-group") {
           return (

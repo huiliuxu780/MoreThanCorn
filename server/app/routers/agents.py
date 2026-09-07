@@ -12,7 +12,7 @@ from ..auth import require_operator
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
-TYPE_LABEL = {"autonomous": "自主规划", "dialogue": "对话编排", "expert-group": "编排Agent专家组",
+TYPE_LABEL = {"autonomous": "自主规划", "dialogue": "对话编排", "expert-group": "编排Agent专家组", "custom": "自定义角色",
               "module": "领域 Module"}
 
 # 调研 12 §3.1（SDD A-17）：数据库约束/服务端校验/前端 Schema 共用同一上限
@@ -31,6 +31,26 @@ def create_agent(payload: dict, db: Session = Depends(get_db),
                  _user: dict = Depends(require_operator) ):
     """SDD 10 R2-1：新 Agent 一律按领域 Module 创建（moduleKey 必填，type 不再对外）。
     旧三类创建保持封存（410）。实例配置：spec 覆盖 + modelRef（Provider 在 Release 绑定）。"""
+    # 09-07：自定义角色（原站【自定义 Waker】同构）：type=custom，从 0 建（rolePrompt+skills+modelRef）
+    if payload.get("type") == "custom" or payload.get("moduleKey") == "custom":
+        _check_name(payload.get("name", ""))
+        if not (payload.get("description") or "").strip():
+            raise HTTPException(422, detail={"code": "DESCRIPTION_REQUIRED", "message": "自定义角色必须填写职责描述"})
+        agent = Agent(name=payload["name"], type="custom", description=payload.get("description", ""),
+                      avatar=payload.get("avatar") or None,
+                      config={"rolePrompt": payload.get("rolePrompt") or "",
+                              "skills": payload.get("skills") or [],
+                              "modelRef": payload.get("modelRef") or {},
+                              "capabilities": payload.get("capabilities") or []})
+        db.add(agent)
+        db.flush()
+        from .admin import audit
+        audit(db, "质量管理员", "agent.custom.create", "agent", agent.id,
+              {"skills": len(agent.config.get("skills") or [])})
+        db.commit()
+        return {"id": agent.id, "name": agent.name, "type": agent.type, "workflowId": None,
+                "moduleKey": None, "moduleVersion": None,
+                "configRevision": agent.config_revision}
     module_key = payload.get("moduleKey")
     if not module_key:
         from ..legacy_agent_archive import LegacyAgentArchivedError
@@ -106,6 +126,32 @@ def list_agents(page: int = 1, pageSize: int = 20, search: str = "", archived: s
                       if agg.get(a.id, (0, None))[1] else None,
                       "updatedAt": a.updated_at.isoformat()})
     return {"items": items, "total": total, "page": page, "pageSize": pageSize}
+
+
+@router.post("/draft-role")
+def draft_role(payload: dict, db: Session = Depends(get_db),
+               _user: dict = Depends(require_operator)):
+    """09-07：自定义角色「智能生成」——由名称+职责起草 Markdown 角色配置（真模型调用）。"""
+    name = (payload.get("name") or "").strip()
+    desc = (payload.get("description") or "").strip()
+    if not name or not desc:
+        raise HTTPException(422, "名称与职责描述必填")
+    from ..agent_runtime import RunError, _chat_completion
+    from ..models import Model
+    m = db.execute(select(Model).where(Model.enabled.is_(True))
+                   .order_by(Model.model_key).limit(1)).scalars().first()
+    if not m:
+        raise HTTPException(422, detail={"code": "MODEL_UNAVAILABLE",
+                                      "message": "无可用模型，无法智能生成；请手动填写或上传 Markdown"})
+    msgs = [{"role": "system",
+             "content": "你是角色设计师。根据名称与职责描述，产出一份 Markdown 角色配置，"
+                        "包含「# 角色：」「## 目标：」「## 技能：」「## 限制：」四节，只输出 Markdown 本体。"},
+            {"role": "user", "content": f"名称：{name}\n职责：{desc}"}]
+    try:
+        out = _chat_completion(db, m.model_key, msgs, [])
+    except RunError as exc:
+        raise HTTPException(422, detail={"code": "DRAFT_FAILED", "message": str(exc)})
+    return {"rolePrompt": out.get("content") or ""}
 
 
 @router.get("/modules")
