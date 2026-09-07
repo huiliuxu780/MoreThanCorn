@@ -325,7 +325,7 @@ export function AppRail(props: AppNavProps) {
       data-testid="app-rail"
     >
       <div className="flex h-12 items-center justify-center">
-        <CortexMark className="size-8" />
+        <CortexMark className="size-10" />
       </div>
       <nav aria-label="主导航" className="flex flex-col gap-1 px-2 pt-2">
         {NAV_ITEMS.filter((item) => rbac.can(item.permission)).map((item) => (
