@@ -427,6 +427,20 @@ export const pagedApi = {
     req<Paged<ProviderListItem>>(`/api/model-providers?page=${p.page ?? 1}&pageSize=${p.pageSize ?? 20}`),
 }
 
+/** docs/v2-design/10 §4.2：模型接入渠道 CRUD（模型目录走 resApi model）。 */
+export const providerApi = {
+  create: (body: { name: string; baseUrl: string; connectionId?: string | null }) =>
+    req<{ id: string }>("/api/model-providers", { method: "POST", body: JSON.stringify(body) }),
+  update: (id: string, body: { name?: string; baseUrl?: string; connectionId?: string | null }) =>
+    req<{ id: string }>(`/api/model-providers/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  remove: (id: string) =>
+    req<{ id: string }>(`/api/model-providers/${id}`, { method: "DELETE" }),
+}
+
+/** docs/v2-design/10 §4.1：skillId → 挂载 Agent 反查（资源壳 chips 消费）。 */
+export const skillMounts = () =>
+  req<{ mounts: Record<string, { agentId: string; agentName: string }[]> }>("/api/skills/mounts")
+
 export const wfApiToken = (): string =>
   (typeof localStorage !== "undefined" && localStorage.getItem("wf_api_token")) ||
   (import.meta.env.VITE_WF_API_TOKEN as string | undefined) || ""
@@ -447,7 +461,7 @@ export const authApi = {
 export interface AgentInfo {
   id: string; name: string; type: string; typeLabel: string; status: string;
   workflowId: string | null; config: Record<string, unknown>; configRevision: number;
-  description: string; avatar?: string | null; archived?: boolean;
+  description: string; avatar?: string | null; archived?: boolean; createdAt?: string;
   moduleKey?: string | null; moduleVersion?: string | null
 }
 

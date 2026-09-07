@@ -143,7 +143,8 @@ def get_agent(aid: str, db: Session = Depends(get_db)):
             "status": a.status, "workflowId": a.workflow_id, "config": a.config,
             "configRevision": a.config_revision,
             "moduleKey": a.module_key, "moduleVersion": a.module_version,
-            "description": a.description, "avatar": a.avatar}
+            "description": a.description, "avatar": a.avatar,
+            "archived": bool(a.archived), "createdAt": a.created_at.isoformat()}
 
 
 @router.put("/{aid}")
@@ -278,10 +279,12 @@ def mounts_health(aid: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "agent not found")
     cfg = a.config or {}
     items = []
-    for s in cfg.get("skills", []):
-        items.append({"kind": "skill", "name": s, "valid": True})
     # 09-07：一等实体 Skill 挂载真校验（agent_skill → skill.status）
     from ..models import AgentSkill, SkillResource
+    # docs/v2-design/10 §5.3：遗留 config.skills 名字对照注册表真校验（未注册 valid=False）
+    registered = {r for (r,) in db.query(SkillResource.name).all()}
+    for s in cfg.get("skills", []):
+        items.append({"kind": "skill", "name": s, "valid": s in registered})
     for link in db.execute(select(AgentSkill).where(AgentSkill.agent_id == a.id)).scalars():
         s = db.get(SkillResource, link.skill_id)
         items.append({"kind": "skill", "name": s.name if s else link.skill_id,

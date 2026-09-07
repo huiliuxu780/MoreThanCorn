@@ -3,7 +3,7 @@
  * 声明偏差：控件高度沿用我方 h-8 全局规格；segment 浅色用中性 token（原站浅色不可见=缺陷）。 */
 import { useCallback, useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { Contact, MessageCircleMore, Plus, Settings2, Share2 } from "lucide-react"
+import { Contact, MessageCircleMore, Plus, Search, Settings2, Share2 } from "lucide-react"
 import { toast } from "sonner"
 import { useListQuery } from "@/hooks/use-list-query"
 import { Pagination } from "@/components/app/pagination"
@@ -64,7 +64,7 @@ function AgentCard({ r, role, onOpen, onChat, onConfig }: {
 }) {
   const lc = lifecycleOf(r)
   return (
-    <div className="group relative flex min-h-[212px] flex-col rounded-lg border bg-surface px-4 pt-5 pb-0 text-center shadow-sm transition-colors hover:border-brand/50 hover:bg-surface-raised">
+    <div className="group relative flex min-h-[212px] flex-col rounded-lg border bg-surface px-4 pt-5 pb-0 text-center shadow-sm transition-colors hover:shadow-md">
       <span className="absolute right-3 top-3 z-10">
         <Badge variant={lc.variant}>{lc.label}</Badge>
       </span>
@@ -124,7 +124,7 @@ function CreateCard() {
       <span className="relative flex h-[90px] w-[120px] items-center justify-center" aria-hidden="true">
         {AVATARS.map((a, i) => (
           <img key={a} src={a} alt=""
-            className="absolute size-14 rounded-lg border bg-surface-raised object-cover shadow-sm"
+            className="absolute h-[93px] w-[74px] rounded-lg border bg-surface-raised object-cover shadow-sm"
             style={{ transform: `rotate(${(i - 2.5) * 7}deg) translateX(${(i - 2.5) * 12}px)`, zIndex: i }} />
         ))}
       </span>
@@ -174,6 +174,7 @@ export default function WfAgentsListPage() {
   return (
     <PageContainer wide>
       <div className="space-y-4">
+      <div className="mb-2">
       <PageHeader
         title="Agent"
         description={`有身份、有角色、有能力、有工作状态的数字员工${archivedTotal > 0 ? ` · 旧版 Agent 已封存 ${archivedTotal} 个，仅历史查询` : ""}`}
@@ -183,8 +184,9 @@ export default function WfAgentsListPage() {
           </Button>
         }
       />
-      {/* segment：使用中/已封存（台账 §4 token 化） */}
-      <div className="flex h-8 w-fit items-center gap-1 rounded-lg bg-(--segment-bg) p-1">
+      </div>
+      {/* segment：使用中/已封存（台账 §4/§12：list gap10、bar mb24） */}
+      <div className="mb-2 flex h-8 w-fit items-center gap-2.5 rounded-lg bg-(--segment-bg) p-1">
         {(["active", "archived"] as const).map((s) => (
           <button
             key={s}
@@ -199,10 +201,13 @@ export default function WfAgentsListPage() {
         ))}
       </div>
       <div className="flex flex-wrap items-center gap-4">
-        <Input placeholder="搜索名称或角色…" aria-label="搜索 Agent" className="h-8 w-[220px]"
-          value={search} onChange={(e) => update({ search: e.target.value || undefined }, true)} />
+        <span className="relative inline-flex h-8 w-[220px]">
+          <Input placeholder="搜索名称或角色…" aria-label="搜索 Agent" className="h-8 w-full pr-8" style={{ fontSize: 13 }}
+            value={search} onChange={(e) => update({ search: e.target.value || undefined }, true)} />
+          <Search className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-(--text-tertiary)" />
+        </span>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="h-8 w-44"><span className="shrink-0 text-(--text-tertiary)">运行时</span><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-8 w-44 gap-3" style={{ fontSize: 13 }}><span className="shrink-0 text-(--text-tertiary)">运行时</span><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部运行时</SelectItem>
             <SelectItem value="module">领域 Module</SelectItem>
@@ -212,7 +217,7 @@ export default function WfAgentsListPage() {
           </SelectContent>
         </Select>
         <Select value={sort} onValueChange={(v) => setSort(v as "updated" | "name")}>
-          <SelectTrigger className="h-8 w-44"><span className="shrink-0 text-(--text-tertiary)">排序</span><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-8 w-44 gap-3" style={{ fontSize: 13 }}><span className="shrink-0 text-(--text-tertiary)">排序</span><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="updated">按更新时间</SelectItem>
             <SelectItem value="name">按名称</SelectItem>

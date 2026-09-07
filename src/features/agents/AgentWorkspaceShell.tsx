@@ -42,10 +42,11 @@ export function AgentWorkspaceShell({ agent, role, section, versionChip, envChip
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* hero 顶栏 */}
-      <div className="flex h-12 shrink-0 items-center gap-3 border-b bg-surface px-4">
+      <div className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-3 border-b bg-surface px-4">
         <img src={avatarFor(agent.id, agent.avatar)} alt="" className="size-8 rounded-full object-cover" />
         <span className="truncate text-[15px] font-semibold">{agent.name}</span>
-        <span className="shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] text-muted-foreground">
+        <span className="shrink-0 rounded-lg border px-1.5 py-0.5 text-xs font-medium leading-[14px] text-(--chip-fg)"
+          style={{ borderColor: "var(--chip-border)" }}>
           {role ?? agent.typeLabel}
         </span>
         {archived && (
@@ -78,27 +79,30 @@ export function AgentWorkspaceShell({ agent, role, section, versionChip, envChip
       </div>
       <div className="flex min-h-0 flex-1">
         {/* 二级侧栏（原站 w207 / 项 h32 / 组标签 11px） */}
-        <nav aria-label="Agent 详情导航" className="w-[207px] shrink-0 space-y-3 overflow-y-auto border-r bg-surface p-3">
-          <Button variant="ghost" size="sm" className="gap-1 px-2 text-muted-foreground" onClick={() => navigate("/agents")}>
+        <nav aria-label="Agent 详情导航" className="w-[240px] shrink-0 overflow-y-auto border-r bg-surface px-4 py-2">
+          <Button variant="ghost" size="sm" className="gap-1 px-0 text-[14px] font-medium text-muted-foreground" onClick={() => navigate("/agents")}>
             <ArrowLeft className="size-3.5" /> 返回
           </Button>
+          <div className="my-2 border-t border-dashed" style={{ borderColor: "var(--border)" }} />
+          <div className="flex flex-col gap-3">
           {NAV.map((item) => (
-            <div key={item.key}>
+            <div key={item.key} className="flex flex-col gap-1">
               {item.group ? (
-                <div className="px-4 py-1 text-[11px] leading-[13px] text-(--text-tertiary)">{item.group}</div>
+                <div className="py-1 text-[11px] leading-[13px] text-(--text-tertiary)">{item.group}</div>
               ) : null}
               <button
                 type="button"
                 onClick={() => navigate(`/agents/${agent.id}/${item.key}`)}
-                className={`flex h-8 w-full items-center gap-2 rounded px-4 text-[13px] leading-5 transition-colors ${
+                className={`flex h-8 w-full items-center gap-2 rounded text-[13px] leading-5 transition-colors ${
                   section === item.key
-                    ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                    : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}
+                    ? "bg-(--detail-menu-active) font-medium text-[#FAFAF8]"
+                    : "px-4 text-muted-foreground hover:bg-(--fill-tertiary) hover:text-foreground"}`}
               >
                 <item.icon className="size-4" /> {item.label}
               </button>
             </div>
           ))}
+          </div>
         </nav>
         <main className="min-w-0 flex-1 overflow-y-auto bg-background p-4">{children}</main>
       </div>

@@ -30,6 +30,12 @@
   --text-tertiary: #838280;
   --segment-bg: var(--surface-muted);
   --segment-active: var(--surface-raised);
+  /* 09-07 §12 原站 CSS 实测 */
+  --fill-secondary: #EFEFEF;
+  --fill-tertiary: #F9F9F9;
+  --detail-menu-active: #050505;
+  --chip-fg: #8E8C99;
+  --chip-border: rgba(239, 240, 243, 0.8);
 
   --brand-primary: #2F7D4B;
   --brand-hover: #25663D;
@@ -104,6 +110,11 @@
   --text-tertiary: #7C7D7F;
   --segment-bg: rgba(255, 255, 255, 0.08);
   --segment-active: rgba(255, 255, 255, 0.12);
+  --fill-secondary: #363636;
+  --fill-tertiary: #1A1A1A;
+  --detail-menu-active: #050505;
+  --chip-fg: rgba(255, 255, 255, 0.72);
+  --chip-border: rgba(255, 255, 255, 0.12);
 
   --brand-primary: #76D596;
   --brand-hover: #96E3AF;
@@ -174,6 +185,11 @@
   --text-tertiary: #6B665C;
   --segment-bg: var(--surface-muted);
   --segment-active: var(--surface-raised);
+  --fill-secondary: #EDE8E0;
+  --fill-tertiary: #F7F4EF;
+  --detail-menu-active: #050505;
+  --chip-fg: #8E8C99;
+  --chip-border: rgba(239, 240, 243, 0.8);
 
   --brand-primary: #2F7D4B;
   --brand-hover: #25663D;
@@ -243,6 +259,11 @@
   --text-tertiary: #A8A296;
   --segment-bg: rgba(255, 255, 255, 0.08);
   --segment-active: rgba(255, 255, 255, 0.12);
+  --fill-secondary: #363228;
+  --fill-tertiary: #252220;
+  --detail-menu-active: #050505;
+  --chip-fg: rgba(255, 255, 255, 0.72);
+  --chip-border: rgba(255, 255, 255, 0.12);
 
   --brand-primary: #76D596;
   --brand-hover: #96E3AF;
@@ -423,3 +444,13 @@ button:not(:disabled) { cursor: pointer; }
 button[data-slot="select-trigger"].h-6 { height: 1.5rem !important; }
 button[data-slot="select-trigger"].h-7 { height: 1.75rem !important; }
 button[data-slot="select-trigger"].h-8 { height: 2rem !important; }
+
+/* docs/v2-design/10 §6：能力与资源壳内容槽切换过渡（原站实测 150ms cubic-bezier(.4,0,.2,1)） */
+@keyframes slotIn {
+  from { opacity: 0; translate: 0 2px; }
+  to { opacity: 1; translate: 0 0; }
+}
+.slot-in { animation: slotIn 0.15s cubic-bezier(0.4, 0, 0.2, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .slot-in { animation: none; }
+}

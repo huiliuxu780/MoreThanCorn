@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { agentApi, type AgentInfo } from "@/services/wf-api"
+import { avatarFor } from "@/lib/agent-avatar"
 
 interface RunStats {
   sinceDays: number; running: number; done: number; pending: number;
@@ -67,12 +68,35 @@ export function AgentHomeSection({ agent }: { agent: AgentInfo }) {
 
   return (
     <div className="mx-auto max-w-[700px] space-y-4">
+      {/* 身份区（原站 home identity：拍立得 + 名称 26/500 + 角色徽章 + 入职/描述） */}
+      <div className="flex items-start gap-6">
+        <div className="flex h-[197px] w-[176px] shrink-0 -rotate-3 flex-col items-center rounded-[7px] border bg-surface p-[11px_11px_8px]"
+          style={{ borderColor: "var(--border)" }}>
+          <span className="block h-[154px] w-[154px] overflow-hidden rounded-[2px] bg-(--fill-tertiary)">
+            <img src={avatarFor(agent.id, agent.avatar)} alt="" className="size-full object-cover" />
+          </span>
+          <span className="pt-2 text-[13px] leading-[19px] text-muted-foreground">ID: {agent.id.slice(0, 8)}</span>
+        </div>
+        <div className="min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-[26px] font-medium leading-8">{agent.name}</h2>
+            <span className="inline-flex items-center gap-0.5 rounded-lg border px-1.5 py-0.5 text-xs font-medium leading-[14px] text-(--chip-fg)"
+              style={{ borderColor: "var(--chip-border)" }}>{agent.typeLabel}</span>
+          </div>
+          {agent.createdAt
+            ? <p className="text-[13px] leading-5 text-muted-foreground">入职时间：{agent.createdAt.slice(0, 10)}</p>
+            : null}
+          {agent.description
+            ? <p className="text-[13px] leading-5 text-muted-foreground">{agent.description}</p>
+            : null}
+        </div>
+      </div>
       {/* 工作日志 */}
-      <section className="space-y-[22px] rounded-md border bg-surface p-[18px_22px]">
+      <section className="flex flex-col gap-3 rounded-lg border bg-surface px-5 py-4">
         <h3 className="text-base font-medium leading-6">工作日志</h3>
-        <div className="grid grid-cols-4 rounded-md bg-(--segment-bg)">
+        <div className="grid grid-cols-4 rounded-lg bg-(--fill-tertiary) p-5">
           {metrics.map((m) => (
-            <div key={m.label} className="space-y-1 px-4 py-3">
+            <div key={m.label} className="flex flex-col justify-center gap-1 border-l px-5 first:border-l-0" style={{ borderColor: "var(--border)" }}>
               <div className="flex items-baseline gap-1 text-xl font-semibold leading-6">
                 {m.v}{m.unit && <span className="text-xs font-normal">{m.unit}</span>}
               </div>
@@ -84,14 +108,14 @@ export function AgentHomeSection({ agent }: { agent: AgentInfo }) {
       </section>
 
       {/* 核心能力 */}
-      <section className="rounded-md border bg-surface">
-        <h3 className="px-5 pt-[18px] text-base font-medium leading-6">核心能力（{caps.length}）</h3>
+      <section className="flex flex-col gap-3 rounded-lg border bg-surface px-5 py-4">
+        <h3 className="text-base font-medium leading-6">核心能力（{caps.length}）</h3>
         {caps.length === 0 ? (
           <p className="px-5 py-4 text-xs text-(--text-tertiary)">
             尚未填写核心能力，去<Link className="underline" to={`/agents/${agent.id}/config`}>配置</Link>页补充。
           </p>
         ) : caps.map((c, i) => (
-          <div key={i} className={`space-y-1 px-5 py-4 ${i < caps.length - 1 ? "border-b" : ""}`}
+          <div key={i} className="flex min-h-[76px] flex-col justify-center gap-1 border-b border-dashed px-5 py-4 last:border-b-0"
             style={{ borderColor: "var(--border)" }}>
             <div className="text-[15px] font-medium leading-6">{c.name}</div>
             <div className="text-xs leading-5 text-(--text-tertiary)">{c.description}</div>
@@ -100,7 +124,7 @@ export function AgentHomeSection({ agent }: { agent: AgentInfo }) {
       </section>
 
       {/* 记忆与学习时间线预览 */}
-      <section className="space-y-3 rounded-md border bg-surface p-[18px_22px]">
+      <section className="flex flex-col gap-3 rounded-lg border bg-surface px-5 py-4">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-medium leading-6">记忆与学习</h3>
           <Link to={`/agents/${agent.id}/memory`} className="text-xs text-muted-foreground underline">查看完整记忆</Link>
