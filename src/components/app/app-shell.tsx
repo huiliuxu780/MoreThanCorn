@@ -266,7 +266,8 @@ export function AppShell() {
     <div className="flex min-h-svh w-full">
       <AppRail {...navProps} />
       <div className="flex min-h-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+        {/* 09-08：工作区路由（Agent 详情/对话）桌面端隐藏空顶栏——壳自带 hero 顶栏；移动端保留汉堡 */}
+        <header className={`sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75 ${workspace ? "md:hidden" : ""}`}>
           <Button
             ref={burgerRef}
             variant="ghost"
