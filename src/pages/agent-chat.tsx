@@ -153,7 +153,7 @@ export default function AgentChatPage() {
       {/* 右：聊天主列 */}
       <main className="flex min-w-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
-          <div className="mx-auto w-full max-w-[800px] space-y-4">
+          <div className="w-full space-y-4 px-6">
             {messages.length === 0 && agent ? (
               <div className="space-y-5 pt-10 text-center">
                 <img src={avatarFor(agent.id, agent.avatar)} alt="" className="mx-auto size-16 rounded-full object-cover" />
@@ -201,7 +201,7 @@ export default function AgentChatPage() {
 
         {/* composer（台账 §6：shell r8 pad 12 12 0 / toolbar h44 / root pad 0 32 12） */}
         <div className="shrink-0 px-8 pb-3">
-          <div className="mx-auto w-full max-w-[800px] rounded-lg border bg-surface px-3 pt-3" style={{ borderColor: "var(--border)" }}>
+          <div className="w-full rounded-lg border bg-surface px-3 pt-3" style={{ borderColor: "var(--border)" }}>
             <Textarea value={draft} placeholder="输入消息…" className="min-h-16 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(draft) } }} />

@@ -121,11 +121,11 @@ function CreateCard() {
       to="/agents/new"
       className="flex min-h-[212px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-surface p-4 text-center transition-colors hover:border-brand/60"
     >
-      <span className="relative flex h-[90px] w-[120px] items-center justify-center" aria-hidden="true">
-        {AVATARS.map((a, i) => (
+      <span className="flex h-[104px] items-center justify-center" aria-hidden="true">
+        {AVATARS.slice(0, 6).map((a, i) => (
           <img key={a} src={a} alt=""
-            className="absolute h-[93px] w-[74px] rounded-lg border bg-surface-raised object-cover shadow-sm"
-            style={{ transform: `rotate(${(i - 2.5) * 7}deg) translateX(${(i - 2.5) * 12}px)`, zIndex: i }} />
+            className="h-[93px] w-[74px] rounded-lg border bg-surface-raised object-cover shadow-sm"
+            style={{ transform: `rotate(${(i - 2.5) * 6}deg)`, marginLeft: i === 0 ? 0 : -58, zIndex: i }} />
         ))}
       </span>
       <span className="flex items-center gap-2 text-base leading-6 text-muted-foreground">

@@ -102,7 +102,7 @@ export default function AgentCreatePage() {
         </div>
         <div className="space-y-2">
           <Label>头像</Label>
-          <div className="grid w-fit grid-cols-6 gap-2">
+          <div className="grid w-fit grid-cols-8 gap-2">
             {AVATARS.map((a) => (
               <button
                 key={a}
