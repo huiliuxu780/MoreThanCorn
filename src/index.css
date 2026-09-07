@@ -36,6 +36,9 @@
   --detail-menu-active: #050505;
   --chip-fg: #8E8C99;
   --chip-border: rgba(239, 240, 243, 0.8);
+  --heat-l1: #A7F3D0;
+  --heat-l2: #34D399;
+  --heat-l3: #047857;
 
   --brand-primary: #2F7D4B;
   --brand-hover: #25663D;
@@ -115,6 +118,9 @@
   --detail-menu-active: #050505;
   --chip-fg: rgba(255, 255, 255, 0.72);
   --chip-border: rgba(255, 255, 255, 0.12);
+  --heat-l1: #21472E;
+  --heat-l2: #76D596;
+  --heat-l3: #96E3AF;
 
   --brand-primary: #76D596;
   --brand-hover: #96E3AF;
@@ -190,6 +196,9 @@
   --detail-menu-active: #050505;
   --chip-fg: #8E8C99;
   --chip-border: rgba(239, 240, 243, 0.8);
+  --heat-l1: #A7F3D0;
+  --heat-l2: #34D399;
+  --heat-l3: #047857;
 
   --brand-primary: #2F7D4B;
   --brand-hover: #25663D;
@@ -264,6 +273,9 @@
   --detail-menu-active: #050505;
   --chip-fg: rgba(255, 255, 255, 0.72);
   --chip-border: rgba(255, 255, 255, 0.12);
+  --heat-l1: #21472E;
+  --heat-l2: #76D596;
+  --heat-l3: #96E3AF;
 
   --brand-primary: #76D596;
   --brand-hover: #96E3AF;

@@ -14,6 +14,70 @@ interface TimelineEvent { type: string; note: string; at: string; name?: string;
 
 const TRIGGER_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"]
 
+
+/** 活跃度热力图（原站 qc-wr-heatmap 同构：53 周 × 7、月标 13 列、周一/三/五行标、少多图例）。
+ * 度量：panel fill-tertiary r6 p16 min-h188；cell 12×12 r3 gap4；levels 见 --heat-l*（台账 §14）。 */
+function Heatmap({ byDay }: { byDay: { date: string; count: number }[] }) {
+  const counts = new Map(byDay.map((d) => [d.date, d.count]))
+  const today = new Date()
+  const monday = new Date(today)
+  const dow = (monday.getDay() + 6) % 7
+  monday.setDate(monday.getDate() - dow)
+  const start = new Date(monday)
+  start.setDate(start.getDate() - 52 * 7)
+  const weeks: { date: Date; count: number; future: boolean }[][] = []
+  for (let w = 0; w < 53; w++) {
+    const col: { date: Date; count: number; future: boolean }[] = []
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(start)
+      day.setDate(start.getDate() + w * 7 + d)
+      const key = day.toISOString().slice(0, 10)
+      col.push({ date: day, count: counts.get(key) ?? 0, future: day > today })
+    }
+    weeks.push(col)
+  }
+  const months: string[] = []
+  let lastMonth = -1
+  let labelCount = 0
+  for (let w = 0; w < 53; w++) {
+    const m = weeks[w][0].date.getMonth()
+    if (m !== lastMonth && labelCount < 13) { months.push(`${m + 1}月`); lastMonth = m; labelCount++ }
+    else months.push("")
+  }
+  const level = (c: number) => (c <= 0 ? 0 : c === 1 ? 1 : c <= 3 ? 2 : 3)
+  const LEVEL_BG = ["var(--fill-tertiary)", "var(--heat-l1)", "var(--heat-l2)", "var(--heat-l3)"]
+  return (
+    <div className="min-w-0 flex-1 overflow-x-auto rounded-md bg-(--fill-tertiary) p-4" style={{ minHeight: 188 }}>
+      <div className="w-max min-w-full">
+        <div className="mb-1.5 ml-[34px] grid gap-1" style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}>
+          {months.filter(Boolean).slice(0, 13).map((m, i) => (
+            <span key={i} className="whitespace-nowrap text-xs leading-[18px] text-muted-foreground">{m}</span>
+          ))}
+        </div>
+        <div className="flex items-start gap-2">
+          <div className="grid w-[26px] shrink-0 grid-rows-7 gap-1" style={{ gridTemplateRows: "repeat(7, 12px)" }}>
+            {["", "周一", "", "周三", "", "周五", ""].map((w, i) => (
+              <span key={i} className="text-right text-xs leading-[12px] text-muted-foreground">{w}</span>
+            ))}
+          </div>
+          <div className="grid grid-rows-7 gap-1" style={{ gridTemplateRows: "repeat(7, 12px)", gridAutoFlow: "column" }}>
+            {weeks.flat().map((c, i) => (
+              <span key={i} title={`${c.date.toISOString().slice(0, 10)}，当日任务数：${c.count}`}
+                className="block size-3 rounded-[3px]"
+                style={{ background: LEVEL_BG[level(c.count)], visibility: c.future ? "hidden" : undefined }} />
+            ))}
+          </div>
+        </div>
+        <div className="mt-3.5 flex items-center justify-center gap-1.5 text-xs leading-[18px]">
+          <span>少</span>
+          {LEVEL_BG.map((bg, i) => <span key={i} className="size-3 rounded-[3px]" style={{ background: bg }} />)}
+          <span>多</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Donut({ byTrigger }: { byTrigger: Record<string, number> }) {
   const entries = Object.entries(byTrigger).filter(([, n]) => n > 0)
   const total = entries.reduce((s, [, n]) => s + n, 0)
@@ -104,7 +168,10 @@ export function AgentHomeSection({ agent }: { agent: AgentInfo }) {
             </div>
           ))}
         </div>
-        <Donut byTrigger={stats?.byTrigger ?? {}} />
+        <div className="flex flex-wrap items-start gap-6">
+          <Heatmap byDay={stats?.byDay ?? []} />
+          <Donut byTrigger={stats?.byTrigger ?? {}} />
+        </div>
       </section>
 
       {/* 核心能力 */}
