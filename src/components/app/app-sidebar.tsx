@@ -326,7 +326,8 @@ export function AppRail(props: AppNavProps) {
     >
       {/* 09-08：品牌行 h-14 与全局顶栏同行高，mark 中心与面包屑行中心对齐 */}
       <div className="flex h-14 items-center justify-center">
-        <CortexMark className="size-10" />
+        {/* 光学居中：C 标墨量偏上，几何中心对齐后仍显高，下移 2px */}
+        <CortexMark className="size-10 translate-y-[2px]" />
       </div>
       <nav aria-label="主导航" className="flex flex-col gap-1 px-2 pt-2">
         {NAV_ITEMS.filter((item) => rbac.can(item.permission)).map((item) => (
