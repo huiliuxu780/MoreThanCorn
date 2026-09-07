@@ -16,8 +16,7 @@ import {
 } from "@/components/ui/select"
 import { ErrorState, TableSkeleton } from "@/components/app/list-state"
 import { PageContainer, PageHeader } from "@/components/app/page"
-import { avatarFor } from "@/lib/agent-avatar"
-import { formatCompactDateTime } from "@/lib/time"
+import { AVATARS, avatarFor } from "@/lib/agent-avatar"
 
 interface AgentRow {
   id: string; name: string; type: string; typeLabel: string; status: string; updatedAt: string; description?: string; avatar?: string | null;
@@ -37,12 +36,23 @@ function lifecycleOf(r: AgentRow): { label: string; variant: "neutral" | "info" 
   return { label: "草稿", variant: "warning" }
 }
 
+/** 原站统计行用相对日期（前天/暂无），窄列不折行（台账 §10）。 */
+function relRun(v: string | null | undefined): string {
+  if (!v) return "暂无"
+  const d = Math.floor((Date.now() - new Date(v).getTime()) / 86400000)
+  if (d <= 0) return "今天"
+  if (d === 1) return "昨天"
+  if (d === 2) return "前天"
+  if (d < 30) return `${d} 天前`
+  return v.slice(5, 10)
+}
+
 /** 统计行单列：label 三级色 13px + value 二级色 13px（台账 §1）。 */
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <span className="flex items-center justify-center gap-2 text-[13px] leading-5">
       <span className="text-(--text-tertiary)">{label}</span>
-      <span className="text-muted-foreground">{value}</span>
+      <span className="whitespace-nowrap text-muted-foreground">{value}</span>
     </span>
   )
 }
@@ -81,7 +91,7 @@ function AgentCard({ r, role, onOpen, onChat, onConfig }: {
         <div className="col-start-1 row-start-1 grid grid-cols-[1fr_auto_1fr] items-center border-t py-3 transition-opacity duration-200 group-hover:opacity-0">
           <Stat label="任务数" value={String(r.runCount ?? 0)} />
           <span className="h-[18px] w-px bg-border" />
-          <Stat label="最近运行" value={r.lastRunAt ? formatCompactDateTime(r.lastRunAt) : "暂无"} />
+          <Stat label="最近运行" value={relRun(r.lastRunAt)} />
         </div>
         <div className="col-start-1 row-start-1 flex items-center gap-2 self-center opacity-0 pointer-events-none transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
           <Button variant="ghost" size="icon" className="size-8 shrink-0" aria-label="配置" onClick={onConfig}>
@@ -109,13 +119,13 @@ function CreateCard() {
       to="/agents/new"
       className="flex min-h-[212px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-surface p-4 text-center transition-colors hover:border-brand/60"
     >
-      <svg viewBox="0 0 72 90" className="h-[90px] w-[72px]" aria-hidden="true">
-        <rect x="14" y="10" width="44" height="56" rx="6" fill="var(--brand-soft)" stroke="var(--border)" transform="rotate(-8 36 38)" />
-        <rect x="16" y="12" width="44" height="56" rx="6" fill="var(--surface-raised)" stroke="var(--border)" transform="rotate(4 38 40)" />
-        <rect x="20" y="16" width="36" height="36" rx="4" fill="var(--brand-subtle)" transform="rotate(4 38 40)" />
-        <circle cx="38" cy="30" r="7" fill="var(--text-primary)" transform="rotate(4 38 40)" />
-        <path d="M26 50c2-8 7-11 12-11s10 3 12 11Z" fill="var(--text-primary)" transform="rotate(4 38 40)" />
-      </svg>
+      <span className="relative flex h-[90px] w-[120px] items-center justify-center" aria-hidden="true">
+        {AVATARS.map((a, i) => (
+          <img key={a} src={a} alt=""
+            className="absolute size-14 rounded-lg border bg-surface-raised object-cover shadow-sm"
+            style={{ transform: `rotate(${(i - 2.5) * 7}deg) translateX(${(i - 2.5) * 12}px)`, zIndex: i }} />
+        ))}
+      </span>
       <span className="flex items-center gap-2 text-base leading-6 text-muted-foreground">
         <Plus className="size-4" /> 新建 Agent
       </span>
@@ -161,7 +171,7 @@ export default function WfAgentsListPage() {
 
   return (
     <PageContainer wide>
-      <div className="space-y-4" style={{ maxWidth: "calc(100vw - 240px)" }}>
+      <div className="space-y-4">
       <PageHeader
         title="Agent"
         description={`有身份、有角色、有能力、有工作状态的数字员工${archivedTotal > 0 ? ` · 旧版 Agent 已封存 ${archivedTotal} 个，仅历史查询` : ""}`}
@@ -212,11 +222,11 @@ export default function WfAgentsListPage() {
       {error ? <ErrorState title="Agent 加载失败" onRetry={load} />
         : loading ? <TableSkeleton rows={6} columns={4} />
           : filtered.length === 0 && statusFilter === "active" ? (
-            <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,312px)]">
+            <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,268px),1fr))]">
               <CreateCard />
             </div>
           ) : (
-            <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,312px)]">
+            <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,268px),1fr))]">
               {statusFilter === "active" ? <CreateCard /> : null}
               {filtered.map((r) => (
                 <AgentCard key={r.id} r={r} role={roleOf(r)}
