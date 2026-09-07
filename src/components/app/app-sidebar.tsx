@@ -260,7 +260,7 @@ export type AppNavProps = AccountMenuProps
 /** 09-07 源块对齐（shadcn dashboard-sidebar-04 收起态实测）：
  *  项 56×62 / 内边距 8 / 图标 20 / 标签 12px / 图标-标签间距 10 / 圆角 8。 */
 const RAIL_ITEM_CLS =
-  "flex w-16 flex-col items-center gap-2 rounded-[8px] p-1.5 text-xs transition-colors"
+  "flex w-16 flex-col items-center gap-2.5 rounded-[8px] p-2 text-xs transition-colors"
 
 /** 窄轨单项：图标 + 12px 短标签纵向排列。 */
 function RailLink({ item, active }: { item: NavItem; active: boolean }) {
@@ -329,13 +329,13 @@ export function AppRail(props: AppNavProps) {
         {/* 光学居中：C 标墨量偏上，几何中心对齐后仍显高，下移 2px */}
         <CortexMark className="size-10 translate-y-[2px]" />
       </div>
-      <nav aria-label="主导航" className="flex flex-col gap-1 px-2 pt-2">
+      <nav aria-label="主导航" className="flex flex-col gap-1 px-1 pt-2">
         {NAV_ITEMS.filter((item) => rbac.can(item.permission)).map((item) => (
           <RailLink key={item.to} item={item} active={active === NAV_KEY_BY_TO[item.to]} />
         ))}
       </nav>
       {/* 09-07：底部仅账号入口；主题/设置收进账号菜单 */}
-      <div className="mt-auto flex flex-col gap-1 border-t px-2 pt-2" style={{ borderColor: "var(--sidebar-border)" }}>
+      <div className="mt-auto flex flex-col gap-1 border-t px-1 pt-2" style={{ borderColor: "var(--sidebar-border)" }}>
         <AccountMenu
           {...props}
           trigger={
