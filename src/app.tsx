@@ -25,20 +25,23 @@ const WfWorkflowsPage = lazy(() => import("@/pages/wf-workflows-list"))
 const WfFormsPage = lazy(() => import("@/pages/wf-forms"))
 const WfFormEditorPage = lazy(() => import("@/pages/wf-forms").then((m) => ({ default: m.WfFormEditorPage })))
 const WfWorkflowEditorPage = lazy(() => import("@/features/designer/DesignerPage"))
-const WfConnectionsPage = lazy(() => import("@/pages/wf-connections"))
+// docs/v2-design/10：能力与资源持久壳 + 五分类页（Connections 归设置、规则/表单归 Workflow 域）
+const ResourcesShell = lazy(() => import("@/components/app/resources-shell").then((m) => ({ default: m.ResourcesShell })))
+const ResSkillsPage = lazy(() => import("@/pages/res-skills"))
+const ResModelsPage = lazy(() => import("@/pages/res-category-pages").then((m) => ({ default: m.ResModelsPage })))
+const ResToolsPage = lazy(() => import("@/pages/res-category-pages").then((m) => ({ default: m.ResToolsPage })))
+const ResKnowledgePage = lazy(() => import("@/pages/res-category-pages").then((m) => ({ default: m.ResKnowledgePage })))
+const ResDataPage = lazy(() => import("@/pages/res-category-pages").then((m) => ({ default: m.ResDataPage })))
 const AuditLogPage = lazy(() => import("@/pages/audit-log"))
 const ReleaseGovernancePage = lazy(() => import("@/pages/release-governance"))
 const ResultRulesPage = lazy(() => import("@/pages/result-rules"))
 const ResultRuleEditorPage = lazy(() => import("@/pages/result-rule-editor"))
 // 资源管理一期（uiux/01–03）：AI Resources / Data Resources 统一资源域
-const ResAiResourcesPage = lazy(() => import("@/pages/res-list"))
-const ResDataResourcesPage = lazy(() => import("@/pages/res-list").then((m) => ({ default: m.ResDataResourcesPage })))
 const ResWizardPage = lazy(() => import("@/pages/res-wizard"))
 const ResDetailPage = lazy(() => import("@/pages/res-detail"))
 const DataDefinitionsPage = lazy(() => import("@/pages/data-definitions"))
 const DataDefinitionEditorPage = lazy(() => import("@/pages/data-definition-editor"))
-// MTC-001：能力与资源 Hub + 系统设置
-const ResourcesHubPage = lazy(() => import("@/pages/resources-hub"))
+// MTC-001：系统设置（能力与资源 Hub 门厅已退役 → 持久壳，docs/v2-design/10）
 const SettingsPage = lazy(() => import("@/pages/settings"))
 const ForbiddenPage = lazy(() =>
   import("@/pages/system-pages").then((m) => ({ default: m.ForbiddenPage })),
@@ -51,6 +54,16 @@ const NotFoundPage = lazy(() =>
 function ToolRedirect() {
   const { toolId } = useParams()
   return <Navigate to={`/resources/ai/tool/${toolId}`} replace />
+}
+
+/** docs/v2-design/10 §2.3：旧 /resources/ai 入口 → 新分类路由（按 tab 映射）。 */
+function AiLegacyRedirect() {
+  const location = useLocation()
+  const tab = new URLSearchParams(location.search).get("tab")
+  const to = tab === "tools" || tab === "mcp" ? "/resources/tools"
+    : tab === "knowledge" ? "/resources/knowledge"
+      : "/resources/models"
+  return <Navigate to={`${to}${location.search}`} replace />
 }
 
 /** SDD 13 §10.2：旧批次路由 → canonical route（replace redirect，不维护双页面）。 */
@@ -115,8 +128,15 @@ export function App() {
           <Route path="/agents/:agentId" element={<WfAgentEditorPage />} />
           <Route path="/agents/:agentId/chat" element={<AgentChatPage />} />
           <Route path="/agents/:agentId/:section" element={<WfAgentEditorPage />} />
-          {/* 能力与资源 Hub（完整版属 MTC-011/012） */}
-          <Route path="/resources" element={<ResourcesHubPage />} />
+          {/* 能力与资源持久壳（docs/v2-design/10）：五分类壳内切换 */}
+          <Route path="/resources" element={<ResourcesShell />}>
+            <Route index element={<Navigate to="/resources/skills" replace />} />
+            <Route path="skills" element={<ResSkillsPage />} />
+            <Route path="models" element={<ResModelsPage />} />
+            <Route path="tools" element={<ResToolsPage />} />
+            <Route path="knowledge" element={<ResKnowledgePage />} />
+            <Route path="data" element={<ResDataPage />} />
+          </Route>
           {/* Workflow */}
           <Route path="/workflows" element={<WfWorkflowsPage />} />
           <Route path="/workflows/:agentId" element={<WfWorkflowEditorPage />} />
@@ -136,27 +156,29 @@ export function App() {
           <Route path="/operations/task-runs/:taskRunId" element={<TaskRunDetailPage />} />
           <Route path="/operations/runs/:runId" element={<RunDetailPage />} />
 
-          {/* 表单（Workflow 输入契约） */}
-          {/* MTC-006：能力与资源 canonical 子路由 */}
-          <Route path="/resources/ai" element={<ResAiResourcesPage />} />
+          {/* 资源详情/向导（任务流，不进壳；MTC-006 canonical 保持） */}
+          <Route path="/resources/ai" element={<AiLegacyRedirect />} />
           <Route path="/resources/ai/new" element={<ResWizardPage scope="ai" />} />
           <Route path="/resources/ai/:type/:id" element={<ResDetailPage />} />
-          <Route path="/resources/data" element={<ResDataResourcesPage />} />
           <Route path="/resources/data/new" element={<ResWizardPage scope="data" />} />
           <Route path="/resources/data/:type/:id" element={<ResDetailPage />} />
-          <Route path="/resources/connections" element={<WfConnectionsPage />} />
-          <Route path="/resources/rules" element={<ResultRulesPage />} />
-          <Route path="/resources/rules/:ruleSetId" element={<ResultRuleEditorPage />} />
-          <Route path="/resources/forms" element={<WfFormsPage />} />
-          <Route path="/resources/forms/new" element={<WfFormEditorPage />} />
-          <Route path="/resources/forms/:formId" element={<WfFormEditorPage />} />
+          {/* docs/v2-design/10 §2.3：Connections 归设置（路由反转） */}
+          <Route path="/resources/connections" element={<Navigate to="/settings/connections" replace />} />
+          {/* docs/v2-design/10 §4.7：规则/表单出壳归 Workflow 域 */}
+          <Route path="/workflows/rules" element={<ResultRulesPage />} />
+          <Route path="/workflows/rules/:ruleSetId" element={<ResultRuleEditorPage />} />
+          <Route path="/workflows/forms" element={<WfFormsPage />} />
+          <Route path="/workflows/forms/new" element={<WfFormEditorPage />} />
+          <Route path="/workflows/forms/:formId" element={<WfFormEditorPage />} />
 
           {/* 旧入口 replace redirect（深链/历史保留） */}
           <Route path="/config/ai-resources/*" element={<PrefixRedirect from="/config/ai-resources" to="/resources/ai" />} />
           <Route path="/config/data-resources/*" element={<PrefixRedirect from="/config/data-resources" to="/resources/data" />} />
-          <Route path="/config/result-rules/*" element={<PrefixRedirect from="/config/result-rules" to="/resources/rules" />} />
-          <Route path="/config/forms/*" element={<PrefixRedirect from="/config/forms" to="/resources/forms" />} />
-          <Route path="/settings/connections" element={<Navigate to="/resources/connections" replace />} />
+          <Route path="/config/result-rules/*" element={<PrefixRedirect from="/config/result-rules" to="/workflows/rules" />} />
+          <Route path="/config/forms/*" element={<PrefixRedirect from="/config/forms" to="/workflows/forms" />} />
+          <Route path="/resources/rules/*" element={<PrefixRedirect from="/resources/rules" to="/workflows/rules" />} />
+          <Route path="/resources/forms/*" element={<PrefixRedirect from="/resources/forms" to="/workflows/forms" />} />
+          <Route path="/settings/connections" element={<SettingsPage fixedSection="connections" />} />
           <Route path="/config/tools" element={<Navigate to="/resources/ai?tab=tools" replace />} />
           <Route path="/config/tools/new" element={<Navigate to="/resources/ai/new" replace />} />
           <Route path="/config/tools/:toolId" element={<ToolRedirect />} />

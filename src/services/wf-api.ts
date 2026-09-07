@@ -441,6 +441,25 @@ export const providerApi = {
 export const skillMounts = () =>
   req<{ mounts: Record<string, { agentId: string; agentName: string }[]> }>("/api/skills/mounts")
 
+/** 09-08 原站对齐：文件驱动上传 Skill（.md frontmatter / zip/tgz 含 SKILL.md）+ 一步挂载。 */
+export const skillUpload = async (file: File, agentIds: string[] = []) => {
+  const form = new FormData()
+  form.append("file", file)
+  form.append("agentIds", agentIds.join(","))
+  const tok = wfApiToken()
+  const resp = await fetch(`${WF_BASE}/api/skills/upload`, {
+    method: "POST",
+    headers: { ...(tok ? { Authorization: `Bearer ${tok}` } : {}) },
+    body: form,
+  })
+  if (!resp.ok) {
+    const j = await resp.json().catch(() => null) as { detail?: { message?: string } | string } | null
+    const msg = typeof j?.detail === "object" ? j?.detail?.message : typeof j?.detail === "string" ? j.detail : null
+    throw new Error(msg || `上传失败（${resp.status}）`)
+  }
+  return resp.json() as Promise<Record<string, unknown>>
+}
+
 export const wfApiToken = (): string =>
   (typeof localStorage !== "undefined" && localStorage.getItem("wf_api_token")) ||
   (import.meta.env.VITE_WF_API_TOKEN as string | undefined) || ""

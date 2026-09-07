@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -123,6 +123,21 @@ def uninstall_skill(aid: str, sid: str, db: Session = Depends(get_db),
     db.delete(link)
     db.commit()
     return {"id": sid}
+
+
+# ---------- 全局 Skill 挂载关系（资源壳消费） ----------
+
+skills_router = APIRouter(prefix="/api/skills", tags=["skills"])
+
+
+@skills_router.get("/mounts")
+def skill_mount_map(db: Session = Depends(get_db)):
+    """docs/v2-design/10 §4.1：skillId → 挂载 Agent 列表（反查 join，避免前端 N+1）。"""
+    rows = db.execute(select(AgentSkill, Agent).join(Agent, Agent.id == AgentSkill.agent_id)).all()
+    mounts: dict[str, list[dict]] = {}
+    for link, a in rows:
+        mounts.setdefault(link.skill_id, []).append({"agentId": a.id, "agentName": a.name})
+    return {"mounts": mounts}
 
 
 # ---------- 记忆 ----------
@@ -276,3 +291,74 @@ def download_upload(fid: str):
         raise HTTPException(404, "附件不存在")
     from fastapi.responses import FileResponse
     return FileResponse(hits[0], filename=hits[0].name.split("_", 1)[1])
+
+
+@skills_router.post("/upload", status_code=201)
+async def upload_skill_file(file: UploadFile, agentIds: str = Form(""),
+                            db: Session = Depends(get_db),
+                            _user: dict = Depends(require_operator)):
+    """09-08 原站对齐：文件驱动上传 Skill。
+    支持单个 .md（YAML frontmatter 定义 name/description）或 .zip/.tgz/.tar.gz（含 SKILL.md）；
+    agentIds 逗号分隔=上传即挂载目标 Agent（原站两步合一）。"""
+    import io
+    import re
+    import tarfile
+    import zipfile
+    raw = await file.read()
+    if len(raw) > 5 * 1024 * 1024:
+        raise HTTPException(413, "文件上限 5MB")
+    fn = (file.filename or "").lower()
+    text = ""
+    if fn.endswith(".md"):
+        text = raw.decode("utf-8", "replace")
+    elif fn.endswith(".zip"):
+        with zipfile.ZipFile(io.BytesIO(raw)) as z:
+            cand = [n for n in z.namelist() if n.rstrip("/").endswith("SKILL.md")]
+            if not cand:
+                raise HTTPException(422, {"code": "SKILL_MD_MISSING", "message": "压缩包必须包含 SKILL.md 文件"})
+            text = z.read(cand[0]).decode("utf-8", "replace")
+    elif fn.endswith((".tgz", ".tar.gz")):
+        with tarfile.open(fileobj=io.BytesIO(raw), mode="r:*") as tz:
+            cand = [m for m in tz.getmembers() if m.isfile() and m.name.rstrip("/").endswith("SKILL.md")]
+            if not cand:
+                raise HTTPException(422, {"code": "SKILL_MD_MISSING", "message": "压缩包必须包含 SKILL.md 文件"})
+            f = tz.extractfile(cand[0])
+            text = f.read().decode("utf-8", "replace") if f else ""
+    else:
+        raise HTTPException(422, {"code": "SKILL_FILE_TYPE", "message": "仅支持 .md 或 .zip/.tgz/.tar.gz"})
+    name, desc, category = "", "", ""
+    m = re.match(r"^---\s*\n(.*?)\n---\s*\n?", text, re.S)
+    body = text
+    if m:
+        body = text[m.end():]
+        for line in m.group(1).splitlines():
+            km = re.match(r"^(\w[\w-]*)\s*:\s*(.*)$", line.strip())
+            if not km:
+                continue
+            k, v = km.group(1).lower(), km.group(2).strip().strip("'\"")
+            if k == "name":
+                name = v
+            elif k == "description":
+                desc = v
+            elif k == "category":
+                category = v
+    if not name:
+        raise HTTPException(422, {"code": "FRONTMATTER_NAME", "message": ".md 需 YAML frontmatter 定义 name"})
+    skill = SkillResource(name=name, description=desc, content=text, source="upload",
+                          status="ready", category=category)
+    db.add(skill)
+    db.flush()
+    mounted = []
+    for aid in [x for x in agentIds.split(",") if x.strip()]:
+        a = db.get(Agent, aid.strip())
+        if not a or a.archived:
+            continue
+        exists = db.execute(select(AgentSkill).where(AgentSkill.agent_id == a.id,
+                                                     AgentSkill.skill_id == skill.id)).scalars().first()
+        if not exists:
+            db.add(AgentSkill(agent_id=a.id, skill_id=skill.id))
+            mounted.append(a.name)
+    db.commit()
+    dto = to_dto(db, "skill", skill)
+    dto["mounted"] = mounted
+    return dto
