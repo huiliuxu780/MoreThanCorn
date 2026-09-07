@@ -3,7 +3,7 @@
  * 声明偏差：控件高度沿用我方 h-8 全局规格；segment 浅色用中性 token（原站浅色不可见=缺陷）。 */
 import { useCallback, useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { MessageCircleMore, Plus, Settings2, Share2 } from "lucide-react"
+import { Contact, MessageCircleMore, Plus, Settings2, Share2 } from "lucide-react"
 import { toast } from "sonner"
 import { useListQuery } from "@/hooks/use-list-query"
 import { Pagination } from "@/components/app/pagination"
@@ -64,40 +64,42 @@ function AgentCard({ r, role, onOpen, onChat, onConfig }: {
 }) {
   const lc = lifecycleOf(r)
   return (
-    <div className="group relative flex flex-col rounded-lg border bg-surface px-4 pt-5 pb-0 text-center shadow-sm transition-colors hover:border-brand/50 hover:bg-surface-raised">
-      <span className="absolute right-3 top-3">
+    <div className="group relative flex min-h-[212px] flex-col rounded-lg border bg-surface px-4 pt-5 pb-0 text-center shadow-sm transition-colors hover:border-brand/50 hover:bg-surface-raised">
+      <span className="absolute right-3 top-3 z-10">
         <Badge variant={lc.variant}>{lc.label}</Badge>
       </span>
+      {/* identity：原站覆盖规则=居中竖列 gap16；main 居中竖列 gap4；desc clamp2 lh20 min-h40 恒占两行（行内对齐关键） */}
       <button
         type="button"
         onClick={onOpen}
-        className="flex w-full flex-col items-center gap-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+        className="flex w-full flex-col items-center gap-4 text-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
       >
-        <img src={avatarFor(r.id, r.avatar)} alt="" className="size-12 rounded-full object-cover" />
-        <span className="flex w-full flex-col gap-1">
-          <span className="flex w-full min-w-0 items-center justify-center gap-2">
-            <span className="truncate text-base font-medium leading-6">{r.name}</span>
-            <span className="flex shrink-0 items-center gap-1 truncate rounded-lg px-1.5 py-0.5 text-xs leading-[14px] text-(--text-tertiary)">
-              {role}
+        <img src={avatarFor(r.id, r.avatar)} alt="" className="size-12 shrink-0 rounded-full object-cover" />
+        <span className="flex w-full flex-col items-center gap-1 text-center">
+          <span className="flex w-full items-center justify-center gap-2.5">
+            <span className="min-w-0 max-w-[calc((100%-10px)/2)] truncate text-base leading-6 font-[650]">{r.name}</span>
+            <span className="flex min-w-0 max-w-[calc((100%-10px)/2)] shrink-0 items-center gap-[3px] rounded-lg px-1.5 py-0.5 text-xs leading-[14px] text-(--text-tertiary)">
+              <Contact className="size-4 shrink-0" />
+              <span className="truncate">{role}</span>
             </span>
           </span>
-          {r.description
-            ? <span className="line-clamp-2 w-full text-xs leading-[18px] text-(--text-tertiary)">{r.description}</span>
-            : null}
+          <span className="line-clamp-2 min-h-10 w-full text-center text-xs leading-5 text-(--text-tertiary)">
+            {r.description || ""}
+          </span>
         </span>
       </button>
-      {/* 台账 §7：footer 同格堆叠交叉淡入淡出（原站实测：hover 统计淡出/动作淡入，卡高恒定 212） */}
-      <div className="relative mt-1 grid w-full py-1.5">
-        <div className="col-start-1 row-start-1 grid grid-cols-[1fr_auto_1fr] items-center border-t py-3 transition-opacity duration-200 group-hover:opacity-0">
+      {/* footer：stats 虚线上边线+py12；actions 同格堆叠、不透明底、底对齐 mb12、gap12；hover 交叉淡入淡出 */}
+      <div className="relative mt-1 grid w-full pt-2">
+        <div className="col-start-1 row-start-1 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-t border-dashed py-3 transition-opacity duration-200 group-hover:opacity-0 group-hover:border-transparent">
           <Stat label="任务数" value={String(r.runCount ?? 0)} />
           <span className="h-[18px] w-px bg-border" />
           <Stat label="最近运行" value={relRun(r.lastRunAt)} />
         </div>
-        <div className="col-start-1 row-start-1 flex items-center gap-2 self-center opacity-0 pointer-events-none transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
-          <Button variant="ghost" size="icon" className="size-8 shrink-0" aria-label="配置" onClick={onConfig}>
+        <div className="col-start-1 row-start-1 mb-3 flex h-8 items-center gap-3 self-end bg-surface opacity-0 pointer-events-none transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
+          <Button variant="ghost" size="icon" className="size-8 shrink-0 border-0" aria-label="配置" onClick={onConfig}>
             <Settings2 className="size-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="size-8 shrink-0" aria-label="复制 ID"
+          <Button variant="ghost" size="icon" className="size-8 shrink-0 border-0" aria-label="复制 ID"
             onClick={() => { void navigator.clipboard.writeText(r.id); toast.success("已复制 ID") }}>
             <Share2 className="size-4" />
           </Button>
