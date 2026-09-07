@@ -36,6 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { CortexMark } from "@/components/app/logo"
 
 export interface NavItem {
   label: string
@@ -82,8 +83,6 @@ export const NAV_ITEMS: NavItem[] = [
       "/config/ai-resources",
       "/config/data-resources",
       "/config/data-assets",
-      "/config/result-rules",
-      "/settings/connections",
     ],
   },
   {
@@ -116,12 +115,12 @@ const NAV_KEY_BY_TO: Record<string, TopNavKey> = {
 
 /**
  * MTC-001R：任一路径最多一个一级项 active。
- * - /settings/connections → 能力与资源；其余 /settings/** → 设置；
- * - /operations/** → 任务；/config/forms/** → Workflow。
+ * - /settings/** → 设置（docs/v2-design/10：Connections 归设置，不再特例归资源）；
+ * - /operations/** → 任务；/config/forms/** 与 /workflows/** → Workflow。
  */
 export function computeActiveNav(pathname: string): TopNavKey | null {
   if (pathname === "/settings" || pathname.startsWith("/settings/")) {
-    return pathname.startsWith("/settings/connections") ? "resources" : "settings"
+    return "settings"
   }
   for (const item of NAV_ITEMS) {
     if (item.activePrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
@@ -326,9 +325,7 @@ export function AppRail(props: AppNavProps) {
       data-testid="app-rail"
     >
       <div className="flex h-12 items-center justify-center">
-        <div className="flex size-8 items-center justify-center rounded-lg bg-brand text-primary-foreground">
-          <ShieldCheck className="size-4" />
-        </div>
+        <CortexMark className="size-8" />
       </div>
       <nav aria-label="主导航" className="flex flex-col gap-1 px-2 pt-2">
         {NAV_ITEMS.filter((item) => rbac.can(item.permission)).map((item) => (
@@ -369,9 +366,7 @@ export function MobileNavSheet({ open, onOpenChange, ...props }: AppNavProps & {
       <SheetContent side="left" className="w-72 gap-0 overflow-y-auto p-0">
         <SheetHeader className="border-b px-4 py-3 text-left">
           <SheetTitle className="flex items-center gap-2.5">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-brand text-primary-foreground">
-              <ShieldCheck className="size-4" />
-            </span>
+            <CortexMark className="size-8 shrink-0" />
             <span className="text-sm font-semibold">{UI_TERMS.productName}</span>
           </SheetTitle>
           <SheetDescription className="sr-only">主导航</SheetDescription>

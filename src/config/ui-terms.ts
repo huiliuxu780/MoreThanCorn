@@ -6,7 +6,7 @@ import type { StatusTone } from "@/domain/types"
  * 底部固定 主题 / 设置 / 账号。不允许新增一级入口。
  */
 export const UI_TERMS = {
-  productName: "企业智能质量平台",
+  productName: "CORTEX",
   productSubtitle: "AI Quality Intelligence",
   navigation: {
     /* ---- MTC-001 一级入口（冻结） ---- */
@@ -27,6 +27,12 @@ export const UI_TERMS = {
     batchHistory: "批次历史",
     aiResources: "AI Resources",
     dataResources: "Data Resources",
+    /* docs/v2-design/10：壳内五分类标签 */
+    skills: "Skills",
+    modelAccess: "模型接入",
+    toolsMcp: "工具与 MCP",
+    knowledgeBase: "知识库",
+    dataAssetsHub: "数据资产",
     dataAssets: "数据定义",
     resultRules: "结果规则",
     forms: "表单",

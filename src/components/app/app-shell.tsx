@@ -13,6 +13,7 @@ import {
   login, logout, setRole, type Role,
 } from "@/services/rbac"
 import { Breadcrumbs, type BreadcrumbEntry } from "@/components/app/page"
+import { CortexLockup } from "@/components/app/logo"
 
 /** 工作区级路由自带全高 Header，不使用全局面包屑。 */
 const WORKSPACE_PATTERNS = [
@@ -66,32 +67,31 @@ export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
       if (segments[2] === "runs" && segments[3]) crumbs.push({ label: `Run ${segments[3]}` })
     }
   } else if (first === "resources") {
-    /* MTC-006R：canonical 资源域面包屑（与旧 /config/* 分支同粒度；旧分支只服务 redirect 瞬间与 data-assets 遗留挂载） */
-    if (segments[1] === "forms") {
-      crumbs.push({ label: UI_TERMS.navigation.workflows, href: "/workflows" })
-      crumbs.push({
-        label: UI_TERMS.navigation.forms,
-        href: segments[2] ? "/resources/forms" : undefined,
-      })
-      if (segments[2]) crumbs.push({ label: segments[2] === "new" ? "新建表单" : segments[2] })
-    } else if (segments[1] === "connections") {
-      crumbs.push({ label: UI_TERMS.navigation.resourcesHub, href: "/resources" })
-      crumbs.push({ label: UI_TERMS.navigation.connections })
-    } else if (segments[1] === "rules") {
-      crumbs.push({ label: UI_TERMS.navigation.resourcesHub, href: "/resources" })
-      crumbs.push({
-        label: UI_TERMS.navigation.resultRules,
-        href: segments[2] ? "/resources/rules" : undefined,
-      })
-      if (segments[2]) crumbs.push({ label: segments[2] })
+    /* docs/v2-design/10 §2.4：壳分类面包屑；ai/data 为详情/向导路由，按 type 映射回分类 */
+    const catHref: Record<string, string> = {
+      skills: "/resources/skills", models: "/resources/models", tools: "/resources/tools",
+      knowledge: "/resources/knowledge", data: "/resources/data",
+    }
+    const catLabel: Record<string, string> = {
+      skills: UI_TERMS.navigation.skills, models: UI_TERMS.navigation.modelAccess,
+      tools: UI_TERMS.navigation.toolsMcp, knowledge: UI_TERMS.navigation.knowledgeBase,
+      data: UI_TERMS.navigation.dataAssetsHub,
+    }
+    const typeToCat: Record<string, string> = {
+      model: "models", tool: "tools", mcp: "tools", knowledge: "knowledge",
+      datasource: "data", asset: "data",
+    }
+    if (segments[1] && catHref[segments[1]] && segments.length === 2) {
+      crumbs.push({ label: catLabel[segments[1]] })
     } else if (segments[1] === "ai" || segments[1] === "data") {
-      crumbs.push({ label: UI_TERMS.navigation.resourcesHub, href: "/resources" })
-      crumbs.push({
-        label: segments[1] === "ai" ? UI_TERMS.navigation.aiResources : UI_TERMS.navigation.dataResources,
-        href: segments[2] ? `/resources/${segments[1]}` : undefined,
-      })
-      if (segments[2] === "new") crumbs.push({ label: "创建资源" })
-      else if (segments[2]) crumbs.push({ label: segments[3] ?? segments[2] })
+      if (segments[2] === "new") {
+        crumbs.push({ label: UI_TERMS.navigation.resourcesHub, href: "/resources" })
+        crumbs.push({ label: "创建资源" })
+      } else {
+        const cat = typeToCat[segments[2]] ?? "models"
+        crumbs.push({ label: catLabel[cat], href: catHref[cat] })
+        if (segments[3]) crumbs.push({ label: segments[3] })
+      }
     } else {
       crumbs.push({ label: UI_TERMS.navigation.resourcesHub })
     }
@@ -100,7 +100,19 @@ export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
       label: UI_TERMS.navigation.workflows,
       href: segments[1] ? "/workflows" : undefined,
     })
-    if (segments[1]) crumbs.push({ label: "画布" })
+    if (segments[1] === "rules") {
+      crumbs.push({
+        label: UI_TERMS.navigation.resultRules,
+        href: segments[2] ? "/workflows/rules" : undefined,
+      })
+      if (segments[2]) crumbs.push({ label: segments[2] })
+    } else if (segments[1] === "forms") {
+      crumbs.push({
+        label: UI_TERMS.navigation.forms,
+        href: segments[2] ? "/workflows/forms" : undefined,
+      })
+      if (segments[2]) crumbs.push({ label: segments[2] === "new" ? "新建表单" : segments[2] })
+    } else if (segments[1]) crumbs.push({ label: "画布" })
   } else if (first === "settings") {
     crumbs.push({
       label: UI_TERMS.navigation.settings,
@@ -141,7 +153,7 @@ export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
       crumbs.push({ label: UI_TERMS.navigation.workflows, href: "/workflows" })
       crumbs.push({
         label: UI_TERMS.navigation.forms,
-        href: segments[2] ? "/resources/forms" : undefined,
+        href: segments[2] ? "/workflows/forms" : undefined,
       })
       if (segments[2]) crumbs.push({ label: segments[2] === "new" ? "新建表单" : segments[2] })
     } else {
@@ -169,7 +181,7 @@ export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
       } else if (segments[1] === "result-rules") {
         crumbs.push({
           label: UI_TERMS.navigation.resultRules,
-          href: segments[2] ? "/resources/rules" : undefined,
+          href: segments[2] ? "/workflows/rules" : undefined,
         })
         if (segments[2]) crumbs.push({ label: segments[2] })
       }
@@ -279,6 +291,7 @@ export function AppShell() {
       <Dialog open={loginOpen || (needLogin && !authed)} onOpenChange={(o) => setLoginOpen(o)}>
         <DialogContent>
           <DialogHeader>
+            <CortexLockup className="mb-1" markClass="size-8" />
             <DialogTitle>登录</DialogTitle>
             <DialogDescription>服务端已启用身份鉴权，请使用账号登录后继续。</DialogDescription>
           </DialogHeader>
