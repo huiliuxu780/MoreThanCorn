@@ -36,9 +36,6 @@
   --detail-menu-active: #050505;
   --chip-fg: #8E8C99;
   --chip-border: rgba(239, 240, 243, 0.8);
-  --logo-front-a: #3A3E42;
-  --logo-front-b: #101213;
-  --logo-back: #A9AEB5;
   --heat-l1: #A7F3D0;
   --heat-l2: #34D399;
   --heat-l3: #047857;
@@ -121,9 +118,6 @@
   --detail-menu-active: #050505;
   --chip-fg: rgba(255, 255, 255, 0.72);
   --chip-border: rgba(255, 255, 255, 0.12);
-  --logo-front-a: #FAFBFC;
-  --logo-front-b: #C3C9D0;
-  --logo-back: #383E44;
   --heat-l1: #21472E;
   --heat-l2: #76D596;
   --heat-l3: #96E3AF;
@@ -202,9 +196,6 @@
   --detail-menu-active: #050505;
   --chip-fg: #8E8C99;
   --chip-border: rgba(239, 240, 243, 0.8);
-  --logo-front-a: #3A3E42;
-  --logo-front-b: #101213;
-  --logo-back: #A9AEB5;
   --heat-l1: #A7F3D0;
   --heat-l2: #34D399;
   --heat-l3: #047857;
@@ -282,9 +273,6 @@
   --detail-menu-active: #050505;
   --chip-fg: rgba(255, 255, 255, 0.72);
   --chip-border: rgba(255, 255, 255, 0.12);
-  --logo-front-a: #FAFBFC;
-  --logo-front-b: #C3C9D0;
-  --logo-back: #383E44;
   --heat-l1: #21472E;
   --heat-l2: #76D596;
   --heat-l3: #96E3AF;

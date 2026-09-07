@@ -96,10 +96,10 @@ export const NAV_ITEMS: NavItem[] = [
 
 /** MTC-001R：固定窄轨短标签（产品冻结文案）。 */
 const RAIL_SHORT: Record<string, string> = {
-  "/tasks": "任务",
-  "/autonomous-tasks": "自主",
+  "/tasks": "任务看板",
+  "/autonomous-tasks": "自主工作",
   "/agents": "Agent",
-  "/resources": "资源",
+  "/resources": "能力与资源",
   "/workflows": "流程",
 }
 
@@ -260,7 +260,7 @@ export type AppNavProps = AccountMenuProps
 /** 09-07 源块对齐（shadcn dashboard-sidebar-04 收起态实测）：
  *  项 56×62 / 内边距 8 / 图标 20 / 标签 12px / 图标-标签间距 10 / 圆角 8。 */
 const RAIL_ITEM_CLS =
-  "flex w-14 flex-col items-center gap-2.5 rounded-[8px] p-2 text-xs transition-colors"
+  "flex w-16 flex-col items-center gap-2 rounded-[8px] p-1.5 text-xs transition-colors"
 
 /** 窄轨单项：图标 + 12px 短标签纵向排列。 */
 function RailLink({ item, active }: { item: NavItem; active: boolean }) {
@@ -278,7 +278,7 @@ function RailLink({ item, active }: { item: NavItem; active: boolean }) {
       )}
     >
       <item.icon className="size-5" />
-      <span className="max-w-full truncate">{RAIL_SHORT[item.to] ?? item.label}</span>
+      <span className="w-full text-center text-[10px] leading-[14px]">{RAIL_SHORT[item.to] ?? item.label}</span>
     </NavLink>
   )
 }

@@ -1,21 +1,15 @@
-/** CORTEX 品牌标识（09-07 用户提供 logo 复刻）：叠方块 mark + 字标锁排。
- * 明暗双变体走 token（--logo-front-a/b、--logo-back），源图存 public/brand/。 */
-import { useId } from "react"
+/** CORTEX 品牌标识（09-08 v2，用户提供新 logo）：三等距圆角块 C 标 + 小写字标锁排。
+ * mark 用 currentColor 吃四主题（light 黑/dark 白）；源图存 public/brand/cortex-mark-v2.png。 */
 import { cn } from "@/lib/utils"
 
 export function CortexMark({ className }: { className?: string }) {
-  const id = useId()
+  /* 09-08 v2：三等距圆角块 C 标；currentColor 吃四主题（light 黑 / dark 白）；圆角靠同色 stroke+linejoin round */
   return (
-    <svg viewBox="0 0 64 64" className={cn("block", className)} aria-label="CORTEX" role="img">
-      <defs>
-        <linearGradient id={`${id}-f`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="var(--logo-front-a)" />
-          <stop offset="1" stopColor="var(--logo-front-b)" />
-        </linearGradient>
-      </defs>
-      <rect x="6" y="22" width="38" height="38" rx="11" fill="var(--logo-back)" />
-      <rect x="20" y="4" width="38" height="38" rx="11" fill={`url(#${id}-f)`} />
-      <path d="M20 15a11 11 0 0 1 11-11h16L20 31Z" fill="#FFFFFF" opacity="0.14" />
+    <svg viewBox="0 0 64 64" className={cn("block", className)} aria-label="CORTEX" role="img"
+      fill="currentColor" stroke="currentColor" strokeWidth="5" strokeLinejoin="round">
+      <path d="M24 10 L44 2 L60 11 L40 20 Z" />
+      <path d="M6 20 L20 13 L20 45 L6 52 Z" />
+      <path d="M24 54 L44 45 L60 54 L40 63 Z" />
     </svg>
   )
 }
@@ -24,7 +18,7 @@ export function CortexLockup({ className, markClass = "size-7" }: { className?: 
   return (
     <span className={cn("inline-flex items-center gap-2.5", className)}>
       <CortexMark className={markClass} />
-      <span className="text-xl font-black leading-none tracking-[0.04em]">CORTEX</span>
+      <span className="text-xl font-bold leading-none tracking-[0.02em]">cortex</span>
     </span>
   )
 }

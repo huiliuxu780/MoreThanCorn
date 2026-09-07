@@ -179,11 +179,15 @@ await page.waitForSelector('[data-testid="app-rail"]', { timeout: 15000 })
 
 /* ---------- 5. Active 归属唯一 ---------- */
 const activeCases = [
-  ["/settings/connections", "资源", "设置"],
   ["/operations/task-runs", "任务", "设置"],
-  ["/config/forms", "资源", "任务"],
+  ["/config/forms", "流程", "任务"], // MTC-006R 后 forms 归 Workflow 域（/config/forms→/workflows/forms 重定向）
   ["/autonomous-tasks", "自主", "任务"],
 ]
+// MTC-001R：Connections 归设置域、设置收进账号菜单 → /settings/** 窄轨无高亮
+await page.goto(BASE + "/settings/connections", { waitUntil: "domcontentloaded" })
+await new Promise((r) => setTimeout(r, 1000))
+const connAct = await activeRailTexts()
+check("/settings/connections → 窄轨无高亮（MTC-001R）", connAct.length === 0, JSON.stringify(connAct))
 for (const [path, expectActive, expectNot] of activeCases) {
   await page.goto(BASE + path, { waitUntil: "domcontentloaded" })
   await new Promise((r) => setTimeout(r, 1000))
