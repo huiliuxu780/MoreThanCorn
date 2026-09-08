@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>触发器详情页原型 v1 · 讨论稿</title>
+<style>
+  /* 讨论稿 · 非最终视觉。参考：shadcnuikit pages/orders/details（详情页+明细子表）
+     设计依据：docs/v2-design/03-trigger-and-data-mapping.md §3/§6
+     要点：无独立"接入信息配置区"——webhook 只读地址+密钥入口；主体=映射+事件流水 */
+  :root{--bg:#fafafa;--card:#fff;--border:#e4e4e7;--bs:#d4d4d8;--text:#18181b;--t2:#52525b;--t3:#a1a1aa;
+    --ok:#16a34a;--ok-bg:#f0fdf4;--bad:#dc2626;--bad-bg:#fef2f2;--run:#2563eb;--run-bg:#eff6ff;--warn:#d97706;--warn-bg:#fffbeb}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+  .proto-banner{background:var(--warn-bg);border-bottom:1px solid #fde68a;color:#92400e;padding:8px 24px;font-size:12px}
+  .page{max-width:1200px;margin:0 auto;padding:20px 24px 64px}
+  .crumb{font-size:12px;color:var(--t3);margin-bottom:10px}.crumb b{color:var(--t2);font-weight:500}
+  .head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:16px}
+  h1{font-size:20px;font-weight:600}
+  .badges{display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap}
+  .badge{font-size:12px;font-weight:500;padding:3px 10px;border-radius:999px}
+  .b-ok{background:var(--ok-bg);color:var(--ok)} .b-type{background:#f4f4f5;color:var(--t2);border:1px solid var(--border)}
+  .meta{font-size:12px;color:var(--t3)} .link{color:var(--run);text-decoration:none;font-size:12px}
+  .btn{font-size:13px;font-weight:500;padding:7px 14px;border-radius:8px;border:1px solid var(--bs);background:var(--card);cursor:pointer}
+  .btn:hover{background:#f4f4f5} .btn.primary{background:var(--text);color:#fff;border-color:var(--text)}
+  .actions{display:flex;gap:8px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 20px}
+  .card h3{font-size:13px;font-weight:600;margin-bottom:12px;color:var(--t2)}
+  .kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #f4f4f5;font-size:13px}
+  .kv:last-child{border-bottom:none}
+  .kv .k{color:var(--t3);flex-shrink:0}
+  .kv .v{color:var(--text);font-weight:500;text-align:right}
+  .mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+  .copy{font-size:11px;color:var(--run);border:none;background:none;cursor:pointer;margin-left:6px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-size:12px;font-weight:500;color:var(--t3);padding:8px 10px;border-bottom:1px solid var(--border)}
+  td{padding:9px 10px;border-bottom:1px solid #f4f4f5;color:var(--t2)}
+  .st{font-size:12px;font-weight:500;padding:2px 9px;border-radius:999px;white-space:nowrap}
+  .st-ok{background:var(--ok-bg);color:var(--ok)} .st-bad{background:var(--bad-bg);color:var(--bad)}
+  .st-gray{background:#f4f4f5;color:var(--t2)} .st-warn{background:var(--warn-bg);color:var(--warn)}
+  .stats{display:flex;gap:22px;font-size:12px;color:var(--t3);margin-bottom:12px}
+  .stats b{color:var(--text);font-size:14px;font-variant-numeric:tabular-nums}
+  .maprow{display:grid;grid-template-columns:1.2fr 20px 1fr 1fr;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid #f4f4f5;font-size:12.5px}
+  .arrow{color:var(--t3)}
+  .chip{font-size:11px;padding:1px 8px;border-radius:5px;background:#f4f4f5;border:1px solid var(--border);color:var(--t2)}
+  .filterline{font-size:12.5px;color:var(--t2);background:#f4f4f5;border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:10px}
+  details.payload{margin-top:4px} details.payload summary{cursor:pointer;font-size:12px;color:var(--run);list-style:none}
+  pre{background:#18181b;color:#d4d4d8;border-radius:8px;padding:10px 12px;font-size:11.5px;margin-top:6px;overflow:auto}
+  .full{margin-top:14px}
+</style>
+</head>
+<body>
+<div class="proto-banner">讨论稿 · V2 触发器详情页原型 v1（非最终视觉）｜ 参考：shadcnuikit pages/orders/details ｜ 设计依据：03 §3/§6 ｜ 左导航未画出（冻结）</div>
+<div class="page">
+  <div class="crumb">配置管理 / 触发器 / <b>trg_8f3k</b></div>
+  <div class="head">
+    <div>
+      <h1>CRM 工单推送触发器</h1>
+      <div class="badges">
+        <span class="badge b-ok">● active</span>
+        <span class="badge b-type">webhook</span>
+        <span class="meta">绑定任务：<a class="link" href="#">工单自动化 · 实时批</a> · 创建人 Rivers · 2026-09-01</span>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn">暂停消费</button>
+      <button class="btn">编辑映射</button>
+      <button class="btn">⋯</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- 接入：只读展示，不是配置表单 -->
+    <div class="card">
+      <h3>接入（只读）</h3>
+      <div class="kv"><span class="k">接收地址</span><span class="v mono">POST /api/triggers/trg_8f3k/events<button class="copy">复制</button></span></div>
+      <div class="kv"><span class="k">验签方式</span><span class="v">HMAC-SHA256 · X-MTC-Signature（±5min 防重放）</span></div>
+      <div class="kv"><span class="k">密钥</span><span class="v">secret_ref •••• 创建于 09-01 <button class="copy">轮换密钥</button></span></div>
+      <div class="kv"><span class="k">限流 / 上限 / 留存</span><span class="v">10 req/s · 1MB · 30 天</span></div>
+      <div class="kv"><span class="k">去重键</span><span class="v mono">$.ticket.id</span></div>
+      <div class="kv"><span class="k">攒批策略</span><span class="v">window：50 条 或 30s 成批</span></div>
+    </div>
+    <div class="card">
+      <h3>过滤条件（逻辑判断后再消费）</h3>
+      <div class="filterline">payload.status <b>==</b> "CLOSED" <b>AND</b> payload.priority <b>in</b> ["P1","P2"]</div>
+      <h3 style="margin-top:14px">字段映射（三方 → 数据定义 v3）</h3>
+      <div class="maprow" style="color:var(--t3);font-size:11.5px"><span>源路径</span><span></span><span>目标字段</span><span>转换</span></div>
+      <div class="maprow"><span class="mono">$.ticket.id</span><span class="arrow">→</span><span>interactionId</span><span class="chip">string</span></div>
+      <div class="maprow"><span class="mono">$.ticket.closedAt</span><span class="arrow">→</span><span>interactionTime</span><span class="chip">::timestamp</span></div>
+      <div class="maprow"><span class="mono">$.ticket.summary</span><span class="arrow">→</span><span>transcript</span><span class="chip">string</span></div>
+      <div class="maprow"><span class="mono">$.ticket.priority</span><span class="arrow">→</span><span>priority</span><span class="chip">码值表 P1→紧急</span></div>
+      <div class="maprow"><span class="mono">（无）</span><span class="arrow">→</span><span>channel</span><span class="chip">?? "crm-push"</span></div>
+    </div>
+  </div>
+
+  <div class="card full">
+    <div class="stats">
+      <span>近 7 天 接收 <b>1,204</b></span><span>接受 <b>1,150</b></span><span>拒绝(过滤) <b>31</b></span><span>去重 <b>12</b></span><span style="color:var(--bad)">失败 <b>11</b></span>
+      <span style="margin-left:auto"><button class="btn" style="padding:4px 10px;font-size:12px">死信重放（11）</button></span>
+    </div>
+    <h3>事件流水（最近 7 天 · 载荷脱敏展示）</h3>
+    <table>
+      <thead><tr><th>时间</th><th>事件 ID</th><th>判定</th><th>说明</th><th>归属批次</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>14:32:08</td><td class="mono">evt_91</td><td><span class="st st-ok">accepted</span></td><td>映射通过</td><td><a class="link" href="#">TR-0914</a></td><td></td></tr>
+        <tr><td>14:31:55</td><td class="mono">evt_90</td><td><span class="st st-gray">rejected(filter)</span></td><td>status=OPEN 不满足过滤</td><td>—</td><td></td></tr>
+        <tr><td>14:31:40</td><td class="mono">evt_89</td><td><span class="st st-warn">deduped</span></td><td>命中去重键 $.ticket.id=T-88213</td><td>—</td><td></td></tr>
+        <tr><td>14:30:12</td><td class="mono">evt_88</td><td><span class="st st-bad">failed</span></td><td>映射失败：缺必填 interactionTime</td><td>—</td><td><button class="copy">重放</button></td></tr>
+        <tr>
+          <td>14:29:47</td><td class="mono">evt_87</td><td><span class="st st-ok">accepted</span></td><td colspan="3">
+            <details class="payload"><summary>展开脱敏载荷 ▾</summary>
+<pre>{ "ticket": { "id": "T-88207", "status": "CLOSED", "priority": "P1",
+  "closedAt": "2026-09-04T14:29:40+08:00",
+  "customerPhone": "138****2201",          // PII 脱敏展示
+  "summary": "用户反馈账单争议，已退费解决…" } }</pre>
+            </details></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</body>
+</html>

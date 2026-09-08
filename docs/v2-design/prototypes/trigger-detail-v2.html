@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>触发器详情页原型 v2 · 讨论稿（premium skin）</title>
+<link rel="stylesheet" href="_skin.css">
+<style>
+  .listen{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--ok);background:var(--ok-soft);border:1px solid var(--ok-line);border-radius:999px;padding:4px 13px;cursor:pointer}
+  .strip{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:1px;background:var(--line-soft);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;margin-bottom:16px;box-shadow:var(--sh-sm)}
+  .strip .cell{background:var(--surface);padding:14px 20px}
+  .strip .v{font-size:13px;font-weight:550;margin-top:5px;display:flex;align-items:center}
+  .mini-act{font-size:11px;font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer;margin-left:10px;letter-spacing:.02em}
+  .panel{border:1px solid var(--line);border-top:none;border-radius:0 0 var(--r-lg) var(--r-lg);background:var(--surface);box-shadow:var(--sh-sm);padding:16px 20px}
+  .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .spacer{flex:1}
+  .code{font:650 12px var(--mono)} .code.ok{color:var(--ok)}
+  details.ev summary{cursor:pointer;font-size:12px;font-weight:600;color:var(--accent);list-style:none}
+  .evgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+  .note{font-size:12px;color:var(--ink-3);background:rgba(9,9,11,.025);border:1px dashed var(--line);border-radius:var(--r-md);padding:10px 14px;margin-top:14px}
+  .statline{font-size:12px;color:var(--ink-4)} .statline b{color:var(--ink);font-size:13px}
+</style>
+</head>
+<body>
+<div class="proto-banner">讨论稿 · V2 触发器详情页 v2（结构已确认 · premium skin）｜ 专业参照：Stripe Webhooks / GitHub Recent Deliveries / Segment debugger ｜ 设计依据：03 §3/§6 ｜ 左导航未画出（冻结）</div>
+<div class="page">
+  <div class="crumb">配置管理 <span class="sep">/</span> 触发器 <span class="sep">/</span> <b>trg_8f3k</b></div>
+  <div class="head">
+    <div>
+      <h1>CRM 工单推送触发器 <span class="listen"><span class="switch" style="width:26px;height:15px"></span>Listening</span></h1>
+      <div class="sub"><span class="tag">webhook</span><span>绑定任务：<a class="link" href="#">工单自动化 · 实时批</a></span><span style="color:var(--ink-4)">·</span><span>创建于 2026-09-01</span></div>
+    </div>
+    <div class="actions">
+      <button class="btn">发送测试事件</button>
+      <button class="btn">编辑映射</button>
+      <button class="btn">⋯</button>
+    </div>
+  </div>
+
+  <div class="strip">
+    <div class="cell"><div class="micro">Endpoint URL（只读）</div><div class="v mono">POST /api/triggers/trg_8f3k/events<button class="mini-act">复制</button></div></div>
+    <div class="cell"><div class="micro">Signing secret · HMAC-SHA256 · ±5min 防重放</div><div class="v mono">whsec_••••••••••••<button class="mini-act">显示</button><button class="mini-act">轮换</button></div></div>
+    <div class="cell"><div class="micro">事件订阅</div><div class="v">1 个过滤规则 · 去重键 <span class="mono" style="margin-left:6px">$.ticket.id</span></div></div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab on">事件流<span class="n num">1,204</span></div>
+    <div class="tab">订阅与过滤</div>
+    <div class="tab">字段映射</div>
+    <div class="tab">未送达<span class="n num">11</span></div>
+    <div class="tab">设置</div>
+  </div>
+  <div class="panel">
+    <div class="toolbar">
+      <span class="live"><span class="dot"></span>Live</span>
+      <select class="select"><option>全部判定</option><option>accepted</option><option>rejected(filter)</option><option>deduped</option><option>failed</option></select>
+      <input class="input" style="width:230px" placeholder="搜索事件 ID / 业务键…">
+      <div class="spacer"></div>
+      <span class="statline num">近 7 天：接受 <b>1,150</b> · 拒绝 <b>31</b> · 去重 <b>12</b> · 失败 <b style="color:var(--bad)">11</b></span>
+    </div>
+    <table>
+      <thead><tr><th>时间</th><th>事件</th><th>判定</th><th>HTTP</th><th>耗时</th><th>重试</th><th>归属批次</th><th></th></tr></thead>
+      <tbody>
+        <tr><td class="num">14:32:08</td><td class="mono">evt_91 · ticket.closed</td><td><span class="pill p-ok"><span class="dot"></span>accepted</span></td><td class="code ok">202</td><td class="num">38ms</td><td class="num">0</td><td><a class="link" href="#">TR-0914</a></td><td></td></tr>
+        <tr><td class="num">14:31:55</td><td class="mono">evt_90 · ticket.updated</td><td><span class="pill p-gray"><span class="dot"></span>rejected(filter)</span></td><td class="code ok">202</td><td class="num">12ms</td><td class="num">0</td><td>—</td><td></td></tr>
+        <tr><td class="num">14:31:40</td><td class="mono">evt_89 · ticket.closed</td><td><span class="pill p-warn"><span class="dot"></span>deduped</span></td><td class="code ok">202</td><td class="num">9ms</td><td class="num">0</td><td>—</td><td></td></tr>
+        <tr><td class="num">14:30:12</td><td class="mono">evt_88 · ticket.closed</td><td><span class="pill p-bad"><span class="dot"></span>failed</span></td><td class="code ok">202</td><td class="num">21ms</td><td class="num">0</td><td>—</td><td><button class="mini-act" style="margin:0">Redeliver</button></td></tr>
+        <tr>
+          <td class="num">14:29:47</td><td class="mono">evt_87 · ticket.closed</td><td><span class="pill p-ok"><span class="dot"></span>accepted</span></td><td class="code ok">202</td><td class="num">35ms</td><td class="num">0</td><td><a class="link" href="#">TR-0914</a></td>
+          <td><details class="ev"><summary>Request / Response ▾</summary>
+            <div class="evgrid">
+              <pre><span class="h">// Request payload（脱敏）</span>
+{ "id": "T-88207", "status": "CLOSED", "priority": "P1",
+  "closedAt": "2026-09-04T14:29:40+08:00",
+  "customerPhone": "138****2201",
+  "summary": "账单争议，已退费解决…" }</pre>
+              <pre><span class="h">// 我方响应</span>
+HTTP 202 · { "eventId": "evt_87" }
+<span class="h">// 签名校验</span> X-MTC-Signature ✓ · 时窗 1.2s
+<span class="h">// 映射结果</span> 5 字段通过 · 进入攒批窗口</pre>
+            </div>
+          </details></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note">type=mq 时本页同构，另加消费位点面板：consumer group / 当前 offset / <b>consumer lag</b> / 分区数（Kafka 专业观测项）；type=api/schedule 无事件流 Tab。</div>
+  </div>
+</div>
+</body>
+</html>

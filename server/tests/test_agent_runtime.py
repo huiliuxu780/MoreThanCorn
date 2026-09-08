@@ -34,17 +34,28 @@ def test_run_agent_entry_blocked_no_job_no_run():
 
 
 def test_mounts_health_read_semantics_preserved():
-    """历史挂载体检（mounts-health）保持只读可用，失效项照实标记。"""
+    """历史挂载体检（mounts-health）保持只读可用，失效项照实标记。
+
+    docs/v2-design/10 §5.3：config.skills 名字对照注册表——未注册 valid=False，
+    注册同名 Skill 后转 True（旧"恒 True"契约废止）。
+    """
     tool = client.post("/api/tools", json={"name": uniq("echo-arch"), "kind": "builtin",
                                            "spec": {"kind": "echo"}}).json()
-    a = seed_agent(config={"skills": ["s1"], "tools": [tool["name"], "ghost-tool"],
+    skill_name = uniq("s1")[:64]
+    a = seed_agent(config={"skills": [skill_name], "tools": [tool["name"], "ghost-tool"],
                            "workflows": ["不存在的流"], "knowledges": []})
     items = client.get(f"/api/agents/{a['id']}/mounts-health").json()["items"]
     by = {(i["kind"], i["name"]): i["valid"] for i in items}
     assert by[("tool", tool["name"])] is True
     assert by[("tool", "ghost-tool")] is False
     assert by[("workflow", "不存在的流")] is False
-    assert by[("skill", "s1")] is True
+    assert by[("skill", skill_name)] is False
+    sid = client.post("/api/ai-resources/skills",
+                      json={"name": skill_name, "content": "# S"}).json()["id"]
+    items = client.get(f"/api/agents/{a['id']}/mounts-health").json()["items"]
+    by = {(i["kind"], i["name"]): i["valid"] for i in items}
+    assert by[("skill", skill_name)] is True
+    client.delete(f"/api/ai-resources/skills/{sid}")
 
 
 def test_run_unknown_agent_404():

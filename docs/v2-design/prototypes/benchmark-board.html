@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>标杆对照板 · 别人家的高级感</title>
+<link rel="stylesheet" href="_skin.css">
+<style>
+  .item{margin-bottom:34px}
+  .item .hd{display:flex;align-items:baseline;gap:12px;margin-bottom:10px}
+  .item .hd h2{font-size:16px;font-weight:650;letter-spacing:-.02em}
+  .item .hd a{font-size:12.5px}
+  .item img{width:100%;border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--sh-md)}
+  .take{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+  .take .t{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:12px 14px;font-size:12.5px;color:var(--ink-2);line-height:1.65;box-shadow:var(--sh-sm)}
+  .take .t b{display:block;font-size:12px;color:var(--ink);margin-bottom:3px;letter-spacing:-.01em}
+  .verdict{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r-md);padding:14px 18px;font-size:13px;color:var(--ink-2);line-height:1.8;box-shadow:var(--sh-sm)}
+</style>
+</head>
+<body>
+<div class="proto-banner">标杆对照板 · 2026-09-04 ｜ 用途：给"高级感"定锚——三个公认高级的公开产品页面，截图+可点链接+学什么 ｜ 截图为当日抓取</div>
+<div class="page">
+  <div class="head"><div><h1>别人家的高级感</h1><div class="sub">你说"你这都不行"——好，先看别人。以下三个是公开可访问、公认视觉水准最高的数据产品页面。点链接可以打开活的自己玩。</div></div></div>
+
+  <div class="item">
+    <div class="hd"><h2>① Plausible Analytics · 公开数据看板</h2><a class="link" href="https://plausible.io/plausible.io" target="_blank">打开活的 ↗</a></div>
+    <img src="assets/bench-plausible.png" alt="Plausible 公开看板">
+    <div class="take">
+      <div class="t"><b>KPI 行的做法</b>大写微标签 + 24px 级 tabular 大数字 + 小箭头 delta（绿涨红跌），六格等分、发丝线分隔——信息密度高但极安静。</div>
+      <div class="t"><b>单一主图表</b>一张大面积软填充 area chart 占主视觉，坐标轴弱化为浅灰微字；不堆图表，一屏一个主角。</div>
+      <div class="t"><b>列表卡的行内条</b>Top Pages 用行内米色横条做占比可视化，不画柱状图也有数据感；选中行浅蓝高亮。</div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="hd"><h2>② shadcn 官方 Dashboard 示例</h2><a class="link" href="https://ui.shadcn.com/examples/dashboard" target="_blank">打开活的 ↗</a></div>
+    <img src="assets/bench-shadcn-dash.png" alt="shadcn 官方 dashboard">
+    <div class="take">
+      <div class="t"><b>纯中性色板</b>全页只有黑白灰，主按钮纯黑圆角；唯一色彩来自数据（图表灰阶渐变）。与我们 Master §8.5"黑白灰中性"同源。</div>
+      <div class="t"><b>delta pill</b>KPI 卡右上角的 +12.5% 小药丸（带方向箭头），比裸文字 delta 更精致。</div>
+      <div class="t"><b>shell 同族</b>左侧 sidebar-03 结构——我们平台 shell 就是这条线，导航冻结后视觉语言仍与它一致。</div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="hd"><h2>③ Tremor Blocks（Vercel 系）· 企业级块库</h2><a class="link" href="https://tremor.so/blocks" target="_blank">打开活的 ↗</a></div>
+    <img src="assets/bench-tremor.png" alt="Tremor blocks">
+    <div class="take">
+      <div class="t"><b>状态卡</b>"Operational" 蓝色对勾+竖线强调+30 天活动迷你条（逐日小柱），一张卡说清"活着+最近怎样"——我们的任务/Agent 卡可学。</div>
+      <div class="t"><b>大金额式 KPI</b>$328,505.10 这种"一个巨大数字+下方全宽柱状图"的资产卡，适合批次成本/Token 总量展示。</div>
+      <div class="t"><b>环图+图例表</b>donut 中心放总数，右侧图例即表格（名称+金额对齐）——失败六分类的可视化可参考。</div>
+    </div>
+  </div>
+
+  <div class="verdict">
+    <b>对照结论（我的自检）：</b>我们 _skin.css 的排版/色板方向与 ② 同源、与 ① 的 KPI 手法部分重合，差距在三处——<b>（1）原型里没有真图表</b（面积图/迷你柱/环图），数据感靠数字硬撑；（2）KPI 数字还没到 ① 的字号层级（24px+delta 箭头）；（3）列表行内占比条（① 的米色横条）没用上。<b>建议：</b>两个质检 dashboard 重做时直接以 ① 为主标杆（它就是"质量总览"的业界最优形态），批次详情状态带升级 KPI 层级+失败分类环图，任务/Agent 卡学 ③ 的状态卡迷你条。你看完活的之后告诉我：认 ① 的安静极简，还是 ③ 的企业密度，或者混搭——我按你定的锚重调皮肤。
+  </div>
+</div>
+</body>
+</html>

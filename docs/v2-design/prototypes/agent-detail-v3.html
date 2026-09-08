@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent 详情页原型 v3 · 讨论稿</title>
+<link rel="stylesheet" href="_skin.css">
+<style>
+  /* v3：hero 头带（低饱和渐变mesh+大头像+行内健康统计）+ 图标化分区卡 + 控制台风调试结果
+     结构沿用 v2（生命周期 Tab + 三栏工作区，已确认）；本轮只升视觉层级 */
+  .heroband{background:
+      radial-gradient(700px 240px at 12% -60%, rgba(79,70,229,.28), transparent 65%),
+      radial-gradient(500px 200px at 55% -80%, rgba(5,150,105,.14), transparent 60%),
+      linear-gradient(180deg,#101014,#17171c);
+    border-radius:20px;padding:26px 30px;color:#fff;margin-bottom:18px;position:relative;overflow:hidden}
+  .heroband .row{display:flex;align-items:center;gap:16px;padding-right:250px}
+  .avatar-xl{width:58px;height:58px;border-radius:16px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:750;box-shadow:0 8px 24px -8px rgba(79,70,229,.7), inset 0 1px 0 rgba(255,255,255,.25);object-fit:cover;border:2px solid rgba(255,255,255,.35)}
+  .heroband h1{font-size:22px;font-weight:700;letter-spacing:-.025em;color:#fff}
+  .heroband .meta{font-size:12px;color:rgba(255,255,255,.55);margin-top:5px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .hpill{font-size:11px;font-weight:650;padding:3px 11px;border-radius:999px;background:rgba(74,222,128,.14);color:#4ade80;border:1px solid rgba(74,222,128,.3)}
+  .hpill.gray{background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.14)}
+  .hstats{margin-left:auto;display:flex;gap:26px;text-align:right}
+  .hstats .s{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.45);font-weight:600}
+  .hstats .s b{display:block;font-size:19px;font-weight:700;letter-spacing:-.02em;color:#fff;margin-top:2px;font-variant-numeric:tabular-nums}
+  .hstats .s b.good{color:#4ade80}
+  .hactions{position:absolute;right:26px;top:24px;display:flex;gap:8px}
+  .hbtn{height:34px;padding:0 14px;font:600 12.5px var(--font);border-radius:9px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#fff;cursor:pointer;backdrop-filter:blur(4px)}
+  .hbtn:hover{background:rgba(255,255,255,.12)}
+  .hbtn.primary{background:#fff;color:#111;border-color:#fff}
+  .ltabs{display:flex;gap:28px;border-bottom:1px solid var(--line);margin-bottom:16px}
+  .ltab{padding:10px 2px;font-size:13.5px;font-weight:550;color:var(--ink-3);border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-1px}
+  .ltab.on{color:var(--ink);border-bottom-color:var(--ink)}
+  .ws{display:grid;grid-template-columns:340px 1fr 320px;gap:14px;align-items:start}
+  .col{display:flex;flex-direction:column;gap:12px;min-width:0}
+  .ic{width:26px;height:26px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+  .i-ind{background:var(--accent-soft);color:var(--accent)} .i-grn{background:var(--ok-soft);color:var(--ok)}
+  .i-amb{background:var(--warn-soft);color:var(--warn)} .i-ros{background:var(--bad-soft);color:var(--bad)}
+  .i-gry{background:#f4f4f5;color:var(--ink-3)}
+  .promptbox{width:100%;min-height:190px;background:#12121a;border:1px solid #26262e;border-radius:12px;padding:14px 16px;font:12.5px/1.85 var(--mono);color:#e4e4e5;white-space:pre-wrap}
+  .promptbox:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,70,229,.18)}
+  .var{background:rgba(79,70,229,.2);color:#a5b4fc;border-radius:5px;padding:1px 7px;font-size:11.5px}
+  .vline{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-4);margin-top:8px}
+  .skillcard{border:1px solid var(--line-soft);border-radius:12px;padding:12px 14px;margin-bottom:8px;background:#fcfcfd;display:flex;gap:12px;align-items:flex-start}
+  .skillcard:last-child{margin-bottom:0}
+  .skillcard .t{font-size:13px;font-weight:600;letter-spacing:-.012em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .skillcard .d{font-size:11.5px;color:var(--ink-4);margin-top:4px}
+  .chipwr{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:6px;background:var(--bad-soft);color:var(--bad);border:1px solid var(--bad-line)}
+  .schema{background:#0f0f13;border:1px solid #26262e;border-radius:9px;padding:9px 12px;font:11.5px var(--mono);color:#a1a1aa}
+  .console{background:#0f0f13;border:1px solid #26262e;border-radius:12px;padding:12px 14px;font:11.5px/1.9 var(--mono);color:#a1a1aa;margin-top:10px}
+  .console .ok{color:#4ade80} .console .bad{color:#fb7185} .console .ln{color:#52525b}
+  .card-h .add{margin-left:auto;font-size:11.5px;font-weight:600;color:var(--accent);border:none;background:none;cursor:pointer}
+  .debugnote{font-size:11px;color:var(--warn);margin:6px 0 8px}
+</style>
+</head>
+<body>
+<div class="proto-banner">讨论稿 · Agent 详情页 v3 ｜ 结构=v2 已确认（生命周期 Tab+三栏工作区）｜ 本轮升级：hero 头带/图标分区/控制台调试 ｜ 左导航未画出（冻结）</div>
+<div class="page" style="max-width:1440px">
+
+  <div class="heroband">
+    <div class="hactions"><button class="hbtn">版本历史</button><button class="hbtn primary">发布 ▾ 沙箱 / 线上</button></div>
+    <div class="row">
+      <img class="avatar-xl" src="../../../public/avatars/avatar-3.png" alt="">
+      <div>
+        <h1>质检分析</h1>
+        <div class="meta"><span class="hpill">● v1.4 · 生产</span><span class="hpill gray">agentscope 2.0.7</span><span class="hpill gray">模板 quality-analysis</span><span>自动保存 14:20</span></div>
+      </div>
+      <div class="hstats">
+        <span class="s">7 日运行<b>1,204</b></span>
+        <span class="s">成功率<b class="good">99.1%</b></span>
+        <span class="s">p95 耗时<b>24.6s</b></span>
+        <span class="s">Token/批<b>96k</b></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="ltabs">
+    <div class="ltab on">Agent 搭建</div>
+    <div class="ltab">运行观测</div>
+    <div class="ltab">效果评测</div>
+    <div class="ltab">版本与发布</div>
+  </div>
+
+  <div class="ws">
+    <div class="col">
+      <div class="card"><div class="card-h"><span class="ic i-ind">✎</span><span class="t">人设与提示词</span><small>草稿 v12 · 已发布 v11</small></div>
+        <div class="card-b" style="padding-top:12px">
+          <div class="promptbox">你是客服质检分析员。基于逐字稿 {{transcript}} 与场景 {{scene}}，按阶段执行：
+1. 识别诉求、知识声明与承诺；
+2. 检索知识核验（证据须引用原文句序）；
+3. 输出结构化结论（quality-v3）。
+不算分——评分由平台规则派生。</div>
+          <div class="vline"><span>变量：<span class="var">{{transcript}}</span> <span class="var">{{scene}}</span></span><span class="num">2,140 字</span></div>
+        </div>
+      </div>
+      <div class="card"><div class="card-h"><span class="ic i-gry">⚙</span><span class="t">模型</span></div>
+        <div class="card-b">
+          <div class="kv"><span class="k">模型资源</span><span class="v">qwen-max（LLM-DashScope）</span></div>
+          <div class="kv"><span class="k">temperature</span><span class="v num">0.2</span></div>
+          <div class="kv"><span class="k">maxTokens</span><span class="v num">4096</span></div>
+        </div>
+      </div>
+      <div class="card"><div class="card-h"><span class="ic i-amb">⛨</span><span class="t">执行约束</span><small>原 base.py 硬编码迁入</small></div>
+        <div class="card-b">
+          <div class="kv"><span class="k">数据级别</span><span class="v">L2</span></div>
+          <div class="kv"><span class="k">超时 / 调用上限</span><span class="v num">300s / 20 次</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card"><div class="card-h"><span class="ic i-ind">❖</span><span class="t">技能</span><small>平台级可复用能力包</small><button class="add">+ 装配技能</button></div>
+        <div class="card-b">
+          <div class="skillcard"><span class="ic i-grn">✓</span><div style="flex:1"><div class="t">native-quality-skill <span class="tag">v3</span><span class="tag">read</span></div><div class="d">工具：rule-fetch / knowledge-search · 含质检阶段提示片段</div></div></div>
+          <div class="skillcard"><span class="ic i-gry">+</span><div style="flex:1"><div class="t">consumer-analysis-skill <span class="tag">v0.2</span><span class="tag">read</span></div><div class="d">POC 转正候选：13 场景消费者意图打标</div></div></div>
+        </div>
+      </div>
+      <div class="card"><div class="card-h"><span class="ic i-ind">⌘</span><span class="t">插件</span><small>MCP / 工具服务</small><button class="add">+ 装配插件</button></div>
+        <div class="card-b">
+          <div class="skillcard"><span class="ic i-grn">✓</span><div style="flex:1"><div class="t">ticket-query（MCP）<span class="tag">read</span></div><div class="d">工单系统只读查询 · 3 工具</div></div></div>
+          <div class="skillcard"><span class="ic i-ros">!</span><div style="flex:1"><div class="t">sms-send <span class="chipwr">write-irreversible</span></div><div class="d">写型工具：须声明 idempotency key 且人工确认后启用（ADR-R07）</div></div></div>
+        </div>
+      </div>
+      <div class="card"><div class="card-h"><span class="ic i-grn">▤</span><span class="t">知识</span><button class="add">+ 绑定知识库</button></div>
+        <div class="card-b"><div class="skillcard"><span class="ic i-gry">▤</span><div style="flex:1"><div class="t">客服知识库 <span class="tag">v8</span></div><div class="d num">topK 5 · 阈值 0.6</div></div></div></div>
+      </div>
+      <div class="card"><div class="card-h"><span class="ic i-gry">⇄</span><span class="t">契约</span><small>输入 / 输出 Schema（Provider-neutral）</small></div>
+        <div class="card-b">
+          <div class="schema">in: transcript · agentId · scene · interactionTime</div>
+          <div class="schema" style="margin-top:7px">out: quality-v3（sha256:a41f…）· 校验失败=Run failed</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card"><div class="card-h"><span class="ic i-ind">▶</span><span class="t">调试</span></div>
+        <div class="card-b">
+          <select class="select" style="width:100%;margin-bottom:8px"><option>环境：prod（Release REL-038）</option><option>环境：sandbox</option></select>
+          <div class="debugnote">草稿试跑须显式选 Provider（既有规则）</div>
+          <select class="select" style="width:100%"><option>输入样本：golden-20 #07</option><option>粘贴 JSON…</option></select>
+          <button class="btn primary" style="width:100%;margin-top:10px">运行测试</button>
+          <div class="console"><span class="ln">$ run golden-20#07 --env prod</span>
+<span class="ok">✓</span> identify · 3 诉求 1 承诺 (2.1s)
+<span class="ok">✓</span> knowledge · accurate · 2 rounds (6.4s)
+<span class="ok">✓</span> synthesize · quality-v3 校验通过 (9.7s)
+<span class="ln">─</span> 18.2s · 96k tok · <span class="ok">succeeded</span> · trace→</div>
+        </div>
+      </div>
+      <div class="card"><div class="card-h"><span class="ic i-gry">⇆</span><span class="t">模型对比</span><small>同输入并排 (1/2)</small></div>
+        <div class="card-b">
+          <div class="kv"><span class="k">卡 1</span><span class="v">qwen-max（当前）</span></div>
+          <div class="kv"><span class="k">卡 2</span><span class="v" style="color:var(--ink-4);font-weight:450">+ 添加对比模型</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

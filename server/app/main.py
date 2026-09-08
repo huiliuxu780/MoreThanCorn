@@ -147,6 +147,7 @@ app.include_router(admin.router)
 app.include_router(agents.router)
 app.include_router(agent_caps.router)  # 09-07：Skill/记忆/对话/run-stats 一等实体 API
 app.include_router(agent_caps.download_router)
+app.include_router(agent_caps.skills_router)  # docs/v2-design/10：全局 Skill 挂载反查
 app.include_router(runtime_providers.router)
 app.include_router(forms.router)
 

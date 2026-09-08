@@ -5,7 +5,6 @@ import { toast } from "sonner"
 
 import { FilterBar, SearchField } from "@/components/app/filters"
 import { CardGridSkeleton, EmptyState, FilteredEmptyState } from "@/components/app/list-state"
-import { PageContainer, PageHeader } from "@/components/app/page"
 import { Pagination } from "@/components/app/pagination"
 import { Button } from "@/components/ui/button"
 import {
@@ -15,35 +14,32 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   ResourceCard, type ResourceAction,
 } from "@/components/resources/resource-card"
-import { RuntimeProvidersPanel } from "@/components/resources/runtime-providers-panel"
 import {
   ConfirmDeleteDialog, DeleteBlockedDialog, ResourceTestDialog,
 } from "@/components/resources/resource-dialogs"
 import { resApi, type RefInfo, type ResourceDTO } from "@/services/resource-api"
 
-const TABS = {
-  ai: [
-    { type: "model", label: "Models" },
-    { type: "tool", label: "Tools" },
-    { type: "mcp", label: "MCP Servers" },
-    { type: "knowledge", label: "Knowledge Sources" },
-    // R8-UI（11 §7-②）：Runtime Providers 管理（Agent 执行底座，独立面板）
-    { type: "providers", label: "Runtime Providers" },
-  ],
-  data: [
-    { type: "datasource", label: "Datasources" },
-    { type: "asset", label: "Data Assets" },
-  ],
-} as const
+/** 资源类型 → 详情路由段（MTC-006 canonical 保持：ai/data 两域）。 */
+const DETAIL_SCOPE: Record<string, "ai" | "data"> = {
+  model: "ai", tool: "ai", mcp: "ai", knowledge: "ai", skill: "ai",
+  datasource: "data", asset: "data",
+}
+
+const LABELS: Record<string, string> = {
+  model: "Models", tool: "Tools", mcp: "MCP Servers", knowledge: "Knowledge Sources",
+  datasource: "Datasources", asset: "Data Assets",
+}
 
 const DS_TYPES = ["mysql", "postgresql", "oss", "http"]
 
-export function ResListPage({ domain }: { domain: "ai" | "data" }) {
+/**
+ * docs/v2-design/10 §3/§4：壳内分类列表内容（无 PageHeader；由 ResourcesShell 提供壳 chrome）。
+ * types 多于一个时渲染子 tab；筛选/分页/测试/删除 Dialog 与原 res-list 操作集一致。
+ */
+export function ResCategoryList({ types, createTo }: { types: string[]; createTo?: string }) {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
-  const tabs = TABS[domain]
-  const tab = params.get("tab") && tabs.some((t) => t.type === params.get("tab")) ? params.get("tab")! : tabs[0].type
-  const isProviders = tab === "providers"
+  const tab = params.get("tab") && types.includes(params.get("tab")!) ? params.get("tab")! : types[0]
   const highlight = params.get("new") ?? ""
 
   const [searchInput, setSearchInput] = useState(params.get("search") ?? "")
@@ -60,14 +56,13 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
   const [blocked, setBlocked] = useState<{ name: string; refs: RefInfo[] } | null>(null)
 
   const load = useCallback(() => {
-    if (isProviders) return  // R8-UI：providers 面板自取数
     setLoading(true)
     const search = params.get("search") ?? ""
     resApi.list(tab, { page, pageSize: 12, search, status, health, type: tab === "datasource" ? dsType : "" })
       .then((r) => { setData(r.items); setTotal(r.total) })
       .catch(() => setData([]))
       .finally(() => setLoading(false))
-  }, [tab, page, params, status, health, dsType, isProviders])
+  }, [tab, page, params, status, health, dsType])
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
@@ -93,8 +88,9 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
   }
 
   const onAction = (dto: ResourceDTO, action: ResourceAction) => {
+    const scope = DETAIL_SCOPE[dto.type] ?? "ai"
     if (action === "test") setTestTarget(dto)
-    else if (action === "edit") navigate(`/resources/${domain === "ai" ? "ai" : "data"}/${dto.type}/${dto.id}?edit=1`, { state: { from: "list", tab } })
+    else if (action === "edit") navigate(`/resources/${scope}/${dto.type}/${dto.id}?edit=1`, { state: { from: "list", tab } })
     else if (action === "toggle") {
       const enabled = dto.status === "disabled"
       resApi.toggle(dto.type, dto.id, enabled)
@@ -121,22 +117,8 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
   const filtered = searchInput || status || health || (tab === "datasource" && dsType)
 
   return (
-    <PageContainer wide className="space-y-3">
-      <PageHeader
-        title={domain === "ai" ? "AI Resources" : "Data Resources"}
-        description={domain === "ai"
-          ? "管理 Agent 执行过程中使用的 AI 能力资源。引用链：Agent → Workflow → Version → Node Config → Resource。"
-          : "管理自主任务与 Evaluation Agent 使用的数据资源。数据链：Datasource → Data Asset → Data Definition → 自主任务。"}
-        actions={
-          isProviders ? undefined : (
-            <Button onClick={() => navigate(domain === "ai" ? "/resources/ai/new" : "/resources/data/new")}>
-              <Plus className="size-4" /> 创建资源
-            </Button>
-          )
-        }
-      />
-
-      {!isProviders && <FilterBar>
+    <div className="space-y-3">
+      <FilterBar>
         <SearchField value={searchInput} onChange={setSearchInput} placeholder="搜索资源名称..." />
         {tab === "datasource" && (
           <Select value={dsType || "__all__"} onValueChange={(v) => { setDsType(v === "__all__" ? "" : v); setPage(1) }}>
@@ -167,33 +149,25 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
           </SelectContent>
         </Select>
         <span className="ml-auto text-xs text-muted-foreground">共 {total} 个资源</span>
-      </FilterBar>}
+        {createTo && (
+          <Button onClick={() => navigate(createTo)}>
+            <Plus className="size-4" /> 创建资源
+          </Button>
+        )}
+      </FilterBar>
 
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
-          {tabs.map((t) => (
-            <TabsTrigger key={t.type} value={t.type}>{t.label}</TabsTrigger>
-          ))}
-        </TabsList>
-        <TabsContent value={tab}>
-          {isProviders ? <RuntimeProvidersPanel /> : loading ? (
-            <CardGridSkeleton count={8} />
-          ) : data.length === 0 ? (
-            filtered ? <FilteredEmptyState onClear={() => { setSearchInput(""); setStatus(""); setHealth(""); setDsType("") }} />
-              : <EmptyState title={`暂无${tabs.find((t) => t.type === tab)?.label ?? ""}`} description="点击右上角「创建资源」开始" />
-          ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {data.map((dto) => (
-                <ResourceCard key={dto.id} dto={dto} highlighted={dto.id === highlight}
-                  onOpen={() => navigate(`/resources/${domain === "ai" ? "ai" : "data"}/${dto.type}/${dto.id}`)}
-                  onAction={(a) => onAction(dto, a)} />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+      {types.length > 1 ? (
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList>
+            {types.map((t) => (
+              <TabsTrigger key={t} value={t}>{LABELS[t] ?? t}</TabsTrigger>
+            ))}
+          </TabsList>
+          <TabsContent value={tab}>{grid()}</TabsContent>
+        </Tabs>
+      ) : grid()}
 
-      {!isProviders && <Pagination page={page} pageSize={12} total={total} onPageChange={setPage} onPageSizeChange={() => undefined} />}
+      <Pagination page={page} pageSize={12} total={total} onPageChange={setPage} onPageSizeChange={() => undefined} />
 
       <ResourceTestDialog open={!!testTarget} title={testTarget?.name ?? ""}
         desc="使用样例输入执行一次真实调用，验证连通性与响应。"
@@ -205,14 +179,23 @@ export function ResListPage({ domain }: { domain: "ai" | "data" }) {
       <DeleteBlockedDialog open={!!blocked} name={blocked?.name ?? ""} refs={blocked?.refs ?? []}
         onClose={() => setBlocked(null)}
         onViewRefs={(r) => { if (r.workflowId) { setBlocked(null); navigate(`/workflows/${r.workflowId}`) } }} />
-    </PageContainer>
+    </div>
   )
-}
 
-export default function ResAiResourcesPage() {
-  return <ResListPage domain="ai" />
-}
-
-export function ResDataResourcesPage() {
-  return <ResListPage domain="data" />
+  function grid() {
+    return loading ? (
+      <CardGridSkeleton count={8} />
+    ) : data.length === 0 ? (
+      filtered ? <FilteredEmptyState onClear={() => { setSearchInput(""); setStatus(""); setHealth(""); setDsType("") }} />
+        : <EmptyState title={`暂无${LABELS[tab] ?? ""}`} description={createTo ? "点击右上角「创建资源」开始" : "暂无资源"} />
+    ) : (
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {data.map((dto) => (
+          <ResourceCard key={dto.id} dto={dto} highlighted={dto.id === highlight}
+            onOpen={() => navigate(`/resources/${DETAIL_SCOPE[dto.type] ?? "ai"}/${dto.type}/${dto.id}`)}
+            onAction={(a) => onAction(dto, a)} />
+        ))}
+      </div>
+    )
+  }
 }

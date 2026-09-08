@@ -135,6 +135,11 @@ function EndpointFields({ protocol, v, onChange }: {
 }
 
 export default function WfConnectionsPage() {
+  return <WfConnectionsContent />
+}
+
+/** docs/v2-design/10 §4.6：embedded=true 时去页头供设置「连接」分区内嵌（安全注记替代 PageHeader）。 */
+export function WfConnectionsContent({ embedded = false }: { embedded?: boolean }) {
   const [rows, setRows] = useState<ConnectionDTO[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
@@ -312,13 +317,27 @@ export default function WfConnectionsPage() {
   const setEnv = (i: number, patch: Partial<EnvForm>) =>
     set({ environments: form.environments.map((e, j) => (j === i ? { ...e, ...patch } : e)) })
 
-  return (
-    <PageContainer wide className="space-y-3">
-      <PageHeader
-        title="Connections"
-        description="凭证与外部系统连接（加密存储，Secret 不回显；支持多环境域名与自定义鉴权脚本）"
-        actions={<Button className="bg-black text-white hover:bg-neutral-800" onClick={openCreate}><Plus className="size-4" /> 创建连接</Button>}
-      />
+  const createBtn = (
+    <Button className="bg-black text-white hover:bg-neutral-800" onClick={openCreate}>
+      <Plus className="size-4" /> 创建连接
+    </Button>
+  )
+  const inner = (
+    <>
+      {embedded ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            凭据层：Secret 服务端加密、页面永不展示；鉴权脚本沙箱空跑；EnvPatch 禁写 Secret。
+          </p>
+          {createBtn}
+        </div>
+      ) : (
+        <PageHeader
+          title="Connections"
+          description="凭证与外部系统连接（加密存储，Secret 不回显；支持多环境域名与自定义鉴权脚本）"
+          actions={createBtn}
+        />
+      )}
       <FilterBar>
         <SearchField value={search} onChange={setSearch} placeholder="搜索 Connection..." />
       </FilterBar>
@@ -622,6 +641,9 @@ export default function WfConnectionsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </PageContainer>
+    </>
+  )
+  return embedded ? <div className="space-y-3">{inner}</div> : (
+    <PageContainer wide className="space-y-3">{inner}</PageContainer>
   )
 }

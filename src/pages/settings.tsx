@@ -4,6 +4,7 @@ import {
   Check,
   Gauge,
   Info,
+  Link2,
   Monitor,
   Moon,
   Palette,
@@ -26,6 +27,7 @@ import {
   permissionsFor, rbac, ROLES,
 } from "@/services/rbac"
 import { WF_BASE } from "@/services/wf-api"
+import { WfConnectionsContent } from "./wf-connections"
 
 interface SettingsSection {
   id: string
@@ -39,6 +41,8 @@ const SECTIONS: SettingsSection[] = [
   { id: "appearance", label: "外观", icon: Palette },
   { id: "notifications", label: "通知", icon: Bell },
   { id: "execution", label: "执行策略", icon: Gauge },
+  // docs/v2-design/10 §4.6：凭据层归设置（原 /resources/connections 反转）
+  { id: "connections", label: "连接", icon: Link2 },
   { id: "security", label: "权限与安全", icon: ShieldCheck },
   { id: "audit", label: "审计", icon: ScrollText },
   { id: "system", label: "系统信息", icon: Info },
@@ -194,10 +198,11 @@ function SystemSection() {
   )
 }
 
-export default function SettingsPage() {
+export default function SettingsPage({ fixedSection }: { fixedSection?: string }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const requested = searchParams.get("section")
-  const section = SECTIONS.some((s) => s.id === requested) ? requested! : "general"
+  const section = fixedSection
+    ?? (SECTIONS.some((s) => s.id === requested) ? requested! : "general")
   const [, setTick] = useState(0)
 
   // 首载时 initAuth 可能尚未完成（AppShell 异步）；这里再触发一次以刷新真实身份显示
@@ -217,7 +222,7 @@ export default function SettingsPage() {
     <PageContainer>
       <PageHeader title={UI_TERMS.navigation.settings} description="平台与个人偏好设置。" />
       <div className="mt-4 flex flex-col gap-4 md:flex-row">
-        <nav aria-label="设置分区" className="shrink-0 md:w-48">
+        <nav aria-label="设置分区" className={fixedSection ? "hidden" : "shrink-0 md:w-48"}>
           <ul className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
             {SECTIONS.map((s) => {
               const active = s.id === section
@@ -252,6 +257,7 @@ export default function SettingsPage() {
           {section === "appearance" && <AppearanceSection />}
           {section === "notifications" && <NotAvailable feature="通知" />}
           {section === "execution" && <NotAvailable feature="执行策略" />}
+          {section === "connections" && <WfConnectionsContent embedded />}
           {section === "security" && <SecuritySection />}
           {section === "audit" && <AuditSection />}
           {section === "system" && <SystemSection />}

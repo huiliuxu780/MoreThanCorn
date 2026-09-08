@@ -17,8 +17,8 @@ from sqlalchemy.orm import Session
 from .db import SessionLocal
 from .legacy_agent_archive import (LEGACY_ARCHIVED_CODE, LEGACY_ARCHIVED_MESSAGE,
                                    assert_agent_executable, is_legacy_agent)
-from .models import (Agent, Connection, KnowledgeSource, Model, ModelProvider, Release, Run,
-                     Tool, ToolVersion, Workflow, new_id)
+from .models import (Agent, AgentSkill, Connection, KnowledgeSource, Model, ModelProvider,
+                     Release, Run, SkillResource, Tool, ToolVersion, Workflow, new_id)
 from .runner import RunError, create_run, emit, execute_run, exec_tool
 
 MAX_STEPS = 8
@@ -235,12 +235,35 @@ def _expand_mentions(db: Session, text: str, cfg: dict) -> str:
                 entry = next((x for x in (cfg.get("memoriesSchema") or []) if x.get("name") == name), None)
                 desc = (entry or {}).get("description", "") or ""
             elif kind == "skill":
-                desc = name if name in (cfg.get("skills") or []) else ""
+                sr = db.query(SkillResource).filter_by(name=name).first()
+                desc = ((sr.description if sr else "")
+                        or (name if name in (cfg.get("skills") or []) else ""))
         except Exception:  # noqa: BLE001
             desc = ""
         return f"[引用资源 {name}：{str(desc)[:200] or '无描述'}]"
 
     return _MENTION_RE.sub(repl, text)
+
+
+SKILL_CONTENT_LIMIT = 8000
+
+
+def build_mounted_skills_section(db: Session, agent_id: str, cfg: dict) -> str:
+    """docs/v2-design/10 §5.3：一等挂载（agent_skill）注入 SKILL.md 正文；
+    遗留 config.skills 名字保留名字占位（按名去重）。"""
+    mounted: list[str] = []
+    names: set[str] = set()
+    for link in db.query(AgentSkill).filter_by(agent_id=agent_id).all():
+        s = db.get(SkillResource, link.skill_id)
+        if not s:
+            continue
+        body = s.content or ""
+        if len(body) > SKILL_CONTENT_LIMIT:
+            body = body[:SKILL_CONTENT_LIMIT] + "\n（已截断：原文超过 8000 字符）"
+        mounted.append(f"### {s.name}\n{body}")
+        names.add(s.name)
+    legacy = [x for x in (cfg.get("skills") or []) if x not in names]
+    return "\n## 挂载技能\n" + "\n".join(mounted + [f"- {x}" for x in legacy])
 
 
 def _autonomous_loop(db: Session, agent, run: Run, run_input: dict, call_chain: list[str]) -> None:
@@ -249,10 +272,9 @@ def _autonomous_loop(db: Session, agent, run: Run, run_input: dict, call_chain: 
     # 版本运行注入 __common；草稿运行从当前 config 现算（SDD B-05 两种路径都真消费）
     common = cfg.get("__common") or build_common_config_dict(cfg)
     ctx = _Ctx(db, run, run_input, call_chain)
-    skills = cfg.get("skills", []) or []
     # E-4.2：# mention 展开为资源描述摘要（无 token 时原样）
     system = _expand_mentions(db, cfg.get("rolePrompt") or "", cfg) \
-        + "\n## 挂载技能\n" + "\n".join(f"- {s}" for s in skills)
+        + build_mounted_skills_section(db, agent.id, cfg)
     memories_declared = common.get("memories") or []
     if memories_declared:
         # R1 修复：description 一并注入（此前只写不读）

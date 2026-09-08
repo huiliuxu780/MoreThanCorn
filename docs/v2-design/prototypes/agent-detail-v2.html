@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent 详情页原型 v2 · 讨论稿（premium skin）</title>
+<link rel="stylesheet" href="_skin.css">
+<style>
+  .avatar{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#18181b,#3f3f46);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:650;box-shadow:var(--sh-md)}
+  .saved{font-size:11px;color:var(--ink-4)}
+  .ltabs{display:flex;gap:28px;border-bottom:1px solid var(--line);margin:16px 0 16px}
+  .ltab{padding:10px 2px;font-size:13.5px;font-weight:550;color:var(--ink-3);border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-1px;letter-spacing:-.005em}
+  .ltab.on{color:var(--ink);border-bottom-color:var(--ink)}
+  .ws{display:grid;grid-template-columns:340px 1fr 300px;gap:14px;align-items:start}
+  .col{display:flex;flex-direction:column;gap:12px;min-width:0}
+  .promptbox{width:100%;min-height:200px;background:#fafafa;border:1px solid var(--line-soft);border-radius:var(--r-md);padding:13px 14px;font:12.5px/1.8 var(--font);color:var(--ink-2);resize:vertical}
+  .promptbox:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,70,229,.12);background:#fff}
+  .var{background:var(--accent-soft);color:var(--accent);border-radius:5px;padding:1px 7px;font-size:11.5px;font-weight:550}
+  .vline{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-4);margin-top:8px}
+  .skillcard{border:1px solid var(--line-soft);border-radius:var(--r-md);padding:11px 13px;margin-bottom:8px;background:#fcfcfd}
+  .skillcard:hover{border-color:var(--line);box-shadow:var(--sh-sm)}
+  .skillcard:last-child{margin-bottom:0}
+  .skillcard .t{font-size:13px;font-weight:600;letter-spacing:-.012em;display:flex;align-items:center;gap:8px}
+  .skillcard .d{font-size:11.5px;color:var(--ink-4);margin-top:4px}
+  .chipwr{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:6px;background:var(--bad-soft);color:var(--bad);border:1px solid var(--bad-line)}
+  .schema{background:#fafafa;border:1px solid var(--line-soft);border-radius:var(--r-sm);padding:9px 11px;font:11.5px var(--mono);color:var(--ink-2)}
+  .runres{font-size:11.5px;color:var(--ink-4);padding:7px 0;border-bottom:1px solid var(--line-soft)}
+  .runres:last-child{border:none}
+  .debugnote{font-size:11px;color:var(--warn);margin-bottom:8px}
+  .card-h .add{margin-left:auto;font-size:11.5px;font-weight:600;color:var(--accent);border:none;background:none;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="proto-banner">讨论稿 · Agent 详情页 v2（结构已确认 · premium skin）｜ 一级 Tab=生命周期，搭建页=三栏工作区（QuickService 调研 + 扣子/Dify 同构）｜ 左导航未画出（冻结）</div>
+<div class="page" style="max-width:1440px">
+  <div class="head" style="margin-bottom:0">
+    <div style="display:flex;align-items:center;gap:13px">
+      <div class="avatar">质</div>
+      <div><h1 style="font-size:18px">质检分析</h1><span class="saved">自动保存于 14:20</span></div>
+      <span class="pill p-ok"><span class="dot"></span>v1.4 · 生产</span>
+      <span class="tag">agentscope</span>
+    </div>
+    <div class="actions">
+      <button class="btn">版本历史</button>
+      <button class="btn primary">发布 ▾（沙箱 / 线上）</button>
+    </div>
+  </div>
+
+  <div class="ltabs">
+    <div class="ltab on">Agent 搭建</div>
+    <div class="ltab">运行观测</div>
+    <div class="ltab">效果评测</div>
+    <div class="ltab">版本与发布</div>
+  </div>
+
+  <div class="ws">
+    <div class="col">
+      <div class="card"><div class="card-h"><span class="t">人设与提示词</span><small>草稿 v12 · 已发布 v11</small></div>
+        <div class="card-b" style="padding-top:12px">
+          <textarea class="promptbox">你是客服质检分析员。基于逐字稿 {{transcript}} 与场景 {{scene}}，按阶段执行：
+1. 识别诉求、知识声明与承诺；
+2. 检索知识核验（证据须引用原文句序）；
+3. 输出结构化结论（quality-v3）。
+不算分——评分由平台规则派生。</textarea>
+          <div class="vline"><span>变量：<span class="var">{{transcript}}</span> <span class="var">{{scene}}</span></span><span class="num">2,140 字</span></div>
+        </div>
+      </div>
+      <div class="card"><div class="card-h"><span class="t">模型</span></div>
+        <div class="card-b">
+          <div class="kv"><span class="k">模型资源</span><span class="v">qwen-max（LLM-DashScope）</span></div>
+          <div class="kv"><span class="k">temperature</span><span class="v num">0.2</span></div>
+          <div class="kv"><span class="k">maxTokens</span><span class="v num">4096</span></div>
+        </div>
+      </div>
+      <div class="card"><div class="card-h"><span class="t">执行约束</span><small>原 base.py 硬编码迁入</small></div>
+        <div class="card-b">
+          <div class="kv"><span class="k">数据级别</span><span class="v">L2</span></div>
+          <div class="kv"><span class="k">超时 / 调用上限</span><span class="v num">300s / 20 次</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card"><div class="card-h"><span class="t">技能</span><small>平台级可复用能力包</small><button class="add">+ 装配技能</button></div>
+        <div class="card-b">
+          <div class="skillcard"><div class="t">native-quality-skill <span class="tag">v3</span><span class="tag">read</span><span class="pill p-ok" style="margin-left:auto"><span class="dot"></span>已装配</span></div>
+            <div class="d">工具：rule-fetch / knowledge-search · 含质检阶段提示片段</div></div>
+          <div class="skillcard"><div class="t">consumer-analysis-skill <span class="tag">v0.2</span><span class="tag">read</span><span class="pill p-gray" style="margin-left:auto"><span class="dot"></span>未装配</span></div>
+            <div class="d">POC 转正候选：13 场景消费者意图打标</div></div>
+        </div>
+      </div>
+      <div class="card"><div class="card-h"><span class="t">插件</span><small>MCP / 工具服务</small><button class="add">+ 装配插件</button></div>
+        <div class="card-b">
+          <div class="skillcard"><div class="t">ticket-query（MCP）<span class="tag">read</span><span class="pill p-ok" style="margin-left:auto"><span class="dot"></span>已装配</span></div>
+            <div class="d">工单系统只读查询 · 3 工具</div></div>
+          <div class="skillcard"><div class="t">sms-send <span class="chipwr">write-irreversible</span><span class="pill p-gray" style="margin-left:auto"><span class="dot"></span>未启用</span></div>
+            <div class="d">写型工具：须声明 idempotency key 且人工确认后启用（ADR-R07）</div></div>
+        </div>
+      </div>
+      <div class="card"><div class="card-h"><span class="t">知识</span><button class="add">+ 绑定知识库</button></div>
+        <div class="card-b"><div class="skillcard"><div class="t">客服知识库 <span class="tag">v8</span></div><div class="d num">topK 5 · 阈值 0.6</div></div></div>
+      </div>
+      <div class="card"><div class="card-h"><span class="t">契约</span><small>输入 / 输出 Schema（Provider-neutral）</small></div>
+        <div class="card-b">
+          <div class="schema">in: transcript · agentId · scene · interactionTime</div>
+          <div class="schema" style="margin-top:7px">out: quality-v3（sha256:a41f…）· 校验失败=Run failed</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card"><div class="card-h"><span class="t">调试</span></div>
+        <div class="card-b">
+          <select class="select" style="width:100%;margin-bottom:8px"><option>环境：prod（Release REL-038）</option><option>环境：sandbox</option></select>
+          <div class="debugnote">草稿试跑须显式选 Provider（既有规则）</div>
+          <select class="select" style="width:100%;margin-bottom:10px"><option>输入样本：golden-20 #07</option><option>粘贴 JSON…</option></select>
+          <button class="btn primary" style="width:100%">运行测试</button>
+          <div style="margin-top:10px">
+            <div class="runres num">14:20 · succeeded · 18.2s · 96k tok · <a class="link" href="#">trace →</a></div>
+            <div class="runres num">11:02 · succeeded · 16.9s · <a class="link" href="#">trace →</a></div>
+            <div class="runres num">昨 17:44 · failed · 输出 Schema 不符 · <a class="link" href="#">trace →</a></div>
+          </div>
+        </div>
+      </div>
+      <div class="card"><div class="card-h"><span class="t">模型对比</span><small>同输入并排 (1/2)</small></div>
+        <div class="card-b">
+          <div class="kv"><span class="k">卡 1</span><span class="v">qwen-max（当前）</span></div>
+          <div class="kv"><span class="k">卡 2</span><span class="v" style="color:var(--ink-4);font-weight:450">+ 添加对比模型</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

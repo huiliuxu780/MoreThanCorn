@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent 列表页原型 v2 · 讨论稿</title>
+<link rel="stylesheet" href="_skin.css">
+<style>
+  /* v2 升级：结构学 HF Spaces（封面+状态chip+标题描述+footer），色彩收敛为企业低饱和
+     （平台中性约束：不做彩虹画布）；命令栏学 HF ask-bar；分类轨学 HF category rail */
+  .hero{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px}
+  .hero h1{font-size:26px;font-weight:700;letter-spacing:-.03em}
+  .hero .sub2{font-size:13px;color:var(--ink-3);margin-top:6px}
+  .cmdbar{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 16px;box-shadow:var(--sh-md);margin-bottom:14px}
+  .cmdbar input{border:none;outline:none;flex:1;font:450 13.5px var(--font);color:var(--ink)}
+  .cmdbar input::placeholder{color:var(--ink-4)}
+  .cmdbar kbd{font:600 10.5px var(--font);color:var(--ink-3);background:#f4f4f5;border:1px solid var(--line);border-radius:5px;padding:2px 6px}
+  .rail{display:flex;gap:6px;margin-bottom:20px;overflow-x:auto;padding-bottom:2px}
+  .rcat{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:550;color:var(--ink-2);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer;white-space:nowrap;box-shadow:var(--sh-sm)}
+  .rcat:hover{border-color:rgba(9,9,11,.18)}
+  .rcat.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .rcat .ic{width:14px;height:14px;border-radius:4px;flex-shrink:0}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .acard{background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--sh-sm);cursor:pointer;display:flex;flex-direction:column}
+  .acard:hover{box-shadow:var(--sh-md);transform:translateY(-2px);border-color:rgba(9,9,11,.16)}
+  .cover{height:86px;position:relative;padding:12px 16px;display:flex;flex-direction:column;justify-content:space-between}
+  .cover .chips{display:flex;gap:6px;align-items:center}
+  .cchip{font-size:10.5px;font-weight:650;letter-spacing:.02em;color:#fff;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.22);backdrop-filter:blur(4px);border-radius:999px;padding:3px 10px;display:inline-flex;gap:6px;align-items:center}
+  .cchip .dot{width:5px;height:5px;border-radius:50%;background:#4ade80;box-shadow:0 0 6px #4ade80}
+  .cover .likes{margin-left:auto}
+  .cover .wm{position:absolute;right:14px;bottom:-14px;font-size:52px;font-weight:800;color:rgba(255,255,255,.14);letter-spacing:-.04em}
+  .g1{background:linear-gradient(135deg,#1e1b4b,#4338ca)}
+  .g2{background:linear-gradient(135deg,#052e16,#059669)}
+  .g3{background:linear-gradient(135deg,#431407,#c2410c)}
+  .g4{background:linear-gradient(135deg,#111827,#374151)}
+  .body{padding:16px 18px 14px;display:flex;flex-direction:column;gap:10px;flex:1}
+  .pavatar{width:42px;height:42px;border-radius:12px;background:#fff;border:1px solid var(--line);box-shadow:var(--sh-sm);object-fit:cover;flex-shrink:0}
+  .nm{font-size:15.5px;font-weight:650;letter-spacing:-.018em;display:flex;align-items:center;gap:10px}
+  .nm .ver{font-size:11px;color:var(--ink-4);font-weight:500}
+  .desc{font-size:12.5px;color:var(--ink-3);line-height:1.65;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .foot{margin-top:auto;display:flex;align-items:center;gap:12px;padding-top:12px;border-top:1px solid var(--line-soft)}
+  .foot .s{font-size:11px;color:var(--ink-4)}
+  .foot .s b{display:block;font-size:13.5px;font-weight:650;color:var(--ink);letter-spacing:-.015em}
+  .foot .s b.good{color:var(--ok)}
+  .foot svg{margin-left:auto}
+  details.arch{margin-top:22px}
+  details.arch summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--ink-3);padding:10px 4px}
+  details.arch summary::before{content:"▸";color:var(--ink-4)}
+  details.arch[open] summary::before{content:"▾"}
+  .archrow{display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--line-soft);border-radius:var(--r-md);background:rgba(9,9,11,.015);margin-bottom:8px;font-size:12.5px;color:var(--ink-3)}
+  .archrow .right{margin-left:auto;font-size:11px;color:var(--ink-4)}
+</style>
+</head>
+<body>
+<div class="proto-banner">讨论稿 · Agent 列表页 v2 ｜ 结构标杆：HF Spaces（封面卡+状态chip+分类轨+命令栏），色彩企业低饱和 ｜ 左导航未画出（冻结）</div>
+<div class="page" style="max-width:1280px">
+  <div class="hero">
+    <div><h1>Agents</h1><div class="sub2 num">4 个运行中 · 1 草稿 · 运行时：agentscope 2.0.7</div></div>
+    <button class="btn primary">+ 新建 Agent</button>
+  </div>
+
+  <div class="cmdbar">
+    <span style="color:var(--ink-4)">⌕</span>
+    <input placeholder="搜索 Agent / 技能 / 模板，或描述你想让它做的事…">
+    <kbd>⌘K</kbd>
+  </div>
+
+  <div class="rail">
+    <span class="rcat on">全部</span>
+    <span class="rcat"><span class="ic" style="background:linear-gradient(135deg,#1e1b4b,#4338ca)"></span>质检</span>
+    <span class="rcat"><span class="ic" style="background:linear-gradient(135deg,#052e16,#059669)"></span>业务分析</span>
+    <span class="rcat"><span class="ic" style="background:linear-gradient(135deg,#431407,#c2410c)"></span>工单</span>
+    <span class="rcat"><span class="ic" style="background:linear-gradient(135deg,#111827,#374151)"></span>消费者</span>
+    <span class="rcat">官方模板</span>
+    <span class="rcat">含写工具</span>
+  </div>
+
+  <div class="grid">
+    <div class="acard">
+      <div class="cover g1">
+        <div class="chips"><span class="cchip"><span class="dot"></span>生产 · v1.4</span><span class="cchip">REL-038</span><span class="cchip likes num">♥ 1,204 / 7d</span></div>
+        <div class="wm">质</div>
+      </div>
+      <div class="body">
+        <div class="nm"><img class="pavatar" src="../../../public/avatars/avatar-3.png" alt="">质检分析 <span class="ver">quality-analysis</span></div>
+        <div class="desc">客服通话质检：识别/核验/结构化结论五阶段，不算分——评分由平台规则派生。</div>
+        <div class="foot num"><span class="s"><b>1,204</b>7 日运行</span><span class="s"><b class="good">99.1%</b>成功率</span>
+          <svg width="72" height="20" viewBox="0 0 72 20"><polyline points="0,13 10,11 20,12 30,8 40,9 50,6 60,7 72,4" fill="none" stroke="#4f46e5" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+      </div>
+    </div>
+
+    <div class="acard">
+      <div class="cover g2">
+        <div class="chips"><span class="cchip"><span class="dot"></span>生产 · v0.3</span><span class="cchip">REL-041</span><span class="cchip likes num">♥ 860 / 7d</span></div>
+        <div class="wm">业</div>
+      </div>
+      <div class="body">
+        <div class="nm"><img class="pavatar" src="../../../public/avatars/avatar-7.png" alt="">业务打标 <span class="ver">business-analysis</span></div>
+        <div class="desc">逐通话业务标签：意图/场景/有用性，20/20 真实通话口径。</div>
+        <div class="foot num"><span class="s"><b>860</b>7 日运行</span><span class="s"><b class="good">98.4%</b>成功率</span>
+          <svg width="72" height="20" viewBox="0 0 72 20"><polyline points="0,15 10,14 20,11 30,12 40,9 50,10 60,8 72,7" fill="none" stroke="#059669" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+      </div>
+    </div>
+
+    <div class="acard">
+      <div class="cover g4">
+        <div class="chips"><span class="cchip"><span class="dot" style="background:#60a5fa;box-shadow:0 0 6px #60a5fa"></span>沙箱 · v0.2</span><span class="cchip likes num">♥ 200 / 7d</span></div>
+        <div class="wm">消</div>
+      </div>
+      <div class="body">
+        <div class="nm"><img class="pavatar" src="../../../public/avatars/avatar-11.png" alt="">消费者分析 <span class="ver">POC 转正候选</span></div>
+        <div class="desc">13 场景消费者意图与有用性分析；golden 回归通过后转生产。</div>
+        <div class="foot num"><span class="s"><b>200</b>7 日试跑</span><span class="s"><b>95.0%</b>成功率</span>
+          <svg width="72" height="20" viewBox="0 0 72 20"><polyline points="0,16 10,15 20,16 30,13 40,14 50,11 60,12 72,10" fill="none" stroke="#71717a" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="3 3"/></svg></div>
+      </div>
+    </div>
+
+    <div class="acard">
+      <div class="cover g3">
+        <div class="chips"><span class="cchip"><span class="dot" style="background:#fbbf24;box-shadow:0 0 6px #fbbf24"></span>草稿 · v0.1</span><span class="cchip">含写工具</span></div>
+        <div class="wm">工</div>
+      </div>
+      <div class="body">
+        <div class="nm"><img class="pavatar" src="../../../public/avatars/avatar-15.png" alt="">工单自动化 <span class="ver">ticket-automation</span></div>
+        <div class="desc">写型 Agent：工单创建/短信通知；等待写工具护栏配置后转沙箱。</div>
+        <div class="foot num"><span class="s"><b>0</b>7 日运行</span><span class="s"><b>—</b>成功率</span>
+          <svg width="72" height="20" viewBox="0 0 72 20"><line x1="0" y1="14" x2="72" y2="14" stroke="#e4e4e7" stroke-width="1.6" stroke-dasharray="2 4"/></svg></div>
+      </div>
+    </div>
+  </div>
+
+  <details class="arch">
+    <summary>已封存 · 旧三型（只读，410） <span class="num" style="color:var(--ink-4)">3</span></summary>
+    <div class="archrow"><span style="font-weight:550;color:var(--ink-2)">autonomous-客诉专家</span><span class="tag">autonomous</span><span class="right">封存于 2026-08-28 · git tag archive/legacy-agents-20260828</span></div>
+    <div class="archrow"><span style="font-weight:550;color:var(--ink-2)">dialogue-回访助手</span><span class="tag">dialogue</span><span class="right">封存于 2026-08-28</span></div>
+    <div class="archrow"><span style="font-weight:550;color:var(--ink-2)">expert-group-升级判定</span><span class="tag">expert-group</span><span class="right">封存于 2026-08-28</span></div>
+  </details>
+</div>
+</body>
+</html>

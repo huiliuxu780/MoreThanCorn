@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>今日运行看板原型 · 讨论稿（premium skin）</title>
+<link rel="stylesheet" href="_skin.css">
+<style>
+  .topbar{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+  .topbar h1{font-size:21px;font-weight:650;letter-spacing:-.025em}
+  .topbar .date{font-size:12px;color:var(--ink-4)}
+  .topbar .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .board{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;align-items:start}
+  .col{min-width:0;background:rgba(9,9,11,.028);border:1px solid var(--line-soft);border-radius:16px;padding:10px}
+  .col-h{display:flex;align-items:center;gap:8px;padding:4px 6px 10px}
+  .col-h .cdot{width:7px;height:7px;border-radius:50%}
+  .col-h .cnt{margin-left:auto;font-size:10.5px;font-weight:650;color:var(--ink-3);background:var(--surface);border:1px solid var(--line-soft);border-radius:999px;padding:1px 8px}
+  .stack{display:flex;flex-direction:column;gap:8px}
+  .card2{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:13px 14px;box-shadow:var(--sh-sm)}
+  .card2:hover{box-shadow:var(--sh-md);border-color:rgba(9,9,11,.14)}
+  .card2 .t{font-size:13px;font-weight:600;letter-spacing:-.012em;line-height:1.35}
+  .card2 .s{font-size:11px;color:var(--ink-4);margin-top:3px}
+  .tags{display:flex;gap:5px;margin:9px 0;flex-wrap:wrap}
+  .nums{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-4);margin-top:7px}
+  .nums b{color:var(--ink-2);font-weight:650}
+  .segbar{height:6px}
+  .errline{margin-top:9px;font-size:11px;font-weight:550;color:var(--bad);background:var(--bad-soft);border:1px solid var(--bad-line);border-radius:7px;padding:4px 9px;display:inline-block}
+  .eta{margin-top:7px;font-size:11px;color:var(--ink-4)}
+  .deliv{margin-top:9px;padding-top:9px;border-top:1px solid var(--line-soft);font-size:11px;color:var(--ink-4);display:flex;justify-content:space-between}
+  .deliv .ok-t{color:var(--ok);font-weight:650}
+  .stline{display:flex;align-items:center;gap:7px;margin-top:9px;font-size:11.5px;font-weight:550;color:var(--ink-3)}
+  .stline .dot{width:6px;height:6px;border-radius:50%}
+</style>
+</head>
+<body>
+<div class="proto-banner">讨论稿 · V2 今日运行看板（结构已确认 · premium skin）｜ 参考：shadcnuikit apps/kanban ｜ 设计依据：06 §3 L0 + SDD-13 ｜ 左导航未画出（冻结）｜ 不可拖拽改状态</div>
+<div class="page" style="max-width:1440px">
+  <div class="topbar">
+    <h1>今日运行</h1><span class="date">2026-09-04 · Asia/Shanghai</span>
+    <div class="right">
+      <span class="live"><span class="dot"></span>SSE 实时</span>
+      <select class="select"><option>全部任务</option><option>质检任务 · 每日批</option><option>业务打标 · 每日批</option></select>
+      <select class="select"><option>全部触发</option><option>schedule</option><option>manual</option><option>backfill</option><option>api</option></select>
+    </div>
+  </div>
+
+  <div class="board">
+    <div class="col">
+      <div class="col-h"><span class="micro">即将运行</span><span class="cdot" style="background:var(--ink-4)"></span><span class="cnt num">3</span></div>
+      <div class="stack">
+        <div class="card2"><div class="t">业务打标 · 每日批</div><div class="s num">计划 06:00 · occurrence 已物化</div>
+          <div class="tags"><span class="tag">schedule</span><span class="tag">prod</span></div>
+          <div class="stline"><span class="dot" style="background:var(--ink-4)"></span>等待到点</div></div>
+        <div class="card2"><div class="t">质检任务 · 午间批</div><div class="s num">计划 12:00</div>
+          <div class="tags"><span class="tag">schedule</span><span class="tag">prod</span></div></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="col-h"><span class="micro">排队中</span><span class="cdot" style="background:var(--ink-3)"></span><span class="cnt num">2</span></div>
+      <div class="stack">
+        <div class="card2"><div class="t">工单回填 · 手工批</div><div class="s num">manual · 14:32 提交 · 队列第 1 位</div>
+          <div class="tags"><span class="tag">manual</span><span class="tag">sandbox</span></div>
+          <div class="stline"><span class="dot" style="background:var(--ink-3)"></span>等待 worker 槽</div></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="col-h"><span class="micro">执行中</span><span class="cdot" style="background:var(--run)"></span><span class="cnt num">2</span></div>
+      <div class="stack">
+        <div class="card2"><div class="t">质检任务 · 每日批</div><div class="s mono">#TR-0912 · 02:00 触发</div>
+          <div class="tags"><span class="tag">schedule</span><span class="tag">prod</span></div>
+          <div class="segbar"><div class="seg ok" style="width:69%"></div><div class="seg bad" style="width:1%"></div><div class="seg run" style="width:1%"></div></div>
+          <div class="nums num"><span><b>1,412</b>/2,000</span><span><b style="color:var(--bad)">14</b> 失败</span></div>
+          <div class="eta num">6.2 条/秒 · 约剩 1 分 34 秒</div></div>
+        <div class="card2"><div class="t">消费者分析 · 试跑</div><div class="s mono">#TR-0913 · 14:20 触发</div>
+          <div class="tags"><span class="tag">api</span><span class="tag">sandbox</span></div>
+          <div class="segbar"><div class="seg run" style="width:22%"></div></div>
+          <div class="nums num"><span><b>44</b>/200</span><span>0 失败</span></div></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="col-h"><span class="micro">结果投递</span><span class="cdot" style="background:#0d9488"></span><span class="cnt num">1</span></div>
+      <div class="stack">
+        <div class="card2"><div class="t">业务打标 · 凌晨批</div><div class="s mono">#TR-0911 · 执行已 succeeded</div>
+          <div class="tags"><span class="tag">schedule</span><span class="tag">prod</span></div>
+          <div class="deliv num"><span>投递 <span class="ok-t">1,842</span>/1,850</span><span>8 重试中</span></div></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="col-h"><span class="micro">需关注</span><span class="cdot" style="background:var(--bad)"></span><span class="cnt num">2</span></div>
+      <div class="stack">
+        <div class="card2"><div class="t">工单自动化 · 每日批</div><div class="s mono">#TR-0910 · 03:00 触发</div>
+          <div class="tags"><span class="tag">schedule</span><span class="tag">prod</span></div>
+          <div class="segbar"><div class="seg ok" style="width:58%"></div><div class="seg bad" style="width:12%"></div></div>
+          <div class="nums num"><span><b>812</b>/1,400</span><span><b style="color:var(--bad)">168</b> 失败</span></div>
+          <div class="errline">⚠ 目标表权限被拒 ×168</div></div>
+        <div class="card2"><div class="t">质检任务 · 昨日补数</div><div class="s mono">#TR-0909 · backfill</div>
+          <div class="tags"><span class="tag">backfill</span><span class="tag">prod</span></div>
+          <div class="errline">⚠ 投递 dead_letter ×23</div></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="col-h"><span class="micro">已完成</span><span class="cdot" style="background:var(--ok)"></span><span class="cnt num">20</span></div>
+      <div class="stack">
+        <div class="card2"><div class="t">业务打标 · 凌晨批</div><div class="s num">1,850/1,850 · 用时 22 分</div>
+          <div class="deliv num"><span>投递 <span class="ok-t">100%</span></span><span>02:22 完成</span></div></div>
+        <div class="card2"><div class="t">质检任务 · 昨日批</div><div class="s num">1,996/2,000 · 4 跳过 · 26 分</div>
+          <div class="deliv num"><span>投递 <span class="ok-t">100%</span></span><span>02:26 完成</span></div></div>
+        <div class="card2"><div class="t">规则评测 · 周批</div><div class="s num">300/300 · 4 分</div>
+          <div class="deliv"><span>platform_only</span><span class="num">01:04 完成</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,208 @@
+<!doctype html><html><head><meta charset="utf-8"><title>能力与资源 · 合并壳 v1</title><style>
+:root{--bg:#FFFFFF;--surface:#FFFFFF;--muted:#F6F6F4;--raised:#FFFFFF;--border:#E7E7E3;--ink:#111211;--ink2:#686D69;--brand:#2F7D4B;--brand-soft:#EDF8F0;--run:#42A9D6;--ok:#42B883;--warn:#E6A53A;--danger:#E06363;--run-soft:#EDF4F9;--ok-soft:#ECF7F0;--warn-soft:#FAF3E5;--danger-soft:#FBEFEF;--rail-accent:#ECECE8}
+[data-theme="dark"]{--bg:#080909;--surface:#101211;--muted:#181B19;--raised:#151816;--border:#292D2A;--ink:#FAFAF8;--ink2:#A7ADA8;--brand:#76D596;--brand-soft:#183523;--run:#5ABCE4;--ok:#62CD97;--warn:#F0BA58;--danger:#EC7777;--run-soft:#14262F;--ok-soft:#12291C;--warn-soft:#2E2515;--danger-soft:#2E1A1A;--rail-accent:#2A2E2B}
+*{box-sizing:border-box;margin:0;font-family:'DM Sans',system-ui,sans-serif}
+body{background:var(--bg);color:var(--ink);display:flex;min-height:100vh}
+/* 72px 窄轨：项 56×62 / 图标 20 / 标签 12 / 图标-标签间距 10 / 项距 4 / 圆角 8；选中=hover 同底，仅字重 500 */
+.rail{width:72px;border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:8px;gap:4px;position:sticky;top:0;height:100vh;background:var(--bg)}
+.rail .logo{width:36px;height:36px;border-radius:10px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;margin-bottom:8px;font-size:14px}
+.rail a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;width:56px;height:62px;border-radius:8px;font-size:12px;color:var(--ink2);text-decoration:none;padding:8px}
+.rail a .ic{font-size:20px;line-height:20px}
+.rail a:hover{background:var(--rail-accent)}
+.rail a.on{background:var(--rail-accent);color:var(--ink);font-weight:500}
+.rail .foot{margin-top:auto;display:flex;flex-direction:column;gap:4px;align-items:center}
+main{flex:1;padding:24px 28px;min-width:0}
+.hd{display:flex;align-items:flex-start;justify-content:space-between}
+h1{font-size:20px;font-weight:600}
+.sub{color:var(--ink2);font-size:12px;margin:4px 0 18px}
+.themebtn{height:28px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);font-size:12px;cursor:pointer}
+/* 磁贴行 */
+.tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.tile{border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:12px;cursor:pointer;text-align:left;display:flex;gap:10px;align-items:center;position:relative}
+.tile .ib{width:32px;height:32px;flex:none;border-radius:8px;background:var(--muted);display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--ink2)}
+.tile .nm{font-size:13px;font-weight:600;display:flex;gap:4px;align-items:center}
+.tile .ct{font-size:11px;color:var(--ink2);margin-top:2px}
+.tile.on{background:var(--muted)}
+.tile.on .ib{background:var(--raised);border:1px solid var(--border)}
+.tile .out{position:absolute;top:6px;right:8px;font-size:10px;color:var(--ink2)}
+/* 工具条 / 子 tab */
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:18px 0 14px}
+.bar input,.bar select{height:32px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--ink);padding:0 10px;font-size:12px}
+.btn{height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--ink);font-size:12px;cursor:pointer}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+[data-theme="dark"] .btn.primary{color:#07110A}
+.utabs{display:flex;gap:20px;border-bottom:1px solid var(--border);margin:18px 0 14px}
+.utabs button{border:0;background:none;padding:8px 2px;font-size:13px;color:var(--ink2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.utabs button.on{color:var(--ink);font-weight:500;border-bottom-color:var(--ink)}
+/* 卡片 / 表格 / chips */
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.card{border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:14px;font-size:12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.card .t{font-size:13px;font-weight:600;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.card .d{color:var(--ink2);margin-top:6px;line-height:18px}
+.card .m{color:var(--ink2);margin-top:8px;font-size:11px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.acts{display:flex;gap:4px}
+.acts button{width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);font-size:11px;cursor:pointer}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:11px}
+.chip{font-size:11px;border-radius:999px;padding:2px 8px;border:1px solid var(--border);color:var(--ink2);background:var(--surface)}
+.chip.ok{color:var(--ok);border-color:transparent;background:var(--ok-soft)}
+.chip.warn{color:var(--warn);border-color:transparent;background:var(--warn-soft)}
+.chip.danger{color:var(--danger);border-color:transparent;background:var(--danger-soft)}
+.chip.run{color:var(--run);border-color:transparent;background:var(--run-soft)}
+.chip.brand{color:var(--brand);border-color:transparent;background:var(--brand-soft)}
+table{width:100%;border-collapse:collapse;font-size:12px;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--border)}
+th{color:var(--ink2);font-weight:500;background:var(--muted)}
+.note{font-size:11px;color:var(--ink2);margin-top:10px}
+.av{width:18px;height:18px;border-radius:999px;background:var(--muted);border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:var(--ink2)}
+/* 弹窗 */
+.ovl{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:50}
+.ovl.show{display:flex}
+.dlg{width:420px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;font-size:12px}
+.dlg h3{font-size:15px;font-weight:600}
+.dlg .row{display:flex;gap:8px;align-items:center;padding:8px;border:1px solid var(--border);border-radius:8px;margin-top:8px;cursor:pointer}
+.dlg .row input{accent-color:var(--brand)}
+.dlg .ft{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+/* 交互三态（原站实测：transition .15s cubic-bezier(.4,0,.2,1)；active:translate-y-px / active:scale-95 工具档） */
+.tile,.card,.acts button,.btn{transition:border-color .15s cubic-bezier(.4,0,.2,1),background-color .15s cubic-bezier(.4,0,.2,1),box-shadow .15s cubic-bezier(.4,0,.2,1),translate .15s cubic-bezier(.4,0,.2,1),scale .15s cubic-bezier(.4,0,.2,1)}
+.tile:hover,.card:hover{border-color:var(--ink2)}
+.card{cursor:pointer}
+.card:hover{box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.tile:active,.card:active{translate:0 1px}
+.btn:active,.acts button:active{scale:95%}
+@keyframes slotin{from{opacity:0;translate:0 2px}to{opacity:1;translate:0 0}}
+main>section{animation:slotin .15s cubic-bezier(.4,0,.2,1)}
+@media (prefers-reduced-motion: reduce){.tile,.card,.btn,.acts button{transition:none}.tile:active,.card:active{translate:none}main>section{animation:none}}
+[hidden]{display:none!important}
+</style></head>
+<body>
+<aside class="rail"><div class="logo">M</div>
+<a href="#"><span class="ic">▦</span>任务</a><a href="#"><span class="ic">⇄</span>自主</a><a href="#"><span class="ic">◉</span>Agent</a><a class="on" href="#"><span class="ic">▣</span>资源</a><a href="#"><span class="ic">⑂</span>流程</a>
+<div class="foot"><a href="#"><span class="ic">◐</span>主题</a><a href="#"><span class="ic">⚙</span>设置</a><a href="#"><span class="ic">◍</span>账号</a></div></aside>
+<main>
+<div class="hd"><div><h1>能力与资源</h1><div class="sub">MTC v3 原型 · 合并壳 v2 · 五个一级分类 · 连接归设置 / 规则与表单归 Workflow 域 / Workflow 不进壳 · 真实页面以 MoreThanCorn 实现为准（docs/v2-design/10）</div></div>
+<button class="themebtn" onclick="toggleTheme()">◐ 主题</button></div>
+
+<div class="tiles" id="tiles">
+  <button class="tile on" data-v="skills"><span class="ib">✦</span><span><span class="nm">Skills</span><span class="ct">3 · 挂载 2 Agent</span></span></button>
+  <button class="tile" data-v="models"><span class="ib">◈</span><span><span class="nm">模型接入</span><span class="ct">渠道 3 · 模型 4</span></span></button>
+  <button class="tile" data-v="tools"><span class="ib">⚒</span><span><span class="nm">工具与 MCP</span><span class="ct">Tool 4 · MCP 3</span></span></button>
+  <button class="tile" data-v="knowledge"><span class="ib">▤</span><span><span class="nm">知识库</span><span class="ct">3</span></span></button>
+  <button class="tile" data-v="data"><span class="ib">⛁</span><span><span class="nm">数据资产</span><span class="ct">源 3 · 资产 2</span></span></button>
+</div>
+
+<!-- ============ Skills ============ -->
+<section id="v-skills">
+  <div class="bar"><input placeholder="搜索 Skills…" style="width:220px"><select><option>来源：全部</option><option>内置</option><option>上传</option></select>
+  <span style="flex:1"></span><button class="btn primary">＋ 上传 Skill</button></div>
+  <div class="grid3">
+    <div class="card"><div class="t">native-business-analysis <span class="chip brand">内置</span></div>
+      <div class="d">对业务数据进行只读分析：明确指标口径、查询数据源、确定性计算、交叉核验并带引用输出结论。</div>
+      <div class="m"><span class="av">业</span>业务分析师 <span class="chip">v1</span><span>更新 2026-09-03</span></div>
+      <div class="m acts"><button title="查看正文">☰</button><button title="卸载" onclick="openMount('native-business-analysis')">⊘</button><button title="编辑">✎</button><button title="删除">🗑</button></div></div>
+    <div class="card"><div class="t">native-quality-analysis <span class="chip brand">内置</span></div>
+      <div class="d">按结果规则集对通话/服务记录评分与归因，输出带规则引用的质检结论。</div>
+      <div class="m"><span class="av">质</span>质检员 <span class="chip">v1</span><span>更新 2026-09-02</span></div>
+      <div class="m acts"><button title="查看正文">☰</button><button title="卸载" onclick="openMount('native-quality-analysis')">⊘</button><button title="编辑">✎</button><button title="删除">🗑</button></div></div>
+    <div class="card"><div class="t">consumer-analysis <span class="chip">上传</span></div>
+      <div class="d">消费者需求分析：从通话记录抽取需求实体并归类到产品组（POC 转正候选）。</div>
+      <div class="m"><span style="color:var(--ink2)">未挂载</span><span class="chip">v1</span><span>更新 2026-09-03</span></div>
+      <div class="m acts"><button title="查看正文">☰</button><button title="挂载" class="primary" onclick="openMount('consumer-analysis')">⊕</button><button title="编辑">✎</button><button title="删除">🗑</button></div></div>
+  </div>
+  <div class="note">挂载 = 写入 Agent config.skills；运行时向 system prompt 注入 SKILL.md 正文（单 skill 截断 8000 字符）。校验对照 /api/registry/skills，未注册名字标红。</div>
+</section>
+
+<!-- ============ 模型接入 ============ -->
+<section id="v-models" hidden>
+  <div class="utabs" data-g="models"><button class="on" data-t="m-ch">接入渠道</button><button data-t="m-cat">模型目录</button></div>
+  <div id="m-ch">
+    <div class="bar"><span style="flex:1"></span><button class="btn primary">＋ 新建接入渠道</button></div>
+    <table><tr><th>名称</th><th>baseUrl</th><th>凭据 Connection</th><th>健康</th><th>状态</th><th>操作</th></tr>
+    <tr><td>DashScope 渠道</td><td class="mono">https://dashscope.aliyuncs.com/compatible-mode/v1</td><td><span class="chip run">LLM-DashScope 连接</span></td><td><span class="chip ok">healthy</span></td><td><span class="chip ok">启用</span></td><td class="acts"><button title="测试">▶</button><button title="停用">⏻</button><button title="编辑">✎</button></td></tr>
+    <tr><td>网关渠道（OpenAI 兼容）</td><td class="mono">https://gw.dev-corn.bshg.com.cn/v1</td><td><span class="chip run">gw-aksk</span></td><td><span class="chip ok">healthy</span></td><td><span class="chip ok">启用</span></td><td class="acts"><button title="测试">▶</button><button title="停用">⏻</button><button title="编辑">✎</button></td></tr>
+    <tr><td>本地 mock 渠道</td><td class="mono">mock://local</td><td>—</td><td><span class="chip">untested</span></td><td><span class="chip">停用</span></td><td class="acts"><button title="测试">▶</button><button title="启用">⏻</button><button title="编辑">✎</button></td></tr></table>
+    <div class="note">门禁：生产环境禁止注册/保留 mock:// 渠道（P0-01）。凭据仅引用 Connection，渠道本身不落密钥。</div>
+  </div>
+  <div id="m-cat" hidden>
+    <div class="bar"><input placeholder="搜索模型…" style="width:220px"><span style="flex:1"></span><button class="btn primary">＋ 新建模型</button></div>
+    <div class="grid4">
+      <div class="card"><div class="t mono">qwen-max</div><div class="m"><span class="chip">text</span><span class="chip">v3</span><span class="chip run">DashScope 渠道</span></div><div class="m">被 2 个 Agent 引用</div></div>
+      <div class="card"><div class="t mono">qwen-plus</div><div class="m"><span class="chip">text</span><span class="chip">v1</span><span class="chip run">DashScope 渠道</span></div><div class="m">被 1 个 Agent 引用</div></div>
+      <div class="card"><div class="t mono">text-embedding-v3</div><div class="m"><span class="chip">embedding</span><span class="chip">v1</span><span class="chip run">DashScope 渠道</span></div><div class="m">被 1 个知识库引用</div></div>
+      <div class="card"><div class="t mono">gw-qwen-vl</div><div class="m"><span class="chip">text</span><span class="chip">vision</span><span class="chip run">网关渠道</span></div><div class="m" style="color:var(--ink2)">未被引用</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 工具与 MCP ============ -->
+<section id="v-tools" hidden>
+  <div class="utabs" data-g="tools"><button class="on" data-t="t-tool">Tools</button><button data-t="t-mcp">MCP Servers</button></div>
+  <div id="t-tool">
+    <div class="bar"><input placeholder="搜索工具…" style="width:220px"><select><option>来源：全部</option><option>内置</option><option>自建</option></select><span style="flex:1"></span><button class="btn primary">＋ 创建工具（向导）</button></div>
+    <div class="grid4">
+      <div class="card"><div class="t mono">metric_query <span class="chip brand">内置</span></div><div class="m"><span class="chip ok">read</span><span class="chip ok">healthy</span></div><div class="m">被 业务分析师 引用</div></div>
+      <div class="card"><div class="t mono">dimension_query <span class="chip brand">内置</span></div><div class="m"><span class="chip ok">read</span><span class="chip ok">healthy</span></div><div class="m">被 业务分析师 引用</div></div>
+      <div class="card"><div class="t mono">browser-accept <span class="chip">自建</span></div><div class="m"><span class="chip">http</span><span class="chip ok">healthy</span></div><div class="m">被 1 个 Workflow 引用</div></div>
+      <div class="card"><div class="t mono">corn-report-export <span class="chip">自建</span></div><div class="m"><span class="chip">http</span><span class="chip warn">degraded</span></div><div class="m" style="color:var(--ink2)">未被引用</div></div>
+    </div>
+  </div>
+  <div id="t-mcp" hidden>
+    <div class="bar"><span style="flex:1"></span><button class="btn primary">＋ 创建 MCP Server（向导）</button></div>
+    <div class="grid4">
+      <div class="card"><div class="t mono">filesystem-mcp</div><div class="m"><span class="chip">stdio</span><span class="chip ok">healthy</span><span class="chip">tools 12</span></div></div>
+      <div class="card"><div class="t mono">corn-bi-mcp</div><div class="m"><span class="chip">http</span><span class="chip run">conn: gw-aksk</span><span class="chip ok">healthy</span><span class="chip">tools 8</span></div></div>
+      <div class="card"><div class="t mono">legacy-mcp</div><div class="m"><span class="chip">stdio</span><span class="chip danger">failed</span><span class="chip">tools 0</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 知识库 ============ -->
+<section id="v-knowledge" hidden>
+  <div class="bar"><input placeholder="搜索知识库…" style="width:220px"><span style="flex:1"></span><button class="btn primary">＋ 创建知识库（向导）</button></div>
+  <div class="grid3">
+    <div class="card"><div class="t">质检规则知识库 <span class="chip">vector</span></div><div class="m"><span class="chip ok">healthy</span><span>embedding: text-embedding-v3</span></div><div class="m">被 2 个 Agent 引用</div></div>
+    <div class="card"><div class="t">业务指标口径 <span class="chip">document</span></div><div class="m"><span class="chip ok">healthy</span></div><div class="m">被 1 个 Agent 引用</div></div>
+    <div class="card"><div class="t">通话记录归档 <span class="chip">vector</span></div><div class="m"><span class="chip warn">stale</span></div><div class="m" style="color:var(--ink2)">未被引用</div></div>
+  </div>
+</section>
+
+<!-- ============ 数据资源 ============ -->
+<section id="v-data" hidden>
+  <div class="utabs" data-g="data"><button class="on" data-t="d-src">Datasources</button><button data-t="d-asset">Data Assets</button></div>
+  <div id="d-src">
+    <div class="grid3">
+      <div class="card"><div class="t mono">postgres-wf_dev <span class="chip">postgresql</span></div><div class="m"><span class="chip ok">healthy</span><span class="chip ok">启用</span></div><div class="m">真主库 · 被 3 个资产挂载</div></div>
+      <div class="card"><div class="t mono">mysql-placeholder-01 <span class="chip">mysql</span></div><div class="m"><span class="chip">untested</span><span class="chip">停用</span></div><div class="m" style="color:var(--ink2)">占位连接串</div></div>
+      <div class="card"><div class="t mono">oss-corn-export <span class="chip">oss</span></div><div class="m"><span class="chip ok">healthy</span><span class="chip ok">启用</span></div><div class="m">被 1 个资产挂载</div></div>
+    </div>
+  </div>
+  <div id="d-asset" hidden>
+    <div class="grid3">
+      <div class="card"><div class="t">通话记录宽表</div><div class="m"><span class="chip run">postgres-wf_dev</span><span class="chip">字段 24</span></div><div class="m">被 3 个自主任务引用</div></div>
+      <div class="card"><div class="t">产品目录</div><div class="m"><span class="chip run">postgres-wf_dev</span><span class="chip">字段 8</span></div><div class="m">被 1 个自主任务引用</div></div>
+    </div>
+  </div>
+</section>
+
+<div class="ovl" id="mountOvl"><div class="dlg">
+  <h3>挂载 Skill</h3><div class="note" id="mountName" style="margin:4px 0 8px">consumer-analysis</div>
+  <label class="row"><input type="checkbox"> 质检员（native-quality-analysis 已挂载 1 skill）</label>
+  <label class="row"><input type="checkbox" checked> 消费者洞察分析师</label>
+  <label class="row"><input type="checkbox"> 工单助理</label>
+  <div class="ft"><button class="btn" onclick="closeMount()">取消</button><button class="btn primary" onclick="closeMount()">确认挂载</button></div>
+</div></div>
+
+<script>
+function toggleTheme(){const h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'':'dark';}
+document.querySelectorAll('.tile').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tile').forEach(x=>x.classList.remove('on'));t.classList.add('on');
+  document.querySelectorAll('main>section').forEach(s=>s.hidden=true);
+  document.getElementById('v-'+t.dataset.v).hidden=false;}));
+document.querySelectorAll('.utabs').forEach(g=>g.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+  g.querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+  const sec=g.parentElement;sec.querySelectorAll(':scope > div[id]').forEach(d=>d.hidden=true);
+  document.getElementById(b.dataset.t).hidden=false;})));
+function openMount(n){document.getElementById('mountName').textContent=n;document.getElementById('mountOvl').classList.add('show');}
+function closeMount(){document.getElementById('mountOvl').classList.remove('show');}
+</script>
+</body></html>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>批次详情页原型 · 讨论稿（premium skin）</title>
+<link rel="stylesheet" href="_skin.css">
+<style>
+  .statusband{padding:20px 22px}
+  .counts{display:flex;flex-wrap:wrap;gap:6px 26px;margin-top:14px;font-size:13px;color:var(--ink-3)}
+  .counts b{font-weight:650;color:var(--ink);font-size:15px;letter-spacing:-.02em}
+  .counts .ok-t b{color:var(--ok)} .counts .bad-t b{color:var(--bad)}
+  .counts .rate{margin-left:auto;color:var(--ink-4);font-size:12px}
+  .row2{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line-soft);align-items:center}
+  .fail-focus{font-size:13px;color:var(--ink-2);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .fail-focus .warn-i{color:var(--warn);font-weight:600}
+  .costline{font-size:12px;color:var(--ink-4)} .costline b{color:var(--ink-2);font-weight:600}
+  .panel{border:1px solid var(--line);border-top:none;border-radius:0 0 var(--r-lg) var(--r-lg);background:var(--surface);box-shadow:var(--sh-sm)}
+  .filters{display:flex;gap:8px;padding:14px 20px;align-items:center;border-bottom:1px solid var(--line-soft)}
+  .spacer{flex:1}
+  .err{color:var(--bad);font-size:12px}
+  details.ctx{margin-top:14px}
+  details.ctx summary{padding:14px 20px;font-size:13px;font-weight:600;color:var(--ink-2);cursor:pointer;list-style:none;display:flex;justify-content:space-between;letter-spacing:-.01em}
+  details.ctx summary::after{content:"展开";font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-4)}
+  details.ctx[open] summary::after{content:"收起"}
+  .ctx-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line-soft);border-top:1px solid var(--line-soft);border-radius:0 0 var(--r-lg) var(--r-lg);overflow:hidden}
+  .ctx-item{background:var(--surface);padding:14px 20px}
+  .ctx-item .v{font-size:13px;font-weight:550;margin-top:3px} .ctx-item .v small{color:var(--ink-4);font-weight:400}
+</style>
+</head>
+<body>
+<div class="proto-banner">讨论稿 · V2 批次详情页（结构已确认 · premium skin）｜ 参考：shadcnuikit project-detail ｜ 设计依据：06 §3 L2 ｜ 左导航未画出（冻结）</div>
+<div class="page">
+  <div class="crumb">运行中心 <span class="sep">/</span> 批次历史 <span class="sep">/</span> <b>TR-20260904-0912</b></div>
+
+  <div class="head">
+    <div>
+      <h1>质检任务 · 每日批 <span class="dim">#TR-20260904-0912</span></h1>
+      <div class="sub">
+        <span class="pill p-run"><span class="dot"></span>执行：运行中</span>
+        <span class="pill p-gray"><span class="dot"></span>投递：待启动</span>
+        <span class="tag">schedule</span><span class="tag">prod</span><span class="tag">v1.4</span>
+        <span style="color:var(--ink-4)">·</span><span>2026-09-04 02:00 触发</span>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn">重试失败执行</button>
+      <button class="btn danger">取消批次</button>
+      <button class="btn">⋯</button>
+    </div>
+  </div>
+
+  <div class="card statusband">
+    <div class="segbar" role="progressbar" aria-valuenow="70">
+      <div class="seg ok" style="width:69.4%"></div>
+      <div class="seg bad" style="width:.7%"></div>
+      <div class="seg run" style="width:.5%"></div>
+    </div>
+    <div class="counts num">
+      <span class="ok-t"><b>1,389</b> 成功</span>
+      <span class="bad-t"><b>14</b> 失败</span>
+      <span><b>9</b> 跳过</span>
+      <span>已处理 <b>1,412</b> / 2,000</span>
+      <span class="rate">速率 6.2 条/秒 · 预计剩余 1 分 34 秒</span>
+    </div>
+    <div class="row2">
+      <span class="fail-focus"><span class="warn-i">⚠ 失败集中</span><span class="chip">LLM 超时 ×9</span><span class="chip">输出 Schema 不符 ×5</span><a class="link" href="#" style="font-size:12px">查看失败分析 →</a></span>
+      <span class="costline num">用时 <b>3 分 21 秒</b> · Token <b>412k</b> · 预计成本 <b>¥8.2</b></span>
+    </div>
+  </div>
+
+  <div class="tabs" style="margin-top:16px">
+    <div class="tab on">Interaction Runs<span class="n num">1,412</span></div>
+    <div class="tab">结果投递<span class="n num">1,389</span></div>
+    <div class="tab">失败分析<span class="n num">14</span></div>
+    <div class="tab">配置快照</div>
+  </div>
+  <div class="panel">
+    <div class="filters">
+      <select class="select"><option>全部状态</option><option>成功</option><option>失败</option><option>运行中</option><option>排队</option></select>
+      <select class="select"><option>全部投递状态</option><option>待投递</option><option>已投递</option><option>投递失败</option></select>
+      <input class="input" style="width:240px" placeholder="搜索交互 ID / 错误关键词…">
+      <div class="spacer"></div>
+      <span class="micro">服务端分页 · 每页 50</span>
+    </div>
+    <table>
+      <thead><tr><th>交互 ID</th><th>状态</th><th>投递</th><th>尝试</th><th>耗时</th><th>错误摘要</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">CALL-20260903-01412</td><td><span class="pill p-run"><span class="dot"></span>运行中</span></td><td><span class="pill p-gray">—</span></td><td class="num">1</td><td class="num">—</td><td></td></tr>
+        <tr><td class="mono">CALL-20260903-01411</td><td><span class="pill p-ok"><span class="dot"></span>成功</span></td><td><span class="pill p-gray">待启动</span></td><td class="num">1</td><td class="num">18.2s</td><td></td></tr>
+        <tr><td class="mono">CALL-20260903-01410</td><td><span class="pill p-bad"><span class="dot"></span>失败</span></td><td><span class="pill p-gray">—</span></td><td class="num">2</td><td class="num">60.1s</td><td class="err">LLM 超时（60s）· 已重试 1 次</td></tr>
+        <tr><td class="mono">CALL-20260903-01409</td><td><span class="pill p-ok"><span class="dot"></span>成功</span></td><td><span class="pill p-gray">待启动</span></td><td class="num">1</td><td class="num">14.7s</td><td></td></tr>
+        <tr><td class="mono">CALL-20260903-01408</td><td><span class="pill p-bad"><span class="dot"></span>失败</span></td><td><span class="pill p-gray">—</span></td><td class="num">1</td><td class="num">9.3s</td><td class="err">输出 Schema 不符：missing field "resolution"</td></tr>
+        <tr><td class="mono">CALL-20260903-01407</td><td><span class="pill p-ok"><span class="dot"></span>成功</span></td><td><span class="pill p-gray">待启动</span></td><td class="num">1</td><td class="num">21.5s</td><td></td></tr>
+      </tbody>
+    </table>
+    <div class="pager"><button class="pbtn">‹</button><button class="pbtn">›</button><span class="num">第 1 / 29 页 · 共 1,412 条</span></div>
+  </div>
+
+  <details class="ctx card">
+    <summary>配置与上下文（只读冻结值）</summary>
+    <div class="ctx-grid">
+      <div class="ctx-item"><div class="micro">TaskVersion</div><div class="v">v7 <small>2026-09-02 发布</small></div></div>
+      <div class="ctx-item"><div class="micro">AgentVersion</div><div class="v">quality-analysis v1.4</div></div>
+      <div class="ctx-item"><div class="micro">Release / Provider</div><div class="v">REL-038 · agentscope</div></div>
+      <div class="ctx-item"><div class="micro">ScheduleOccurrence</div><div class="v">02:00 <small>准点触发</small></div></div>
+      <div class="ctx-item"><div class="micro">DataSnapshot</div><div class="v num">2,000 行 <small>窗口：上一自然日</small></div></div>
+      <div class="ctx-item"><div class="micro">Output Schema</div><div class="v">quality-v3 <small class="mono">sha256:a41f…</small></div></div>
+      <div class="ctx-item"><div class="micro">目标表</div><div class="v">dwd_quality_result <small>upsert</small></div></div>
+      <div class="ctx-item"><div class="micro">Connection</div><div class="v">biz-pg-prod <small>env: prod</small></div></div>
+    </div>
+  </details>
+</div>
+</body>
+</html>

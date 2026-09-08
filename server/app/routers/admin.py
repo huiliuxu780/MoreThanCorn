@@ -583,6 +583,39 @@ def create_provider(payload: dict, db: Session = Depends(get_db),
     return {"id": p.id, "name": p.name}
 
 
+@router.put("/api/model-providers/{pid}")
+def update_provider(pid: str, payload: dict, db: Session = Depends(get_db),
+                    _user: dict = Depends(require_admin)):
+    """docs/v2-design/10 §4.2：模型接入渠道编辑（baseUrl 仍过 mock:// 门禁）。"""
+    p = db.get(ModelProvider, pid)
+    if not p:
+        raise HTTPException(404, "provider not found")
+    if payload.get("name") is not None:
+        p.name = payload["name"]
+    if payload.get("baseUrl") is not None:
+        _assert_no_mock_base(payload["baseUrl"])
+        p.base_url = payload["baseUrl"]
+    if "connectionId" in payload:
+        p.auth_connection_id = payload.get("connectionId")
+    db.commit()
+    return {"id": p.id, "name": p.name}
+
+
+@router.delete("/api/model-providers/{pid}")
+def delete_provider(pid: str, db: Session = Depends(get_db),
+                    _user: dict = Depends(require_admin)):
+    p = db.get(ModelProvider, pid)
+    if not p:
+        raise HTTPException(404, "provider not found")
+    used = db.query(Model).filter_by(provider_id=pid).count()
+    if used:
+        raise HTTPException(409, detail={"code": "PROVIDER_IN_USE",
+                                      "message": f"仍被 {used} 个模型引用，无法删除"})
+    db.delete(p)
+    db.commit()
+    return {"id": pid}
+
+
 @router.post("/api/models", status_code=201)
 def create_model(payload: dict, db: Session = Depends(get_db),
                    _user: dict = Depends(require_admin)):

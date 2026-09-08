@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent 列表页原型 v1 · 讨论稿（premium skin）</title>
+<link rel="stylesheet" href="_skin.css">
+<style>
+  .topbar{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+  .topbar h1{font-size:21px;font-weight:650;letter-spacing:-.025em}
+  .topbar .cnt{font-size:12px;color:var(--ink-4)}
+  .spacer{flex:1}
+  .toolbar{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .acard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:18px;box-shadow:var(--sh-sm);display:flex;flex-direction:column;gap:12px;cursor:pointer}
+  .acard:hover{box-shadow:var(--sh-md);border-color:rgba(9,9,11,.14);transform:translateY(-1px)}
+  .acard .top{display:flex;align-items:center;gap:12px}
+  .avatar{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#18181b,#3f3f46);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:650;font-size:15px;flex-shrink:0}
+  .avatar.alt{background:linear-gradient(135deg,#4f46e5,#7c73f0)}
+  .avatar.dim{background:#e4e4e7;color:var(--ink-3)}
+  .acard .nm{font-size:14.5px;font-weight:650;letter-spacing:-.015em}
+  .acard .ver{font-size:11px;color:var(--ink-4);margin-top:2px}
+  .acard .desc{font-size:12px;color:var(--ink-3);line-height:1.6;min-height:38px}
+  .stats{display:flex;align-items:center;gap:14px;padding-top:12px;border-top:1px solid var(--line-soft)}
+  .stats .s{font-size:11px;color:var(--ink-4)}
+  .stats .s b{display:block;font-size:14px;font-weight:650;color:var(--ink);letter-spacing:-.02em;margin-bottom:1px}
+  .stats .s b.good{color:var(--ok)}
+  .stats svg{margin-left:auto}
+  .tags{display:flex;gap:6px;flex-wrap:wrap}
+  details.arch{margin-top:18px}
+  details.arch summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--ink-3);padding:10px 4px}
+  details.arch summary::before{content:"▸";color:var(--ink-4)}
+  details.arch[open] summary::before{content:"▾"}
+  .archrow{display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--line-soft);border-radius:var(--r-md);background:rgba(9,9,11,.015);margin-bottom:8px;font-size:12.5px;color:var(--ink-3)}
+  .archrow .nm{font-weight:550;color:var(--ink-2)}
+  .archrow .right{margin-left:auto;font-size:11px;color:var(--ink-4)}
+</style>
+</head>
+<body>
+<div class="proto-banner">讨论稿 · V2 Agent 列表页 v1（premium skin）｜ IA 参考：Dify Manage Apps / 扣子 Bot 空间（卡片+状态+运行健康）｜ 设计依据：05 §5.1 ｜ 左导航未画出（冻结）</div>
+<div class="page" style="max-width:1280px">
+  <div class="topbar">
+    <h1>Agents</h1><span class="cnt num">4 个运行中 · 1 草稿</span>
+    <div class="spacer"></div>
+    <button class="btn primary">+ 新建 Agent</button>
+  </div>
+  <div class="toolbar">
+    <input class="input" style="width:250px" placeholder="搜索名称 / 技能 / 模板…">
+    <select class="select"><option>全部状态</option><option>生产</option><option>沙箱</option><option>草稿</option></select>
+    <select class="select"><option>全部模板</option><option>quality-analysis</option><option>business-analysis</option><option>ticket-automation</option><option>空白</option></select>
+    <select class="select"><option>排序：7 日运行量</option><option>排序：成功率</option><option>排序：最近更新</option></select>
+  </div>
+
+  <div class="grid">
+    <div class="acard">
+      <div class="top"><div class="avatar">质</div>
+        <div><div class="nm">质检分析</div><div class="ver num">v1.4 · REL-038 · 更新 09-02</div></div>
+        <span class="pill p-ok" style="margin-left:auto"><span class="dot"></span>生产</span></div>
+      <div class="desc">客服通话质检：识别/核验/结构化结论五阶段，不算分（评分归平台规则派生）。</div>
+      <div class="tags"><span class="tag">agentscope</span><span class="tag">技能 ×2</span><span class="tag">知识 ×1</span></div>
+      <div class="stats num"><span class="s"><b>1,204</b>7 日运行</span><span class="s"><b class="good">99.1%</b>成功率</span>
+        <svg width="76" height="22" viewBox="0 0 76 22"><polyline points="0,14 11,12 22,13 33,9 44,10 55,7 66,8 76,5" fill="none" stroke="#4f46e5" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+    </div>
+
+    <div class="acard">
+      <div class="top"><div class="avatar">业</div>
+        <div><div class="nm">业务打标</div><div class="ver num">v0.3 · REL-041 · 更新 09-03</div></div>
+        <span class="pill p-ok" style="margin-left:auto"><span class="dot"></span>生产</span></div>
+      <div class="desc">逐通话业务标签：意图/场景/有用性，20/20 真实通话口径。</div>
+      <div class="tags"><span class="tag">agentscope</span><span class="tag">技能 ×1</span></div>
+      <div class="stats num"><span class="s"><b>860</b>7 日运行</span><span class="s"><b class="good">98.4%</b>成功率</span>
+        <svg width="76" height="22" viewBox="0 0 76 22"><polyline points="0,16 11,15 22,12 33,13 44,10 55,11 66,9 76,8" fill="none" stroke="#4f46e5" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+    </div>
+
+    <div class="acard">
+      <div class="top"><div class="avatar alt">消</div>
+        <div><div class="nm">消费者分析</div><div class="ver num">v0.2 · sandbox · 更新 09-04</div></div>
+        <span class="pill p-run"><span class="dot"></span>沙箱</span></div>
+      <div class="desc">POC 转正候选：13 场景消费者意图与有用性分析。</div>
+      <div class="tags"><span class="tag">agentscope</span><span class="tag">技能 ×1</span></div>
+      <div class="stats num"><span class="s"><b>200</b>7 日试跑</span><span class="s"><b>95.0%</b>成功率</span>
+        <svg width="76" height="22" viewBox="0 0 76 22"><polyline points="0,18 11,16 22,17 33,14 44,15 55,12 66,13 76,11" fill="none" stroke="#4f46e5" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="3 3"/></svg></div>
+    </div>
+
+    <div class="acard">
+      <div class="top"><div class="avatar dim">工</div>
+        <div><div class="nm">工单自动化</div><div class="ver num">v0.1 · draft · 更新 08-30</div></div>
+        <span class="pill p-gray"><span class="dot"></span>草稿</span></div>
+      <div class="desc">写型 Agent：工单创建/短信通知；等待写工具护栏配置后转沙箱。</div>
+      <div class="tags"><span class="tag">agentscope</span><span class="tag" style="color:var(--bad);border-color:var(--bad-line)">含 write-irreversible</span></div>
+      <div class="stats num"><span class="s"><b>0</b>7 日运行</span><span class="s"><b>—</b>成功率</span>
+        <svg width="76" height="22" viewBox="0 0 76 22"><line x1="0" y1="16" x2="76" y2="16" stroke="#e4e4e7" stroke-width="1.6" stroke-dasharray="2 4"/></svg></div>
+    </div>
+  </div>
+
+  <details class="arch">
+    <summary>已封存 · 旧三型（只读，410） <span class="num" style="color:var(--ink-4)">3</span></summary>
+    <div class="archrow"><div class="avatar dim" style="width:28px;height:28px;border-radius:8px;font-size:12px">自</div><span class="nm">autonomous-客诉专家</span><span class="tag">autonomous</span><span class="right">封存于 2026-08-28 · git tag archive/legacy-agents-20260828</span></div>
+    <div class="archrow"><div class="avatar dim" style="width:28px;height:28px;border-radius:8px;font-size:12px">对</div><span class="nm">dialogue-回访助手</span><span class="tag">dialogue</span><span class="right">封存于 2026-08-28</span></div>
+    <div class="archrow"><div class="avatar dim" style="width:28px;height:28px;border-radius:8px;font-size:12px">组</div><span class="nm">expert-group-升级判定</span><span class="tag">expert-group</span><span class="right">封存于 2026-08-28</span></div>
+  </details>
+</div>
+</body>
+</html>
