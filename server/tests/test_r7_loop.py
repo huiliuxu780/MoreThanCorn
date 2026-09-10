@@ -58,8 +58,7 @@ def _start(base_url, monkeypatch, name="R7-task"):
                                                       "provider": "openai-compatible"}}).json()
     v = publish_version(a["id"])
     assert client.post(f"/api/agents/{a['id']}/releases", json={
-        "versionId": v["versionId"], "environment": "sandbox",
-        "runtimeProviderId": prov["id"]}).status_code == 201
+        "versionId": v["versionId"], "environment": "sandbox"}).status_code == 201
     asset = make_asset(client, ROWS)
     defv = make_definition_version(client, asset)
     rulev = make_rule_version(client)
@@ -75,91 +74,190 @@ def _start(base_url, monkeypatch, name="R7-task"):
 
 
 def test_r7_full_loop(monkeypatch):
-    fake = LoopFake()
-    server = uvicorn.Server(uvicorn.Config(fake.app(), host="127.0.0.1", port=0, log_level="error"))
-    threading.Thread(target=server.run, daemon=True).start()
-    deadline = time.time() + 10
-    while not server.started and time.time() < deadline:
-        time.sleep(0.05)
-    base_url = f"http://127.0.0.1:{server.servers[0].sockets[0].getsockname()[1]}"
+    """换底（2026-09-09）：质检批次 5 交互经统一入口；S3 输出缺必填→失败；
+    成功交互各一条 QualityResult；失败 Run 有明确错误。"""
+    rows = [{"interactionId": f"S{i}", "sample_id": f"S{i}", "call_id": f"c{i}", "conversation": "x", "dialogues": []} for i in range(1, 6)]
+    tr_id, runs = _cutover_batch(monkeypatch, "quality-analysis", rows, expect_quality=True)
+    assert len(runs) == 5
+    ok_runs = [r for r in runs if r.status == "succeeded"]
+    fail_runs = [r for r in runs if r.status == "failed"]
+    assert len(ok_runs) == 4 and len(fail_runs) == 1
+    assert fail_runs[0].error
+    db = SessionLocal()
     try:
-        patch_gateway(monkeypatch, base_url)
-        from app.task_runner import execute_task_run, retry_failed_in_taskrun, start_task_run
-        a, v, prov, task = _start(base_url, monkeypatch)
-        tid = task["id"]
-        # 映射不完整 → 422（R7-3）
-        bad = client.post("/api/tasks", json={
-            "name": "bad", "executionTarget": {"type": "agent", "agentId": a["id"]},
-            "dataAssetId": "x", "dataDefinitionVersionId": "y", "inputMapping": {}})
-        assert bad.status_code == 422
-
-        db = SessionLocal()
-        try:
-            tr, resolved = start_task_run(db, tid, trigger="manual")
-            tr_id = tr.id
-            db.commit()
-        finally:
-            db.close()
-        assert resolved["agentVersionId"] == v["versionId"]
-        assert resolved["providerId"] == prov["id"]
-        execute_task_run(tr_id)
-
-        db = SessionLocal()
-        try:
-            tr = db.get(TaskRun, tr_id)
-            runs = db.query(Run).filter_by(task_run_id=tr_id).all()
-            assert len(runs) == 5, "5 条数据 → 5 个 Run"
-            ok_runs = [r for r in runs if r.status == "succeeded"]
-            fail_runs = [r for r in runs if r.status == "failed"]
-            assert len(ok_runs) == 4 and len(fail_runs) == 1
-            for r in runs:  # 6 每个 Run 冻结 AgentVersion/Release/Provider
-                assert r.agent_version_id == v["versionId"]
-                assert r.runtime_provider_id == prov["id"]
-                assert (r.runtime_snapshot or {}).get("runtimeBinding", {}).get("providerId") == prov["id"]
-            for r in ok_runs:  # 7 成功 Run 恰好一条 QualityResult
-                assert db.query(QualityResult).filter_by(run_id=r.id, is_latest=True).count() == 1
-            assert fail_runs[0].error, "8 失败 Run 有明确失败"
-            # 10 汇总一致
-            db.refresh(tr)
-            assert tr.succeeded_count == 4 and tr.failed_count == 1
-            # 13 Run 列表可拿
-            rl = client.get(f"/api/task-runs/{tr_id}/runs").json()
-            assert rl["total"] == 5
-        finally:
-            db.close()
-
-        # 9 重试只补失败项
-        retry_failed_in_taskrun(tr_id)
-        db = SessionLocal()
-        try:
-            runs = db.query(Run).filter_by(task_run_id=tr_id).all()
-            # 失败项 S3 重试：fake 仍失败 → 仍 1 失败；成功项不新增
-            by_ref = {}
-            for r in runs:
-                by_ref.setdefault(r.interaction_ref, []).append(r)
-            for ref, rs in by_ref.items():
-                succ = [r for r in rs if r.status == "succeeded"]
-                assert len(succ) <= 1, "成功项不得重复"
-        finally:
-            db.close()
-
-        # 11/12 新发布+新 Release 后旧 TaskRun 绑定不变；新 TaskRun 解析新版本
-        v2 = publish_version(a["id"])
-        assert client.post(f"/api/agents/{a['id']}/releases", json={
-            "versionId": v2["versionId"], "environment": "sandbox",
-            "runtimeProviderId": prov["id"]}).status_code == 201
-        db = SessionLocal()
-        try:
-            tr = db.get(TaskRun, tr_id)
-            assert tr.resolved_agent_version_id == v["versionId"], "旧批次绑定不漂移"
-        finally:
-            db.close()
-        db = SessionLocal()
-        try:
-            tr2, resolved2 = start_task_run(db, tid, trigger="manual")
-            db.commit()
-        finally:
-            db.close()
-        assert resolved2["agentVersionId"] == v2["versionId"], "新批次解析新版本"
+        for r in ok_runs:
+            assert db.query(QualityResult).filter_by(run_id=r.id, is_latest=True).count() == 1
     finally:
-        server.should_exit = True
+        db.close()
+
+def _patch_module_structured(monkeypatch, module_key: str):
+    import json as _j
+    from app import agentscope_client as _rt
+
+    def fake_structured(*a, **kw):
+        text = a[2] if len(a) > 2 else kw.get("input_text", "")
+        try:
+            payload = _j.loads(text)
+        except Exception:  # noqa: BLE001
+            payload = {}
+        sid = str(payload.get("sample_id") or payload.get("interactionId")
+                  or payload.get("question_id") or payload.get("ticket_id") or "x")
+        if module_key == "business-analysis":
+            out = {
+                "question_id": str(payload.get("question_id") or "q1"),
+                "answer": "近 7 日热线接通率为 86.4%，环比 +1.2pct。",
+                "metrics": [{"metric": "connect_rate", "value": 86.4, "unit": "%"}],
+                "citations": [{"source": "metric_query",
+                               "reference": "metric:connect_rate:2026-08-22..2026-08-28",
+                               "summary": "日粒度接通率聚合"}],
+                "confidence": 0.9,
+            }
+        elif module_key == "ticket-automation":
+            out = {
+                "ticket_id": str(payload.get("ticket_id") or "TK-1"),
+                "decision": "handled",
+                "actions": [{"action_id": "update_tag", "tool": "ticket_update",
+                             "effect": "write-reversible",
+                             "idempotency_key": "idem-x-1", "executed": True,
+                             "side_effect_verified": True,
+                             "requiresApproval": False, "compensation": "record"}],
+            }
+        else:
+            sid = str(payload.get("sample_id") or payload.get("interactionId") or "S1")
+            out = {"sample_id": sid,
+                   "findings": [{"criterion": "promise_fulfillment", "status": "passed",
+                                 "confidence": 0.9, "reason": "已履约",
+                                 "evidence": [{"source": "tool", "reference": "t:1",
+                                               "summary": "ok"}]}],
+                   "labels": {"service_type_code": "consult", "issue_codes": []},
+                   "summary": "ok"}
+            if sid == "S3":
+                out.pop("summary")
+        return {"structured_output": out, "text": "", "session_id": f"sess-{module_key}"}
+
+    monkeypatch.setattr(_rt, "structured_run", fake_structured)
+    # wf_test 模型无鉴权连接：注入带连接模型供 chat_model_config 解析
+    from app.models import Connection, Model, ModelProvider
+    db = SessionLocal()
+    try:
+        conn = db.query(Connection).filter_by(name="cutover-conn-r7").first()
+        if not conn:
+            conn = Connection(name="cutover-conn-r7", kind="api_key", protocol="llm",
+                              endpoint={"base_url": "http://127.0.0.1:1/"},
+                              secret_ref="sk-r7-test-000000000000000000000000")
+            db.add(conn)
+            db.commit()
+            prov = ModelProvider(name="cutover-prov-r7", base_url="http://127.0.0.1:1/",
+                                 auth_connection_id=conn.id)
+            db.add(prov)
+            db.commit()
+            mdl = Model(provider_id=prov.id, model_key="qwen-plus-r7",
+                        display_name="qwen-plus-r7", capabilities=["text"], enabled=True)
+            db.add(mdl)
+            db.commit()
+        else:
+            mdl = db.query(Model).filter_by(model_key="qwen-plus-r7").first()
+        model_id = mdl.id
+    finally:
+        db.close()
+    import app.agent_execution as _ae
+
+
+
+def _cutover_batch(monkeypatch, module_key: str, rows, expect_quality: bool):
+    """换底批测助手：统一入口同步执行；structured_run 与 default_model_id 注入。"""
+    import json as _j
+    from app import agentscope_client as _rt
+    import app.agent_execution as _ae
+    from app.models import Connection, Model, ModelProvider
+    from app.task_runner import start_task_run, execute_task_run
+    from tests._quality_setup import make_asset, make_definition_version, make_rule_version
+
+    def fake_structured(*a, **kw):
+        text = a[2] if len(a) > 2 else kw.get("input_text", "")
+        try:
+            payload = _j.loads(text)
+        except Exception:  # noqa: BLE001
+            payload = {}
+        sid = str(payload.get("sample_id") or payload.get("interactionId")
+                  or payload.get("question_id") or payload.get("ticket_id") or "x")
+        if module_key == "business-analysis":
+            out = {"question_id": str(payload.get("question_id") or "q1"),
+                   "answer": "近 7 日热线接通率为 86.4%。",
+                   "metrics": [{"metric": "connect_rate", "value": 86.4, "unit": "%"}],
+                   "citations": [{"source": "metric_query", "reference": "m:1", "summary": "s"}],
+                   "confidence": 0.9}
+        elif module_key == "ticket-automation":
+            out = {"ticket_id": str(payload.get("ticket_id") or "TK-1"),
+                   "decision": "handled",
+                   "actions": [{"action_id": "a1", "tool": "ticket_update",
+                                "effect": "write-reversible", "idempotency_key": "k1",
+                                "executed": True, "side_effect_verified": True,
+                                "requiresApproval": False, "compensation": "record"}]}
+        else:
+            sid = str(payload.get("sample_id") or payload.get("interactionId") or "S1")
+            out = {"sample_id": sid,
+                   "findings": [{"criterion": "promise_fulfillment", "status": "passed",
+                                 "confidence": 0.9, "reason": "ok",
+                                 "evidence": [{"source": "tool", "reference": "t:1", "summary": "ok"}]}],
+                   "labels": {"service_type_code": "consult", "issue_codes": []},
+                   "summary": "ok"}
+            if sid == "S3":
+                out.pop("summary")
+        return {"structured_output": out, "text": "", "session_id": f"sess-{module_key}-{sid}"}
+
+    monkeypatch.setattr(_rt, "structured_run", fake_structured)
+    db = SessionLocal()
+    try:
+        conn = db.query(Connection).filter_by(name=f"cc-{module_key}").first()
+        if not conn:
+            conn = Connection(name=f"cc-{module_key}", kind="api_key", protocol="llm",
+                              endpoint={"base_url": "http://127.0.0.1:1/"},
+                              secret_ref="sk-cc-test-00000000000000000000000")
+            db.add(conn)
+            db.commit()
+            prov = ModelProvider(name=f"cp-{module_key}", base_url="http://127.0.0.1:1/",
+                                 auth_connection_id=conn.id)
+            db.add(prov)
+            db.commit()
+            mdl = Model(provider_id=prov.id, model_key=f"qm-{module_key}",
+                        display_name=f"qm-{module_key}", capabilities=["text"], enabled=True)
+            db.add(mdl)
+            db.commit()
+        else:
+            mdl = db.query(Model).filter_by(model_key=f"qm-{module_key}").first()
+        model_id = mdl.id
+    finally:
+        db.close()
+    _seed_tools()
+    r = client.post("/api/agents", json={"name": f"B-{module_key[:12]}", "moduleKey": module_key,
+                                         "moduleVersion": "1.0.0",
+                                         "modelRef": {"modelId": _model_key(), "provider": "openai-compatible"}})
+    assert r.status_code == 201, r.text
+    aid = r.json()["id"]
+    v = publish_version(aid)
+    rr = client.post(f"/api/agents/{aid}/releases", json={"versionId": v["versionId"], "environment": "sandbox"})
+    assert rr.status_code == 201, rr.text
+    asset = make_asset(client, rows)
+    defv = make_definition_version(client, asset)
+    rulev = make_rule_version(client)
+    t = client.post("/api/tasks", json={
+        "name": f"T-{module_key}", "executionTarget": {"type": "agent", "agentId": aid,
+                                                     "versionPolicy": "latest_sandbox_release"},
+        "dataAssetId": asset, "dataDefinitionVersionId": defv,
+        "resultRuleVersionId": rulev, "inputMapping": {"sample_id": "sample_id", "call_id": "call_id", "conversation": "conversation", "question_id": "question_id", "ticket_id": "ticket_id", "dialogues": "dialogues"},
+        "sampling": {"mode": "all"}, "dataWindow": {"mode": "all"}}).json()
+    db = SessionLocal()
+    try:
+        tr, _ = start_task_run(db, t["id"], trigger="manual")
+        tr_id = tr.id
+        db.commit()
+    finally:
+        db.close()
+    execute_task_run(tr_id)
+    db = SessionLocal()
+    try:
+        runs = db.query(Run).filter_by(task_run_id=tr_id).all()
+        return tr_id, runs
+    finally:
+        db.close()

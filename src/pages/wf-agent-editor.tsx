@@ -13,12 +13,14 @@ import ModuleAgentConfigPage from "./module-agent-config"
 import { CustomAgentConfig } from "./agent-workspace/custom-config"
 import { avatarFor } from "@/lib/agent-avatar"
 import { AgentHomeSection } from "./agent-workspace/home"
-import { AgentBoardSection } from "./agent-workspace/board"
 import { AgentMemorySection } from "./agent-workspace/memory"
 import { AgentSkillsSection } from "./agent-workspace/skills"
 import { AgentConnectorsSection } from "./agent-workspace/connectors"
 import { AgentMountsSection } from "./agent-workspace/mounts"
 import { AgentGovernanceSection } from "./agent-workspace/governance"
+import { AgentTaskBoardSection } from "./agent-workspace/board"
+import { AgentAutonomousSection } from "./agent-workspace/autonomous"
+import { AgentProfileSection } from "./agent-workspace/profile"
 
 const INK2 = "#5A6472"; const INK3 = "#B9C2CF"
 
@@ -68,7 +70,7 @@ function ArchivedAutonomousView({ agent }: { agent: AgentInfo }) {
   )
 }
 
-const SECTIONS: WorkspaceSection[] = ["home", "board", "memory", "skills", "connectors", "workflows", "knowledge", "config", "governance"]
+const SECTIONS: WorkspaceSection[] = ["home", "board", "autonomous", "memory", "skills", "connectors", "workflows", "knowledge", "config", "governance", "profile"]
 
 export default function WfAgentEditorPage() {
   const { agentId = "", section: sectionParam } = useParams()
@@ -84,18 +86,23 @@ export default function WfAgentEditorPage() {
   if (legacy) return <WfDesignerPage workflowId={agentId} />
   if (!agent) return <div className="p-8 text-sm" style={{ color: INK2 }}>加载中…</div>
 
-  const archived = Boolean(agent.archived) || agent.type !== "module"
+  // 2026-09-10 P0-B/E：只读判定 = 已归档 或 旧三类封存类型；custom Agent 是
+  // 一等可执行公民（AgentScope 统一入口），不再因 type!=="module" 被整体只读。
+  const LEGACY_READONLY_TYPES = new Set(["autonomous", "dialogue", "expert-group"])
+  const archived = Boolean(agent.archived) || LEGACY_READONLY_TYPES.has(agent.type)
 
   const content = (() => {
     switch (section) {
       case "home": return <AgentHomeSection agent={agent} />
-      case "board": return <AgentBoardSection agentId={agent.id} />
+      case "board": return <AgentTaskBoardSection agentId={agent.id} />
+      case "autonomous": return <AgentAutonomousSection agentId={agent.id} />
+      case "profile": return <AgentProfileSection agent={agent} archived={archived} />
       case "memory": return <AgentMemorySection agentId={agent.id} readOnly={archived} />
       case "skills": return <AgentSkillsSection agentId={agent.id} readOnly={archived} />
       case "connectors": return <AgentConnectorsSection agent={agent} readOnly={archived} />
       case "workflows": return <AgentMountsSection agent={agent} kind="workflows" readOnly={archived} />
       case "knowledge": return <AgentMountsSection agent={agent} kind="knowledges" readOnly={archived} />
-      case "governance": return <AgentGovernanceSection agentId={agent.id} />
+      case "governance": return <AgentGovernanceSection agentId={agent.id} archived={archived} />
       case "config":
         if (agent.type === "custom") return <CustomAgentConfig agent={agent} />
         if (agent.type === "module") return <ModuleAgentConfigPage agent={agent} />

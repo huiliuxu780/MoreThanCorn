@@ -92,7 +92,7 @@ export function AgentRunsPanel({ agentId }: { agentId: string }) {
 }
 
 /* ---------- 效果评测（只读：历史样本与 Judge 结果查看） ---------- */
-export function AgentEvalPanel({ agentId }: { agentId: string }) {
+export function AgentEvalPanel({ agentId, archived }: { agentId: string; archived?: boolean }) {
   const [samples, setSamples] = useState<{ id: string; name: string; input: Record<string, unknown>; expected?: { text?: string } | null }[]>([])
   useEffect(() => {
     agentApi.evalSamples(agentId).then((r) => setSamples(r.items as typeof samples)).catch(() => undefined)
@@ -109,9 +109,11 @@ export function AgentEvalPanel({ agentId }: { agentId: string }) {
             {s.expected?.text && <span className="truncate rounded bg-status-success-soft px-1 text-[10px] text-status-success">期望：{s.expected.text.slice(0, 16)}</span>}
           </div>
         ))}
-        <div className="rounded bg-amber-50 px-3 py-2 text-xs text-amber-600">
-          该旧版 Agent 已封存：样本维护与评测运行入口不再开放。
-        </div>
+        {archived && (
+          <div className="rounded bg-amber-50 px-3 py-2 text-xs text-amber-600">
+            该旧版 Agent 已封存：样本维护与评测运行入口不再开放。
+          </div>
+        )}
       </div>
     </div>
   )

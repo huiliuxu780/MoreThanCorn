@@ -39,15 +39,24 @@ function loadCatalog() {
     const list = await agentApi.list({ pageSize: 100, archived: "" }).catch(() => ({ items: [] }))
     const schemaByKey = new Map((mods.items ?? []).map((m) => [m.key, m]))
     const out: AgentDetail[] = []
-    for (const a of (list.items ?? []) as { id: string; name: string; type?: string; moduleKey?: string; sandboxVersion?: number | null }[]) {
-      if (a.type !== "module") continue
+    for (const a of (list.items ?? []) as { id: string; name: string; type?: string; moduleKey?: string; sandboxVersion?: number | null; executable?: boolean }[]) {
+      const isModule = a.type === "module"
+      // 审计返工 P0-3（09-10 二轮）：custom Agent 已是正式 Task 执行目标（business.py 放开），
+      // 向导目录不得只列 Module Agent。可执行判定与后端/自动任务同源：executable=未归档+active prod Release。
+      if (!isModule && !(a.type === "custom" && a.executable === true)) continue
       const m = schemaByKey.get(a.moduleKey ?? "")
       const schema = ((m?.inputSchema?.properties ?? {}) as Record<string, { type?: string }>)
       const required = new Set((m?.inputSchema?.required ?? []) as string[])
       out.push({
-        id: a.id, name: `${a.name}（Module）`, status: a.sandboxVersion != null ? "Published" : "Draft",
+        id: a.id,
+        name: isModule ? `${a.name}（Module）` : a.name,
+        status: isModule ? (a.sandboxVersion != null ? "Published" : "Draft") : (a.executable ? "Published" : "Draft"),
         moduleKey: a.moduleKey,
-        inputSchema: Object.entries(schema).map(([key, v]) => ({ key, type: (v?.type ?? "string"), label: key, required: required.has(key) })) as unknown as DataAssetField[],
+        executableCustom: !isModule,
+        // custom Agent 无 Module inputSchema；映射校验按空 Schema 放行（business.py 同语义跳过映射校验）
+        inputSchema: isModule
+          ? Object.entries(schema).map(([key, v]) => ({ key, type: (v?.type ?? "string"), label: key, required: required.has(key) })) as unknown as DataAssetField[]
+          : [],
         versions: [],
       } as unknown as AgentDetail)
     }
@@ -59,7 +68,7 @@ function loadCatalog() {
         publishedAt: v.createdAt, artifactHash: v.artifactHash,
       } as unknown as AgentDetail["versions"][number] & { artifactHash?: string }))
     }))
-    agents = [...out, ...agents.filter((x) => !(x as { moduleKey?: string }).moduleKey)]
+    agents = [...out, ...agents.filter((x) => !(x as { moduleKey?: string }).moduleKey && !(x as { executableCustom?: boolean }).executableCustom)]
     for (const a of agents) agentDetails[a.id] = a
     subs.forEach((f) => f())
   }).catch(() => undefined)
@@ -84,7 +93,9 @@ function loadCatalog() {
         versions: versions.map((v) => ({ version: `v${v.versionNo}`, status: "Published" as const, versionId: v.versionId, publishedAt: v.publishedAt })),
       } as unknown as AgentDetail)
     }
-    agents = [...agents.filter((x) => (x as { moduleKey?: string }).moduleKey), ...out]
+    // 审计返工 P0-3：合并时保留 Module Agent 与可执行 custom Agent（executableCustom 标记），
+    // 只替换工作流条目——此前 filter(moduleKey) 会在本分支后解析时把 custom Agent 整体抹掉。
+    agents = [...agents.filter((x) => (x as { moduleKey?: string }).moduleKey || (x as { executableCustom?: boolean }).executableCustom), ...out]
     for (const a of agents) agentDetails[a.id] = a
     subs.forEach((f) => f())
   }).catch(() => undefined)
@@ -263,7 +274,8 @@ export function BasicTaskFields({
 }
 
 /** R8-UI（11 §7-④ / 原型 v1-④）：执行目标步——Workflow 保位 / 领域 Agent 二选一；
- *  Agent 仅列 Module，无发布版本草稿禁选并示原因；版本策略三选（默认最新沙箱发布）。 */
+ *  Agent 列可执行对象（Module Agent + 有 active prod Release 的 custom Agent，审计返工 P0-3），
+ *  无发布版本草稿禁选并示原因；版本策略三选（默认最新沙箱发布）。 */
 export function TargetTaskFields({
   form,
   onChange,
@@ -274,8 +286,10 @@ export function TargetTaskFields({
   useCatalog()
   const set = (patch: Partial<TaskFormState>) => onChange({ ...form, ...patch })
   const isAgent = form.targetType === "agent"
-  const moduleAgents = agents.filter((a) => (a as { moduleKey?: string }).moduleKey)
-  const workflows = agents.filter((a) => !(a as { moduleKey?: string }).moduleKey)
+  // 审计返工 P0-3：Agent 目标 = Module Agent + 可执行 custom Agent（executableCustom 标记）；
+  // 工作流目标列表不得漏入 custom Agent。
+  const moduleAgents = agents.filter((a) => (a as { moduleKey?: string }).moduleKey || (a as { executableCustom?: boolean }).executableCustom)
+  const workflows = agents.filter((a) => !(a as { moduleKey?: string }).moduleKey && !(a as { executableCustom?: boolean }).executableCustom)
   const list = isAgent ? moduleAgents : workflows
   const pick = (agentId: string) => {
     const agent = (agentDetails[agentId] ?? null) as (AgentDetail & { moduleKey?: string }) | null
@@ -301,9 +315,9 @@ export function TargetTaskFields({
         </div>
       </div>
 
-      <FormField label={isAgent ? "选择 Agent（仅列 Module Agent；旧三类不可选）" : "选择工作流"} required>
+      <FormField label={isAgent ? "选择 Agent（仅列可执行 Agent：Module 或已发布 custom；草稿不可选）" : "选择工作流"} required>
         <Select value={form.agentId || undefined} onValueChange={pick}>
-          <SelectTrigger><SelectValue placeholder={isAgent ? "选择 Module Agent" : "选择工作流"} /></SelectTrigger>
+          <SelectTrigger><SelectValue placeholder={isAgent ? "选择 Agent" : "选择工作流"} /></SelectTrigger>
           <SelectContent>
             {list.map((a) => {
               const noPub = isAgent && a.status !== "Published"

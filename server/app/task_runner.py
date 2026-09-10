@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .data_readers import ReaderError, get_reader
-from .models import (Agent, AgentRuntimeProvider, AnalysisTask, AnalysisTaskVersion, AgentVersion,
+from .models import (Agent, AnalysisTask, AnalysisTaskVersion, AgentVersion,
                      DataAsset, DataSnapshot, JobQueue, Release, Run, TaskRun, Workflow,
                      WorkflowVersion)
 
@@ -104,8 +104,7 @@ def _resolve_agent_target(db: Session, tv: AnalysisTaskVersion) -> tuple:
         if not av:
             raise TaskStartError(f"pinned Agent 版本 {tv.pinned_agent_version_id} 不存在")
         release = (db.query(Release)
-                   .filter(Release.agent_version_id == av.id, Release.status == "active",
-                           Release.runtime_provider_id.isnot(None))
+                   .filter(Release.agent_version_id == av.id, Release.status == "active")
                    .order_by(Release.canary_percent.asc(), Release.created_at.desc())
                    .first())
     else:
@@ -124,8 +123,8 @@ def _resolve_agent_target(db: Session, tv: AnalysisTaskVersion) -> tuple:
                               agent_version_id=vid)
                    .order_by(Release.canary_percent.asc(), Release.created_at.desc())
                    .first())
-    if release is None or not release.runtime_provider_id:
-        raise TaskStartError("NO_RELEASED_VERSION：Agent 需要带 Runtime Provider 绑定的 Release")
+    if release is None:
+        raise TaskStartError("NO_RELEASED_VERSION：Agent 没有符合版本策略的活跃 Release（AgentScope 换底后不再绑定 Provider）")
     return av, release
 
 
@@ -239,7 +238,7 @@ def start_task_run(db: Session, task_id: str, trigger: str = "manual",
     if agent_version is not None:
         resolved["agentVersionId"] = agent_version.id
         resolved["releaseId"] = release.id
-        resolved["providerId"] = release.runtime_provider_id
+        resolved["releaseId"] = release.id
     return tr, resolved
 
 
@@ -302,7 +301,6 @@ def _interaction_run(tr: TaskRun, tv: AnalysisTaskVersion, wv, agent_version, re
                   error=error)
     if agent_version is not None:
         return Run(agent_id=tv.agent_id, agent_version_id=agent_version.id,
-                   runtime_provider_id=release.runtime_provider_id,
                    runtime_snapshot={"runtimeBinding": tr.runtime_binding_snapshot,
                                      "releaseId": tr.resolved_release_id}, **common)
     return Run(workflow_id=tv.workflow_id, workflow_version_id=wv.id, **common)
@@ -311,10 +309,11 @@ def _interaction_run(tr: TaskRun, tv: AnalysisTaskVersion, wv, agent_version, re
 def _dispatch_interaction_run(db: Session, run: Run, agent_version) -> None:
     """统一分派：Workflow → Runner；Agent → Module 同步执行（含结果事务）。"""
     if agent_version is not None:
-        from .models import AgentRuntimeProvider
-        from .runtime_providers.worker import execute_module_run_sync
-        provider = db.get(AgentRuntimeProvider, run.runtime_provider_id)
-        execute_module_run_sync(db, run, provider)
+        # 审核 P0-3：Agent 执行统一入口（AgentScope 唯一底座），不再经 Runtime Provider
+        from . import agent_execution as _ae
+        from .models import Agent as _Agent
+        agent = db.get(_Agent, run.agent_id)
+        _ae.run_into_existing_run(db, run, agent, run.input or {})
         db.expire(run)
     else:
         from .runner import execute_run
@@ -348,7 +347,7 @@ def execute_task_run(task_run_id: str) -> None:
             agent_version = (db.get(AgentVersion, tr.resolved_agent_version_id)
                              if tr.resolved_agent_version_id else None)
             release = db.get(Release, tr.resolved_release_id) if tr.resolved_release_id else None
-            if not agent_version or not release or not release.runtime_provider_id:
+            if not agent_version or not release:
                 tr.status = "failed"
                 tr.error_summary = {"errors": [{"error": "AGENT_TARGET_UNRESOLVED：批次缺少冻结的 Agent 版本/Provider 绑定"}]}
                 tr.ended_at = datetime.now(timezone.utc)

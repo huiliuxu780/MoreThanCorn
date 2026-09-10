@@ -133,7 +133,7 @@ export function AgentHomeSection({ agent }: { agent: AgentInfo }) {
   return (
     <div className="w-full space-y-4 px-[34px]">
       {/* 身份区（原站 home identity：拍立得 + 名称 26/500 + 角色徽章 + 入职/描述） */}
-      <div className="flex items-start gap-6">
+      <div className="flex flex-wrap items-start gap-6">
         <div className="flex h-[197px] w-[176px] shrink-0 -rotate-3 flex-col items-center rounded-[7px] border bg-surface p-[11px_11px_8px] transition-transform duration-300 hover:rotate-0"
           style={{ borderColor: "var(--border)" }}>
           <span className="block h-[154px] w-[154px] overflow-hidden rounded-[2px] bg-(--fill-tertiary)">

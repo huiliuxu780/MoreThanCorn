@@ -29,20 +29,42 @@ export function AgentSkillsSection({ agentId, readOnly }: { agentId: string; rea
 
   const installedIds = new Set(mine.map((s) => s.id))
 
+  // 换底（2026-09-09）：挂载真相归 AgentScope Workspace；旧关联表接口 410
+  const mountGuidance = (e: unknown) => {
+    const st = (e as { status?: number }).status
+    if (st === 410) toast.error("挂载/卸载已迁移：请在对话页 Session Workspace 内装配 Skill")
+    else toast.error((e as Error).message)
+  }
+  // P0-2 装配语义：选择进入 Agent 配置清单 → 版本快照 → Release → 新 Session 物化
+  const setSkills = async (next: string[]) => {
+    const a = await agentApi.get(agentId)
+    const cfg = (a as { config?: Record<string, unknown>; configRevision?: number }).config ?? {}
+    const rev = (a as { configRevision?: number }).configRevision
+    await agentApi.update(agentId, { config: { ...cfg, skills: next } }, rev)
+  }
   const install = async (sid: string) => {
-    try { await agentApi.installSkill(agentId, sid); toast.success("已安装"); load() }
-    catch (e) { toast.error((e as Error).message) }
+    try {
+      const a = await agentApi.get(agentId)
+      const cur = ((a as { config?: { skills?: string[] } }).config?.skills) ?? []
+      await setSkills([...new Set([...cur, sid])])
+      toast.success("已加入 Agent 配置清单（发布后对新 Session 生效）")
+      load()
+    } catch (e) { mountGuidance(e) }
   }
   const uninstall = async (sid: string) => {
-    try { await agentApi.uninstallSkill(agentId, sid); toast.success("已卸载"); load() }
-    catch (e) { toast.error((e as Error).message) }
+    try {
+      const a = await agentApi.get(agentId)
+      const cur = ((a as { config?: { skills?: string[] } }).config?.skills) ?? []
+      await setSkills(cur.filter((x) => x !== sid))
+      toast.success("已从 Agent 配置清单移除")
+      load()
+    } catch (e) { mountGuidance(e) }
   }
   const upload = async () => {
     if (!upName.trim() || !upContent.trim()) { toast.error("名称与 SKILL.md 内容必填"); return }
     try {
-      const r = await resApi.create("skill", { name: upName.trim(), category: upCat.trim(), content: upContent, source: "upload" })
-      await agentApi.installSkill(agentId, r.id)
-      toast.success("已上传并安装")
+      await resApi.create("skill", { name: upName.trim(), category: upCat.trim(), content: upContent, source: "upload" })
+      toast.success("已上传至 Skill 库（挂载请在对话 Session Workspace 完成）")
       setUpOpen(false); setUpName(""); setUpCat(""); setUpContent("")
       load()
     } catch (e) { toast.error((e as Error).message) }

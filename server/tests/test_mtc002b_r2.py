@@ -12,6 +12,8 @@ import os
 import subprocess
 import sys
 import uuid
+
+import pytest
 from datetime import datetime, timedelta, timezone as _tz
 from pathlib import Path
 
@@ -286,6 +288,47 @@ def test_by_task_runs_query_budget_and_order():
 # ---------- P1-05 seed 安全 ----------
 
 FIX_URL = "postgresql+psycopg://rivers@127.0.0.1:5432/wf_fixture"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _wf_fixture_db():
+    """§三 数据库收敛：wf_fixture 不再长期保留——本模块运行时创建
+    （alembic head 全量 schema），模块结束 DROP（安全门：精确库名）。"""
+    import psycopg
+    from alembic import command
+    from alembic.config import Config
+
+    admin = "postgresql://rivers@127.0.0.1:5432/postgres"
+    with psycopg.connect(admin, autocommit=True) as conn:
+        if not conn.execute(
+            "SELECT 1 FROM pg_database WHERE datname='wf_fixture'"
+        ).fetchone():
+            conn.execute("CREATE DATABASE wf_fixture")
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.abspath(os.path.join(here, ".."))
+    cfg = Config(os.path.join(root, "alembic.ini"))
+    cfg.set_main_option("script_location", os.path.join(root, "alembic"))
+    cfg.set_main_option(
+        "sqlalchemy.url",
+        FIX_URL.replace("postgresql+psycopg://", "postgresql://"),
+    )
+    # alembic env.py 以 WF_DATABASE_URL 环境变量优先——升级期间临时指向
+    # wf_fixture，完毕恢复（否则会升级到其他库）
+    prev = os.environ.get("WF_DATABASE_URL")
+    os.environ["WF_DATABASE_URL"] = FIX_URL
+    try:
+        command.upgrade(cfg, "head")
+    finally:
+        if prev is None:
+            os.environ.pop("WF_DATABASE_URL", None)
+        else:
+            os.environ["WF_DATABASE_URL"] = prev
+    yield
+    with psycopg.connect(admin, autocommit=True) as conn:
+        conn.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE datname='wf_fixture' AND pid<>pg_backend_pid()")
+        conn.execute("DROP DATABASE IF EXISTS wf_fixture")
 
 
 def _fix_session():

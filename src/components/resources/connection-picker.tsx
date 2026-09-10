@@ -130,7 +130,7 @@ export function ConnectionPicker({ value, onChange, protocols }: {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div><Label className="text-xs">用户名</Label><Input className="font-mono text-xs" value={form.user} onChange={(e) => setForm({ ...form, user: e.target.value })} placeholder="rivers" /></div>
-                  <div><Label className="text-xs">数据库</Label><Input className="font-mono text-xs" value={form.database} onChange={(e) => setForm({ ...form, database: e.target.value })} placeholder="wf_accept" /></div>
+                  <div><Label className="text-xs">数据库</Label><Input className="font-mono text-xs" value={form.database} onChange={(e) => setForm({ ...form, database: e.target.value })} placeholder="wf_dev" /></div>
                 </div>
               </div>
             )}

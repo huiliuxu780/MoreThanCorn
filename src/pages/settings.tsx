@@ -1,8 +1,7 @@
 import { useEffect, useState, type ComponentType } from "react"
 import {
-  Bell,
+  ArrowLeft,
   Check,
-  Gauge,
   Info,
   Link2,
   Monitor,
@@ -10,14 +9,12 @@ import {
   Palette,
   ScrollText,
   ShieldCheck,
-  SlidersHorizontal,
   Sun,
   Sunrise,
   MoonStar,
 } from "lucide-react"
-import { Link, useSearchParams } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { useTheme } from "next-themes"
-import { PageContainer, PageHeader } from "@/components/app/page"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -36,28 +33,16 @@ interface SettingsSection {
 }
 
 /** MTC-001：系统设置页面框架。七个分区；未实现后端能力的分区明示「暂未开放」。 */
+// 2026-09-10 §八：删除「暂未开放」空壳分区（通用/通知/执行策略）——无真实实现的
+// 入口不得伪装成已开放；保留全部真实分区。
 const SECTIONS: SettingsSection[] = [
-  { id: "general", label: "通用", icon: SlidersHorizontal },
   { id: "appearance", label: "外观", icon: Palette },
-  { id: "notifications", label: "通知", icon: Bell },
-  { id: "execution", label: "执行策略", icon: Gauge },
   // docs/v2-design/10 §4.6：凭据层归设置（原 /resources/connections 反转）
   { id: "connections", label: "连接", icon: Link2 },
   { id: "security", label: "权限与安全", icon: ShieldCheck },
   { id: "audit", label: "审计", icon: ScrollText },
   { id: "system", label: "系统信息", icon: Info },
 ]
-
-function NotAvailable({ feature }: { feature: string }) {
-  return (
-    <div className="rounded-lg border border-dashed bg-card p-8 text-center">
-      <Badge variant="neutral" className="mb-3">暂未开放</Badge>
-      <p className="text-sm text-muted-foreground">
-        「{feature}」功能尚未启用。当前没有任何隐藏生效的配置。
-      </p>
-    </div>
-  )
-}
 
 function AppearanceSection() {
   const { theme, setTheme } = useTheme()
@@ -200,9 +185,10 @@ function SystemSection() {
 
 export default function SettingsPage({ fixedSection }: { fixedSection?: string }) {
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const requested = searchParams.get("section")
   const section = fixedSection
-    ?? (SECTIONS.some((s) => s.id === requested) ? requested! : "general")
+    ?? (SECTIONS.some((s) => s.id === requested) ? requested! : "appearance")
   const [, setTick] = useState(0)
 
   // 首载时 initAuth 可能尚未完成（AppShell 异步）；这里再触发一次以刷新真实身份显示
@@ -218,26 +204,36 @@ export default function SettingsPage({ fixedSection }: { fixedSection?: string }
 
   const current = SECTIONS.find((s) => s.id === section)!
 
+  // 2026-09-10 P0-F：QoderWake 同构——独立 240px 二级侧栏（y=0 全高，返回+分区 nav），
+  // 主内容自侧栏右侧开始；不再是 PageContainer 内的普通 nav。
   return (
-    <PageContainer>
-      <PageHeader title={UI_TERMS.navigation.settings} description="平台与个人偏好设置。" />
-      <div className="mt-4 flex flex-col gap-4 md:flex-row">
-        <nav aria-label="设置分区" className={fixedSection ? "hidden" : "shrink-0 md:w-48"}>
-          <ul className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
+      <aside
+        aria-label="通用"
+        className="hidden w-60 shrink-0 flex-col border-r md:flex"
+        data-testid="settings-sidebar"
+      >
+        <div className="flex h-12 shrink-0 items-center px-3">
+          <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => navigate("/tasks")}>
+            <ArrowLeft className="size-4" /> 返回
+          </Button>
+        </div>
+        <nav aria-label="设置分区" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+          <ul className="flex flex-col gap-1">
             {SECTIONS.map((s) => {
               const active = s.id === section
               return (
-                <li key={s.id} className="shrink-0">
+                <li key={s.id}>
                   <button
                     type="button"
                     onClick={() => select(s.id)}
                     aria-current={active ? "true" : undefined}
                     className={cn(
-                      "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
+                      "flex h-8 w-full items-center gap-2 rounded-md px-2 text-[13px] transition-colors",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       active
-                        ? "bg-selected font-medium text-selected-foreground"
-                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                        ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                        : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                     )}
                   >
                     <s.icon className="size-4" />
@@ -248,21 +244,26 @@ export default function SettingsPage({ fixedSection }: { fixedSection?: string }
             })}
           </ul>
         </nav>
-        <div className="min-w-0 flex-1 rounded-lg border bg-card p-5">
-          <div className="mb-4 flex items-center gap-2 border-b pb-3 md:hidden">
-            <current.icon className="size-4 text-muted-foreground" />
-            <span className="text-sm font-semibold">{current.label}</span>
-          </div>
-          {section === "general" && <NotAvailable feature="通用" />}
+      </aside>
+      <main className="min-w-0 flex-1 overflow-y-auto">
+        <div className="max-w-3xl space-y-5 p-6 md:p-10">
+          <header>
+            <h1 className="text-[28px] font-semibold leading-9">{current.label}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {current.id === "appearance" && "语言、主题等全局生效的个人偏好。"}
+              {current.id === "connections" && "模型 Provider / 数据连接 / 凭据的统一管理。"}
+              {current.id === "security" && "当前身份与前端权限矩阵。"}
+              {current.id === "audit" && "平台关键操作的审计记录。"}
+              {current.id === "system" && "当前前端实例的真实运行信息。"}
+            </p>
+          </header>
           {section === "appearance" && <AppearanceSection />}
-          {section === "notifications" && <NotAvailable feature="通知" />}
-          {section === "execution" && <NotAvailable feature="执行策略" />}
           {section === "connections" && <WfConnectionsContent embedded />}
           {section === "security" && <SecuritySection />}
           {section === "audit" && <AuditSection />}
           {section === "system" && <SystemSection />}
         </div>
-      </div>
-    </PageContainer>
+      </main>
+    </div>
   )
 }

@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import psycopg
+
+from tests.conftest import TEST_DB_NAME, pg_dsn
 import pytest
 from fastapi.testclient import TestClient
 
@@ -29,7 +31,7 @@ _TARGET = "consumer_analysis_result_acceptance"
 @pytest.fixture(scope="module", autouse=True)
 def _target_table():
     ddl = (Path(__file__).resolve().parents[2] / "scripts" / "sdd13-acceptance-tables.sql").read_text()
-    with psycopg.connect("postgresql://rivers@127.0.0.1:5432/wf_test") as pg:
+    with psycopg.connect(pg_dsn()) as pg:
         pg.execute(ddl)
         pg.commit()
     yield
@@ -45,7 +47,7 @@ def _mk_output_binding(tag: str) -> dict:
         db.add(conn)
         db.flush()
         ds = Datasource(name=f"sch-ds-{tag}", type="postgresql", connection_id=conn.id,
-                        location="wf_test", status="enabled")
+                        location=TEST_DB_NAME, status="enabled")
         db.add(ds)
         db.flush()
         asset = DataAsset(name=f"sch-target-{tag}", source="postgres", datasource_id=ds.id,

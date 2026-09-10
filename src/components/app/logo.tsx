@@ -24,3 +24,20 @@ export function CortexLockup({ className }: { className?: string }) {
     </>
   )
 }
+
+/** 侧栏折叠/展开图标（QoderWake qc-quests-sidebar__fold 同构）。
+ *  原站为无箭头的 panel-left 面板图标（fill=currentColor）：展开态=左栏实心块，
+ *  收起态=左侧细竖线；几何取原站实测 SVG path 原值（勿换 lucide 带箭头版本）。 */
+export function PanelFoldIcon({ collapsed, className }: { collapsed: boolean; className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true" className={className}>
+      <path
+        d={
+          collapsed
+            ? "M21 3C21.5523 3 22 3.44772 22 4V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V4C2 3.44772 2.44772 3 3 3H21ZM20 5H4V19H20V5ZM8 7V17H6V7H8Z"
+            : "M21 3C21.5523 3 22 3.44772 22 4V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V4C2 3.44772 2.44772 3 3 3H21ZM7 5H4V19H7V5ZM20 5H9V19H20V5Z"
+        }
+      />
+    </svg>
+  )
+}

@@ -263,11 +263,12 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex min-h-svh w-full">
+    <div className="flex h-svh w-full overflow-hidden">
       <AppRail {...navProps} />
-      <div className="flex min-h-0 flex-1 flex-col">
-        {/* 09-08：工作区路由（Agent 详情/对话）桌面端隐藏空顶栏——壳自带 hero 顶栏；移动端保留汉堡 */}
-        <header className={`sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75 ${workspace ? "md:hidden" : ""}`}>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* 2026-09-09 换底（QoderWake 同构壳）：桌面端无顶栏，页面自渲染 h1；
+            顶栏仅移动端保留（汉堡 + 面包屑）。 */}
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75 md:hidden">
           <Button
             ref={burgerRef}
             variant="ghost"
@@ -280,7 +281,9 @@ export function AppShell() {
           </Button>
           {!workspace && <Breadcrumbs items={breadcrumbs} />}
         </header>
-        <div className="flex min-h-0 flex-1 flex-col">
+        {/* P0-F 09-10：页级滚动收进 Shell 容器——document 不产生滚动条，
+            各页内部自管滚动；遗留页由本容器兜底滚动。 */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
           <Outlet />
         </div>
         <Toaster position="bottom-right" richColors />

@@ -855,8 +855,12 @@ def create_task(payload: dict, db: Session = Depends(get_db),
         agent = db.get(Agent, agent_id) if agent_id else None
         if not agent:
             raise HTTPException(422, "executionTarget.agentId 必填且必须存在")
-        if not agent.module_key:
-            raise HTTPException(422, "仅领域 Module Agent 可作为执行目标（旧三类已封存）")
+        # P0-B（09-10）：Task 可调用任意可执行 Agent（module/custom 同权经
+        # AgentScope 统一入口）；旧三类与归档 Agent 拒绝。
+        if agent.type in ("autonomous", "dialogue", "expert-group"):
+            raise HTTPException(422, "旧三类 Agent 已封存，不可作为执行目标")
+        if bool(agent.archived):
+            raise HTTPException(422, "已归档 Agent 不可作为执行目标")
         agent_version_policy = target.get("versionPolicy") or "latest_sandbox_release"
         if agent_version_policy not in ("pinned", "latest_sandbox_release", "latest_prod_release"):
             raise HTTPException(422, "versionPolicy 必须是 pinned|latest_sandbox_release|latest_prod_release")
@@ -877,8 +881,10 @@ def create_task(payload: dict, db: Session = Depends(get_db),
         if not payload.get("dataDefinitionVersionId") or \
                 not db.get(DataDefinitionVersion, payload["dataDefinitionVersionId"]):
             raise HTTPException(422, "dataDefinitionVersionId 必填且必须存在")
-        # R7-3：字段映射目标来自 Module inputSchema，必填输入必须全部映射
-        _validate_input_mapping(agent.module_key, payload.get("inputMapping") or {})
+        # R7-3：字段映射目标来自 Module inputSchema，必填输入必须全部映射；
+        # custom Agent 无 Module Schema → 无必填映射约束（输入原样透传）
+        if agent.module_key:
+            _validate_input_mapping(agent.module_key, payload.get("inputMapping") or {})
         rule_policy = payload.get("rulePolicy") or ("pinned" if payload.get("resultRuleVersionId") else "pinned")
         if rule_policy not in ("pinned", "follow_latest"):
             raise HTTPException(422, "rulePolicy 必须是 pinned|follow_latest")

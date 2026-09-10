@@ -274,6 +274,11 @@ class Run(Base):
     runtime_provider_id: Mapped[str | None] = mapped_column(
         ForeignKey("agent_runtime_provider.id"), nullable=True, index=True)
     runtime_provider_run_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    # P0-07 语义适配：AgentScope 换底后该列曾被就地重解释为 Session 反链但
+    # 名字仍是 provider——新增专名列终止"各处自行重新解释"。新代码一律读写
+    # agentscope_session_id；runtime_provider_run_id 仅供旧 Provider 时代历史
+    # 行只读（g052 迁移已把换底后的 Session 值搬入新列）。
+    agentscope_session_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     runtime_request_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     runtime_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -505,7 +510,7 @@ class AgentRuntimeProvider(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(64))
-    kind: Mapped[str] = mapped_column(String(32))  # agentscope|deepseek-harness|external
+    kind: Mapped[str] = mapped_column(String(32))  # agentscope|external（历史行可能含已退役的 deepseek-harness，只读追溯）
     base_url: Mapped[str] = mapped_column(String(256), default="")
     connection_id: Mapped[str | None] = mapped_column(ForeignKey("connection.id"), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="draft")  # draft|enabled|disabled
@@ -1126,3 +1131,258 @@ class ResourceChangeLog(Base):
     actor: Mapped[str] = mapped_column(String(64), default="")
     detail: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+# ---------------------------------------------------------------------------
+# AgentScope 换底（2026-09-09 任务书 §四/§五 + docs/v2-design/13）
+# 平台只保留控制面与索引；Session/消息/状态/调度真相在 AgentScope 运行时。
+# ---------------------------------------------------------------------------
+
+
+class AgentSessionIndex(Base):
+    """AgentScope Session 的平台索引与业务关联（不复制 Session 内容）。"""
+    __tablename__ = "agent_session_index"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    session_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    agent_id: Mapped[str] = mapped_column(String(32), index=True)
+    release_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    trigger_kind: Mapped[str] = mapped_column(String(16), default="manual")
+    # manual|chat|schedule|api|event|workflow|agentflow|agent_tool
+    automation_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    trigger_log_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    workflow_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    agentflow_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    agentflow_node_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    conversation_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    runtime_agent_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # P0-08: 每 Session 内部 Tool 回调令牌（sha256 hex）。运行时持原文，
+    # 平台只存哈希——共享 MTC_INTERNAL_TOKEN 仅是传输门，会话令牌才绑定
+    # user/agent/session/release/工具清单。
+    session_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AutomationDefinition(Base):
+    """自动任务定义：何时/何事件/何输入触发哪个目标（不含执行器）。"""
+    __tablename__ = "automation_definition"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(Text, default="")
+    target_kind: Mapped[str] = mapped_column(String(16))  # agent|workflow|agentflow
+    agent_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    workflow_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    workflow_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    agentflow_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    agentflow_release_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    session_policy: Mapped[str] = mapped_column(String(16), default="fresh")
+    # fresh|stateful|conversation
+    prompt_template: Mapped[str] = mapped_column(Text, default="")
+    input_mapping: Mapped[dict] = mapped_column(JSONB, default=dict)
+    max_runs: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    runtime_schedule_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # P0-03: the Agent Release the runtime Schedule is pinned to (model+params
+    # come from this release's frozen snapshot; republish → rebuild on next sync)
+    runtime_release_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_auto_fire_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    auto_run_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_auto_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AutomationTrigger(Base):
+    """自动任务的触发方式（最多五个）：定时/API/事件/轮询。"""
+    __tablename__ = "automation_trigger"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    automation_id: Mapped[str] = mapped_column(String(32), index=True)
+    kind: Mapped[str] = mapped_column(String(16))  # schedule|api|event|polling
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # schedule: {cron, timezone}; event/polling: {data_source_id, filter, mapping}
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AutomationApiKey(Base):
+    """API 触发凭据（哈希存储；非 QoderWake atk_ 形态）。"""
+    __tablename__ = "automation_api_key"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    automation_id: Mapped[str] = mapped_column(String(32), index=True)
+    key_hash: Mapped[str] = mapped_column(String(128), unique=True)
+    label: Mapped[str] = mapped_column(String(64), default="")
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AutomationTriggerLog(Base):
+    """触发与执行事实日志：区分已接收/已接受/执行中/完成；手动不计自动统计。"""
+    __tablename__ = "automation_trigger_log"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    automation_id: Mapped[str] = mapped_column(String(32), index=True)
+    trigger_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    source: Mapped[str] = mapped_column(String(16))  # schedule|api|event|polling|manual|test
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="received")
+    # received|accepted|running|completed|failed|deduped|rejected
+    session_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    workflow_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    agentflow_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    payload_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class EventDelivery(Base):
+    """Per-trigger delivery record for an inbound event: independent retry/dead-letter.
+
+    One DataSourceEvent fans out to N EventDelivery records (one per matched
+    AutomationTrigger).  Each delivery carries its own attempts counter,
+    retry schedule, and terminal status — so one failed target doesn't poison
+    the whole event.
+    """
+    __tablename__ = "event_delivery"
+    __table_args__ = (
+        UniqueConstraint("event_id", "trigger_id", name="uq_event_trigger"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    event_id: Mapped[str] = mapped_column(String(32), index=True)
+    trigger_id: Mapped[str] = mapped_column(String(32), index=True)
+    automation_id: Mapped[str] = mapped_column(String(32), index=True)
+    source: Mapped[str] = mapped_column(String(16), default="event")
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    # pending | running | completed | failed | dead
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dead_reason: Mapped[str] = mapped_column(Text, default="")
+    error: Mapped[str] = mapped_column(Text, default="")
+    trigger_log_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AgentFlowDefinition(Base):
+    """AgentFlow 产品定义（运行归 AgentScope Pipeline/Agent 原语）。"""
+    __tablename__ = "agentflow_definition"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AgentFlowVersion(Base):
+    """AgentFlow 不可变版本：节点/边/输入契约/汇总 schema。"""
+    __tablename__ = "agentflow_version"
+    __table_args__ = (UniqueConstraint("definition_id", "version_no", name="uq_agentflow_version_no"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    definition_id: Mapped[str] = mapped_column(String(32), index=True)
+    version_no: Mapped[int] = mapped_column(Integer)
+    definition: Mapped[dict] = mapped_column(JSONB, default=dict)
+    content_digest: Mapped[str] = mapped_column(String(64), default="")
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AgentFlowRelease(Base):
+    """AgentFlow 发布：允许新执行的版本指针。"""
+    __tablename__ = "agentflow_release"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    version_id: Mapped[str] = mapped_column(String(32), index=True)
+    # P0-05/P0-06: denormalized definition pointer — enables the DB-level
+    # "one active release per (definition, environment)" unique index
+    definition_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    environment: Mapped[str] = mapped_column(String(16), default="prod")
+    status: Mapped[str] = mapped_column(String(16), default="active")  # active|stopped
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AgentFlowRun(Base):
+    """AgentFlow 一次执行（节点 Session 归 AgentScope）。"""
+    __tablename__ = "agentflow_run"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    release_id: Mapped[str] = mapped_column(String(32), index=True)
+    trigger_kind: Mapped[str] = mapped_column(String(16), default="manual")
+    status: Mapped[str] = mapped_column(String(16), default="running")
+    # running|succeeded|failed|cancelled
+    input: Mapped[dict] = mapped_column(JSONB, default=dict)
+    output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    error: Mapped[str] = mapped_column(Text, default="")
+    automation_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    parent_session_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # P0-08: flow-run 级内部 Tool 回调令牌哈希（节点 Session 由运行时创建，
+    # 平台无法逐 Session 发令牌；令牌绑定整个 run，运行时为每个节点 Session 登记）
+    run_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentFlowNodeRun(Base):
+    """AgentFlow 节点一次尝试：绑定 AgentScope Session 与输入版本（重跑决策依据）。"""
+    __tablename__ = "agentflow_node_run"
+    __table_args__ = (UniqueConstraint("run_id", "node_id", "attempt", name="uq_agentflow_node_attempt"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(String(32), index=True)
+    node_id: Mapped[str] = mapped_column(String(64))
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    agent_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    session_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(16), default="running")
+    input: Mapped[dict] = mapped_column(JSONB, default=dict)
+    input_version: Mapped[int] = mapped_column(Integer, default=1)
+    output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    error: Mapped[str] = mapped_column(Text, default="")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DataSource(Base):
+    """外部数据源：连接/订阅/游标/健康（与自动任务定义解耦）。"""
+    __tablename__ = "data_source"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(16))  # webhook|polling|test_event
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    auth_token_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="active")  # active|paused|error
+    cursor: Mapped[dict] = mapped_column(JSONB, default=dict)
+    last_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class DataSourceEvent(Base):
+    """入站事件：去重/过滤/映射/派发/死信全状态。"""
+    __tablename__ = "data_source_event"
+    __table_args__ = (UniqueConstraint("source_id", "dedupe_key", name="uq_source_dedupe"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    source_id: Mapped[str] = mapped_column(String(32), index=True)
+    dedupe_key: Mapped[str] = mapped_column(String(128))
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    status: Mapped[str] = mapped_column(String(16), default="received")
+    # received|filtered|dispatched|failed|dead
+    automation_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    dispatch_ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

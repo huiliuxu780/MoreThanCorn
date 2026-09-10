@@ -14,7 +14,9 @@ from ..models import AgentRuntimeProvider
 from .client import RuntimeGatewayClient
 from .errors import RuntimeProviderError
 
-PROVIDER_KINDS = ("agentscope", "deepseek-harness", "external")
+# B4 收尾（09-10）：deepseek-harness/openai-agents 运行时已退役（09-04 用户拍板
+# AgentScope 唯一底座）；历史 Release 行可能仍携带旧 kind 值，仅作只读追溯。
+PROVIDER_KINDS = ("agentscope", "external")
 PROVIDER_STATUSES = ("draft", "enabled", "disabled")
 
 

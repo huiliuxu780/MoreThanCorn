@@ -16,6 +16,12 @@ const RunDetailPage = lazy(() => import("@/pages/run-detail"))
 const OperationsHistoryPage = lazy(() => import("@/pages/operations-history"))
 const TaskRunDetailPage = lazy(() => import("@/pages/task-run-detail"))
 const OperationsTodayPage = lazy(() => import("@/pages/operations-today"))
+const TaskBoardPage = lazy(() => import("@/pages/task-board"))
+const AutomationsV2Page = lazy(() => import("@/pages/automations-v2"))
+const AutomationDetailPage = lazy(() => import("@/pages/automation-detail"))
+const AgentFlowsPage = lazy(() => import("@/pages/agentflows"))
+const AgentFlowDetailPage = lazy(() => import("@/pages/agentflow-detail"))
+const DataSourcesPage = lazy(() => import("@/pages/data-sources"))
 // A-14：agent 轨道 mock 双轨已清退——/agents 固定走真 API 页面
 const WfAgentsPage = lazy(() => import("@/pages/wf-agents-list"))
 const AgentCreatePage = lazy(() => import("@/pages/agent-create"))
@@ -111,16 +117,24 @@ export function App() {
         <Route element={<AppShell />}>
           <Route index element={<Navigate to="/tasks" replace />} />
 
-          {/* ---- MTC-001 一级入口 ---- */}
-          {/* 任务工作台（暂复用 Operations Today；看板重做属 MTC-003） */}
-          <Route path="/tasks" element={<OperationsTodayPage />} />
-          {/* 自主任务（承接原 AnalysisTask 页面树） */}
-          <Route path="/autonomous-tasks" element={<TasksPage />} />
-          <Route path="/autonomous-tasks/new" element={<TaskWizardPage />} />
-          <Route path="/autonomous-tasks/:taskId" element={<TaskDetailPage />} />
-          <Route path="/autonomous-tasks/:taskId/edit" element={<TaskEditPage />} />
-          <Route path="/autonomous-tasks/:taskId/runs/:runId" element={<RunRedirect />} />
-          <Route path="/autonomous-tasks/:taskId/batches/:taskRunId" element={<TaskRunRedirect />} />
+          {/* ---- 2026-09-09 换底一级入口（QoderWake 同构） ---- */}
+          {/* 任务看板：只读投影（Session 索引 + Workflow Run + AgentFlow Run） */}
+          <Route path="/tasks" element={<TaskBoardPage />} />
+          {/* 自动任务 v2：AutomationDefinition + AgentScope Schedule */}
+          <Route path="/autonomous-tasks" element={<AutomationsV2Page />} />
+          <Route path="/autonomous-tasks/:taskId" element={<AutomationDetailPage />} />
+          {/* 旧批量分析任务树（SDD-13 业务批次）移 /batch-tasks 深链保留 */}
+          <Route path="/batch-tasks" element={<TasksPage />} />
+          <Route path="/batch-tasks/new" element={<TaskWizardPage />} />
+          <Route path="/batch-tasks/:taskId" element={<TaskDetailPage />} />
+          <Route path="/batch-tasks/:taskId/edit" element={<TaskEditPage />} />
+          <Route path="/batch-tasks/:taskId/runs/:runId" element={<RunRedirect />} />
+          <Route path="/batch-tasks/:taskId/batches/:taskRunId" element={<TaskRunRedirect />} />
+          {/* AgentFlow / 数据接入（换底新增控制面） */}
+          <Route path="/agentflows" element={<AgentFlowsPage />} />
+          <Route path="/agentflows/:fid" element={<AgentFlowDetailPage />} />
+          <Route path="/data-sources" element={<DataSourcesPage />} />
+          <Route path="/operations/today" element={<OperationsTodayPage />} />
           {/* Agent 管理 */}
           <Route path="/agents" element={<WfAgentsPage />} />
           <Route path="/agents/new" element={<AgentCreatePage />} />

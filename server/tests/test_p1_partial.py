@@ -20,6 +20,21 @@ def _mk_partial_batch():
     """构造一个 partial 批次：1 成功 + 1 失败（有 Run 行，可重试）。"""
     db = SessionLocal()
     try:
+        # 换底后重试仍走 Workflow 执行器：补最小已发布工作流 wf-p1p
+        from app.models import Workflow, WorkflowVersion
+        if not db.get(Workflow, "wf-p1p"):
+            wf = Workflow(id="wf-p1p", name="wf-p1p", status="published")
+            db.add(wf)
+            db.flush()
+            wv = WorkflowVersion(workflow_id="wf-p1p", version_no=1,
+                                 definition={"graph": {"nodes": [
+                                     {"id": "s", "type": "input", "name": "开始", "config": {}, "inputs": []},
+                                     {"id": "e", "type": "end", "name": "结束", "config": {}, "inputs": []}],
+                                     "edges": [{"id": "e1", "source": "s", "target": "e"}]}})
+            db.add(wv)
+            db.flush()
+            wf.current_version_id = wv.id
+            db.flush()
         t = AnalysisTask(name=f"P1P-{uuid.uuid4().hex[:6]}", workflow_id="wf-p1p",
                          data_asset_id="asset-p1p", status="active")
         db.add(t)
@@ -36,11 +51,12 @@ def _mk_partial_batch():
                      succeeded_count=1, failed_count=1)
         db.add(tr)
         db.flush()
-        ok_run = Run(workflow_id=None, trigger="batch", status="succeeded",
+        wv_id = db.query(WorkflowVersion).filter_by(workflow_id="wf-p1p").first().id
+        ok_run = Run(workflow_id="wf-p1p", workflow_version_id=wv_id, trigger="batch", status="succeeded",
                      task_run_id=tr.id, task_id=t.id, task_version_id=tv.id,
                      interaction_ref="P1P-OK", attempt=1,
                      data_snapshot_id=snap.id, input={"interactionId": "P1P-OK"})
-        bad_run = Run(workflow_id=None, trigger="batch", status="failed",
+        bad_run = Run(workflow_id="wf-p1p", workflow_version_id=wv_id, trigger="batch", status="failed",
                       task_run_id=tr.id, task_id=t.id, task_version_id=tv.id,
                       interaction_ref="P1P-BAD", attempt=1,
                       data_snapshot_id=snap.id, input={"interactionId": "P1P-BAD"},

@@ -59,21 +59,18 @@ def test_draft_definition_preview_preserved():
     assert d["definition"]["rolePrompt"] == "草稿提示词"
 
 
-def test_prompt_mention_expansion():
-    """E-4.2：rolePrompt 的 #tool:名称 token 在组装 prompt 时展开为资源描述摘要（纯函数）。"""
-    from app.agent_runtime import _expand_mentions
-    from app.db import SessionLocal
-    from app.models import Tool
+def test_prompt_mention_expansion_retired():
+    """P0-07 退役不变量（原 E-4.2）：#tool: mention 展开属旧自建 ReAct 引擎的
+    prompt 组装；引擎退役后该函数删除，prompt 编译唯一路径 =
+    agent_execution.compile_system_prompt（AgentScope AgentRecord）。
+    产品如需 mention 展开，应作为 PromptBundle 编译步骤重新立项（已登记报告
+    "尚存差异"，不得在旧位置复活）。"""
+    from app import agent_runtime
 
-    db = SessionLocal()
-    t = Tool(name=f"提及工具{T}", description="用于验收提及展开的测试工具", kind="builtin")
-    db.add(t)
-    db.commit()
-    text = f"你可以使用 #tool:提及工具{T} 完成任务，也可以用 #技能:检索"
-    out = _expand_mentions(db, text, {"skills": ["检索"]})
-    assert f"[引用资源 提及工具{T}：用于验收提及展开的测试工具]" in out
-    assert "[引用资源 检索：检索]" in out
-    assert "#tool:" not in out
-    db.delete(t)
-    db.commit()
-    db.close()
+    assert not hasattr(agent_runtime, "_expand_mentions")
+    from app.agent_execution import compile_system_prompt
+
+    compiled, digest, _ = compile_system_prompt(
+        {"rolePrompt": "你可以使用 #tool:某工具 完成任务"})
+    # 编译路径是确定性纯函数：不再隐式改写 prompt 文本
+    assert "#tool:某工具" in compiled and digest

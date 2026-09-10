@@ -121,6 +121,11 @@ def list_agents(page: int = 1, pageSize: int = 20, search: str = "", archived: s
                       "latestVersion": latest.version_no if latest else None,
                       "sandboxVersion": _env_ver(a.sandbox_version_id),
                       "prodVersion": _env_ver(a.prod_version_id),
+                      # 可执行判定与 as_automations._validate_target 同一规则：
+                      # 未归档 且 存在 active prod Release（前后端同一口径）
+                      "executable": (not bool(a.archived)) and db.query(Release)
+                      .filter_by(agent_id=a.id, environment="prod", status="active")
+                      .first() is not None,
                       "runCount": agg.get(a.id, (0, None))[0],
                       "lastRunAt": agg.get(a.id, (0, None))[1].isoformat()
                       if agg.get(a.id, (0, None))[1] else None,
@@ -383,6 +388,7 @@ def create_agent_version(aid: str, payload: dict | None = None, db: Session = De
                        note=(payload or {}).get("note", ""))
     db.add(ver)
     a.status = "published"
+    db.commit()
     from .admin import audit
     audit(db, "质量管理员", "agent.version.create", "agent", aid,
           {"versionNo": ver.version_no, "artifactHash": ver.artifact_hash})
@@ -438,77 +444,22 @@ def create_release(aid: str, payload: dict, db: Session = Depends(get_db),
     v = db.get(AgentVersion, (payload or {}).get("versionId", ""))
     if not v or v.agent_id != aid:
         raise HTTPException(404, detail={"code": "VERSION_NOT_FOUND", "message": "版本不存在"})
-    # SDD 10 R2-3：Provider 选择属于部署决策，在 Release 时绑定（不写入 AgentSpec）
-    binding_provider = None
-    binding_snapshot = None
-    runtime_profile = None
-    if a.module_key:
-        from ..agent_modules import registry as module_registry
-        provider_id = (payload or {}).get("runtimeProviderId")
-        if not provider_id:
-            raise HTTPException(422, detail={"code": "RUNTIME_PROVIDER_REQUIRED",
-                                             "message": "Module Agent 发布必须绑定 runtimeProviderId"})
-        binding_provider = db.get(AgentRuntimeProvider, provider_id)
-        if not binding_provider:
-            raise HTTPException(404, detail={"code": "PROVIDER_NOT_FOUND",
-                                             "message": f"runtime provider {provider_id} 不存在"})
-        if binding_provider.status != "enabled":
-            raise HTTPException(409, detail={"code": "PROVIDER_NOT_ENABLED",
-                                             "message": f"provider {provider_id} 状态为 {binding_provider.status}"})
-        mod = module_registry.get(a.module_key, a.module_version)
-        try:
-            impl = mod.resolve_implementation(binding_provider.kind)
-        except KeyError as exc:
-            raise HTTPException(409, detail={"code": "PROVIDER_KIND_UNSUPPORTED",
-                                             "message": str(exc)})
-        if binding_provider.contract_version != "1.0":
-            raise HTTPException(409, detail={"code": "CONTRACT_VERSION_MISMATCH",
-                                             "message": f"provider contract {binding_provider.contract_version} != 1.0"})
-        # 用户口径（08-29）：一个 Agent 只对应一种 Provider——禁止跨 Provider 分流。
-        # 已有 active Release 绑定了不同 Provider 时拒绝（同 Provider 的灰度/多版本仍允许）。
-        other = (db.query(Release)
-                 .filter(Release.agent_id == aid, Release.status == "active",
-                         Release.runtime_provider_id.isnot(None),
-                         Release.runtime_provider_id != binding_provider.id).first())
-        if other:
-            raise HTTPException(409, detail={"code": "ONE_PROVIDER_PER_AGENT",
-                                             "message": "该 Agent 已绑定其他 Runtime Provider"
-                                                        "（一个 Agent 只对应一种 Provider），"
-                                                        "如需更换请先停用现有 Release"})
-        runtime_profile = (payload or {}).get("runtimeProfile") or f"{mod.key}-{mod.version}"
-        binding_snapshot = {
-            "providerId": binding_provider.id, "providerKind": binding_provider.kind,
-            "contractVersion": binding_provider.contract_version,
-            "profile": runtime_profile,
-            "module": {"key": mod.key, "version": mod.version},
-            "moduleImplementation": {"kind": binding_provider.kind,
-                                     "version": impl.get("version"),
-                                     **({"bundle": impl["bundle"]} if impl.get("bundle") else {}),
-                                     **({"entry": impl["entry"]} if impl.get("entry") else {})},
-            "inputSchemaSha256": mod.input_schema_ref["sha256"],
-            "outputSchemaSha256": mod.output_schema_ref["sha256"],
-        }
-    actives = db.query(Release).filter_by(agent_id=aid, environment=env, status="active").all()
-    if canary_percent > 0:
-        # 灰度部署：只替换已有灰度，稳定版保持
-        for r in actives:
-            if r.canary_percent:
-                r.status = "rolled_back"
-    else:
-        # 全量部署：同环境全部 active（含灰度）→ rolled_back
-        for r in actives:
-            r.status = "rolled_back"
-    rel = Release(agent_id=aid, agent_version_id=v.id, environment=env, canary_percent=canary_percent,
-                  runtime_provider_id=binding_provider.id if binding_provider else None,
-                  runtime_profile=runtime_profile,
-                  runtime_binding_snapshot=binding_snapshot)
-    db.add(rel)
-    if canary_percent == 0:
-        if env == "sandbox":
-            a.sandbox_version_id = v.id
-        else:
-            a.prod_version_id = v.id
-    a.status = "published"
+    # P0-06：统一发布事务（行锁串行化 + 唯一索引 + 物化失败整体回滚）
+    from ..agent_release import ConcurrentPublishError, publish_release
+    try:
+        rel = publish_release(
+            db,
+            actor=(payload or {}).get("actor") or "dev",
+            agent=a,
+            version=v,
+            environment=env,
+            canary_percent=canary_percent,
+        )
+    except ConcurrentPublishError as exc:
+        raise HTTPException(409, detail={"code": "CONCURRENT_RELEASE", "message": str(exc)})
+    except ValueError as exc:
+        # 物化阻止发布（KNOWLEDGE_PROVIDER_UNAVAILABLE / MODEL_UNFROZEN 等）
+        raise HTTPException(422, detail={"code": "PUBLISH_BLOCKED", "message": str(exc)})
     from .admin import audit
     audit(db, "质量管理员", "agent.release", "agent", aid,
           {"versionNo": v.version_no, "environment": env, "canaryPercent": canary_percent})
@@ -633,11 +584,14 @@ def agent_eval_summary(aid: str, db: Session = Depends(get_db)):
 @router.post("/{aid}/golden-eval")
 def agent_golden_eval(aid: str, payload: dict | None = None, db: Session = Depends(get_db),
                       _user: dict = Depends(require_operator)):
-    """R8-UI-4：Golden Set 主动评测——对 Module Ground Truth 样本真跑指定 Provider，
-    逐 criterion 对比 expected_findings + forbidden_tools 违禁检查（CallRecord 直查）。
+    """R8-UI-4：Golden Set 主动评测——对 Module Ground Truth 样本真跑（AgentScope
+    唯一底座），逐 criterion 对比 expected_findings + forbidden_tools 违禁检查
+    （CallRecord 直查）。
 
     同步内联执行（enqueue=False）；结果不持久化（实时对比工具），Run 以 trigger=eval
-    落入运行历史。双 Provider 对比由前端对两个 Provider 各调一次。"""
+    落入运行历史。09-10 B4 收尾：旧"双 Provider 对比"随 openai-agents/
+    deepseek-harness 退役失去意义，providerId 改为可选兼容参数（携带时仍校验
+    存在且 enabled），执行不再依赖 Runtime Provider 绑定。"""
     from ..agent_runtime import RunError, run_agent
     from ..models import CallRecord
     from ..agent_modules.quality_analysis.evaluators import load_ground_truth
@@ -647,10 +601,10 @@ def agent_golden_eval(aid: str, payload: dict | None = None, db: Session = Depen
     if agent.module_key != "quality-analysis":
         raise HTTPException(422, "Golden Set 评测仅支持 quality-analysis Module")
     provider_id = (payload or {}).get("providerId")
-    provider = db.get(AgentRuntimeProvider, provider_id or "")
-    if not provider:
-        raise HTTPException(422, "providerId 必填且必须存在")
-    if provider.status != "enabled":
+    provider = db.get(AgentRuntimeProvider, provider_id or "") if provider_id else None
+    if provider_id and not provider:
+        raise HTTPException(422, "providerId 不存在")
+    if provider and provider.status != "enabled":
         raise HTTPException(422, f"Provider {provider.name} 非 enabled，不可评测")
     limit = max(1, min(int((payload or {}).get("limit") or 3), 10))
     samples = (load_ground_truth("smoke/ground_truth_v0.1.jsonl") +
@@ -681,7 +635,8 @@ def agent_golden_eval(aid: str, payload: dict | None = None, db: Session = Depen
             results.append({"sampleId": sid, "runId": None, "runStatus": "error",
                             "passed": False, "error": str(e), "detail": []})
     ok = sum(1 for x in results if x.get("passed"))
-    return {"providerId": provider.id, "providerKind": provider.kind,
+    return {"providerId": provider.id if provider else None,
+            "providerKind": provider.kind if provider else "agentscope",
             "samples": len(results), "passed": ok,
             "passRate": round(ok / len(results), 3) if results else 0,
             "results": results}

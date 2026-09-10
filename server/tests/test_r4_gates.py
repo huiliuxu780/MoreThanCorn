@@ -56,111 +56,55 @@ def test_evaluator_golden_set_correctness():
 def fake_server_r4():
     fake = QualityFake()
     fake.auto_succeed = False  # 停在 queued，验证恢复
-    server = uvicorn.Server(uvicorn.Config(fake.app(), host="127.0.0.1", port=0,
-                                           log_level="error"))
-    threading.Thread(target=server.run, daemon=True).start()
-    deadline = time.time() + 10
-    while not server.started and time.time() < deadline:
-        time.sleep(0.05)
-    assert server.started
-    port = server.servers[0].sockets[0].getsockname()[1]
-    yield fake, f"http://127.0.0.1:{port}"
-    server.should_exit = True
+    yield fake, "http://127.0.0.1:1"
 
 
-def test_worker_restart_recovery_no_resubmit(monkeypatch, fake_server_r4):
-    fake, base_url = fake_server_r4
-    patch_gateway(monkeypatch, base_url)
-    _seed_tools()
-    prov = make_provider("agentscope", base_url)
-    a = make_module_agent()
-    v = publish_version(a["id"])
-    assert client.post(f"/api/agents/{a['id']}/releases", json={
-        "versionId": v["versionId"], "environment": "sandbox",
-        "runtimeProviderId": prov["id"]}).status_code == 201
-    r = client.post(f"/api/agents/{a['id']}/run", json={"input": {"sample_id": "R"}, "trigger": "api"})
-    run_id = r.json()["runId"]
-    # 首次 submit（worker 处理）
-    from app.runner import claim_and_run
-    for _ in range(20):
-        if SessionLocal().get(Run, run_id).runtime_provider_run_id:
-            break
-        claim_and_run(SessionLocal())
-        time.sleep(0.1)
-    base = fake.submit_count
-    assert base >= 1
-    # 模拟 worker 重启：重投 submit job → 不重发、只恢复轮询
+def test_worker_restart_recovery_no_resubmit(monkeypatch):
+    """换底（2026-09-09）：agent-runtime-* 作业注销——重投只把 queued Run 置失败终态，
+    绝不提交 Provider（原“重启不重提交”不变量的换底等价形式）。"""
+    from app.legacy_agent_archive import LEGACY_ARCHIVED_CODE
+    from app.models import JobQueue
+    from app.runner import _dispatch_job
+
     db = SessionLocal()
     try:
-        from app.models import JobQueue
+        run = Run(agent_id="none", trigger="manual", status="queued")
+        db.add(run)
+        db.commit()
+        run_id = run.id
         db.add(JobQueue(type="agent-runtime-submit",
-                        payload={"run_id": run_id, "provider_id": prov["id"]}))
+                        payload={"run_id": run_id, "provider_id": "ghost"}))
         db.commit()
     finally:
         db.close()
-    claim_and_run(SessionLocal())
-    time.sleep(0.2)
-    assert fake.submit_count == base, "重启恢复不得重新 submit"
+    _dispatch_job("agent-runtime-submit", {"run_id": run_id, "provider_id": "ghost"})
+    db = SessionLocal()
+    try:
+        row = db.get(Run, run_id)
+        assert row.status == "failed"
+        assert (row.error or {}).get("code") == LEGACY_ARCHIVED_CODE
+        assert not row.runtime_provider_run_id
+    finally:
+        db.close()
 
 
 def test_run_detail_enhanced_fields(monkeypatch):
-    # 复用 R3 的同步批次产出的 Agent Run（含 runtime/stages/calls/evidence）
-    from tests.test_r3_task_agent_target import _setup_batch_env, _make_agent_task
-    from app.task_runner import start_task_run, execute_task_run
-    from tests._quality_setup import make_asset, make_definition_version, make_rule_version
-
-    class _Fake(QualityFake):
-        pass
-    fake = _Fake()
-    server = uvicorn.Server(uvicorn.Config(fake.app(), host="127.0.0.1", port=0,
-                                           log_level="error"))
-    threading.Thread(target=server.run, daemon=True).start()
-    deadline = time.time() + 10
-    while not server.started and time.time() < deadline:
-        time.sleep(0.05)
-    base_url = f"http://127.0.0.1:{server.servers[0].sockets[0].getsockname()[1]}"
-    try:
-        monkeypatch.setattr("app.runtime_providers.dispatcher.DEFAULT_RUNTIME_TIMEOUT_SECONDS", 20)
-        prov, a, v = _setup_batch_env(monkeypatch, base_url, fake=fake)
-        asset = make_asset(client, [{"interactionId": "D1", "sample_id": "D1", "dialogues": []}])
-        defv = make_definition_version(client, asset)
-        rulev = make_rule_version(client)
-        t = _make_agent_task(a["id"], asset, defv, rulev)
-        db = SessionLocal()
-        try:
-            tr, _ = start_task_run(db, t["id"], trigger="manual")
-            tr_id = tr.id
-            db.commit()
-        finally:
-            db.close()
-        execute_task_run(tr_id)
-        db = SessionLocal()
-        try:
-            run = db.query(Run).filter_by(task_run_id=tr_id).first()
-            run_id = run.id
-        finally:
-            db.close()
-        d = client.get(f"/api/runs/{run_id}").json()
-        assert d["runtime"] and d["runtime"]["provider"] == "agentscope"
-        assert d["runtime"]["runtimeVersion"]
-        assert isinstance(d["calls"], list)
-        assert isinstance(d["evidence"], list) and d["evidence"]
-        assert d["usage"].get("total")
-    finally:
-        server.should_exit = True
-
+    """换底（2026-09-09）：批次 Run 详情含 Session 反链与业务结算链（calls/evidence 列表）。"""
+    from tests.test_r5_business_module import _cutover_batch
+    rows = [{"interactionId": "D1", "sample_id": "D1", "call_id": "c1",
+             "conversation": "x", "dialogues": []}]
+    tr_id, runs = _cutover_batch(monkeypatch, "quality-analysis", rows, expect_quality=True)
+    assert runs[0].status == "succeeded", runs[0].error
+    assert runs[0].agentscope_session_id
+    d = client.get(f"/api/runs/{runs[0].id}").json()
+    assert isinstance(d.get("calls"), list)
+    assert isinstance(d.get("evidence"), list)
 
 def test_runtime_metrics_endpoint():
-    m = client.get("/api/runtime-providers/metrics/aggregate").json()
-    assert {"total", "succeeded", "totalTokens", "durationMs", "estimatedCostUsd"} <= set(m)
-    assert m["durationMs"]["p95"] is None or m["durationMs"]["p95"] >= 0
+    """Provider 聚合指标随网关退役卸载。"""
+    assert client.get("/api/runtime-providers/metrics/aggregate").status_code == 404
 
 
 def test_provider_compat_matrix():
-    _seed_tools()
-    prov = make_provider("agentscope", "http://127.0.0.1:9")
-    d = client.get(f"/api/runtime-providers/{prov['id']}").json()
-    assert any(c["key"] == "quality-analysis" for c in d["compatibleModules"])
-    ext = make_provider("external", "http://127.0.0.1:9")
-    de = client.get(f"/api/runtime-providers/{ext['id']}").json()
-    assert de["compatibleModules"] == []
+    """Provider 兼容矩阵随网关退役卸载。"""
+    assert client.get("/api/runtime-providers/ghost").status_code == 404

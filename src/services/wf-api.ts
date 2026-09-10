@@ -504,7 +504,7 @@ export const agentApi = {
     q.set("page", String(p?.page ?? 1)); q.set("pageSize", String(p?.pageSize ?? 100))
     if (p?.search) q.set("search", p.search)
     if (p?.archived) q.set("archived", p.archived)  // E-2.1：默认隐藏已归档
-    return req<{ items: { id: string; name: string; type: string; status: string; archived?: boolean }[]; total: number }>(`/api/agents?${q}`)
+    return req<{ items: { id: string; name: string; type: string; status: string; archived?: boolean; executable?: boolean }[]; total: number }>(`/api/agents?${q}`)
   },
   get: (id: string) => req<AgentInfo>(`/api/agents/${id}`),
   // R4：Module Agent 创建与目录

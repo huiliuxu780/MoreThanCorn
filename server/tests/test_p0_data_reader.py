@@ -9,6 +9,8 @@
 import time
 
 import pytest
+
+from tests.conftest import TEST_DB_NAME
 from sqlalchemy import text
 
 from app.db import SessionLocal, engine
@@ -41,7 +43,7 @@ def _mk_pg_datasource(db, name, port=5432):
     db.add(conn)
     db.flush()
     ds = Datasource(name=name, type="postgresql", connection_id=conn.id,
-                    location="wf_test")
+                    location=TEST_DB_NAME)
     db.add(ds)
     db.flush()
     return ds

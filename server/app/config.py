@@ -2,9 +2,14 @@ import os
 
 import sys as _sys
 
+# §三 数据库收敛：长期只保留 wf_dev 一个开发库；pytest 会话由 tests/conftest.py
+# 创建并注入 wf_pytest_* 临时库（会话结束自动 DROP）。pytest 环境若未注入
+# WF_DATABASE_URL，说明 conftest 没生效——指向不存在的库使其大声失败，
+# 绝不静默回落 wf_dev/wf_test 造成污染。
 DATABASE_URL = os.environ.get(
     "WF_DATABASE_URL",
-    "postgresql+psycopg://rivers@127.0.0.1:5432/wf_test" if "pytest" in _sys.modules
+    "postgresql+psycopg://rivers@127.0.0.1:5432/wf_pytest_conftest_missing"
+    if "pytest" in _sys.modules
     else "postgresql+psycopg://rivers@127.0.0.1:5432/wf_dev",
 )
 

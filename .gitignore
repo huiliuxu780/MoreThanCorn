@@ -35,3 +35,12 @@ scripts/view-final.mjs
 
 # 09-07：对话附件落盘目录（运行时数据）
 server/var/
+
+# AgentScope 本地运行数据、数据库备份与调研工具工作区。
+exports/
+.replica/
+.zcode/
+runtimes/agentscope/blobs/
+runtimes/agentscope/var/
+runtimes/agentscope/probes/evidence/*.log
+runtimes/agentscope/probes/evidence/*.pid

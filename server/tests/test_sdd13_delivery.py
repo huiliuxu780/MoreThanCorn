@@ -8,6 +8,8 @@ import uuid
 from datetime import datetime, timezone
 
 import psycopg
+
+from tests.conftest import TEST_DB_NAME, pg_dsn
 import pytest
 
 from app.db import SessionLocal
@@ -110,7 +112,7 @@ def test_mapping_rejects_forbidden_syntax():
 
 @pytest.fixture(scope="module")
 def pg():
-    with psycopg.connect("postgresql://rivers@127.0.0.1:5432/wf_test") as conn:
+    with psycopg.connect(pg_dsn()) as conn:
         conn.execute(TARGET_DDL)
         conn.commit()
         yield conn
@@ -127,7 +129,7 @@ def target_env(pg):
     db.add(conn)
     db.flush()
     ds = Datasource(name=f"sdd13-ds-{tag}", type="postgresql", connection_id=conn.id,
-                    location="wf_test", status="enabled")
+                    location=TEST_DB_NAME, status="enabled")
     db.add(ds)
     db.flush()
     asset = DataAsset(name=f"sdd13-target-{tag}", source="postgres", datasource_id=ds.id,
@@ -362,3 +364,23 @@ def test_mapping_error_fails_run_not_half_delivery(target_env):
     assert run.status == "failed"
     assert run.error["code"] == "MAPPING_SOURCE_MISSING"
     assert db.query(ResultDelivery).filter_by(run_id=run.id).count() == 0
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _quiet_worker():
+    """P0-09 顺序依赖修复：全量套运行时，其他模块 import 期启动的进程级
+    worker 单例会消费 result-delivery 作业，与本模块的投递断言竞争
+    （retry 置 pending 后 worker 立刻再投递翻回 failed——全量偶发失败、
+    单文件永绿的根因）。本模块内暂停 worker，结束后恢复（start_worker 幂等）。"""
+    import time as _time
+
+    from app import runner as _runner
+
+    stop = getattr(_runner, "_WORKER_STOP", None)
+    was_running = stop is not None and not stop.is_set()
+    if was_running:
+        stop.set()
+        _time.sleep(0.3)  # 让飞行中的 tick 收尾
+    yield
+    if was_running:
+        _runner.start_worker()

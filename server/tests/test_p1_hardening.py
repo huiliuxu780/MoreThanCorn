@@ -22,14 +22,18 @@ def test_by_dimension_blocks_sql_injection():
 
 def test_cost_stats_aggregates_from_call_records():
     """审计：成本曾读从不写入的 Run.token_usage 恒 0；现从 CallRecord 模型调用聚合。"""
-    from app.models import CallRecord
+    from app.models import CallRecord, Run
     db = SessionLocal()
     try:
-        db.add(CallRecord(kind="model", target_id="m1", status="success",
+        # canonical schema：call_record.run_id NOT NULL（g040）——挂真实 Run
+        run = Run(trigger="test", input={})
+        db.add(run)
+        db.flush()
+        db.add(CallRecord(run_id=run.id, kind="model", target_id="m1", status="success",
                           token_usage={"promptTokens": 100, "completionTokens": 50}))
-        db.add(CallRecord(kind="model", target_id="m1", status="success",
+        db.add(CallRecord(run_id=run.id, kind="model", target_id="m1", status="success",
                           token_usage={"promptTokens": 30, "completionTokens": 20}))
-        db.add(CallRecord(kind="tool", target_id="t1", status="success",
+        db.add(CallRecord(run_id=run.id, kind="tool", target_id="t1", status="success",
                           token_usage={"promptTokens": 999, "completionTokens": 999}))
         db.commit()
     finally:

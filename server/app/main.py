@@ -7,9 +7,12 @@ from sqlalchemy import text
 from .config import auth_enforced, is_production
 from .legacy_agent_archive import LegacyAgentArchivedError
 from .runner import start_worker
-from .routers import (admin, agent_caps, agents, alerts, analytics, auth_routes,
+from .routers import (admin, agent_caps, agents, alerts, analytics, as_agents,
+                      as_automations, as_flows_board, auth_routes,
                       automations, business, forms, governance, operations, registry,
-                      resources, runs, runtime_providers, work_items, workflows)
+                      resources, runs, work_items, workflows)
+# P0-07：runtime_providers 路由已退役（不挂载、不 import）。模块保留在
+# server/app/runtime_providers/ 仅作历史参考，生产入口不得引用。
 
 # 鉴权白名单：登录与探活不需要身份
 _PUBLIC_PATHS = ("/api/auth/login", "/healthz", "/readyz", "/openapi.json", "/docs")
@@ -68,6 +71,14 @@ async def lifespan(_app: FastAPI):
     import os
     embedded = os.environ.get("WF_EMBEDDED_WORKER", "off" if is_production() else "on") == "on"
     stop = start_worker() if embedded else None
+    # 审核 P0-4：自动任务后台闭环（回写/准入/对账/轮询），无人读取也生效
+    # （测试环境 MTC_WATCHER=off 避免与用例竞态）
+    import os as _os
+
+    if _os.environ.get("MTC_WATCHER", "on") != "off":
+        from .automation_watcher import start_watcher
+
+        start_watcher()
     yield
     if stop:
         stop.set()
@@ -148,8 +159,18 @@ app.include_router(agents.router)
 app.include_router(agent_caps.router)  # 09-07：Skill/记忆/对话/run-stats 一等实体 API
 app.include_router(agent_caps.download_router)
 app.include_router(agent_caps.skills_router)  # docs/v2-design/10：全局 Skill 挂载反查
-app.include_router(runtime_providers.router)
 app.include_router(forms.router)
+
+# AgentScope 2.0.8 换底（2026-09-09 任务书）：控制面/代理/看板/接入 v2 路由
+app.include_router(as_agents.router)
+app.include_router(as_agents.kb_router)
+app.include_router(as_automations.router)
+app.include_router(as_automations.ext_router)
+app.include_router(as_automations.ingress_router)
+app.include_router(as_automations.webhook_router)
+app.include_router(as_flows_board.flows_router)
+app.include_router(as_flows_board.board_router)
+app.include_router(as_flows_board.internal_router)
 
 
 @app.get("/healthz")

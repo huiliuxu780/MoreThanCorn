@@ -3,6 +3,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import psycopg
+
+from tests.conftest import TEST_DB_NAME, pg_dsn
 import pytest
 from fastapi.testclient import TestClient
 
@@ -17,6 +19,27 @@ from app.occurrences import (associate_fire, fire_key_for, mark_missed,
 from app.task_runner import TaskStartError, start_task_run
 
 client = TestClient(app)
+
+@pytest.fixture(scope="module", autouse=True)
+def _quiet_worker():
+    """P0-09 顺序依赖修复：全量套运行时，其他模块 import 期启动的进程级
+    worker 单例会消费 result-delivery 作业，与本模块的投递断言竞争
+    （retry 置 pending 后 worker 立刻再投递翻回 failed——全量偶发失败、
+    单文件永绿的根因）。本模块内暂停 worker，结束后恢复（start_worker 幂等）。"""
+    import time as _time
+
+    from app import runner as _runner
+
+    stop = getattr(_runner, "_WORKER_STOP", None)
+    was_running = stop is not None and not stop.is_set()
+    if was_running:
+        stop.set()
+        _time.sleep(0.3)  # 让飞行中的 tick 收尾
+    yield
+    if was_running:
+        _runner.start_worker()
+
+
 
 TARGET = "consumer_analysis_result_acceptance"
 MAPPING = {"_run_id": "$run.id", "_task_run_id": "$run.taskRunId",
@@ -33,7 +56,7 @@ def env():
     db = SessionLocal()
     tag = uuid.uuid4().hex[:6]
     # 目标表至少一行，保证 start_task_run 的 count>0
-    with psycopg.connect("postgresql://rivers@127.0.0.1:5432/wf_test") as pg:
+    with psycopg.connect(pg_dsn()) as pg:
         pg.execute(
             f"INSERT INTO public.{TARGET} (_run_id,_task_run_id,_task_id,"
             "_task_version_id,_interaction_ref,_output_schema_ref,_written_at,"
@@ -47,7 +70,7 @@ def env():
     db.add(conn)
     db.flush()
     ds = Datasource(name=f"op-ds-{tag}", type="postgresql", connection_id=conn.id,
-                    location="wf_test", status="enabled")
+                    location=TEST_DB_NAME, status="enabled")
     db.add(ds)
     db.flush()
     asset = DataAsset(name=f"op-target-{tag}", source="postgres", datasource_id=ds.id,

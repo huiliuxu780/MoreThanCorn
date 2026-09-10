@@ -1,17 +1,14 @@
 """docs/v2-design/10 §5.4：Skill 一等化验收（壳批次 P2 服务端面）。
 
-- 挂载正文注入：agent_skill → system prompt 含 SKILL.md 正文；未挂载不含；
-- 截断：>8000 字符附截断注记；
-- 遗留 config.skills 名字占位保留且按名去重；
-- mounts-health：未注册名字 valid=False，注册后 True；
-- #skill: mention 展开取注册表描述；
-- /api/skills/mounts 反查 join 正确。
+P0-07（2026-09-10）：旧 Runtime 的 prompt 注入族（build_mounted_skills_section/
+SKILL_CONTENT_LIMIT/_expand_mentions）已随自建 ReAct 引擎退役删除——Skill 装配
+唯一路径 = Release 冻结清单 → AgentScope Workspace 上传（test_cutover_p0 覆盖）。
+本文件保留：退役不变量断言 + 仍存活的 mounts-health / mounts 兼容读端点。
 """
 import uuid
 
 from fastapi.testclient import TestClient
 
-from app.agent_runtime import SKILL_CONTENT_LIMIT, build_mounted_skills_section
 from app.db import SessionLocal
 from app.main import app
 from app.models import Agent, AgentSkill, SkillResource
@@ -47,40 +44,23 @@ def _cleanup_skill(sid: str) -> None:
     db.close()
 
 
-def test_mounted_skill_content_injected():
+def test_legacy_prompt_injection_retired():
+    """P0-07 退役不变量：旧 prompt 注入/截断/mention 展开函数已删除，
+    任何"挂载正文进 system prompt"的第二装配路径不得复活。"""
+    from app import agent_runtime
+
+    for retired in ("build_mounted_skills_section", "SKILL_CONTENT_LIMIT",
+                    "_expand_mentions", "_autonomous_loop", "_build_tools"):
+        assert not hasattr(agent_runtime, retired), (
+            f"{retired} 已退役删除，不得复活（Skill 装配唯一路径=AgentScope Workspace）"
+        )
+
+
+def test_skill_install_endpoint_stays_retired():
     aid = _make_agent()
     sid = _make_skill("# SKILL\nsecret-body-marker")
     r = client.post(f"/api/agents/{aid}/skills", json={"skillId": sid})
-    assert r.status_code == 201, r.text
-    db = SessionLocal()
-    section = build_mounted_skills_section(db, aid, {"skills": []})
-    db.close()
-    assert "secret-body-marker" in section
-    assert "## 挂载技能" in section
-    # 未挂载 Agent 不含正文
-    other = _make_agent()
-    db = SessionLocal()
-    section2 = build_mounted_skills_section(db, other, {"skills": []})
-    db.close()
-    assert "secret-body-marker" not in section2
-    client.delete(f"/api/agents/{aid}/skills/{sid}")
-    _cleanup_skill(sid)
-
-
-def test_truncation_and_legacy_dedup():
-    aid = _make_agent()
-    long = "x" * (SKILL_CONTENT_LIMIT + 1000)
-    sid = _make_skill(long)
-    name = SessionLocal().get(SkillResource, sid).name
-    client.post(f"/api/agents/{aid}/skills", json={"skillId": sid})
-    db = SessionLocal()
-    section = build_mounted_skills_section(db, aid, {"skills": [name, "legacy-only"]})
-    db.close()
-    assert "（已截断：原文超过 8000 字符）" in section
-    assert section.count(f"### {name}") == 1
-    assert f"- {name}" not in section  # 已注入正文的名字不再重复占位
-    assert "- legacy-only" in section  # 遗留名字保留占位
-    client.delete(f"/api/agents/{aid}/skills/{sid}")
+    assert r.status_code == 410
     _cleanup_skill(sid)
 
 
@@ -108,24 +88,11 @@ def test_mounts_health_registry_validation():
     _cleanup_skill(sid)
 
 
-def test_mention_expansion_uses_registry():
-    from app.agent_runtime import _expand_mentions
-    sid = _make_skill()
-    db = SessionLocal()
-    s = db.get(SkillResource, sid)
-    s.description = "registry-desc-marker"
-    db.commit()
-    out = _expand_mentions(db, f"see #skill:{s.name} now", {})
-    db.close()
-    assert "registry-desc-marker" in out
-    _cleanup_skill(sid)
-
-
 def test_skills_mounts_endpoint():
+    """换底（2026-09-09）：/api/skills/mounts 保留兼容读（历史反查），新挂载不再写入。"""
     aid = _make_agent()
     sid = _make_skill()
-    client.post(f"/api/agents/{aid}/skills", json={"skillId": sid})
+    assert client.post(f"/api/agents/{aid}/skills", json={"skillId": sid}).status_code == 410
     mounts = client.get("/api/skills/mounts").json()["mounts"]
-    assert any(m["agentId"] == aid for m in mounts.get(sid, []))
-    client.delete(f"/api/agents/{aid}/skills/{sid}")
+    assert mounts.get(sid, []) == []
     _cleanup_skill(sid)

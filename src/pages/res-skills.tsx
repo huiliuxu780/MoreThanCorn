@@ -15,9 +15,6 @@ import { Label } from "@/components/ui/label"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle,
-} from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { DeleteBlockedDialog } from "@/components/resources/resource-dialogs"
 import { agentApi, pagedApi, skillMounts, skillUpload } from "@/services/wf-api"
@@ -165,27 +162,58 @@ export default function ResSkillsPage() {
         </div>
       )}
 
-      <Sheet open={!!view} onOpenChange={(o) => !o && setView(null)}>
-        <SheetContent className="w-[520px] overflow-y-auto">
-          <SheetHeader><SheetTitle>{view?.name ?? ""}</SheetTitle></SheetHeader>
-          <p className="mt-1 text-xs text-muted-foreground">{view?.description || "—"}</p>
-          <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-(--text-tertiary)">
-            <span>分类：{view?.metadata?.category || "—"}</span>
-            <span>来源：{view?.metadata?.source === "upload" ? "上传" : "内置"}</span>
-            <span>{view?.metadata?.chars ?? 0} 字</span>
-          </div>
-          {view && (mounts[view.id] ?? []).length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {(mounts[view.id] ?? []).map((m) => (
-                <span key={m.agentId} className="rounded-md border px-2 py-0.5 text-[11px] text-muted-foreground">已挂载：{m.agentName}</span>
-              ))}
+      {/* Skill 详情（对齐 QoderWake「安装 Skill」弹窗：800 宽 + 说明 + 选择 Agent + 安装） */}
+      <Dialog open={!!view} onOpenChange={(o) => !o && setView(null)}>
+        <DialogContent className="max-h-[88vh] w-full sm:max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Skill 详情</DialogTitle>
+            <p className="text-xs text-muted-foreground">查看说明并选择要安装的 Agent。</p>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-base font-semibold">{view?.name}</span>
+                {view && isBuiltin(view) ? <span className="rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground">内置</span> : null}
+              </div>
+              <div className="flex flex-wrap gap-3 text-[11px] text-(--text-tertiary)">
+                <span>分类：{view?.metadata?.category || "—"}</span>
+                <span>来源：{view?.metadata?.source === "upload" ? "上传" : "内置"}</span>
+                <span>{view?.metadata?.chars ?? 0} 字</span>
+              </div>
             </div>
-          )}
-          <pre className="mt-4 whitespace-pre-wrap rounded-lg border bg-surface-muted p-3 font-mono text-[11px] leading-5">
-            {viewContent || "（无正文）"}
-          </pre>
-        </SheetContent>
-      </Sheet>
+            <p className="text-sm text-muted-foreground">{view?.description || "—"}</p>
+            <div>
+              <h3 className="mb-1 text-xs font-medium text-muted-foreground">Skill 说明（SKILL.md 正文）</h3>
+              <pre className="max-h-[42vh] whitespace-pre-wrap rounded-lg border bg-surface-muted p-3 font-mono text-[11px] leading-5">
+                {viewContent || "（无正文）"}
+              </pre>
+            </div>
+            {view && (mounts[view.id] ?? []).length > 0 && (
+              <div>
+                <h3 className="mb-1 text-xs font-medium text-muted-foreground">已安装的 Agent（{mounts[view.id].length}）</h3>
+                <div className="flex flex-wrap gap-1.5">
+                  {(mounts[view.id] ?? []).map((m) => (
+                    <button key={m.agentId} type="button"
+                      className="rounded-md border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-muted-foreground/40"
+                      onClick={() => { setView(null); navigate(`/agents/${m.agentId}/skills`) }}>
+                      {m.agentName}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setView(null)}>关闭</Button>
+            {view && (
+              <>
+                <Button variant="outline" onClick={() => { const s = view; setView(null); setEdit(s) }}>编辑正文</Button>
+                <Button onClick={() => { const s = view; setView(null); setMount(s) }}>安装到 Agent</Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {edit && <SkillFormDialog initial={edit === "new" ? null : edit}
         onClose={() => setEdit(null)} onSaved={load} />}
@@ -287,7 +315,9 @@ function SkillFormDialog({ initial, onClose, onSaved }: {
       onClose()
       onSaved()
     } catch (e) {
-      toast.error((e as Error).message)
+      const st = (e as { status?: number }).status
+      if (st === 410) toast.error("挂载已迁移：请在对话页 Session Workspace 内装配 Skill")
+      else toast.error((e as Error).message)
     }
   }
 

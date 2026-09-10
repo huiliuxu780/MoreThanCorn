@@ -54,15 +54,24 @@ def resume_run(run_id: str, payload: dict, db: Session = Depends(get_db),
 
 
 @router.get("")
-def list_runs(workflowId: str = "", db: Session = Depends(get_db)):
+def list_runs(workflowId: str = "", taskRunId: str = "", agentId: str = "",
+              db: Session = Depends(get_db)):
+    """Run 列表（09-10 审计返工：补 taskRun/agent/session 关联字段，供执行链取证）。"""
     q = db.query(Run).order_by(Run.created_at.desc())
     if workflowId:
         q = q.filter(Run.workflow_id == workflowId)
+    if taskRunId:
+        q = q.filter(Run.task_run_id == taskRunId)
+    if agentId:
+        q = q.filter(Run.agent_id == agentId)
     runs = q.limit(50).all()
     return [{
         "runId": r.id, "status": r.status, "trigger": r.trigger,
         "startedAt": r.started_at.isoformat() if r.started_at else None,
         "durationMs": r.duration_ms, "error": r.error,
+        "taskId": r.task_id, "taskRunId": r.task_run_id, "agentId": r.agent_id,
+        "agentscopeSessionId": r.agentscope_session_id,
+        "output": r.output,
     } for r in runs]
 
 

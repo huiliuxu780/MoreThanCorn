@@ -1,50 +1,34 @@
-"""Agent 运行层（uiux/05 设计）：autonomous ReAct 循环 + 专家组画布节点 executor + 统一运行入口。
+"""Agent 运行门面（AgentScope 换底，P0-07 返工版 2026-09-10）。
 
-- 三型统一入口 run_agent：autonomous → 本模块循环；dialogue/expert-group → 其 workflow（execute_run）。
-- 事件复用 run_event；SSE 复用 /api/runs/{id}/events。
-- 护栏：MAX_STEPS / MAX_SECONDS / agent_chain 递归防护。
+生产执行边界（任务书 §一）：
+- 所有可执行 Agent（Module 与 custom）的唯一执行路径 = agent_execution 统一
+  入口 → AgentScope Session；本模块只做 Release 解析（显式环境）、Run 业务链
+  记录与结果结算转发（P0-B 09-10：custom Agent 一次性 run 不再拒绝）。
+- Workflow 画布 agent/agent-select/agent-exec 节点族经 _run_member 委托
+  _run_native_agent（Workflow 调度 Agent = 统一入口）。_route 语义路由是
+  平台工具级模型调用，不产生 Agent Run/Session。
+- _chat_completion 是平台工具级模型直连（draft-role 起草、Workflow LLM 节点、
+  路由/分类），不属于 Agent 执行入口。
+- 已退役删除（2026-09-10，历史实现经 Git 历史恢复）：自建 ReAct 循环族
+  （_Ctx/_build_tools/_expand_mentions/build_mounted_skills_section/
+  _autonomous_loop/_fallback_answer/_maybe_follow_up/ctx_agent_config/
+  _dispatch/_latest_tv）与 worker 内联执行（_execute_agent_inline/
+  execute_agent_job）。runner 对 agent-execution/chat-turn 作业 fail-stale。
 """
 from __future__ import annotations
 
 import json
-import time
-from datetime import datetime, timezone
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .db import SessionLocal
-from .legacy_agent_archive import (LEGACY_ARCHIVED_CODE, LEGACY_ARCHIVED_MESSAGE,
-                                   assert_agent_executable, is_legacy_agent)
-from .models import (Agent, AgentSkill, Connection, KnowledgeSource, Model, ModelProvider,
-                     Release, Run, SkillResource, Tool, ToolVersion, Workflow, new_id)
-from .runner import RunError, create_run, emit, execute_run, exec_tool
+from .legacy_agent_archive import (LEGACY_ARCHIVED_CODE, assert_agent_executable,
+                                   is_legacy_agent)
+from .models import Agent, Connection, Model, ModelProvider, Run, new_id
+from .runner import RunError, emit
 
-MAX_STEPS = 8
-MAX_SECONDS = 60
-
-
-class _Ctx:
-    """exec_tool 所需的最小上下文。"""
-
-    def __init__(self, db: Session, run: Run, run_input: dict, call_chain: list[str]):
-        self.db = db
-        self.run = run
-        self.run_input = run_input
-        self.outputs = {}
-        self.call_chain = call_chain
-
-    def call(self, kind, target, req, resp, latency, tokens):
-        from .models import CallRecord
-        self.db.add(CallRecord(node_run_id=None, kind=kind, target_type=kind,
-                               target_id=str(target), request={"summary": str(req)[:1000]},
-                               response={"summary": str(resp)[:1000]}, status="success",
-                               latency_ms=latency, token_usage=tokens or {}))
-        self.db.commit()
-
-
-# ---------- LLM（OpenAI 兼容 + mock 回落，支持 tools） ----------
+# ---------- 平台工具级模型直连（非 Agent 执行入口） ----------
 
 def _resolve_base_headers(db: Session, model_key: str) -> tuple[str, dict]:
     """R4：返回 (base, 鉴权请求头)。kind 真实生效（aksk/script 经签名层产出）。"""
@@ -72,6 +56,32 @@ def _resolve_base_headers(db: Session, model_key: str) -> tuple[str, dict]:
         except AuthSignError as exc:
             raise RunError(str(exc))
     return base, {}
+
+def _resolve_base_secret(db: Session, model_key: str) -> tuple[str, str]:
+    """返回 (base, secret 可用标记)。
+
+    P0-07 修复：此前该函数根本不存在，而 runner._route_workflow/_llm_base 都
+    import 它——ImportError 被 except 吞掉后工作流路由/LLM 节点静默降级，
+    从未走过真实模型。解析顺序与 _resolve_base_headers 一致：
+    env(WF_LLM_BASE_URL/WF_LLM_API_KEY) → Model→ModelProvider→Connection。
+    secret 不返回明文凭据（调用方仅判断 base 可用性）；连接类凭据以非空
+    占位标记。
+    """
+    import os
+    base = os.environ.get("WF_LLM_BASE_URL", "")
+    secret = os.environ.get("WF_LLM_API_KEY", "")
+    if base:
+        return base, secret
+    for m in db.execute(select(Model).where(Model.model_key == model_key)).scalars().all():
+        prov = db.get(ModelProvider, m.provider_id)
+        if prov and prov.base_url.startswith(("http://", "https://")):
+            base = prov.base_url
+            if prov.auth_connection_id:
+                conn = db.get(Connection, prov.auth_connection_id)
+                if conn is not None:
+                    secret = secret or "connection"  # 非明文占位：凭据存在
+        break
+    return base, secret
 
 
 def _chat_completion(db: Session, model_key: str, messages: list[dict], tools: list[dict],
@@ -144,299 +154,8 @@ def _chat_completion(db: Session, model_key: str, messages: list[dict], tools: l
                             slot["args"] += fn["arguments"]
     except httpx.HTTPError:
         return _chat_completion(db, model_key, messages, tools, on_delta=None)  # 流式失败回落非流式
-    calls = []
-    for slot in tc_acc.values():
-        if slot["name"]:
-            try:
-                args = json.loads(slot["args"] or "{}")
-            except json.JSONDecodeError:
-                args = {}
-            calls.append({"name": slot["name"], "args": args})
-    return {"content": "".join(content_parts) or None, "tool_calls": calls}
 
-
-# ---------- 挂载 → tools schema ----------
-
-def _build_tools(db: Session, cfg: dict) -> tuple[list[dict], dict, dict]:
-    """返回 (tools, dispatch 元信息, 解析留痕)。
-
-    留痕（SDD A-09）：每个挂载解析到的真实资源 id + 版本；查不到的记 missing。
-    """
-    tools: list[dict] = []
-    meta: dict[str, tuple[str, str]] = {}
-    resolved: dict[str, list[dict]] = {"tools": [], "workflows": [], "knowledges": [], "missing": []}
-    for tname in cfg.get("tools", []):
-        tool = db.get(Tool, tname) or db.execute(select(Tool).where(Tool.name == tname)).scalars().first()
-        if not tool or tool.status not in ("ready", "enabled"):
-            resolved["missing"].append({"kind": "tool", "name": tname})
-            continue
-        tv = db.execute(select(ToolVersion).where(ToolVersion.tool_id == tool.id)
-                        .order_by(ToolVersion.version_no.desc())).scalars().first()
-        tools.append({"type": "function", "function": {
-            "name": f"tool_{tool.id}", "description": tool.description or tool.name,
-            "parameters": (tv.input_schema if tv and tv.input_schema else {"type": "object", "properties": {}})}})
-        meta[f"tool_{tool.id}"] = ("tool", tool.id)
-        resolved["tools"].append({"name": tname, "id": tool.id,
-                                  "toolVersionId": tv.id if tv else None})
-    for wname in cfg.get("workflows", []):
-        wf = db.get(Workflow, wname) or db.execute(select(Workflow).where(Workflow.name == wname)).scalars().first()
-        if not wf:
-            resolved["missing"].append({"kind": "workflow", "name": wname})
-            continue
-        tools.append({"type": "function", "function": {
-            "name": f"workflow_{wf.id}", "description": f"执行工作流：{wf.name}",
-            "parameters": {"type": "object", "properties": {"input": {"type": "object"}}}}})
-        meta[f"workflow_{wf.id}"] = ("workflow", wf.id)
-        resolved["workflows"].append({"name": wname, "id": wf.id})
-    for kname in cfg.get("knowledges", []):
-        ks = db.get(KnowledgeSource, kname) or db.execute(select(KnowledgeSource).where(KnowledgeSource.name == kname)).scalars().first()
-        if not ks or ks.status != "enabled":
-            resolved["missing"].append({"kind": "knowledge", "name": kname})
-            continue
-        tools.append({"type": "function", "function": {
-            "name": f"knowledge_{ks.id}", "description": f"检索知识库：{ks.name}",
-            "parameters": {"type": "object", "properties": {"query": {"type": "string"}}}}})
-        meta[f"knowledge_{ks.id}"] = ("knowledge", ks.id)
-        resolved["knowledges"].append({"name": kname, "id": ks.id})
-    tools.append({"type": "function", "function": {
-        "name": "memory_write", "description": "写入 run 级记忆变量",
-        "parameters": {"type": "object", "properties": {"key": {"type": "string"}, "value": {"type": "string"}}}}})
-    tools.append({"type": "function", "function": {
-        "name": "memory_read", "description": "读取 run 级记忆变量",
-        "parameters": {"type": "object", "properties": {"key": {"type": "string"}}}}})
-    meta["memory_write"] = ("memory_write", "")
-    meta["memory_read"] = ("memory_read", "")
-    return tools, meta, resolved
-
-
-# ---------- autonomous 循环 ----------
-
-_MENTION_RE = __import__("re").compile(r"#(skill|tool|knowledge|memory|workflow|技能|插件|知识|记忆):([^\s#]+)")
-
-
-def _expand_mentions(db: Session, text: str, cfg: dict) -> str:
-    """E-4.2：rolePrompt 里的 `#type:名称` token 展开为资源描述摘要。"""
-    if "#" not in text:
-        return text
-    kind_alias = {"技能": "skill", "插件": "tool", "知识": "knowledge", "记忆": "memory"}
-
-    def repl(m) -> str:
-        kind = kind_alias.get(m.group(1), m.group(1))
-        name = m.group(2)
-        desc = ""
-        try:
-            if kind == "tool":
-                t = db.query(Tool).filter_by(name=name).first()
-                desc = (t.description if t else "") or ""
-            elif kind == "knowledge":
-                k = db.query(KnowledgeSource).filter_by(name=name).first()
-                desc = (k.description if k else "") or ""
-            elif kind == "memory":
-                entry = next((x for x in (cfg.get("memoriesSchema") or []) if x.get("name") == name), None)
-                desc = (entry or {}).get("description", "") or ""
-            elif kind == "skill":
-                sr = db.query(SkillResource).filter_by(name=name).first()
-                desc = ((sr.description if sr else "")
-                        or (name if name in (cfg.get("skills") or []) else ""))
-        except Exception:  # noqa: BLE001
-            desc = ""
-        return f"[引用资源 {name}：{str(desc)[:200] or '无描述'}]"
-
-    return _MENTION_RE.sub(repl, text)
-
-
-SKILL_CONTENT_LIMIT = 8000
-
-
-def build_mounted_skills_section(db: Session, agent_id: str, cfg: dict) -> str:
-    """docs/v2-design/10 §5.3：一等挂载（agent_skill）注入 SKILL.md 正文；
-    遗留 config.skills 名字保留名字占位（按名去重）。"""
-    mounted: list[str] = []
-    names: set[str] = set()
-    for link in db.query(AgentSkill).filter_by(agent_id=agent_id).all():
-        s = db.get(SkillResource, link.skill_id)
-        if not s:
-            continue
-        body = s.content or ""
-        if len(body) > SKILL_CONTENT_LIMIT:
-            body = body[:SKILL_CONTENT_LIMIT] + "\n（已截断：原文超过 8000 字符）"
-        mounted.append(f"### {s.name}\n{body}")
-        names.add(s.name)
-    legacy = [x for x in (cfg.get("skills") or []) if x not in names]
-    return "\n## 挂载技能\n" + "\n".join(mounted + [f"- {x}" for x in legacy])
-
-
-def _autonomous_loop(db: Session, agent, run: Run, run_input: dict, call_chain: list[str]) -> None:
-    cfg = agent.config or {}
-    from .agent_release import build_common_config_dict
-    # 版本运行注入 __common；草稿运行从当前 config 现算（SDD B-05 两种路径都真消费）
-    common = cfg.get("__common") or build_common_config_dict(cfg)
-    ctx = _Ctx(db, run, run_input, call_chain)
-    # E-4.2：# mention 展开为资源描述摘要（无 token 时原样）
-    system = _expand_mentions(db, cfg.get("rolePrompt") or "", cfg) \
-        + build_mounted_skills_section(db, agent.id, cfg)
-    memories_declared = common.get("memories") or []
-    if memories_declared:
-        # R1 修复：description 一并注入（此前只写不读）
-        lines = "\n".join(f"- {m.get('name')}（{m.get('dataType', 'STRING')}"
-                          + (f"：{m.get('description')}" if m.get("description") else "")
-                          + (f"，默认 {m.get('defaultValue')}" if m.get("defaultValue") else "") + "）"
-                          for m in memories_declared)
-        system += f"\n## 可用记忆变量（仅可读写以下已声明键）\n{lines}"
-
-    # 闲聊兜底（SDD B-05）：无用户问题且已启用 → 直接兜底回复
-    chitchat = (common.get("conversation") or {}).get("chitchatFallback") or {}
-    if chitchat.get("enabled") and not str(run_input.get("userQuery") or "").strip():
-        prompt = chitchat.get("prompt") or "你是友好的助手，请与用户打招呼。"
-        answer, _t = _fallback_answer(db, chitchat.get("modelId") or (cfg.get("modelRef") or {}).get("modelId") or "qwen-plus", prompt)
-        run.output = {"content": answer, "fallback": "chitchat"}
-        run.status = "succeeded"
-        run.ended_at = datetime.now(timezone.utc)
-        db.commit()
-        emit(db, run.id, "agent_completed", payload={"content": answer[:2000], "fallback": "chitchat"})
-        return
-
-    # D-2：历史轮次真消费——预览传入 chatHistory，按 historyTurns 裁剪
-    model_ref = cfg.get("modelRef") or {}
-    history_turns = int(model_ref.get("historyTurns") or 5)
-    messages = [{"role": "system", "content": system}]
-    chat_history = run_input.get("chatHistory") or []
-    if isinstance(chat_history, list):
-        for turn in chat_history[-history_turns:]:
-            if isinstance(turn, dict):
-                if turn.get("user"):
-                    messages.append({"role": "user", "content": str(turn["user"])[:2000]})
-                if turn.get("ai"):
-                    messages.append({"role": "assistant", "content": str(turn["ai"])[:2000]})
-    user_msg = {k: v for k, v in run_input.items() if k not in ("chatHistory", "__modelOverride")}
-    messages.append({"role": "user", "content": json.dumps(user_msg, ensure_ascii=False)})
-    tools, meta, resolved = _build_tools(db, cfg)
-    # SDD A-09：挂载解析留痕（含失效项），运行可审计实际用到的资源与版本
-    emit(db, run.id, "agent_mounts_resolved", payload=resolved)
-    # D-2：模型对比覆盖 + 生成多样性→temperature 真消费
-    model = str(run_input.get("__modelOverride") or "") or model_ref.get("modelId") or "qwen-plus"
-    temperature = {"rigorous": 0.2, "balanced": 0.7, "creative": 1.1}.get(
-        str(model_ref.get("diversity") or "balanced"), 0.7)
-    declared_keys = {m.get("name") for m in memories_declared}
-    memory: dict[str, str] = {}
-    t0 = time.time()
-    steps = 0
-    while steps < MAX_STEPS and (time.time() - t0) < MAX_SECONDS:
-        steps += 1
-        resp = _chat_completion(db, model, messages, tools,
-                                on_delta=lambda d: emit(db, run.id, "llm_delta", payload={"delta": d}),
-                                temperature=temperature)
-        if not resp["tool_calls"]:
-            content = resp["content"] or ""
-            output = {"content": content}
-            follow = _maybe_follow_up(db, common, model, content)
-            if follow:
-                output["followUps"] = follow
-            run.output = output
-            run.status = "succeeded"
-            run.ended_at = datetime.now(timezone.utc)
-            db.commit()
-            emit(db, run.id, "agent_completed", payload={"content": content[:2000]})
-            return
-        messages.append({"role": "assistant", "content": resp["content"] or "",
-                         "tool_calls": [{"id": str(i), "type": "function",
-                                         "function": {"name": c["name"], "arguments": json.dumps(c["args"], ensure_ascii=False)}}
-                                        for i, c in enumerate(resp["tool_calls"])]})
-        for i, tc in enumerate(resp["tool_calls"]):
-            kind, rid = meta.get(tc["name"], ("unknown", ""))
-            emit(db, run.id, "tool_call", payload={"name": tc["name"], "args": tc["args"]})
-            result = _dispatch(db, ctx, kind, rid, tc["args"], run_input, call_chain, memory, declared_keys)
-            emit(db, run.id, "tool_result", payload={"name": tc["name"], "result": str(result)[:500]})
-            messages.append({"role": "tool", "tool_call_id": str(i),
-                             "content": json.dumps(result, ensure_ascii=False)[:4000]})
-    run.status = "failed"
-    run.error = {"message": f"超过护栏（steps={MAX_STEPS} / {MAX_SECONDS}s）"}
-    run.ended_at = datetime.now(timezone.utc)
-    db.commit()
-    emit(db, run.id, "agent_failed", payload={"error": run.error["message"]})
-
-
-def _fallback_answer(db: Session, model_key: str, prompt: str) -> tuple[str, dict]:
-    """闲聊兜底单独调用（无工具）。"""
-    from .runner import _call_model
-    try:
-        return _call_model(db, model_key, prompt)
-    except Exception:  # noqa: BLE001
-        return "你好，我在。", {}
-
-
-def _maybe_follow_up(db: Session, common: dict, model_key: str, content: str) -> list[str]:
-    """自动续问（SDD B-05）：终答后生成 ≤count 条后续问题。"""
-    fu = (common.get("conversation") or {}).get("autoFollowUp") or {}
-    if not fu.get("enabled"):
-        return []
-    count = min(int(fu.get("count") or 3), 3)
-    from .runner import _call_model
-    try:
-        answer, _t = _call_model(db, model_key,
-                                 f"基于以下回答，用中文生成{count}个简短的后续追问，每行一个，不要编号：\n{content[:600]}")
-        lines = [ln.strip() for ln in (answer or "").splitlines() if ln.strip()]
-        return lines[:count] or []
-    except Exception:  # noqa: BLE001
-        return []
-
-
-def ctx_agent_config(ctx: _Ctx) -> dict | None:
-    """运行上下文中取 Agent 配置（知识高级配置等消费用；工作流运行无 Agent 时返回 None）。"""
-    if ctx.run.agent_id:
-        a = ctx.db.get(Agent, ctx.run.agent_id)
-        if a:
-            return a.config or {}
-    return None
-
-
-def _dispatch(db: Session, ctx: _Ctx, kind: str, rid: str, args: dict, run_input: dict,
-              call_chain: list[str], memory: dict[str, str], declared_keys: set | None = None) -> dict:
-    if kind == "tool":
-        node = {"config": {"toolVersionId": _latest_tv(db, rid)}, "inputs": [
-            {"name": k, "type": "string", "source": {"kind": "fixed", "value": v}} for k, v in (args or {}).items()]}
-        return exec_tool(node, ctx)
-    if kind == "workflow":
-        sub = create_run(db, rid, "agent", args.get("input") or run_input, enqueue=False)
-        execute_run(sub.id, call_chain=list(call_chain))
-        fresh = db.get(Run, sub.id)
-        if fresh.status != "succeeded":
-            raise RunError(f"子工作流失败：{(fresh.error or {}).get('message', fresh.status)}")
-        return fresh.output or {}
-    if kind == "knowledge":
-        from .resource_tests import search_knowledge
-        # SDD D-1 / R1：知识高级配置（TopK/匹配分/检索模式）真消费
-        adv = ((ctx_agent_config(ctx) or {}).get("knowledgeAdvanced") or {}).get(rid) or {}
-        top_k = int(adv.get("topK") or 3)
-        slices = search_knowledge(db, rid, str(args.get("query", "")), top_k, mode=str(adv.get("mode") or "HYBRID"))
-        threshold = adv.get("scoreThreshold")
-        if threshold is not None:
-            try:
-                slices = [s for s in slices if float(s.get("score", 1)) >= float(threshold)]
-            except (TypeError, ValueError):
-                pass
-        return {"slices": slices}
-    if kind == "memory_write":
-        key = str(args.get("key", ""))
-        # SDD B-05：记忆写入必须是显式动作且键必须在已声明的记忆 Schema 内
-        if declared_keys is not None and key not in declared_keys:
-            return {"ok": False, "error": f"记忆变量 {key} 未在记忆 Schema 中声明"}
-        memory[key] = str(args.get("value", ""))
-        return {"ok": True}
-    if kind == "memory_read":
-        return {"value": memory.get(str(args.get("key", "")))}
-    return {"error": f"unknown dispatch {kind}"}
-
-
-def _latest_tv(db: Session, tool_id: str) -> str:
-    tv = db.execute(select(ToolVersion).where(ToolVersion.tool_id == tool_id)
-                    .order_by(ToolVersion.version_no.desc())).scalars().first()
-    if not tv:
-        raise RunError(f"tool {tool_id} 无版本")
-    return tv.id
-
-
-# ---------- 专家组画布节点 executor ----------
+# ---------- Workflow 画布 Agent 节点族（委托统一入口） ----------
 
 def exec_agent_select(node, ctx) -> dict:
     """Agent选择＝语义路由器（SDD A-02，调研 11 §4.3）：
@@ -469,7 +188,6 @@ def exec_agent_select(node, ctx) -> dict:
                   "candidateCount": len(candidates)})
     return {"agentCode": chosen.id, "agentName": chosen.name, "agentDesc": chosen.description or ""}
 
-
 def _route(db: Session, candidates: list, query: str):
     """返回 (Agent|None, routing 标记)。无候选 → (None, "none")。"""
     if not candidates:
@@ -500,7 +218,6 @@ def _route(db: Session, candidates: list, query: str):
         return candidates[idx], "primary"
     return None, "none"
 
-
 def _member_code(node, ctx) -> str:
     cfg = node.get("config") or {}
     code = cfg.get("agentCode")
@@ -512,16 +229,13 @@ def _member_code(node, ctx) -> str:
         raise RunError("Agent执行节点缺少 agentCode")
     return code
 
-
 def exec_agent_exec(node, ctx) -> dict:
     return _run_member(ctx, _member_code(node, ctx))
-
 
 def exec_agent_node(node, ctx) -> dict:
     cfg = node.get("config") or {}
     code = cfg.get("agentCode") or _member_code(node, ctx)
     return _run_member(ctx, code)
-
 
 def _run_member(ctx: _Ctx, code: str) -> dict:
     member = ctx.db.get(Agent, code)
@@ -537,236 +251,147 @@ def _run_member(ctx: _Ctx, code: str) -> dict:
     member_version = (getattr(ctx, "frozen_agent_versions", None) or {}).get(member.id)
     if getattr(ctx, "frozen_agent_versions", None) and not member_version:
         emit(ctx.db, ctx.run.id, "member_unfrozen", payload={"memberId": member.id})
-    t0 = time.time()
-    sub_run = run_agent(ctx.db, member, ctx.run_input, trigger="agent",
-                        agent_chain=agent_chain, call_chain_wf=wf_chain, enqueue=False,
-                        version_id=member_version)
-    fresh = ctx.db.get(Run, sub_run)
-    latency = int((time.time() - t0) * 1000)
-    # E-3.3：子 Run 作为调用记录挂到当前节点（target=子 run id），/trace 据此递归展开子树
-    call = getattr(ctx, "call", None)
-    if callable(call):
-        try:
-            call("agent", sub_run, f"member:{member.name}",
-                 str((fresh.output or {}).get("content", ""))[:200], latency, fresh.token_usage or {})
-        except Exception:  # noqa: BLE001 —— 观测失败不影响主流程
-            pass
-    if fresh.status != "succeeded":
-        raise RunError(f"成员 Agent「{member.name}」执行失败：{(fresh.error or {}).get('message', fresh.status)}")
-    if getattr(member, "module_key", None):
-        # R3-5：Module 成员输出结构化投影；content 序列化供节点绑定兼容
-        return {"content": json.dumps(fresh.output or {}, ensure_ascii=False),
-                "output": fresh.output or {}}
-    return {"content": (fresh.output or {}).get("content", json.dumps(fresh.output or {}, ensure_ascii=False))}
+    # AgentScope 换底（2026-09-09 任务书 §五-E）：Workflow 的 Agent 节点委托
+    # _run_native_agent（统一入口 + Run 业务链 + 结算），不再自建执行。
+    sub_run_id = _run_native_agent(ctx.db, member, ctx.run_input, trigger="agent",
+                                   version_id=member_version, provider_id=None,
+                                   enqueue=False, agent_chain=agent_chain)
+    fresh = ctx.db.get(Run, sub_run_id)
+    if fresh is None or fresh.status != "succeeded":
+        raise RunError(f"成员 Agent「{member.name}」执行失败："
+                       f"{(fresh.error or {}).get('message', 'unknown') if fresh else 'missing'}")
+    content = (fresh.output or {}).get("content", json.dumps(fresh.output or {}, ensure_ascii=False))
+    return {"content": content, "output": fresh.output or {}}
 
-
-# ---------- 统一入口（SDD A-03：顶层异步入队，嵌套保持同步） ----------
-
-# ---------- Module Agent 分派（SDD 10 R2/R3） ----------
-
-def _run_module_agent(db: Session, agent: Agent, run_input: dict, trigger: str,
-                      version_id: str | None, provider_id: str | None, enqueue: bool,
-                      agent_chain: list[str]) -> str:
-    """Module Agent 运行：解析版本与 Release Runtime Binding → Run + agent-runtime-submit。
-
-    - schedule/api：按环境指针 + 沙箱 Release 绑定解析（灰度 Release 按桶选择 Provider）；
-    - test/manual 无版本：草稿预览，必须显式 providerId（R3 收敛为统一 target 解析）；
-    - 嵌套调用（Workflow agent-exec 调 Module Agent）属 R3-5，暂不支持。"""
-    from .models import AgentRuntimeProvider, AgentVersion, JobQueue, Release
-    if agent.id in agent_chain:
-        raise RunError(f"检测到 Agent 递归调用：{agent.id}")
-    run_id = new_id()
-    ver: AgentVersion | None = None
-    resolved_provider = provider_id
-    if version_id:
-        ver = db.get(AgentVersion, version_id)
-        if not ver or ver.agent_id != agent.id:
-            raise RunError(f"version {version_id} not found for agent {agent.id}")
-        if not resolved_provider:
-            # R3：显式版本运行从既有 Release 绑定解析 Provider（稳定优先）
-            rel = (db.query(Release)
-                   .filter(Release.agent_id == agent.id,
-                           Release.agent_version_id == ver.id, Release.status == "active",
-                           Release.runtime_provider_id.isnot(None))
-                   .order_by(Release.canary_percent.asc(), Release.created_at.desc())
-                   .first())
-            if rel:
-                resolved_provider = rel.runtime_provider_id
-    elif trigger in ("schedule", "api"):
-        vid = agent.sandbox_version_id or agent.prod_version_id
-        if not vid:
-            raise RunError("NO_RELEASED_VERSION：该 Module Agent 尚未发布，请先发布到沙箱")
-        env = "sandbox" if agent.sandbox_version_id else "prod"
-        releases = db.query(Release).filter_by(agent_id=agent.id, environment=env,
-                                               status="active").all()
-        stable = next((r for r in releases if not (r.canary_percent or 0)), None)
-        canary = next((r for r in releases if (r.canary_percent or 0) > 0), None)
-        chosen = canary if (canary and _canary_bucket(run_id) < (canary.canary_percent or 0)) \
-            else stable
-        if not chosen or not chosen.runtime_provider_id:
-            raise RunError("NO_RELEASED_VERSION：Module Agent 需要带 Runtime Provider 绑定的 Release")
-        ver = db.get(AgentVersion, chosen.agent_version_id)
-        if not ver:
-            raise RunError("NO_RELEASED_VERSION：发布版本记录丢失，请重新发布")
-        resolved_provider = chosen.runtime_provider_id
-    else:
-        # 嵌入式调用（Workflow 成员）优先落沙箱 Release 绑定；无绑定才要求显式 providerId
-        rel = (db.query(Release)
-               .filter(Release.agent_id == agent.id, Release.status == "active",
-                       Release.runtime_provider_id.isnot(None))
-               .order_by(Release.canary_percent.asc(), Release.created_at.desc())
-               .first())
-        if rel is not None:
-            ver = db.get(AgentVersion, rel.agent_version_id)
-            resolved_provider = rel.runtime_provider_id
-        elif not resolved_provider:
-            raise RunError("PREVIEW_PROVIDER_REQUIRED：Module Agent 草稿预览需显式 providerId")
-    run = Run(id=run_id, agent_id=agent.id, trigger=trigger, input=run_input or {},
-              agent_version_id=ver.id if ver else None,
-              runtime_provider_id=resolved_provider,
-              definition_source="version" if ver else "draft")
-    db.add(run)
-    db.commit()
-    emit(db, run.id, "agent_started",
-         payload={"agentId": agent.id, "module": agent.module_key,
-                  "moduleVersion": agent.module_version,
-                  "agentVersion": ver.version_no if ver else None,
-                  "providerId": resolved_provider})
-    if enqueue:
-        db.add(JobQueue(type="agent-runtime-submit",
-                        payload={"run_id": run.id, "provider_id": resolved_provider}))
-        db.commit()
-        return run.id
-    # R3-5：嵌套（Workflow agent-exec → Module Agent）同步执行到终态
-    provider = db.get(AgentRuntimeProvider, resolved_provider or "")
-    if provider is None:
-        raise RunError("PROVIDER_UNRESOLVED：无法解析 Runtime Provider 绑定")
-    from .runtime_providers.worker import execute_module_run_sync
-    execute_module_run_sync(db, run, provider)
-    return run.id
-
+# ---------- 统一入口门面（SDD A-03 签名兼容） ----------
 
 def _canary_bucket(run_id: str) -> int:
     """E-2.3：run_id → 0-99 稳定桶（md5 取模，跨进程一致）。"""
     import hashlib
     return int(hashlib.md5(run_id.encode()).hexdigest(), 16) % 100
 
+def _run_native_agent(db: Session, agent: Agent, run_input: dict, trigger: str,
+                      version_id: str | None, provider_id: str | None, enqueue: bool,
+                      agent_chain: list[str]) -> str:
+    """Agent 一次性运行（Module 与 custom 共用，P0-B 09-10）：
+    显式环境解析 Release → Run 业务链 → 统一入口进 AgentScope（fresh Session）。
+
+    P0-04/P0-07：运行只认发布快照，环境显式——
+    - 显式 version_id：取包含该版本的 active Release 所在环境（显式版本=显式选择）；
+    - 否则 prod（产品执行）；灰度 Release 按 run_id 稳定桶选择。
+    enqueue/provider_id 为历史签名参数仅保兼容：执行总是内联同步进统一入口，
+    Release 不再绑定 Provider。
+    输出契约：Module Agent 用 Module outputSchema；custom Agent 用平台 content
+    契约（{"content": string}）。Run=平台执行事实；agentscope_session_id=真实
+    Session（上下文与事件载体），不伪造。
+    """
+    from .models import AgentVersion, Release
+    if agent.id in agent_chain:
+        raise RunError(f"检测到 Agent 递归调用：{agent.id}")
+    run_id = new_id()
+    if version_id:
+        ver = db.get(AgentVersion, version_id)
+        if not ver or ver.agent_id != agent.id:
+            raise RunError(f"version {version_id} not found for agent {agent.id}")
+        chosen = (db.query(Release)
+                  .filter(Release.agent_id == agent.id,
+                          Release.agent_version_id == ver.id,
+                          Release.status == "active")
+                  .order_by(Release.canary_percent.asc(), Release.created_at.desc())
+                  .first())
+        if chosen is None:
+            raise RunError("NO_RELEASED_VERSION：该版本无 active Release，运行只认发布快照")
+        environment = chosen.environment
+    else:
+        environment = "prod"
+        releases = (db.query(Release)
+                    .filter_by(agent_id=agent.id, environment="prod", status="active")
+                    .all())
+        if not releases:
+            raise RunError(
+                "NO_RELEASED_VERSION：该 Agent 无 active prod Release，"
+                "请先发布（禁止跨环境静默降级）")
+        stable = next((r for r in releases if not (r.canary_percent or 0)), None)
+        canary = next((r for r in releases if (r.canary_percent or 0) > 0), None)
+        chosen = (canary
+                  if (canary and _canary_bucket(run_id) < (canary.canary_percent or 0))
+                  else stable)
+        if chosen is None:
+            raise RunError("NO_RELEASED_VERSION：prod 仅有灰度 Release 且本 run 未命中灰度桶，"
+                           "请发布稳定版")
+    ver = db.get(AgentVersion, chosen.agent_version_id)
+    if not ver:
+        raise RunError("NO_RELEASED_VERSION：发布版本记录丢失，请重新发布")
+    run = Run(id=run_id, agent_id=agent.id, trigger=trigger, input=run_input or {},
+              agent_version_id=ver.id, definition_source="version")
+    db.add(run)
+    db.commit()
+    emit(db, run.id, "agent_started",
+         payload={"agentId": agent.id, "module": agent.module_key,
+                  "moduleVersion": agent.module_version,
+                  "agentVersion": ver.version_no,
+                  "environment": environment, "releaseId": chosen.id})
+    # AgentScope 换底（任务书 §五-C）：Module Agent 执行经统一入口进入
+    # AgentScope Session（结构化输出用 Module outputSchema）；Run 仅作为
+    # 业务链记录（TaskRun/QualityResult 关联），执行事实在 Session。
+    from . import agent_execution as ex
+    from .agent_modules import registry as module_registry
+
+    schema = {"type": "object", "properties": {"content": {"type": "string"}},
+              "required": ["content"]}
+    if agent.module_key:
+        try:
+            schema = module_registry.get(agent.module_key, agent.module_version).output_schema
+        except Exception:  # noqa: BLE001 —— schema 缺失回落 content 契约
+            pass
+    try:
+        index, result = ex.run_structured(
+            db,
+            "platform-run",
+            agent,
+            json.dumps(run_input or {}, ensure_ascii=False)[:6000],
+            schema,
+            trigger_kind="manual" if trigger in ("manual", "test") else trigger,
+            environment=environment,
+            timeout_seconds=600,
+        )
+    except Exception as exc:  # noqa: BLE001
+        run.status = "failed"
+        run.error = {"message": repr(exc)}
+        db.commit()
+        emit(db, run.id, "agent_failed", payload={"error": repr(exc)})
+        return run.id
+    run.status = "succeeded"
+    run.output = result.get("structured_output") or {"content": result.get("text", "")}
+    run.agentscope_session_id = index.session_id  # P0-07 语义适配层
+    db.commit()
+    # R3-4 业务结算（Schema 二次校验/CallRecord/QualityResult 链）——中立模块
+    from types import SimpleNamespace
+
+    from .run_settlement import settle_module_result
+    settle_module_result(db, run, SimpleNamespace(trace=[], output=run.output))
+    emit(db, run.id, "agent_completed",
+         payload={"sessionId": index.session_id,
+                  "outputKeys": sorted((run.output or {}).keys())})
+    return run.id
+
 
 def run_agent(db: Session, agent: Agent, run_input: dict, trigger: str = "agent",
               agent_chain: list[str] | None = None, call_chain_wf: list[str] | None = None,
               enqueue: bool = True, version_id: str | None = None,
               provider_id: str | None = None) -> str:
-    """返回 run_id。enqueue=True 时创建 Run 后立即返回，由 worker 执行；
-    嵌套调用（成员 Agent/子工作流）必须 enqueue=False 保持顺序。
-    SDD B-03 运行认版本：version_id 显式指定；schedule/api 默认沙箱已发布版本。
-    R-Archive：旧三类 Agent 在入口统一拒绝，不产生 Run（SDD 10 §8.1）。
-    R2：Module Agent 走 Runtime Provider 分派（Release 绑定解析 Provider）。"""
+    """返回 run_id。P0-07/P0-B：Agent 执行唯一生产路径 = AgentScope 统一入口。
+
+    Module Agent 与 custom Agent 同走 _run_native_agent（Release 解析 → Run
+    业务链 → ex.run_structured，fresh Session）。旧三类（autonomous/dialogue/
+    expert-group）被 R-Archive 封存门拦截；归档 Agent 拒绝执行（AGENT_ARCHIVED）。
+    enqueue/call_chain_wf/provider_id 为历史签名参数，仅保 API 兼容。
+    """
     assert_agent_executable(agent)
-    if getattr(agent, "module_key", None):
-        return _run_module_agent(db, agent, run_input, trigger, version_id,
-                                 provider_id, enqueue, agent_chain or [])
-    from .models import AgentVersion, JobQueue
-    chain = list(agent_chain or [])
-    if agent.id in chain:
-        raise RunError(f"检测到 Agent 递归调用：{agent.id}")
-    run_id = new_id()
-    ver: AgentVersion | None = None
-    canary_hit = False
-    if version_id:
-        ver = db.get(AgentVersion, version_id)
-        if not ver or ver.agent_id != agent.id:
-            raise RunError(f"version {version_id} not found for agent {agent.id}")
-    elif trigger in ("schedule", "api"):
-        vid = agent.sandbox_version_id or agent.prod_version_id
-        if not vid:
-            raise RunError("NO_RELEASED_VERSION：该 Agent 尚未发布，请先发布到沙箱或线上")
-        # E-2.3 灰度：同环境存在灰度 release 时，按 run_id 稳定哈希落桶选 canary/稳定
-        env = "sandbox" if agent.sandbox_version_id else "prod"
-        canary = next((r for r in db.query(Release)
-                       .filter_by(agent_id=agent.id, environment=env, status="active").all()
-                       if (r.canary_percent or 0) > 0), None)
-        if canary and _canary_bucket(run_id) < (canary.canary_percent or 0):
-            cv = db.get(AgentVersion, canary.agent_version_id)
-            if cv:
-                ver, canary_hit = cv, True
-        if ver is None:
-            ver = db.get(AgentVersion, vid)
-            if not ver:
-                raise RunError("NO_RELEASED_VERSION：发布版本记录丢失，请重新发布")
-    run = Run(id=run_id, agent_id=agent.id, workflow_id=agent.workflow_id, trigger=trigger, input=run_input or {},
-              agent_version_id=ver.id if ver else None,
-              definition_source="version" if ver else "draft")
-    db.add(run)
-    db.commit()
-    emit(db, run.id, "agent_started", payload={"agentId": agent.id, "type": agent.type,
-                                               "agentVersion": ver.version_no if ver else None,
-                                               **({"canary": True} if canary_hit else {})})
-    if agent.type != "autonomous" and not agent.workflow_id and not ver:
-        run.status = "failed"
-        run.error = {"message": "该 Agent 未绑定工作流"}
-        run.ended_at = datetime.now(timezone.utc)
-        db.commit()
-        return run.id
-    if enqueue:
-        db.add(JobQueue(type="agent-execution", payload={"run_id": run.id}))
-        db.commit()
-        return run.id
-    _execute_agent_inline(db, agent, run, run_input or {}, chain, call_chain_wf)
-    return run.id
-
-
-def _execute_agent_inline(db: Session, agent: Agent, run: Run, run_input: dict,
-                          chain: list[str], call_chain_wf: list[str] | None) -> None:
-    if run.started_at is None:  # E-3.4：Agent 运行此前从不记开始时间（时间轴/首 token 失真）
-        run.started_at = datetime.now(timezone.utc)
-        db.commit()
-    if agent.type == "autonomous":
-        if run.agent_version_id:
-            from types import SimpleNamespace
-
-            from .models import AgentVersion
-            av = db.get(AgentVersion, run.agent_version_id)
-            # 版本快照即配置（02 §2.5）：definition 顶层即 autonomous 配置键
-            cfg = {**(av.definition or {}), "__common": av.common_config or {}}
-            proxy = SimpleNamespace(id=agent.id, type=agent.type, workflow_id=agent.workflow_id, config=cfg)
-            _autonomous_loop(db, proxy, run, run_input, chain)
-        else:
-            _autonomous_loop(db, agent, run, run_input, chain)
-        return
-    wf_chain = list(call_chain_wf or []) + [f"agent:{x}" for x in chain] + [f"agent:{agent.id}"]
-    execute_run(run.id, call_chain=wf_chain)
-
-
-def execute_agent_job(run_id: str) -> None:
-    """worker 侧执行入口（SDD A-03）：顶层入队的 agent 运行在此执行。"""
-    db = SessionLocal()
-    try:
-        run = db.get(Run, run_id)
-        if not run or run.status not in ("queued",):
-            return
-        agent = db.get(Agent, run.agent_id)
-        if not agent:
-            run.status = "failed"
-            run.error = {"message": "agent not found"}
-            db.commit()
-            return
-        # R-Archive 防呆：分派表已解除注册，此入口仅兜底历史残留任务
-        if is_legacy_agent(agent):
-            run.status = "failed"
-            run.error = {"code": LEGACY_ARCHIVED_CODE, "message": LEGACY_ARCHIVED_MESSAGE}
-            run.ended_at = datetime.now(timezone.utc)
-            db.commit()
-            emit(db, run.id, "agent_failed", payload={"error": LEGACY_ARCHIVED_MESSAGE})
-            return
-        _execute_agent_inline(db, agent, run, run.input or {}, [], None)
-    except Exception as exc:  # noqa: BLE001
-        db.rollback()
-        run = db.get(Run, run_id)
-        if run and run.status not in ("succeeded", "failed"):
-            run.status = "failed"
-            run.error = {"message": str(exc)}
-            run.ended_at = datetime.now(timezone.utc)
-            db.commit()
-            emit(db, run_id, "agent_failed", payload={"error": str(exc)})
-    finally:
-        db.close()
+    if bool(getattr(agent, "archived", False)):
+        raise RunError(
+            f"AGENT_ARCHIVED：Agent「{agent.name}」已归档并退出产品运行面，"
+            "仅支持历史查询（P0-A 09-10）"
+        )
+    return _run_native_agent(db, agent, run_input, trigger, version_id,
+                             provider_id, enqueue, agent_chain or [])

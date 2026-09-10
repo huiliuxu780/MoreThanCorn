@@ -160,8 +160,11 @@ def test_no_migration_and_fk_unchanged():
     tables = set(insp.get_table_names())
     assert "analysis_task" in tables and "analysis_task_version" in tables
     assert "task_run" in tables and "run" in tables
-    # 本轮不新增 Task 表 / automation 表
-    assert not any(t == "task" or t.startswith("automation") for t in tables)
+    # 2026-09-09 换底：新增 automation_* / agentflow_* / data_source* / agent_session_index
+    # 控制面与索引表（任务书 §四/§五）；旧 Task 域表与 FK 保持不变
+    assert {"automation_definition", "automation_trigger", "automation_trigger_log",
+            "agent_session_index", "agentflow_definition", "agentflow_run",
+            "data_source", "data_source_event"} <= tables
     tr_refs = {fk["referred_table"] for fk in insp.get_foreign_keys("task_run")}
     assert {"analysis_task", "analysis_task_version"} <= tr_refs
     v_refs = {fk["referred_table"] for fk in insp.get_foreign_keys("analysis_task_version")}

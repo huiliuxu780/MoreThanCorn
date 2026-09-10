@@ -6,6 +6,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Internal service token — shared between platform (8120) and AgentScope runtime (8301)
+# so the runtime can call platform internal endpoints (session-manifest, tools, workflows).
+export MTC_INTERNAL_TOKEN="${MTC_INTERNAL_TOKEN:-dev-internal-token-mtc-local}"
+
 port_free() { ! lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
 
 if port_free 8120; then
@@ -15,18 +19,13 @@ else
   echo "backend 8120 已在运行，跳过"
 fi
 
+# AgentScope 换底（2026-09-09）：8301 为真实 AgentScope 2.0.8 运行时（原生宿主），
+# fake provider 已删除（任务书 §八 禁 mock 证明集成）。
 if port_free 8301; then
-  (cd server && FAKE_PROVIDER_KIND=agentscope nohup .venv/bin/python -m uvicorn --app-dir tools fake_provider_8301:app --host 127.0.0.1 --port 8301 > /tmp/devstack-8301.log 2>&1 & echo $! > /tmp/devstack-8301.pid)
-  echo "fake AgentScope provider -> 8301（固定输出，非真判断）"
+  (cd runtimes/agentscope && nohup .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8301 > /tmp/devstack-8301.log 2>&1 & echo $! > /tmp/devstack-8301.pid)
+  echo "AgentScope 2.0.8 runtime -> 8301（真实运行时，官方 Storage 共库 wf_dev）"
 else
   echo "8301 已在运行，跳过"
-fi
-
-if port_free 8302; then
-  (cd server && FAKE_PROVIDER_KIND=deepseek-harness nohup .venv/bin/python -m uvicorn --app-dir tools fake_provider_8301:app --host 127.0.0.1 --port 8302 > /tmp/devstack-8302.log 2>&1 & echo $! > /tmp/devstack-8302.pid)
-  echo "fake DSH provider -> 8302（固定输出，非真判断）"
-else
-  echo "8302 已在运行，跳过"
 fi
 
 if port_free 5173; then

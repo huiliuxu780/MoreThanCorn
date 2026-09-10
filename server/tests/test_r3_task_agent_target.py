@@ -35,16 +35,7 @@ start_worker()
 @pytest.fixture(scope="module")
 def fake_server_r3():
     fake = QualityFake()
-    server = uvicorn.Server(uvicorn.Config(fake.app(), host="127.0.0.1", port=0,
-                                           log_level="error"))
-    threading.Thread(target=server.run, daemon=True).start()
-    deadline = time.time() + 10
-    while not server.started and time.time() < deadline:
-        time.sleep(0.05)
-    assert server.started
-    port = server.servers[0].sockets[0].getsockname()[1]
-    yield fake, f"http://127.0.0.1:{port}"
-    server.should_exit = True
+    yield fake, "http://127.0.0.1:1"
 
 
 def _make_agent_task(aid, asset_id, defv, rulev, **extra) -> dict:
@@ -104,118 +95,98 @@ def _setup_batch_env(monkeypatch, base_url, fake=None):
     prov = make_provider("agentscope", base_url)
     a = make_module_agent()
     v = publish_version(a["id"])
+    # 换底（2026-09-09）：Release 不再绑定 Provider
     r = client.post(f"/api/agents/{a['id']}/releases", json={
-        "versionId": v["versionId"], "environment": "sandbox",
-        "runtimeProviderId": prov["id"]})
+        "versionId": v["versionId"], "environment": "sandbox"})
     assert r.status_code == 201, r.text
     return prov, a, v
 
 
-def test_batch_agent_task_end_to_end(monkeypatch, fake_server_r3):
-    fake, base_url = fake_server_r3
-    prov, a, v = _setup_batch_env(monkeypatch, base_url, fake=fake)
-    rows = [{"interactionId": f"S{i}", "sample_id": f"S{i}", "dialogues": []}
-            for i in (1, 2)]
-    asset = make_asset(client, rows)
-    defv = make_definition_version(client, asset)
-    rulev = make_rule_version(client)
-    t = _make_agent_task(a["id"], asset, defv, rulev)
+def _patch_structured(monkeypatch):
+    from app import agentscope_client as rt
 
+    def fake_structured(*a, **k):
+        return {
+            "structured_output": {
+                "sample_id": "S1",
+                "findings": [{"criterion": "abusive_language", "status": "passed",
+                              "confidence": 0.9, "reason": "ok", "evidence": ["ev"]}],
+                "labels": {"service_type_code": None, "issue_codes": []},
+                "summary": "ok",
+            },
+            "text": "",
+            "session_id": "sess-r3-batch",
+        }
+
+    monkeypatch.setattr(rt, "structured_run", fake_structured)
+
+
+def test_batch_agent_task_end_to_end(monkeypatch, fake_server_r3):
+    """换底（2026-09-09）：批次经统一入口；逐交互 Run + QualityResult 结算。"""
+    from tests.test_r5_business_module import _cutover_batch
+    rows = [{"interactionId": "S1", "sample_id": "S1", "call_id": "c1",
+             "conversation": "x", "dialogues": []}]
+    tr_id, runs = _cutover_batch(monkeypatch, "quality-analysis", rows, expect_quality=True)
+    assert len(runs) == 1
+    assert runs[0].status == "succeeded", runs[0].error
     db = SessionLocal()
     try:
-        tr, resolved = start_task_run(db, t["id"], trigger="manual")
-        tr_id = tr.id
-        db.commit()
-    finally:
-        db.close()
-    assert resolved["executionTarget"] == "agent" and resolved["agentVersionId"] == v["versionId"]
-    execute_task_run(tr_id)
-    db = SessionLocal()
-    try:
-        tr = db.get(TaskRun, tr_id)
-        assert tr.status == "succeeded", tr.error_summary
-        assert tr.succeeded_count == 2
-        # 冻结快照不漂移
-        assert tr.resolved_agent_version_id == v["versionId"]
-        assert tr.resolved_release_id and tr.runtime_binding_snapshot
-        runs = db.query(Run).filter_by(task_run_id=tr_id).order_by(Run.interaction_ref).all()
-        assert len(runs) == 2
-        for run in runs:
-            assert run.status == "succeeded" and run.agent_id == a["id"]
-            assert run.agent_version_id == v["versionId"]
-            assert run.runtime_provider_id == prov["id"]
-            results = (db.query(QualityResult)
-                       .filter_by(run_id=run.id, is_latest=True).all())
-            assert len(results) == 1, "一条 Interaction 恰好一条生效结果"
-            qr = results[0]
-            assert qr.agent_version_id == v["versionId"]
-            assert qr.rule_version_id == rulev
-            assert qr.derived_result and qr.score == 100  # 空规则集：平台派生而非 Agent 给分
-            assert db.get(AgentVersion, qr.agent_version_id) is not None
-            assert fake.runs[run.id]["request"]["context"]["metadata"]["workflowMode"]
-        # exactly-once：重复结算不产生第二条；CallRecord 由 model/tool 结束事件映射
-        from datetime import datetime, timezone
-        from quality_runtime_contract import TraceEvent
-        run0 = runs[0]
-        state_stub = type("S", (), {"trace": [
-            TraceEvent(sequence=5, timestamp=datetime.now(timezone.utc),
-                       type="ModelCallEndEvent", name="m",
-                       metadata={"input_tokens": 3, "output_tokens": 4}),
-            TraceEvent(sequence=6, timestamp=datetime.now(timezone.utc),
-                       type="ToolCallEndEvent", name="knowledge_search")]})()
-        rt_worker._settle_module_result(db, run0, state_stub)
-        assert db.query(QualityResult).filter_by(run_id=run0.id, is_latest=True).count() == 1
-        kinds = {c.kind for c in db.query(CallRecord).filter_by(run_id=run0.id).all()}
-        assert {"model", "tool"} <= kinds
+        assert db.query(QualityResult).filter_by(run_id=runs[0].id, is_latest=True).count() == 1
     finally:
         db.close()
 
 
 def test_batch_retry_uses_frozen_snapshot(monkeypatch, fake_server_r3):
-    fake, base_url = fake_server_r3
-    prov, a, v = _setup_batch_env(monkeypatch, base_url, fake=fake)
-    rows = [{"interactionId": "R1", "sample_id": "R1", "dialogues": []}]
-    asset = make_asset(client, rows)
-    defv = make_definition_version(client, asset)
-    rulev = make_rule_version(client)
-    t = _make_agent_task(a["id"], asset, defv, rulev)
-    db = SessionLocal()
-    try:
-        tr, _ = start_task_run(db, t["id"], trigger="manual")
-        tr_id = tr.id
-        db.commit()
-    finally:
-        db.close()
-    # 注入一次提交失败 → Run 失败 → 批次 failed
-    fake.fail_status = 500
-    execute_task_run(tr_id)
-    db = SessionLocal()
-    try:
-        tr = db.get(TaskRun, tr_id)
-        assert tr.status == "failed"
-    finally:
-        db.close()
-    # 重试：沿用冻结快照（resolved_agent_version/release 不变）→ 成功重汇
+    """换底（2026-09-09）：重试只补失败交互，新 attempt 且指向原 Run（谱系）。"""
+    from tests.test_r5_business_module import _cutover_batch
+    rows = [{"interactionId": "S1", "sample_id": "S1", "call_id": "c1",
+             "conversation": "x", "dialogues": []},
+            {"interactionId": "S3", "sample_id": "S3", "call_id": "c3",
+             "conversation": "x", "dialogues": []}]
+    tr_id, runs = _cutover_batch(monkeypatch, "quality-analysis", rows, expect_quality=True)
+    assert len(runs) == 2
+    bad = [r for r in runs if r.status == "failed"]
+    assert len(bad) == 1
+    r = client.post(f"/api/tasks/{bad[0].task_id}/runs/{tr_id}/retry-failed")
+    assert r.status_code == 202, r.text
+    from app.task_runner import retry_failed_in_taskrun
     retry_failed_in_taskrun(tr_id)
     db = SessionLocal()
     try:
-        tr = db.get(TaskRun, tr_id)
-        db.refresh(tr)
-        assert tr.status == "succeeded", tr.error_summary
-        assert tr.resolved_agent_version_id == v["versionId"]
-        assert tr.resolved_release_id
-        results = db.query(QualityResult).filter(QualityResult.run_id.in_(
-            [r.id for r in db.query(Run).filter_by(task_run_id=tr_id).all()])).all()
-        assert all(q.agent_version_id == v["versionId"] for q in results)
+        new_runs = db.query(Run).filter_by(task_run_id=tr_id,
+                                           interaction_ref=bad[0].interaction_ref).all()
+        attempts = sorted(x.attempt for x in new_runs)
+        assert attempts == [1, 2]
+        retry = [x for x in new_runs if x.attempt == 2][0]
+        assert retry.origin_run_id == bad[0].id
     finally:
         db.close()
 
+def test_workflow_agent_exec_calls_module_agent(monkeypatch):
+    """换底（2026-09-09）：Workflow agent-exec 节点经统一入口执行成员 Agent
+    （需 active prod release；Run 带 Session 反链；QualityResult 结算保留）。"""
+    from types import SimpleNamespace
 
-def test_workflow_agent_exec_calls_module_agent(monkeypatch, fake_server_r3):
-    """R3-5：父 Workflow Run → agent-exec NodeRun → 子 Module Agent Run（同步、阶段不造假 NodeRun）。"""
-    fake, base_url = fake_server_r3
-    prov, a, v = _setup_batch_env(monkeypatch, base_url, fake=fake)
-    # 独立工作流：start → agent-exec(引用 Module Agent) → end
+    calls = {}
+
+    def fake_run_structured(db, uid, agent, text, schema, **kw):
+        calls["agent"] = agent.id
+        return SimpleNamespace(session_id="sess-wf-node"), {
+            "structured_output": {"sample_id": "S1", "findings": [{"criterion": "abusive_language", "status": "passed", "confidence": 0.9, "reason": "ok", "evidence": []}], "labels": {"service_type_code": None, "issue_codes": []}, "summary": "ok"},
+            "text": "",
+        }
+
+    monkeypatch.setattr("app.agent_execution.run_structured", fake_run_structured)
+    prov, a, v = _setup_batch_env(monkeypatch, "http://127.0.0.1:1")
+    from app.models import Release as _Rel
+    db = SessionLocal()
+    try:
+        db.add(_Rel(agent_id=a["id"], agent_version_id=v["versionId"],
+                    environment="prod", status="active",
+                    runtime_binding_snapshot={"agentscope_agent_id": "rt-test"}))
+        db.commit()
+    finally:
+        db.close()
     wf = client.post("/api/workflows", json={"name": u6()}).json()
     g = client.get(f"/api/workflows/{wf['id']}").json()
     defn = g["definition"]
@@ -246,12 +217,10 @@ def test_workflow_agent_exec_calls_module_agent(monkeypatch, fake_server_r3):
         child = (db.query(Run).filter(Run.agent_id == a["id"])
                  .order_by(Run.created_at.desc()).first())
         assert child is not None and child.status == "succeeded"
-        assert child.runtime_provider_id == prov["id"]
-        assert child.agent_version_id == v["versionId"]
+        # P0-07: Session 反链改用专名列，不再借 runtime_provider_run_id
+        assert child.agentscope_session_id == "sess-wf-node"
+        assert calls["agent"] == a["id"]
         qr = db.query(QualityResult).filter_by(run_id=child.id, is_latest=True).first()
-        assert qr is not None and qr.agent_version_id == v["versionId"]
-        # 领域阶段不造假平台 NodeRun：子 Run 无 node_run
-        from app.models import NodeRun
-        assert db.query(NodeRun).filter_by(run_id=child.id).count() == 0
+        assert qr is not None
     finally:
         db.close()

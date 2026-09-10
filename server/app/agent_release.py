@@ -16,6 +16,11 @@ NAME_MAX_LEN = 20
 
 # ---------- 快照组装 ----------
 
+# P1-01：清单唯一定义在 agent_execution.resources_manifest（含 workflow_ids/
+# agentflow_ids 回调白名单键），此处仅重导出保持旧 import 路径兼容。
+from .agent_execution import resources_manifest  # noqa: E402,F401
+
+
 def build_definition(db: Session, agent: Agent) -> dict:
     """按类型组装 definition 快照（02 §2.5）。dialogue/group 的图拷贝完整草稿定义。
 
@@ -36,15 +41,21 @@ def build_definition(db: Session, agent: Agent) -> dict:
             "outputSchema": mod.output_schema_ref,
             "executionPolicy": mod.policies["execution"],
             "securityPolicy": mod.policies["security"],
+            "resources": resources_manifest(cfg),
         }
-    if agent.type == "autonomous":
+    if agent.type in ("autonomous", "custom"):
+        # custom = 自定义角色 Agent（agent-create 产物，09-07 重构）：与
+        # autonomous 同构的 rolePrompt 定义。此前 custom 落入 else 分支被要求
+        # 绑定 Workflow → 永远无法发布（任务书 §六.8 "永远跑不起来的 Agent"）。
         return {
             "rolePrompt": cfg.get("rolePrompt", ""),
             "modelRef": cfg.get("modelRef") or {},
             "skills": list(cfg.get("skills") or []),
             "tools": list(cfg.get("tools") or []),
             "workflows": list(cfg.get("workflows") or []),
+            "agentflows": list(cfg.get("agentflows") or []),
             "knowledges": list(cfg.get("knowledges") or []),
+            "resources": resources_manifest(cfg),
         }
     wf = db.get(Workflow, agent.workflow_id) if agent.workflow_id else None
     if not wf:
@@ -142,7 +153,7 @@ def freeze_dependencies(db: Session, agent: Agent, definition: dict) -> dict:
         items.append({"type": "OUTPUT_SCHEMA", "ref": mod.output_schema_ref["id"],
                       "version": mod.version, "status": "FROZEN"})
         return {"items": items}
-    if agent.type == "autonomous":
+    if agent.type in ("autonomous", "custom"):
         for tref in definition.get("tools", []):
             items.append(_resolve_tool(db, tref))
         for wref in definition.get("workflows", []):
@@ -209,7 +220,7 @@ def validate_publish(db: Session, agent: Agent, definition: dict, common: dict) 
             if not m or not m.enabled:
                 issues.append({"code": "MODEL_INVALID", "message": f"模型 {model_key} 不存在或已停用",
                                "path": "config.modelRef"})
-    elif agent.type == "autonomous":
+    elif agent.type in ("autonomous", "custom"):
         if not (definition.get("rolePrompt") or "").strip():
             issues.append({"code": "PROMPT_REQUIRED", "message": "角色能力描述（Prompt）不能为空", "path": "definition.rolePrompt"})
         mid = (definition.get("modelRef") or {}).get("modelId")
@@ -247,3 +258,75 @@ def validate_publish(db: Session, agent: Agent, definition: dict, common: dict) 
 
 def next_version_no(db: Session, agent_id: str) -> int:
     return db.query(AgentVersion).filter_by(agent_id=agent_id).count() + 1
+
+
+# ---------- 统一发布事务（P0-06：并发安全 + 物化原子性） ----------
+
+class ConcurrentPublishError(RuntimeError):
+    """两次并发发布竞争同一 (agent, environment)；数据库唯一索引拒绝了第二条。"""
+
+
+def publish_release(
+    db, *, actor: str, agent: Agent, version, environment: str, canary_percent: int = 0
+):
+    """THE one publish path (agents.py 与 as_agents.py 共用，P1-01 去重).
+
+    事务保证：
+    1. Agent 行锁串行化同一 Agent 的并发发布；
+    2. 数据库部分唯一索引（g051）硬保证同 (agent, environment) 至多一条
+       active 稳定 Release + 至多一条 active 灰度 Release；
+    3. materialize_release 在事务内执行——物化失败（如
+       KNOWLEDGE_PROVIDER_UNAVAILABLE / MODEL_UNFROZEN）整体回滚，
+       不会留下半激活的 Release。
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    from . import agent_execution as ex
+    from .models import Release
+
+    if environment not in ("sandbox", "prod"):
+        raise ValueError("environment 必须是 sandbox|prod")
+    db.query(Agent).filter_by(id=agent.id).with_for_update().first()
+    actives = (
+        db.query(Release)
+        .filter_by(agent_id=agent.id, environment=environment, status="active")
+        .all()
+    )
+    if canary_percent > 0:
+        # 灰度部署：只替换已有灰度，稳定版保持（SDD E-2.3）
+        for r in actives:
+            if r.canary_percent:
+                r.status = "rolled_back"
+    else:
+        # 全量部署：同环境全部 active（含灰度）→ rolled_back
+        for r in actives:
+            r.status = "rolled_back"
+    rel = Release(
+        agent_id=agent.id,
+        agent_version_id=version.id,
+        environment=environment,
+        canary_percent=canary_percent,
+        created_by=actor,
+        runtime_binding_snapshot={},
+    )
+    db.add(rel)
+    if canary_percent == 0:
+        if environment == "sandbox":
+            agent.sandbox_version_id = version.id
+        else:
+            agent.prod_version_id = version.id
+    agent.status = "published"
+    try:
+        db.flush()
+        ex.materialize_release(db, actor, rel)  # 成功路径内部 commit
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ConcurrentPublishError(
+            f"并发发布被数据库唯一约束拒绝（agent={agent.id}, env={environment}）：{exc}"
+        ) from exc
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(rel)
+    return rel

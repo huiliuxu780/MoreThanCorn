@@ -1102,7 +1102,9 @@ class Ctx:
         from .models import CallRecord
         from .pii import mask_structure
         # 09 P2-07：CallRecord 的 request/response 按数据分类脱敏后再截断落库
-        self.db.add(CallRecord(node_run_id=self.current_node_run_id, kind=kind, target_id=str(target),
+        # g040 收紧后 run_id NOT NULL（canonical schema）：调用记录必归属 Run
+        self.db.add(CallRecord(run_id=self.run.id,
+                               node_run_id=self.current_node_run_id, kind=kind, target_id=str(target),
                                request={"summary": str(mask_structure(req))[:1000]},
                                response={"summary": str(mask_structure(resp))[:1000]},
                                status="success", latency_ms=latency, token_usage=tokens or {}))
@@ -1609,21 +1611,22 @@ def _dispatch_job(jtype: str, payload: dict) -> None:
     elif jtype == "task-run-retry":  # 09 P1-06：失败交互重试 + 重汇父批次
         from .task_runner import retry_failed_in_taskrun
         retry_failed_in_taskrun(payload["task_run_id"])
-    elif jtype == "agent-runtime-submit":  # SDD 10 R1-4：提交 Runtime Provider（幂等）
-        from .runtime_providers.worker import submit_agent_runtime
-        submit_agent_runtime(payload)
-    elif jtype == "agent-runtime-poll":  # SDD 10 R1-4：单次轮询 tick（run_at 退避，不占 worker）
-        from .runtime_providers.worker import poll_agent_runtime
-        poll_agent_runtime(payload)
-    elif jtype == "agent-runtime-cancel":  # SDD 10 R1-4：请求 Provider 取消并按实际终态收尾
-        from .runtime_providers.worker import cancel_agent_runtime
-        cancel_agent_runtime(payload)
+    elif jtype in (
+        "agent-runtime-submit",
+        "agent-runtime-poll",
+        "agent-runtime-cancel",
+    ):
+        # AgentScope 换底（2026-09-09 任务书 §六）：Runtime Provider 网关退出
+        # 运行主链；历史积压作业置失败终态，不执行、不重试。
+        from .legacy_agent_archive import fail_stale_agent_execution
+        fail_stale_agent_execution(payload.get("run_id"))
     elif jtype == "result-delivery":  # SDD 13 §7.2：目标表投递 Outbox worker
         from .delivery import process_result_delivery
         process_result_delivery(payload)
-    elif jtype == "chat-turn":  # 09-07 Agent 能力重构：对话 turn 流式执行
-        from .agent_chat import execute_chat_turn
-        execute_chat_turn(payload)
+    elif jtype == "chat-turn":
+        # AgentScope 换底：自建对话执行退出主链（对话走 /api/v2 代理运行时）。
+        from .legacy_agent_archive import fail_stale_agent_execution
+        fail_stale_agent_execution(payload.get("run_id"))
     else:
         execute_run(payload["run_id"], resume=payload.get("resume"))
 

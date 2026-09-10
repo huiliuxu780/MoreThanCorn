@@ -31,6 +31,8 @@ sys.path.insert(0, str(REPO / "server"))
 MARK = "DEMO002B"
 LEGACY_MARK = "DEMO-002B"
 ALLOWED_SEED_DATABASES = {"wf_dev", "wf_fixture"}
+# §三 收敛：wf_fixture 不再长期保留——由测试模块运行时创建、用完即 DROP
+# （tests/test_mtc002b_r2.py::_wf_fixture_db）；白名单仍禁 env 覆盖。
 
 
 def _gate() -> tuple[str, str]:

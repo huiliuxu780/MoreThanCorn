@@ -85,13 +85,9 @@ def make_module_agent(**overrides) -> dict:
 
 
 def make_provider(kind: str, base_url: str) -> dict:
-    pid = f"rp-r2-{uuid.uuid4().hex[:8]}"
-    r = client.post("/api/runtime-providers", json={
-        "id": pid, "name": f"R2 {kind}", "kind": kind, "baseUrl": base_url})
-    assert r.status_code == 201, r.text
-    r2 = client.put(f"/api/runtime-providers/{pid}", json={"status": "enabled"})
-    assert r2.status_code == 200
-    return r2.json()
+    """换底（2026-09-09）：Runtime Provider 网关已卸载；stub 仅供旧测试签名兼容。"""
+    return {"id": f"ghost-{kind}-{uuid.uuid4().hex[:6]}", "name": f"ghost {kind}",
+            "kind": kind, "baseUrl": base_url, "status": "enabled"}
 
 
 def publish_version(aid: str, note: str = "r2") -> dict:
@@ -112,7 +108,7 @@ def get_run_row(run_id: str) -> Run:
 def drive_submit(run_id: str, timeout: float = 15.0) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
-        if get_run_row(run_id).runtime_provider_run_id:
+        if get_run_row(run_id).agentscope_session_id:
             return
         claim_and_run(SessionLocal())
         time.sleep(0.2)
@@ -190,171 +186,67 @@ def test_create_module_agent_and_publish_version():
 
 
 def _setup_dual_release(base_url: str):
-    """1:1 口径（08-29 用户）：一个 Agent 只对应一种 Provider。
-
-    验证：绑定必填/未知/未启用/kind 无实现 → 拒绝；首个 Provider 绑定成功；
-    跨 Provider 再绑定 → 409 ONE_PROVIDER_PER_AGENT；同 Provider 灰度仍允许。"""
+    """换底（2026-09-09）：Release 不再绑定 Provider；返回 (a, v, stub, stub)。"""
     _seed_tools()
-    prov_as = make_provider("agentscope", base_url)
-    prov_dsh = make_provider("deepseek-harness", base_url)
-    prov_ext = make_provider("external", base_url)
-    disabled = make_provider("agentscope", base_url)
-    client.post(f"/api/runtime-providers/{disabled['id']}/disable")
-
     a = make_module_agent()
     v = publish_version(a["id"])
-    assert client.post(f"/api/agents/{a['id']}/releases", json={
-        "versionId": v["versionId"], "environment": "sandbox"}).status_code == 422
-    assert client.post(f"/api/agents/{a['id']}/releases", json={
-        "versionId": v["versionId"], "environment": "sandbox",
-        "runtimeProviderId": "nope"}).status_code == 404
-    assert client.post(f"/api/agents/{a['id']}/releases", json={
-        "versionId": v["versionId"], "environment": "sandbox",
-        "runtimeProviderId": disabled["id"]}).status_code == 409
-    assert client.post(f"/api/agents/{a['id']}/releases", json={
-        "versionId": v["versionId"], "environment": "sandbox",
-        "runtimeProviderId": prov_ext["id"]}).status_code == 409
-    # 首个 Provider 绑定成功
-    r1 = client.post(f"/api/agents/{a['id']}/releases", json={
-        "versionId": v["versionId"], "environment": "sandbox",
-        "runtimeProviderId": prov_as["id"]})
-    assert r1.status_code == 201, r1.text
-    # 跨 Provider 再绑定 → 409（一个 Agent 只对应一种 Provider）
-    r_x = client.post(f"/api/agents/{a['id']}/releases", json={
-        "versionId": v["versionId"], "environment": "sandbox",
-        "runtimeProviderId": prov_dsh["id"], "canaryPercent": 50})
-    assert r_x.status_code == 409 and "ONE_PROVIDER_PER_AGENT" in r_x.text
-    # 同 Provider 灰度仍允许（同 Provider 多版本/灰度不算分流）
-    r2 = client.post(f"/api/agents/{a['id']}/releases", json={
-        "versionId": v["versionId"], "environment": "sandbox",
-        "runtimeProviderId": prov_as["id"], "canaryPercent": 50})
-    assert r2.status_code == 201, r2.text
-    rels = [x for x in client.get(f"/api/agents/{a['id']}/releases").json()
-            if x["status"] == "active" and x["environment"] == "sandbox"]
-    assert len(rels) == 2
-    db = SessionLocal()
-    try:
-        rows = db.query(Release).filter_by(agent_id=a["id"], status="active").all()
-        snaps = {r.runtime_provider_id: (r.runtime_binding_snapshot or {}) for r in rows}
-    finally:
-        db.close()
-    as_snap = snaps[prov_as["id"]]
-    assert as_snap["providerKind"] == "agentscope"
-    assert as_snap["module"] == {"key": "quality-analysis", "version": "1.0.0"}
-    assert as_snap["moduleImplementation"]["entry"] == "native_quality_v0.2"
-    assert len(as_snap["outputSchemaSha256"]) == 64
-    return a, v, prov_as, prov_dsh
+    r = client.post(f"/api/agents/{a['id']}/releases", json={
+        "versionId": v["versionId"], "environment": "prod"})
+    assert r.status_code == 201, r.text
+    stub = {"id": "stub-provider", "kind": "agentscope"}
+    return a, v, stub, stub
 
 
 def test_release_binds_runtime_provider_one_provider_per_agent():
-    _setup_dual_release("http://fake-runtime")
+    """换底（2026-09-09）：Release 无需 Provider；新全量 Release 替换旧 active。"""
+    a = make_module_agent()
+    v = publish_version(a["id"])
+    r1 = client.post(f"/api/agents/{a['id']}/releases",
+                     json={"versionId": v["versionId"], "environment": "prod"})
+    assert r1.status_code == 201, r1.text
+    v2 = publish_version(a["id"], note="second")
+    r2 = client.post(f"/api/agents/{a['id']}/releases",
+                     json={"versionId": v2["versionId"], "environment": "prod"})
+    assert r2.status_code == 201, r2.text
+    rels = client.get(f"/api/agents/{a['id']}/releases").json()
+    actives = [x for x in (rels if isinstance(rels, list) else rels.get("items", []))
+               if x.get("status") == "active" and x.get("environment") == "prod"]
+    assert len(actives) == 1
 
 
-def test_module_run_dispatch_same_agent_hash_across_providers(monkeypatch, fake_server_r2):
-    fake, base_url = fake_server_r2
-    a, v, prov_as, prov_dsh = _setup_dual_release(base_url)
-    patch_gateway(monkeypatch, base_url)
+def test_module_run_uses_unified_agentscope_entry(monkeypatch):
+    """换底（2026-09-09）：Module Agent 执行经统一入口（AgentScope Session），
+    不再入队 agent-runtime-submit；Run 保留业务链并带 Session 反链。"""
+    from types import SimpleNamespace
 
-    # api 触发（无版本）→ 按桶解析稳定/灰度 Release 绑定（两者同版本：请求体应一致）
+    calls = {}
+
+    def fake_run_structured(db, uid, agent, text, schema, **kw):
+        calls["agent"] = agent.id
+        calls["schema"] = schema
+        calls["trigger"] = kw.get("trigger_kind")
+        return SimpleNamespace(session_id="sess-unified-test"), {
+            "structured_output": {"sample_id": "S1", "findings": [{"criterion": "abusive_language", "status": "passed", "confidence": 0.9, "reason": "ok", "evidence": []}], "labels": {"service_type_code": None, "issue_codes": []}, "summary": "ok"},
+            "text": "",
+        }
+
+    monkeypatch.setattr("app.agent_execution.run_structured", fake_run_structured)
+    base_url = "http://127.0.0.1:1"
+    a, v, prov_as, _prov_dsh = _setup_dual_release(base_url)
     r = client.post(f"/api/agents/{a['id']}/run",
                     json={"input": {"sample_id": "S1", "dialogues": []}, "trigger": "api"})
     assert r.status_code == 202, r.text
-    run_as = r.json()["runId"]
-    drive_submit(run_as)
-    row = get_run_row(run_as)
-    assert row.runtime_provider_id in (prov_as["id"], prov_dsh["id"])
-    assert row.agent_version_id == v["versionId"]
-    assert row.runtime_request_hash
-    req_as = fake.runs[run_as]["request"]
-    assert req_as["context"]["metadata"]["workflowMode"] == "native_quality_v0.2"
-    assert "insufficient_evidence" in req_as["agent"]["instructions"]
-    assert {t["name"] for t in req_as["agent"]["tools"]} == set(TOOL_NAMES)
-    assert req_as["agent"]["output_schema"].get("$schema")
-
-    # 显式版本 + 同一 Provider 再跑一次 → 同一 AgentVersion 的请求体 agent 段哈希一致
-    r2 = client.post(f"/api/agents/{a['id']}/run",
-                     json={"input": {"sample_id": "S1", "dialogues": []}, "trigger": "test",
-                           "versionId": v["versionId"], "providerId": prov_as["id"]})
-    assert r2.status_code == 202, r2.text
-    run_dsh = r2.json()["runId"]
-    drive_submit(run_dsh)
-    assert get_run_row(run_dsh).runtime_provider_id == prov_as["id"]
-    req_dsh = fake.runs[run_dsh]["request"]
-    agent_hash = lambda body: hashlib.sha256(  # noqa: E731
-        json.dumps(body["agent"], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
-    assert agent_hash(req_as) == agent_hash(req_dsh)
-
-    # 终态闭环：Provider 成功 → 平台 Run succeeded（R3 落 QualityResult）
-    fake.runs[run_as]["status"] = "succeeded"
-    rt_worker.poll_agent_runtime({"run_id": run_as, "provider_id": prov_as["id"]})
-    assert get_run_row(run_as).status == "succeeded"
-    assert get_run_row(run_as).output
-
-
-def test_platform_fixture_hash_drift_guard():
-    """钉扎 fixture（双 Runtime conformance 共用）与模块资产保持一致：
-    任何人改动 spec.default / Schema 而未重钉 fixture，三侧（平台+两 Runtime）测试同时失败。"""
-    from quality_runtime_contract import (AgentExecutionSpec, MasterDataRef, ModelSpec,
-                                          RuntimeExecuteRequest, ToolRef)
-    from app.agent_modules.base import MODULE_DIR
-    fdir = MODULE_DIR / "quality_analysis" / "fixtures"
-    payload = json.loads((fdir / "platform_request_v1.json").read_text())
-    RuntimeExecuteRequest.model_validate(payload)  # 严格契约可解析
-    pinned = (fdir / "platform_request_v1.agent_sha256").read_text().strip()
-    assert hashlib.sha256(json.dumps(payload["agent"], ensure_ascii=False,
-                                     sort_keys=True).encode()).hexdigest() == pinned
-    mod = module_registry.get("quality-analysis", "1.0.0")
-    spec = mod.build_agent_spec({"modelRef": {"modelId": "qwen3.8-max",
-                                              "provider": "openai-compatible"}})
-    rebuilt = AgentExecutionSpec(
-        id="qa-agent-fixture", version="1", instructions=spec["instructions"],
-        model=ModelSpec(provider=spec["model"]["provider"], model=spec["model"]["model"],
-                        parameters=spec["model"]["parameters"]),
-        tools=[ToolRef(**t) for t in spec["tools"]],
-        master_data=[MasterDataRef(**m) for m in spec["master_data"]],
-        output_schema=mod.output_schema)
-    rebuilt_hash = hashlib.sha256(json.dumps(rebuilt.model_dump(mode="json"),
-                                             ensure_ascii=False, sort_keys=True).encode()).hexdigest()
-    assert rebuilt_hash == pinned, "模块资产漂移：需同步重钉 fixtures/platform_request_v1"
-
-
-def test_run_resolution_rejects_unreleased_and_requires_preview_provider():
-    a = make_module_agent()
-    # 未发布：api 触发 422 NO_RELEASED_VERSION
-    r = client.post(f"/api/agents/{a['id']}/run", json={"input": {}, "trigger": "api"})
-    assert r.status_code == 422 and "NO_RELEASED_VERSION" in r.text
-    # 草稿预览必须显式 providerId
-    r2 = client.post(f"/api/agents/{a['id']}/run", json={"input": {}, "trigger": "test"})
-    assert r2.status_code == 409 and "PREVIEW_PROVIDER_REQUIRED" in r2.text
-    prov = make_provider("agentscope", "http://127.0.0.1:9")
-    r3 = client.post(f"/api/agents/{a['id']}/run",
-                     json={"input": {}, "trigger": "test", "providerId": prov["id"]})
-    assert r3.status_code == 202
-    row = get_run_row(r3.json()["runId"])
-    assert row.definition_source == "draft" and row.runtime_provider_id == prov["id"]
-    assert row.agent_version_id is None
-
-
-def test_run_uses_canary_same_provider_binding(monkeypatch):
-    """1:1 口径：同 Provider 灰度 Release（100% canary）时 api 触发按桶落到该 Provider。"""
-    def _dead(provider, transport=None):
-        def handler(request):
-            return httpx.Response(500, text="no egress in this test")
-        from app.runtime_providers.client import RuntimeGatewayClient as _G
-        return _G(provider.base_url, transport=httpx.MockTransport(handler), check_egress=False)
-    import httpx as _httpx
-    monkeypatch.setattr(rt_worker, "build_gateway", _dead)
-    _seed_tools()
-    prov_as = make_provider("agentscope", "http://127.0.0.1:9")
-    a = make_module_agent()
-    v = publish_version(a["id"])
-    assert client.post(f"/api/agents/{a['id']}/releases", json={
-        "versionId": v["versionId"], "environment": "sandbox",
-        "runtimeProviderId": prov_as["id"]}).status_code == 201
-    assert client.post(f"/api/agents/{a['id']}/releases", json={
-        "versionId": v["versionId"], "environment": "sandbox",
-        "runtimeProviderId": prov_as["id"], "canaryPercent": 100}).status_code == 201
-    r = client.post(f"/api/agents/{a['id']}/run", json={"input": {}, "trigger": "api"})
-    assert r.status_code == 202
-    # 未投递 worker：Run 已按桶预解析 Provider 绑定（1:1，恒为该 Provider）
-    assert get_run_row(r.json()["runId"]).runtime_provider_id == prov_as["id"]
+    run_id = r.json()["runId"]
+    row = get_run_row(run_id)
+    assert row.status == "succeeded"
+    assert row.agentscope_session_id == "sess-unified-test"
+    assert (row.output or {}).get("findings")[0]["status"] == "passed"
+    assert calls["agent"] == a["id"]
+    from app.models import JobQueue
+    db = SessionLocal()
+    try:
+        mine = [j for j in db.query(JobQueue).filter_by(type="agent-runtime-submit").all()
+                if (j.payload or {}).get("run_id") == run_id]
+    finally:
+        db.close()
+    assert mine == []

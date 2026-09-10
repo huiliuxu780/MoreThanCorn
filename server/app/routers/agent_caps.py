@@ -97,32 +97,16 @@ def list_agent_skills(aid: str, db: Session = Depends(get_db)):
 @router.post("/{aid}/skills", status_code=201)
 def install_skill(aid: str, payload: dict, db: Session = Depends(get_db),
                   _user: dict = Depends(require_operator)):
-    a = _agent_or_404(db, aid)
-    _assert_writable(a)
-    sid = payload.get("skillId", "")
-    if not db.get(SkillResource, sid):
-        raise HTTPException(404, "skill not found")
-    exists = db.execute(select(AgentSkill).where(AgentSkill.agent_id == aid,
-                                                 AgentSkill.skill_id == sid)).scalars().first()
-    if exists:
-        raise HTTPException(409, {"code": "SKILL_INSTALLED", "message": "该 Skill 已安装"})
-    db.add(AgentSkill(agent_id=aid, skill_id=sid))
-    db.commit()
-    return {"id": sid}
+    """换底（2026-09-09）退役：Skill 实际挂载归 AgentScope Workspace（Session 级）。
+    平台 agent_skill 关联表停写；请经 /api/v2/agents/{aid}/sessions/{sid}/skills/upload 装配。"""
+    raise HTTPException(410, "Skill 挂载已迁移至 Session Workspace：请使用 /api/v2/agents/{agentId}/sessions/{sessionId}/skills/upload")
 
 
 @router.delete("/{aid}/skills/{sid}")
 def uninstall_skill(aid: str, sid: str, db: Session = Depends(get_db),
                     _user: dict = Depends(require_operator)):
-    a = _agent_or_404(db, aid)
-    _assert_writable(a)
-    link = db.execute(select(AgentSkill).where(AgentSkill.agent_id == aid,
-                                               AgentSkill.skill_id == sid)).scalars().first()
-    if not link:
-        raise HTTPException(404, "未安装该 Skill")
-    db.delete(link)
-    db.commit()
-    return {"id": sid}
+    """换底退役：卸载请在 Session Workspace 内操作（/workspace/skill/{name}）。"""
+    raise HTTPException(410, "Skill 卸载已迁移至 Session Workspace")
 
 
 # ---------- 全局 Skill 挂载关系（资源壳消费） ----------
@@ -226,26 +210,16 @@ def chat_sessions(aid: str, db: Session = Depends(get_db)):
 @router.post("/{aid}/chat/sessions", status_code=201)
 def create_chat_session(aid: str, payload: dict | None = None, db: Session = Depends(get_db),
                         _user: dict = Depends(require_operator)):
-    a = _agent_or_404(db, aid)
-    _assert_writable(a)
-    s = AgentChatSession(agent_id=aid, title=(payload or {}).get("title", "") or "")
-    db.add(s)
-    db.commit()
-    return {"id": s.id, "title": s.title}
+    """审核 P0-3 退役：自建对话 Session 不再是生产入口；对话归 AgentScope Session
+    （/api/v2/agents/{aid}/sessions）。"""
+    raise HTTPException(410, "自建对话已退役：请使用 /api/v2/agents/{agentId}/sessions（AgentScope Session）")
 
 
 @router.get("/{aid}/chat/sessions/{sid}/messages")
 def chat_messages(aid: str, sid: str, db: Session = Depends(get_db)):
-    _agent_or_404(db, aid)
-    s = db.get(AgentChatSession, sid)
-    if not s or s.agent_id != aid:
-        raise HTTPException(404, "session not found")
-    rows = db.execute(select(AgentChatMessage).where(AgentChatMessage.session_id == sid)
-                      .order_by(AgentChatMessage.created_at)).scalars().all()
-    return {"items": [{"id": m.id, "role": m.role, "content": m.content,
-                       "attachments": m.attachments or [], "modelId": m.model_id,
-                       "runId": m.run_id, "status": m.status,
-                       "createdAt": m.created_at.isoformat()} for m in rows]}
+    """审核 P0-3 退役：旧消息读取关闭；历史消息归 AgentScope 存储
+    （/api/v2/agents/{aid}/sessions/{sid}/messages）。"""
+    raise HTTPException(410, "自建对话消息已退役：请使用 /api/v2/agents/{agentId}/sessions/{sessionId}/messages")
 
 
 @router.post("/{aid}/chat/sessions/{sid}/turns", status_code=202)
@@ -259,8 +233,12 @@ def chat_turn(aid: str, sid: str, payload: dict, db: Session = Depends(get_db),
     text = (payload.get("text") or "").strip()
     if not text:
         raise HTTPException(422, "消息不能为空")
-    return start_chat_turn(db, a, s, text, payload.get("attachments") or [],
-                           payload.get("modelId") or "")
+    from ..agent_chat import LegacyChatRetiredError
+    try:
+        return start_chat_turn(db, a, s, text, payload.get("attachments") or [],
+                               payload.get("modelId") or "")
+    except LegacyChatRetiredError as exc:
+        raise HTTPException(410, str(exc))
 
 
 # ---------- 附件 ----------
@@ -348,17 +326,10 @@ async def upload_skill_file(file: UploadFile, agentIds: str = Form(""),
                           status="ready", category=category)
     db.add(skill)
     db.flush()
-    mounted = []
-    for aid in [x for x in agentIds.split(",") if x.strip()]:
-        a = db.get(Agent, aid.strip())
-        if not a or a.archived:
-            continue
-        exists = db.execute(select(AgentSkill).where(AgentSkill.agent_id == a.id,
-                                                     AgentSkill.skill_id == skill.id)).scalars().first()
-        if not exists:
-            db.add(AgentSkill(agent_id=a.id, skill_id=skill.id))
-            mounted.append(a.name)
+    # 换底（2026-09-09）：上传只入平台 Skill 库；实际挂载归 AgentScope Workspace
     db.commit()
     dto = to_dto(db, "skill", skill)
-    dto["mounted"] = mounted
+    dto["mounted"] = []
+    dto["mount_hint"] = ("挂载请在对话 Session 的 Workspace 内完成："
+                         "/api/v2/agents/{agentId}/sessions/{sessionId}/skills/upload")
     return dto

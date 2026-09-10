@@ -1,5 +1,6 @@
-/** Module Agent 发布对话框（SDD 10 R2/R4）：生成不可变版本 → 部署环境 → Runtime Provider 绑定 → 灰度。
- *  Provider 选择在 Release 时绑定（不写入 AgentSpec）。Provider 必选且 enabled。 */
+/** Module Agent 发布对话框（2026-09-10 换底返工）：生成不可变版本 → 部署环境 → 灰度。
+ *  P0-07：Release 不再绑定 Runtime Provider——发布即物化 AgentScope AgentRecord
+ *  （模型/参数/资源清单冻结自版本快照）；旧 Provider 选择交互移除。 */
 import { useEffect, useState } from "react"
 
 import { agentApi } from "@/services/wf-api"
@@ -12,8 +13,6 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 
-interface ProviderOpt { id: string; name: string; kind: string; status: string; healthStatus: string | null }
-
 export function ModulePublishDialog({ agentId, open, onClose, onPublished }: {
   agentId: string; open: boolean; onClose: () => void; onPublished?: () => void
 }) {
@@ -22,20 +21,13 @@ export function ModulePublishDialog({ agentId, open, onClose, onPublished }: {
   const [pending, setPending] = useState<{ versionId: string; versionNo: number; artifactHash: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [env, setEnv] = useState<"sandbox" | "prod">("sandbox")
-  const [providerId, setProviderId] = useState("")
-  const [providers, setProviders] = useState<ProviderOpt[]>([])
   const [canary, setCanary] = useState(0)
 
   useEffect(() => {
     if (open) {
       setNote(""); setIssues([]); setPending(null); setCanary(0)
-      agentApi.providers().then((r) => {
-        const enabled = r.items.filter((p) => p.status === "enabled")
-        setProviders(enabled)
-        if (!providerId && enabled[0]) setProviderId(enabled[0].id)
-      }).catch(() => undefined)
     }
-  }, [open])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open])
 
   const makeVersion = async () => {
     setBusy(true); setIssues([])
@@ -53,10 +45,9 @@ export function ModulePublishDialog({ agentId, open, onClose, onPublished }: {
 
   const doRelease = async () => {
     if (!pending) return
-    if (!providerId) { toast.error("请选择 Runtime Provider"); return }
     setBusy(true)
     try {
-      await agentApi.release(agentId, pending.versionId, env, canary, providerId)
+      await agentApi.release(agentId, pending.versionId, env, canary)
       toast.success(`V${pending.versionNo} 已发布到${env === "sandbox" ? "沙箱" : "线上"}${canary > 0 ? `（灰度 ${canary}%）` : ""}`)
       onPublished?.(); onClose()
     } catch (e) {
@@ -69,7 +60,7 @@ export function ModulePublishDialog({ agentId, open, onClose, onPublished }: {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
-        <DialogHeader><DialogTitle>{pending ? "部署版本（绑定 Runtime Provider）" : "发布新版本"}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{pending ? "部署版本（物化 AgentScope 运行时）" : "发布新版本"}</DialogTitle></DialogHeader>
         {!pending ? (
           <div className="space-y-3">
             <div>
@@ -109,18 +100,6 @@ export function ModulePublishDialog({ agentId, open, onClose, onPublished }: {
                   onChange={(e) => setCanary(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} />
               </div>
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Runtime Provider（必选）</Label>
-              <Select value={providerId} onValueChange={setProviderId}>
-                <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {providers.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}（{p.kind} · {p.healthStatus ?? "未探测"}）</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-[11px] text-muted-foreground">同一版本可另发一条灰度 Release 绑定另一 Provider（如 DSH 实验通道）。</p>
-            </div>
           </div>
         )}
         <DialogFooter>
@@ -130,7 +109,7 @@ export function ModulePublishDialog({ agentId, open, onClose, onPublished }: {
               {busy ? "校验中…" : "生成版本"}
             </Button>
           ) : (
-            <Button className="bg-black text-white hover:bg-neutral-800" disabled={busy || !providerId} onClick={doRelease}>
+            <Button className="bg-black text-white hover:bg-neutral-800" disabled={busy} onClick={doRelease}>
               {canary > 0 ? `灰度发布 ${canary}%` : "发布"}
             </Button>
           )}

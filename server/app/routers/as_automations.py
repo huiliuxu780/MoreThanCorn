@@ -1,0 +1,1052 @@
+"""Automations v2 (QoderWake-verified semantics) + data ingress layer."""
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import secrets as pysecrets
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from pydantic import BaseModel
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from .. import agent_execution as ex
+from .. import agentscope_client as rt
+from ..agentflow_executor import resolve_agentflow_release
+from ..agentflow_executor import start_run as start_agentflow_run
+from ..auth import require_role
+from ..db import get_db
+from ..models import (
+    Agent,
+    AgentFlowDefinition,
+    AgentFlowRelease,
+    AutomationApiKey,
+    AutomationDefinition,
+    AutomationTrigger,
+    AutomationTriggerLog,
+    DataSource,
+    DataSourceEvent,
+    EventDelivery,
+    Release,
+    Workflow,
+)
+from ..runner import create_run as create_workflow_run
+
+router = APIRouter(prefix="/api/v2/automations", tags=["automations-v2"])
+
+MAX_TRIGGERS = 5
+
+
+class AutomationBody(BaseModel):
+    name: str
+    description: str = ""
+    target_kind: str
+    agent_id: str | None = None
+    workflow_id: str | None = None
+    workflow_version_id: str | None = None
+    agentflow_id: str | None = None
+    agentflow_release_id: str | None = None
+    session_policy: str = "fresh"
+    prompt_template: str = ""
+    input_mapping: dict[str, Any] = {}
+    max_runs: int | None = None
+    deadline: str | None = None
+    triggers: list[dict[str, Any]] = []
+
+
+class TriggerBody(BaseModel):
+    kind: str
+    config: dict[str, Any] = {}
+
+
+def _auto(db: Session, aid: str) -> AutomationDefinition:
+    auto = db.get(AutomationDefinition, aid)
+    if auto is None:
+        raise HTTPException(404, "automation not found")
+    return auto
+
+
+# ---------- P0-G（09-10）：执行者真实校验 + 展示 ----------
+
+_TARGET_KINDS = ("agent", "workflow", "agentflow")
+
+
+def _executor_info(db: Session, target_kind: str, agent_id: str | None,
+                   workflow_id: str | None, agentflow_id: str | None) -> dict:
+    """真实执行者展示信息（名称/类型/头像）；目标缺失如实标记 missing。"""
+    tid = agent_id or workflow_id or agentflow_id
+    row = None
+    if tid:
+        model = {"agent": Agent, "workflow": Workflow,
+                 "agentflow": AgentFlowDefinition}.get(target_kind)
+        row = db.get(model, tid) if model else None
+    return {
+        "kind": target_kind,
+        "id": tid,
+        "name": getattr(row, "name", None),
+        "avatar": getattr(row, "avatar", None) or getattr(row, "icon", None),
+        "missing": row is None,
+    }
+
+
+def _validate_target(db: Session, uid: str, body: "AutomationBody") -> None:
+    """保存阶段完整目标校验（任务书 §九）：类型/存在性/归档/可执行发布态。
+
+    无效目标在保存时即返回明确 422，不允许保存后触发时才失败。
+    """
+    if body.target_kind not in _TARGET_KINDS:
+        raise HTTPException(422, detail={
+            "code": "BAD_TARGET_KIND",
+            "message": f"target_kind 必须是 {'|'.join(_TARGET_KINDS)}"})
+    if body.target_kind == "agent":
+        if not body.agent_id:
+            raise HTTPException(422, detail={
+                "code": "TARGET_REQUIRED", "message": "执行者为 Agent 时必须选择 Agent"})
+        agent = db.get(Agent, body.agent_id)
+        if agent is None:
+            raise HTTPException(422, detail={
+                "code": "TARGET_NOT_FOUND", "message": f"Agent {body.agent_id} 不存在"})
+        if bool(agent.archived):
+            raise HTTPException(422, detail={
+                "code": "TARGET_ARCHIVED",
+                "message": f"Agent「{agent.name}」已归档，退出产品运行面，不可作为执行者"})
+        rel = (db.query(Release)
+               .filter_by(agent_id=agent.id, environment="prod", status="active")
+               .first())
+        if rel is None:
+            raise HTTPException(422, detail={
+                "code": "TARGET_NOT_EXECUTABLE",
+                "message": f"Agent「{agent.name}」无 active prod Release，"
+                           "请先发布生产版本再选为执行者（禁止跨环境静默降级）"})
+    elif body.target_kind == "workflow":
+        if not body.workflow_id:
+            raise HTTPException(422, detail={
+                "code": "TARGET_REQUIRED", "message": "执行者为 Workflow 时必须选择 Workflow"})
+        wf = db.get(Workflow, body.workflow_id)
+        if wf is None:
+            raise HTTPException(422, detail={
+                "code": "TARGET_NOT_FOUND",
+                "message": f"Workflow {body.workflow_id} 不存在"})
+        # 审计返工（09-10 二轮）：与前端选择器同一语义——仅 published 可作为执行者；
+        # 定时执行入口 create_run(trigger=schedule) 同样要求已发布版本（NO_PUBLISHED_VERSION），
+        # 不得允许保存一个注定触发失败的草稿目标。显式固定已发布版本时放行。
+        if wf.status != "published" and not body.workflow_version_id:
+            raise HTTPException(422, detail={
+                "code": "TARGET_NOT_EXECUTABLE",
+                "message": f"Workflow「{wf.name}」未发布，请先发布再选为执行者"})
+        if body.workflow_version_id:
+            from ..models import WorkflowVersion
+            wv = db.get(WorkflowVersion, body.workflow_version_id)
+            if wv is None or wv.workflow_id != wf.id:
+                raise HTTPException(422, detail={
+                    "code": "TARGET_VERSION_MISMATCH",
+                    "message": "workflow_version_id 不属于该 Workflow"})
+    else:  # agentflow
+        if not body.agentflow_id and not body.agentflow_release_id:
+            raise HTTPException(422, detail={
+                "code": "TARGET_REQUIRED",
+                "message": "执行者为 AgentFlow 时必须选择 AgentFlow"})
+        # 审计返工 P0-1：先判存在性（NOT_FOUND），再判可执行性（NOT_EXECUTABLE），
+        # 与 Agent/Workflow 同一语义分层；resolver 对"无 active Release"抛 ValueError，
+        # 不得笼统归为 NOT_FOUND。
+        if body.agentflow_id:
+            flow = db.get(AgentFlowDefinition, body.agentflow_id)
+            if flow is None:
+                raise HTTPException(422, detail={
+                    "code": "TARGET_NOT_FOUND",
+                    "message": f"AgentFlow {body.agentflow_id} 不存在"})
+        try:
+            release = resolve_agentflow_release(
+                db, release_id=body.agentflow_release_id,
+                definition_id=body.agentflow_id)
+        except ValueError as exc:
+            code = "TARGET_NOT_EXECUTABLE" if body.agentflow_id else "TARGET_NOT_FOUND"
+            message = ("AgentFlow 无 active Release，请先发布再选为执行者"
+                       if body.agentflow_id else str(exc))
+            raise HTTPException(422, detail={"code": code, "message": message})
+        if release is None:
+            raise HTTPException(422, detail={
+                "code": "TARGET_NOT_EXECUTABLE",
+                "message": "AgentFlow 无 active Release，请先发布再选为执行者"})
+
+
+def _serialize(db: Session, auto: AutomationDefinition) -> dict:
+    triggers = db.query(AutomationTrigger).filter_by(automation_id=auto.id).all()
+    return {
+        "id": auto.id,
+        "name": auto.name,
+        "description": auto.description,
+        "target_kind": auto.target_kind,
+        "agent_id": auto.agent_id,
+        "workflow_id": auto.workflow_id,
+        "agentflow_id": auto.agentflow_id,
+        "agentflow_release_id": auto.agentflow_release_id,
+        "executor": _executor_info(db, auto.target_kind, auto.agent_id,
+                                   auto.workflow_id, auto.agentflow_id),
+        "enabled": auto.enabled,
+        "session_policy": auto.session_policy,
+        "prompt_template": auto.prompt_template,
+        "input_mapping": auto.input_mapping,
+        "max_runs": auto.max_runs,
+        "deadline": auto.deadline.isoformat() if auto.deadline else None,
+        "runtime_schedule_id": auto.runtime_schedule_id,
+        "last_auto_fire_at": auto.last_auto_fire_at.isoformat()
+        if auto.last_auto_fire_at
+        else None,
+        "auto_run_count": auto.auto_run_count,
+        "last_auto_status": auto.last_auto_status,
+        "triggers": [
+            {"id": t.id, "kind": t.kind, "config": t.config, "enabled": t.enabled}
+            for t in triggers
+        ],
+    }
+
+
+def _sync_schedule(db: Session, uid: str, auto: AutomationDefinition) -> None:
+    """Materialize/rebuild/tear down the AgentScope Schedule for agent targets.
+
+    P0-03: the Schedule is pinned to the Agent Release that was active prod at
+    sync time — model AND parameters come from that release's frozen snapshot
+    (``runtime_release_id`` records the pin).  Draft edits never drift an
+    existing Schedule.  Switch rule on republish: when the active prod Release
+    changes, the next sync (create/update/enable) DELETES the old Schedule and
+    recreates it from the new release snapshot; between syncs the old Schedule
+    keeps running its pinned release.
+    """
+    sched_triggers = [
+        t
+        for t in db.query(AutomationTrigger)
+        .filter_by(automation_id=auto.id, kind="schedule")
+        .all()
+        if t.enabled
+    ]
+    if auto.target_kind != "agent" or not auto.enabled or not sched_triggers:
+        if auto.runtime_schedule_id:
+            try:
+                rt.patch_schedule(uid, auto.runtime_schedule_id, enabled=False)
+            except rt.RuntimeError_:
+                pass
+        return
+    trig = sched_triggers[0]
+    cron = trig.config.get("cron", "0 9 * * *")
+    tz = trig.config.get("timezone", "Asia/Shanghai")
+    agent = db.get(Agent, auto.agent_id or "")
+    if agent is None:
+        raise HTTPException(422, "automation agent missing")
+    try:
+        runtime_id, release = ex.resolve_runtime_agent(
+            db, uid, agent, environment="prod"
+        )
+    except ValueError as exc:
+        # 保存后 Release 被回滚/下线：如实 422 引导重新发布，不裸 500
+        raise HTTPException(422, str(exc))
+    if auto.runtime_schedule_id and auto.runtime_release_id == release.id:
+        rt.patch_schedule(
+            uid,
+            auto.runtime_schedule_id,
+            enabled=True,
+            cron_expression=cron,
+            timezone=tz,
+        )
+        return
+    if auto.runtime_schedule_id:
+        # republished since the schedule was created → replace it so the
+        # schedule follows the new release snapshot (no model drift)
+        try:
+            rt.delete_schedule(uid, auto.runtime_schedule_id)
+        except rt.RuntimeError_:
+            pass
+        auto.runtime_schedule_id = None
+        auto.runtime_release_id = None
+    schedule_id = rt.create_schedule(
+        uid,
+        name=auto.name,
+        description=auto.prompt_template or auto.description or auto.name,
+        cron_expression=cron,
+        timezone=tz,
+        agent_id=runtime_id,
+        chat_model_config=ex.chat_model_config_for_release(db, uid, release),
+        stateful=auto.session_policy == "stateful",
+        ended_at=auto.deadline.isoformat() if auto.deadline else None,
+    )
+    auto.runtime_schedule_id = schedule_id
+    auto.runtime_release_id = release.id
+    db.commit()
+
+
+def dispatch(
+    db: Session,
+    uid: str,
+    auto: AutomationDefinition,
+    payload: dict[str, Any],
+    *,
+    source: str,
+    idempotency_key: str | None = None,
+    trigger_id: str | None = None,
+) -> AutomationTriggerLog:
+    # P0-5: atomic gate — check max_runs + deadline + enabled at the DB level
+    # so concurrent triggers cannot race past the limit.
+    gate = db.execute(
+        text("""
+            UPDATE automation_definition
+            SET auto_run_count = auto_run_count + 1,
+                last_auto_fire_at = NOW()
+            WHERE id = :aid
+              AND enabled = TRUE
+              AND (max_runs IS NULL OR auto_run_count < max_runs)
+              AND (deadline IS NULL OR deadline > NOW())
+            RETURNING auto_run_count, max_runs
+        """),
+        {"aid": auto.id},
+    ).first()
+    if gate is None:
+        # refresh to get current state for the error message
+        db.refresh(auto)
+        if not auto.enabled:
+            raise ValueError("automation disabled")
+        if auto.max_runs is not None and auto.auto_run_count >= auto.max_runs:
+            raise ValueError(f"max_runs ({auto.max_runs}) reached")
+        if auto.deadline and auto.deadline <= datetime.now(timezone.utc):
+            raise ValueError(f"deadline passed: {auto.deadline.isoformat()}")
+        raise ValueError("automation gating failed")
+    log = AutomationTriggerLog(
+        automation_id=auto.id,
+        trigger_id=trigger_id,
+        source=source,
+        idempotency_key=idempotency_key,
+        status="accepted",
+        payload_sha=hashlib.sha256(
+            json.dumps(payload, sort_keys=True).encode()
+        ).hexdigest(),
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    try:
+        prompt_text = ex.render_prompt(auto.prompt_template, payload)
+        if auto.target_kind == "agent":
+            agent = db.get(Agent, auto.agent_id or "")
+            if agent is None:
+                raise ValueError("agent missing")
+            policy = auto.session_policy
+            index = ex.start_session(
+                db,
+                uid,
+                agent,
+                trigger_kind="schedule" if source == "schedule" else source,
+                policy=policy,
+                conversation_key=payload.get("conversation_key"),
+                automation_id=auto.id,
+                trigger_log_id=log.id,
+            )
+            runtime_id = index.runtime_agent_id or ex.resolve_runtime_agent(
+                db, uid, agent, environment="prod"
+            )[0]
+            rt.chat_trigger(uid, runtime_id, index.session_id, prompt_text)
+            log.session_id = index.session_id
+        elif auto.target_kind == "workflow":
+            run = create_workflow_run(
+                db,
+                auto.workflow_id or "",
+                trigger="schedule" if source == "schedule" else "api",
+                run_input=payload,
+                pinned_version_id=auto.workflow_version_id,
+            )
+            log.workflow_run_id = run.id
+        else:
+            # P0-05: same shared resolver as manual runs and agent tools
+            try:
+                release = resolve_agentflow_release(
+                    db,
+                    release_id=auto.agentflow_release_id,
+                    definition_id=auto.agentflow_id,
+                )
+            except ValueError as exc:
+                raise ValueError(str(exc)) from exc
+            if release is None:
+                raise ValueError("agentflow release missing")
+            flow_run = start_agentflow_run(
+                db, uid, release, payload, trigger_kind=source, automation_id=auto.id
+            )
+            log.agentflow_run_id = flow_run.id
+        log.status = "running"
+    except Exception as exc:  # noqa: BLE001
+        log.status = "failed"
+        log.error = repr(exc)
+    db.commit()
+    return log
+
+
+_SORT_COLUMNS = {
+    "created_at": AutomationDefinition.created_at,
+    "updated_at": AutomationDefinition.updated_at,
+    "name": AutomationDefinition.name,
+    "last_auto_fire_at": AutomationDefinition.last_auto_fire_at,
+    "auto_run_count": AutomationDefinition.auto_run_count,
+}
+
+
+@router.get("")
+def list_automations(request: Request, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+    """列表（P0-G 09-10）：执行者/触发类型/状态筛选 + 排序 + 分页。
+
+    query: executor=<agent|workflow|agentflow>:<id>（或裸 id）、triggerKind=
+    schedule|api|event|mq|polling、status=enabled|disabled、keyword、
+    sort=created_at|name|last_auto_fire_at|auto_run_count、order=asc|desc、
+    page、pageSize。
+    """
+    qp = request.query_params
+    try:
+        page = max(1, int(qp.get("page", "1")))
+        page_size = min(100, max(1, int(qp.get("pageSize", qp.get("page_size", "20")))))
+    except ValueError:
+        raise HTTPException(422, "page/pageSize 必须是整数")
+    q = db.query(AutomationDefinition)
+    executor = (qp.get("executor") or "").strip()
+    if executor:
+        kind, _, eid = executor.partition(":")
+        if not eid:  # 裸 id：三列任一命中
+            eid = kind
+            q = q.filter(
+                (AutomationDefinition.agent_id == eid)
+                | (AutomationDefinition.workflow_id == eid)
+                | (AutomationDefinition.agentflow_id == eid))
+        elif kind == "agent":
+            q = q.filter(AutomationDefinition.agent_id == eid)
+        elif kind == "workflow":
+            q = q.filter(AutomationDefinition.workflow_id == eid)
+        elif kind == "agentflow":
+            q = q.filter(AutomationDefinition.agentflow_id == eid)
+        else:
+            raise HTTPException(422, "executor 前缀必须是 agent|workflow|agentflow")
+    trigger_kind = (qp.get("triggerKind") or qp.get("trigger_kind") or "").strip()
+    if trigger_kind:
+        sub = (db.query(AutomationTrigger.automation_id)
+               .filter(AutomationTrigger.kind == trigger_kind,
+                       AutomationTrigger.enabled.is_(True)))
+        q = q.filter(AutomationDefinition.id.in_(sub))
+    status = (qp.get("status") or "").strip()
+    if status == "enabled":
+        q = q.filter(AutomationDefinition.enabled.is_(True))
+    elif status == "disabled":
+        q = q.filter(AutomationDefinition.enabled.is_(False))
+    elif status:
+        raise HTTPException(422, "status 必须是 enabled|disabled")
+    keyword = (qp.get("keyword") or "").strip()
+    if keyword:
+        q = q.filter(AutomationDefinition.name.ilike(f"%{keyword}%"))
+    sort = (qp.get("sort") or "created_at").strip()
+    if sort not in _SORT_COLUMNS:
+        raise HTTPException(422, f"sort 必须是 {'|'.join(_SORT_COLUMNS)}")
+    col = _SORT_COLUMNS[sort]
+    order = (qp.get("order") or "desc").strip().lower()
+    if order not in ("asc", "desc"):
+        raise HTTPException(422, "order 必须是 asc|desc")
+    q = q.order_by(col.asc() if order == "asc" else col.desc())
+    total = q.count()
+    rows = q.offset((page - 1) * page_size).limit(page_size).all()
+    return {"items": [_serialize(db, r) for r in rows],
+            "total": total, "page": page, "pageSize": page_size}
+
+
+@router.post("")
+def create_automation(body: AutomationBody, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+    if len(body.triggers) > MAX_TRIGGERS:
+        raise HTTPException(422, f"at most {MAX_TRIGGERS} triggers")
+    # P0-G（09-10）：保存阶段完整目标校验——无效目标 422，不落库
+    _validate_target(db, user.get("username", "dev"), body)
+    auto = AutomationDefinition(
+        name=body.name,
+        description=body.description,
+        target_kind=body.target_kind,
+        agent_id=body.agent_id,
+        workflow_id=body.workflow_id,
+        workflow_version_id=body.workflow_version_id,
+        agentflow_id=body.agentflow_id,
+        agentflow_release_id=body.agentflow_release_id,
+        session_policy=body.session_policy,
+        prompt_template=body.prompt_template,
+        input_mapping=body.input_mapping,
+        max_runs=body.max_runs,
+        deadline=datetime.fromisoformat(body.deadline) if body.deadline else None,
+        created_by=user.get("username", "dev"),
+    )
+    db.add(auto)
+    db.commit()
+    db.refresh(auto)
+    for t in body.triggers:
+        db.add(AutomationTrigger(automation_id=auto.id, kind=t["kind"], config=t.get("config", {})))
+    db.commit()
+    _sync_schedule(db, user.get("username", "dev"), auto)
+    return _serialize(db, auto)
+
+
+@router.get("/{aid}")
+def get_automation(aid: str, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+    return _serialize(db, _auto(db, aid))
+
+
+@router.put("/{aid}")
+def update_automation(aid: str, body: AutomationBody, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+    auto = _auto(db, aid)
+    if (body.target_kind, body.agent_id, body.workflow_id, body.agentflow_id) != (
+        auto.target_kind,
+        auto.agent_id,
+        auto.workflow_id,
+        auto.agentflow_id,
+    ):
+        raise HTTPException(422, "执行方式与执行对象保存后不可修改，请新建自动任务")
+    auto.name = body.name
+    auto.description = body.description
+    auto.session_policy = body.session_policy
+    auto.prompt_template = body.prompt_template
+    auto.input_mapping = body.input_mapping
+    auto.max_runs = body.max_runs
+    auto.deadline = datetime.fromisoformat(body.deadline) if body.deadline else None
+    db.query(AutomationTrigger).filter_by(automation_id=aid).delete()
+    for t in body.triggers[:MAX_TRIGGERS]:
+        db.add(AutomationTrigger(automation_id=aid, kind=t["kind"], config=t.get("config", {})))
+    db.commit()
+    _sync_schedule(db, user.get("username", "dev"), auto)
+    return _serialize(db, auto)
+
+
+@router.post("/{aid}/triggers")
+def add_trigger(aid: str, body: TriggerBody, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+    auto = _auto(db, aid)
+    count = db.query(AutomationTrigger).filter_by(automation_id=aid).count()
+    if count >= MAX_TRIGGERS:
+        raise HTTPException(422, f"at most {MAX_TRIGGERS} triggers")
+    db.add(AutomationTrigger(automation_id=aid, kind=body.kind, config=body.config))
+    db.commit()
+    _sync_schedule(db, user.get("username", "dev"), auto)
+    return _serialize(db, auto)
+
+
+@router.patch("/{aid}/enabled")
+def set_enabled(aid: str, enabled: bool, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+    auto = _auto(db, aid)
+    auto.enabled = enabled
+    db.commit()
+    _sync_schedule(db, user.get("username", "dev"), auto)
+    return _serialize(db, auto)
+
+
+@router.post("/{aid}/run-now")
+def run_now(aid: str, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+    """Manual debug run: real execution, excluded from auto statistics."""
+    auto = _auto(db, aid)
+    uid = user.get("username", "dev")
+    body = {}
+    log = dispatch(db, uid, auto, body, source="manual")
+    return {"trigger_log_id": log.id, "status": log.status, "session_id": log.session_id}
+
+
+@router.get("/{aid}/history")
+def history(aid: str, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+    auto = _auto(db, aid)
+    uid = user.get("username", "dev")
+    logs = (
+        db.query(AutomationTriggerLog)
+        .filter_by(automation_id=aid)
+        .order_by(AutomationTriggerLog.created_at.desc())
+        .limit(100)
+        .all()
+    )
+    items = []
+    for log in logs:
+        items.append(
+            {
+                "id": log.id,
+                "source": log.source,
+                "status": log.status,
+                "session_id": log.session_id,
+                "workflow_run_id": log.workflow_run_id,
+                "agentflow_run_id": log.agentflow_run_id,
+                "error": log.error,
+                "created_at": log.created_at.isoformat(),
+            }
+        )
+    # reconcile running logs against the runtime session truth
+    running = [l for l in logs if l.status == "running" and l.session_id]
+    if running and auto.agent_id:
+        from .. import agent_execution as ex
+
+        agent = db.get(Agent, auto.agent_id)
+        try:
+            runtime_id, _ = ex.resolve_runtime_agent(
+                db, uid, agent, environment="prod"
+            )
+            triples = [
+                {"user_id": uid, "agent_id": runtime_id, "session_id": l.session_id}
+                for l in running
+            ]
+            states = {s["session_id"]: s for s in rt.sessions_status(uid, triples)}
+            for l in running:
+                st = states.get(l.session_id or "", {})
+                if st.get("status") == "running":
+                    continue
+                fr = st.get("finished_reason")
+                if fr in ("error", "interrupted", "cancelled"):
+                    l.status = "failed"
+                elif fr:
+                    l.status = "completed"
+            db.commit()
+            for item in items:
+                live = next((l for l in running if l.id == item["id"]), None)
+                if live:
+                    item["status"] = live.status
+        except Exception:  # noqa: BLE001 —— reconcile 失败不阻断历史读取
+            pass
+
+    # auto statistics come from the runtime schedule sessions only
+    if auto.runtime_schedule_id:
+        sessions = rt.schedule_sessions(uid, auto.runtime_schedule_id)
+        auto.auto_run_count = len(sessions)
+        if sessions:
+            latest = max(sessions, key=lambda s: s.get("created_at", ""))
+            auto.last_auto_fire_at = datetime.fromisoformat(
+                latest.get("created_at").replace("Z", "+00:00")
+            ) if latest.get("created_at") else None
+        # GAP-2：max_runs 为准入门——达限后停用运行时 Schedule（反应式准入）
+        if auto.max_runs is not None and auto.auto_run_count >= auto.max_runs:
+            try:
+                rt.patch_schedule(uid, auto.runtime_schedule_id, enabled=False)
+            except rt.RuntimeError_:
+                pass
+        db.commit()
+    return {"items": items, "auto_run_count": auto.auto_run_count, "last_auto_fire_at": auto.last_auto_fire_at.isoformat() if auto.last_auto_fire_at else None}
+
+
+@router.post("/{aid}/api-keys")
+def create_api_key(aid: str, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+    _auto(db, aid)
+    raw = f"mtc_{pysecrets.token_urlsafe(24)}"
+    row = AutomationApiKey(
+        automation_id=aid,
+        key_hash=hashlib.sha256(raw.encode()).hexdigest(),
+        label="default",
+    )
+    db.add(row)
+    db.commit()
+    return {"key": raw, "id": row.id}
+
+
+@router.delete("/{aid}")
+def delete_automation(aid: str, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+    auto = _auto(db, aid)
+    uid = user.get("username", "dev")
+    if auto.runtime_schedule_id:
+        try:
+            rt.delete_schedule(uid, auto.runtime_schedule_id)
+        except rt.RuntimeError_:
+            pass
+    db.query(AutomationTrigger).filter_by(automation_id=aid).delete()
+    db.delete(auto)
+    db.commit()
+    return {"status": "deleted"}
+
+
+# ---------------------------------------------------------------------------
+# external API invoke (our own auth/idempotency; not atk_ style)
+# ---------------------------------------------------------------------------
+
+ext_router = APIRouter(prefix="/api/v2/external", tags=["external"])
+
+
+@ext_router.post("/automations/{key_id}/invoke")
+def invoke(
+    key_id: str,
+    request: Request,
+    payload: dict[str, Any] = {},
+    authorization: str = Header(default=""),
+    idempotency_key: str = Header(default=""),
+    db: Session = Depends(get_db),
+):
+    key_row = db.get(AutomationApiKey, key_id)
+    if key_row is None or key_row.revoked_at:
+        raise HTTPException(404, "key not found")
+    token = authorization.removeprefix("Bearer ").strip()
+    if not hmac.compare_digest(hashlib.sha256(token.encode()).hexdigest(), key_row.key_hash):
+        raise HTTPException(401, "invalid key")
+    auto = db.get(AutomationDefinition, key_row.automation_id)
+    if auto is None or not auto.enabled:
+        raise HTTPException(409, "automation unavailable")
+    if auto.max_runs is not None and auto.auto_run_count >= auto.max_runs:
+        raise HTTPException(409, "max runs reached")
+    if auto.deadline and auto.deadline < datetime.now(timezone.utc):
+        raise HTTPException(409, "deadline passed")
+    if idempotency_key:
+        dup = (
+            db.query(AutomationTriggerLog)
+            .filter_by(automation_id=auto.id, idempotency_key=idempotency_key)
+            .first()
+        )
+        if dup:
+            return {"status": "deduped", "trigger_log_id": dup.id}
+    log = dispatch(db, auto.created_by or "dev", auto, payload, source="api", idempotency_key=idempotency_key or None, trigger_id=key_id)
+    return {"status": "accepted", "trigger_log_id": log.id, "session_id": log.session_id}
+
+
+# ---------------------------------------------------------------------------
+# data ingress
+# ---------------------------------------------------------------------------
+
+ingress_router = APIRouter(prefix="/api/v2/data-sources", tags=["ingress"])
+
+
+class SourceBody(BaseModel):
+    name: str
+    kind: str
+    config: dict[str, Any] = {}
+
+
+@ingress_router.get("")
+def list_sources(db: Session = Depends(get_db), user: dict = Depends(require_role())):
+    rows = db.query(DataSource).order_by(DataSource.created_at.desc()).all()
+    return {
+        "items": [
+            {
+                "id": s.id,
+                "name": s.name,
+                "kind": s.kind,
+                "config": s.config,
+                "status": s.status,
+                "cursor": s.cursor,
+                "last_poll_at": s.last_poll_at.isoformat() if s.last_poll_at else None,
+            }
+            for s in rows
+        ]
+    }
+
+
+@ingress_router.post("")
+def create_source(body: SourceBody, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+    src = DataSource(name=body.name, kind=body.kind, config=body.config)
+    if body.kind == "webhook":
+        token = pysecrets.token_urlsafe(18)
+        src.auth_token_hash = hashlib.sha256(token.encode()).hexdigest()
+        db.add(src)
+        db.commit()
+        db.refresh(src)
+        return {"id": src.id, "webhook_token": token}
+    db.add(src)
+    db.commit()
+    db.refresh(src)
+    return {"id": src.id}
+
+
+def _apply_filter(cfg: dict, payload: dict) -> bool:
+    filt = cfg.get("filter") or {}
+    if not filt:
+        return True
+    field, op, value = filt.get("field"), filt.get("op"), filt.get("value")
+    cur: Any = payload
+    for part in (field or "").split("."):
+        if isinstance(cur, dict) and part in cur:
+            cur = cur[part]
+        else:
+            return False
+    if op == "eq":
+        return cur == value
+    if op == "ne":
+        return cur != value
+    if op == "contains":
+        return str(value) in str(cur)
+    if op == "gt":
+        return cur > value
+    if op == "lt":
+        return cur < value
+    return True
+
+
+def _apply_mapping(cfg: dict, payload: dict) -> dict:
+    mapping = cfg.get("mapping") or {}
+    out: dict[str, Any] = {}
+    for key, path in mapping.items():
+        cur: Any = payload
+        ok = True
+        for part in path.split("."):
+            if isinstance(cur, dict) and part in cur:
+                cur = cur[part]
+            else:
+                ok = False
+                break
+        out[key] = cur if ok else None
+    return out or payload
+
+
+def ingest(
+    db: Session,
+    src: DataSource,
+    payload: dict,
+    dedupe_key: str,
+) -> DataSourceEvent:
+    # P0-6: per-target delivery model — re-deliver pending/failed deliveries
+    # for the same event instead of blindly filtering duplicates.
+    existing = (
+        db.query(DataSourceEvent)
+        .filter_by(source_id=src.id, dedupe_key=dedupe_key)
+        .first()
+    )
+    if existing:
+        deliveries = (
+            db.query(EventDelivery)
+            .filter_by(event_id=existing.id)
+            .all()
+        )
+        any_retried = False
+        for d in deliveries:
+            if d.status in ("pending", "failed") and d.attempts < d.max_attempts:
+                d.attempts += 1
+                d.status = "pending"
+                d.next_retry_at = datetime.now(timezone.utc)
+                any_retried = True
+        if any_retried:
+            existing.status = "received"  # re-open for retry
+            db.commit()
+            return existing
+        existing.error = "duplicate"
+        db.commit()
+        return existing
+
+    event = DataSourceEvent(
+        source_id=src.id, dedupe_key=dedupe_key, payload=payload, status="received"
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+
+    # resolve matched triggers
+    autos = (
+        db.query(AutomationTrigger)
+        .filter_by(kind="event", enabled=True)
+        .all()
+    )
+    matched = [
+        t for t in autos if (t.config or {}).get("data_source_id") == src.id
+    ]
+
+    deliveries: list[EventDelivery] = []
+    for trig in matched:
+        cfg = trig.config or {}
+        eff_filter = cfg.get("filter") or (src.config or {}).get("filter")
+        eff_mapping = cfg.get("mapping") or (src.config or {}).get("mapping")
+        if not _apply_filter({"filter": eff_filter}, payload):
+            continue
+        mapped = _apply_mapping({"mapping": eff_mapping}, payload)
+        auto = db.get(AutomationDefinition, trig.automation_id)
+        if auto is None or not auto.enabled:
+            continue
+        delivery = EventDelivery(
+            event_id=event.id,
+            trigger_id=trig.id,
+            automation_id=auto.id,
+            source="event",
+            status="pending",
+        )
+        db.add(delivery)
+        db.commit()
+        db.refresh(delivery)
+        try:
+            lg = dispatch(
+                db,
+                auto.created_by or "dev",
+                auto,
+                mapped,
+                source="event",
+                trigger_id=trig.id,
+            )
+            delivery.trigger_log_id = lg.id
+            if lg.status == "failed":
+                delivery.attempts += 1
+                delivery.status = "failed"
+                delivery.error = lg.error or "dispatch returned failed"
+                _schedule_retry(delivery)
+            else:
+                delivery.status = "completed"
+        except Exception as exc:  # noqa: BLE001
+            delivery.attempts += 1
+            delivery.status = "failed"
+            delivery.error = repr(exc)
+            _schedule_retry(delivery)
+        db.commit()
+        deliveries.append(delivery)
+
+    # aggregate event status from deliveries
+    if not deliveries:
+        event.status = "filtered"
+        event.error = "no matching triggers"
+    elif all(d.status == "dead" for d in deliveries):
+        event.status = "dead"
+        event.error = "all deliveries dead"
+    elif any(d.status == "completed" for d in deliveries):
+        event.status = "dispatched"
+        if deliveries:
+            event.dispatch_ref = deliveries[0].id
+    else:
+        # honest observability: matched triggers whose dispatch FAILED are not
+        # "filtered" — surface the failure (retries/dead-letter keep running)
+        event.status = "failed"
+        event.error = next(
+            (d.error for d in deliveries if d.error), "all deliveries failed"
+        )
+    db.commit()
+    return event
+
+
+def _schedule_retry(delivery: EventDelivery) -> None:
+    """Exponential backoff: 30s, 120s, 600s."""
+    delays = {1: 30, 2: 120, 3: 600}
+    delay = delays.get(delivery.attempts, 600) if delivery.attempts < delivery.max_attempts else 0
+    if delay:
+        delivery.next_retry_at = datetime.now(timezone.utc).replace(
+            second=0, microsecond=0
+        ) + timedelta(seconds=delay)
+    else:
+        delivery.status = "dead"
+        delivery.dead_reason = (
+            f"max_attempts ({delivery.max_attempts}) reached; last error: {delivery.error}"
+        )
+        delivery.next_retry_at = None
+
+
+def _retry_dead_deliveries(db: Session) -> int:
+    """Retry failed deliveries whose next_retry_at has arrived (called by watcher)."""
+    due = (
+        db.query(EventDelivery)
+        .filter(
+            EventDelivery.status == "failed",
+            EventDelivery.next_retry_at.isnot(None),
+            EventDelivery.next_retry_at <= datetime.now(timezone.utc),
+            EventDelivery.attempts < EventDelivery.max_attempts,
+        )
+        .all()
+    )
+    retried = 0
+    for d in due:
+        try:
+            auto = db.get(AutomationDefinition, d.automation_id)
+            if auto is None or not auto.enabled:
+                d.status = "dead"
+                d.dead_reason = "automation deleted or disabled"
+                db.commit()
+                continue
+            event = db.get(DataSourceEvent, d.event_id)
+            if event is None:
+                d.status = "dead"
+                d.dead_reason = "event deleted"
+                db.commit()
+                continue
+            trig = db.get(AutomationTrigger, d.trigger_id)
+            cfg = (trig.config or {}) if trig else {}
+            eff_mapping = cfg.get("mapping") or {}
+            mapped = _apply_mapping({"mapping": eff_mapping}, event.payload or {})
+            lg = dispatch(
+                db,
+                auto.created_by or "dev",
+                auto,
+                mapped,
+                source="event",
+                trigger_id=d.trigger_id,
+            )
+            d.attempts += 1
+            d.trigger_log_id = lg.id
+            if lg.status == "failed":
+                d.status = "failed"
+                d.error = lg.error or "dispatch returned failed"
+                _schedule_retry(d)
+            else:
+                d.status = "completed"
+                d.next_retry_at = None
+            db.commit()
+            retried += 1
+        except Exception as exc:  # noqa: BLE001
+            d.attempts += 1
+            d.status = "failed"
+            d.error = repr(exc)
+            _schedule_retry(d)
+            db.commit()
+    return retried
+
+
+def tick_poll_source(db: Session, src) -> dict:
+    """轮询源单 tick（watcher 与手动端点共用）：游标拉取→ingest 管线。"""
+    import httpx
+
+    cfg = src.config or {}
+    url = cfg.get("url")
+    if not url:
+        raise HTTPException(422, "polling source 缺少 config.url")
+    cursor_field = cfg.get("cursor_field", "id")
+    cursor = (src.cursor or {}).get("last")
+    params = {cfg.get("cursor_param", "after"): cursor} if cursor else {}
+    resp = httpx.get(url, params=params, timeout=30)
+    resp.raise_for_status()
+    rows = resp.json()
+    if not isinstance(rows, list):
+        rows = [rows]
+    dispatched = 0
+    for row in rows:
+        key = str(row.get(cursor_field, "")) or hashlib.sha256(
+            json.dumps(row, sort_keys=True).encode()
+        ).hexdigest()
+        ev = ingest(db, src, row, dedupe_key=key)
+        if ev.status == "dispatched":
+            dispatched += 1
+        if row.get(cursor_field):
+            src.cursor = {**(src.cursor or {}), "last": row[cursor_field]}
+    src.status = "active"
+    src.last_poll_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"polled": len(rows), "dispatched": dispatched, "cursor": src.cursor}
+
+
+@ingress_router.post("/{sid}/poll")
+def poll_source(sid: str, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+    src = db.get(DataSource, sid)
+    if src is None or src.kind != "polling":
+        raise HTTPException(404, "polling source not found")
+    try:
+        return tick_poll_source(db, src)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        src.status = "error"
+        db.commit()
+        raise HTTPException(502, f"poll failed: {exc!r}") from exc
+
+
+@ingress_router.post("/{sid}/test-event")
+def test_event(sid: str, payload: dict[str, Any], db: Session = Depends(get_db), user: dict = Depends(require_role())):
+    src = db.get(DataSource, sid)
+    if src is None:
+        raise HTTPException(404, "source not found")
+    event = ingest(db, src, payload, dedupe_key=f"test-{pysecrets.token_hex(6)}")
+    return {"event_id": event.id, "status": event.status, "dispatch_ref": event.dispatch_ref}
+
+
+webhook_router = APIRouter(prefix="/api/v2/ingress", tags=["ingress"])
+
+
+@webhook_router.post("/webhook/{sid}")
+def webhook(
+    sid: str,
+    request: Request,
+    payload: dict[str, Any] = {},
+    x_source_token: str = Header(default=""),
+    db: Session = Depends(get_db),
+):
+    src = db.get(DataSource, sid)
+    if src is None or src.kind != "webhook":
+        raise HTTPException(404, "source not found")
+    if not src.auth_token_hash or not hmac.compare_digest(
+        hashlib.sha256(x_source_token.encode()).hexdigest(), src.auth_token_hash
+    ):
+        raise HTTPException(401, "invalid source token")
+    dedupe = str(payload.get("id") or payload.get("eventId") or pysecrets.token_hex(8))
+    event = ingest(db, src, payload, dedupe_key=dedupe)
+    return {"status": "received", "event_id": event.id}

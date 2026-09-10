@@ -91,17 +91,18 @@ function AgentCard({ r, role, onOpen, onChat, onConfig }: {
       </button>
       {/* footer：stats 虚线上边线+py12；actions 同格堆叠、不透明底、底对齐 mb12、gap12；hover 交叉淡入淡出 */}
       <div className="relative mt-1 grid w-full pt-2">
-        <div className="col-start-1 row-start-1 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-t border-dashed py-3 transition-opacity duration-200 group-hover:opacity-0 group-hover:border-transparent">
+        <div className="col-start-1 row-start-1 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-t border-dashed py-3 pointer-events-none transition-opacity duration-200 group-hover:opacity-0 group-hover:border-transparent">
           <Stat label="任务数" value={String(r.runCount ?? 0)} />
           <span className="h-[18px] w-px bg-border" />
           <Stat label="最近运行" value={relRun(r.lastRunAt)} />
         </div>
-        <div className="col-start-1 row-start-1 mb-3 flex h-8 items-center gap-3 self-end bg-surface opacity-0 pointer-events-none transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
-          <Button variant="ghost" size="icon" className="size-8 shrink-0 border-0" aria-label="配置" onClick={onConfig}>
+        {/* 操作行：z-10 必压过同格统计行（否则不可见统计层吞掉点击 = 假按钮） */}
+        <div className="pointer-events-none col-start-1 row-start-1 z-10 mb-3 flex h-8 items-center gap-3 self-end bg-surface opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
+          <Button variant="ghost" size="icon" className="size-8 shrink-0 border-0" aria-label="配置" title="配置" onClick={onConfig}>
             <Settings2 className="size-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="size-8 shrink-0 border-0" aria-label="复制 ID"
-            onClick={() => { void navigator.clipboard.writeText(r.id); toast.success("已复制 ID") }}>
+          <Button variant="ghost" size="icon" className="size-8 shrink-0 border-0" aria-label="分享" title="分享"
+            onClick={() => { void navigator.clipboard.writeText(`${location.origin}/agents/${r.id}`); toast.success("已复制分享链接") }}>
             <Share2 className="size-4" />
           </Button>
           {onChat ? (

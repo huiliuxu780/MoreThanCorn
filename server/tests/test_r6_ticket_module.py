@@ -52,59 +52,166 @@ def test_registry_discovers_three_modules():
 
 
 def test_ticket_write_policy_fields_and_no_quality_result(monkeypatch):
-    fake = TicketFake()
-    server = uvicorn.Server(uvicorn.Config(fake.app(), host="127.0.0.1", port=0, log_level="error"))
-    threading.Thread(target=server.run, daemon=True).start()
-    deadline = time.time() + 10
-    while not server.started and time.time() < deadline:
-        time.sleep(0.05)
-    base_url = f"http://127.0.0.1:{server.servers[0].sockets[0].getsockname()[1]}"
+    """换底（2026-09-09）：ticket 批次经统一入口；write 策略字段保留；无 QualityResult。"""
+    tr_id, runs = _cutover_batch(
+        monkeypatch, "ticket-automation",
+        [{"interactionId": "T1", "sample_id": "T1", "call_id": "c1", "conversation": "x", "ticket_id": "TK-1"}], expect_quality=False)
+    assert len(runs) == 1
+    assert runs[0].status == "succeeded", runs[0].error
+    out = runs[0].output or {}
+    assert out.get("decision") == "handled"
+    assert out["actions"][0]["effect"] == "write-reversible"
+    assert out["actions"][0]["idempotency_key"]
+    db = SessionLocal()
     try:
-        monkeypatch.setattr("app.runtime_providers.dispatcher.DEFAULT_RUNTIME_TIMEOUT_SECONDS", 20)
-        patch_gateway(monkeypatch, base_url)
-        _seed_tools()
-        for tn in ("ticket_query", "ticket_update", "ticket_close"):
-            client.post("/api/ai-resources/tools", json={"name": tn, "kind": "builtin",
-                                                        "spec": {"kind": "echo"}, "tested": True})
-        prov = make_provider("agentscope", base_url)
-        r = client.post("/api/agents", json={"name": "退款工单", "moduleKey": "ticket-automation",
-                                             "moduleVersion": "1.0.0",
-                                             "modelRef": {"modelId": _model_key(), "provider": "openai-compatible"}})
-        assert r.status_code == 201, r.text
-        aid = r.json()["id"]
-        v = publish_version(aid)
-        assert client.post(f"/api/agents/{aid}/releases", json={
-            "versionId": v["versionId"], "environment": "sandbox",
-            "runtimeProviderId": prov["id"]}).status_code == 201
-        asset = make_asset(client, [{"interactionId": "T1", "ticket_id": "TK-1"}])
-        defv = make_definition_version(client, asset)
-        rulev = make_rule_version(client)
-        t = client.post("/api/tasks", json={
-            "name": "R6-ticket", "executionTarget": {"type": "agent", "agentId": aid,
-                                                    "versionPolicy": "latest_sandbox_release"},
-            "dataAssetId": asset, "dataDefinitionVersionId": defv,
-            "resultRuleVersionId": rulev, "inputMapping": {"ticket_id": "ticket_id"},
-            "sampling": {"mode": "all"}, "dataWindow": {"mode": "all"}}).json()
-        db = SessionLocal()
-        try:
-            tr, _ = start_task_run(db, t["id"], trigger="manual")
-            tr_id = tr.id
-            db.commit()
-        finally:
-            db.close()
-        execute_task_run(tr_id)
-        db = SessionLocal()
-        try:
-            run = db.query(Run).filter_by(task_run_id=tr_id).first()
-            assert run.status == "succeeded", run.error
-            out = run.output or {}
-            # 写型策略字段强制（Schema 已保证存在，这里断言语义）
-            for a in out.get("actions", []):
-                assert a.get("idempotency_key"), "写动作必须带平台幂等键"
-                assert a.get("side_effect_verified") is True, "执行后必须核验副作用"
-            # 写型 Module 不写 QualityResult
-            assert db.query(QualityResult).filter_by(run_id=run.id).count() == 0
-        finally:
-            db.close()
+        assert db.query(QualityResult).filter_by(run_id=runs[0].id).count() == 0
     finally:
-        server.should_exit = True
+        db.close()
+
+
+def _patch_module_structured(monkeypatch, module_key: str):
+    import json as _j
+    from app import agentscope_client as _rt
+
+    def fake_structured(*a, **kw):
+        text = a[2] if len(a) > 2 else kw.get("input_text", "")
+        try:
+            payload = _j.loads(text)
+        except Exception:  # noqa: BLE001
+            payload = {}
+        sid = str(payload.get("sample_id") or payload.get("interactionId")
+                  or payload.get("question_id") or payload.get("ticket_id") or "x")
+        if module_key == "business-analysis":
+            out = {
+                "question_id": str(payload.get("question_id") or "q1"),
+                "answer": "近 7 日热线接通率为 86.4%，环比 +1.2pct。",
+                "metrics": [{"metric": "connect_rate", "value": 86.4, "unit": "%"}],
+                "citations": [{"source": "metric_query",
+                               "reference": "metric:connect_rate:2026-08-22..2026-08-28",
+                               "summary": "日粒度接通率聚合"}],
+                "confidence": 0.9,
+            }
+        elif module_key == "ticket-automation":
+            out = {
+                "ticket_id": str(payload.get("ticket_id") or "TK-1"),
+                "decision": "handled",
+                "actions": [{"action_id": "update_tag", "tool": "ticket_update",
+                             "effect": "write-reversible",
+                             "idempotency_key": "idem-x-1", "executed": True,
+                             "side_effect_verified": True,
+                             "requiresApproval": False, "compensation": "record"}],
+            }
+        else:
+            sid = str(payload.get("sample_id") or payload.get("interactionId") or "S1")
+            out = {"sample_id": sid,
+                   "findings": [{"criterion": "promise_fulfillment", "status": "passed",
+                                 "confidence": 0.9, "reason": "已履约",
+                                 "evidence": [{"source": "tool", "reference": "t:1",
+                                               "summary": "ok"}]}],
+                   "labels": {"service_type_code": "consult", "issue_codes": []},
+                   "summary": "ok"}
+            if sid == "S3":
+                out.pop("summary")
+        return {"structured_output": out, "text": "", "session_id": f"sess-{module_key}"}
+
+    monkeypatch.setattr(_rt, "structured_run", fake_structured)
+
+
+
+def _cutover_batch(monkeypatch, module_key: str, rows, expect_quality: bool):
+    """换底批测助手：统一入口同步执行；structured_run 与 default_model_id 注入。"""
+    import json as _j
+    from app import agentscope_client as _rt
+    import app.agent_execution as _ae
+    from app.models import Connection, Model, ModelProvider
+    from app.task_runner import start_task_run, execute_task_run
+    from tests._quality_setup import make_asset, make_definition_version, make_rule_version
+
+    def fake_structured(*a, **kw):
+        text = a[2] if len(a) > 2 else kw.get("input_text", "")
+        try:
+            payload = _j.loads(text)
+        except Exception:  # noqa: BLE001
+            payload = {}
+        sid = str(payload.get("sample_id") or payload.get("interactionId")
+                  or payload.get("question_id") or payload.get("ticket_id") or "x")
+        if module_key == "business-analysis":
+            out = {"question_id": str(payload.get("question_id") or "q1"),
+                   "answer": "近 7 日热线接通率为 86.4%。",
+                   "metrics": [{"metric": "connect_rate", "value": 86.4, "unit": "%"}],
+                   "citations": [{"source": "metric_query", "reference": "m:1", "summary": "s"}],
+                   "confidence": 0.9}
+        elif module_key == "ticket-automation":
+            out = {"ticket_id": str(payload.get("ticket_id") or "TK-1"),
+                   "decision": "handled",
+                   "actions": [{"action_id": "a1", "tool": "ticket_update",
+                                "effect": "write-reversible", "idempotency_key": "k1",
+                                "executed": True, "side_effect_verified": True,
+                                "requiresApproval": False, "compensation": "record"}]}
+        else:
+            sid = str(payload.get("sample_id") or payload.get("interactionId") or "S1")
+            out = {"sample_id": sid,
+                   "findings": [{"criterion": "promise_fulfillment", "status": "passed",
+                                 "confidence": 0.9, "reason": "ok",
+                                 "evidence": [{"source": "tool", "reference": "t:1", "summary": "ok"}]}],
+                   "labels": {"service_type_code": "consult", "issue_codes": []},
+                   "summary": "ok"}
+            if sid == "S3":
+                out.pop("summary")
+        return {"structured_output": out, "text": "", "session_id": f"sess-{module_key}-{sid}"}
+
+    monkeypatch.setattr(_rt, "structured_run", fake_structured)
+    db = SessionLocal()
+    try:
+        conn = db.query(Connection).filter_by(name=f"cc-{module_key}").first()
+        if not conn:
+            conn = Connection(name=f"cc-{module_key}", kind="api_key", protocol="llm",
+                              endpoint={"base_url": "http://127.0.0.1:1/"},
+                              secret_ref="sk-cc-test-00000000000000000000000")
+            db.add(conn)
+            db.commit()
+            prov = ModelProvider(name=f"cp-{module_key}", base_url="http://127.0.0.1:1/",
+                                 auth_connection_id=conn.id)
+            db.add(prov)
+            db.commit()
+            mdl = Model(provider_id=prov.id, model_key=f"qm-{module_key}",
+                        display_name=f"qm-{module_key}", capabilities=["text"], enabled=True)
+            db.add(mdl)
+            db.commit()
+        else:
+            mdl = db.query(Model).filter_by(model_key=f"qm-{module_key}").first()
+        model_id = mdl.id
+    finally:
+        db.close()
+    _seed_tools()
+    r = client.post("/api/agents", json={"name": f"B-{module_key[:12]}", "moduleKey": module_key,
+                                         "moduleVersion": "1.0.0",
+                                         "modelRef": {"modelId": _model_key(), "provider": "openai-compatible"}})
+    assert r.status_code == 201, r.text
+    aid = r.json()["id"]
+    v = publish_version(aid)
+    rr = client.post(f"/api/agents/{aid}/releases", json={"versionId": v["versionId"], "environment": "sandbox"})
+    assert rr.status_code == 201, rr.text
+    asset = make_asset(client, rows)
+    defv = make_definition_version(client, asset)
+    rulev = make_rule_version(client)
+    t = client.post("/api/tasks", json={
+        "name": f"T-{module_key}", "executionTarget": {"type": "agent", "agentId": aid,
+                                                     "versionPolicy": "latest_sandbox_release"},
+        "dataAssetId": asset, "dataDefinitionVersionId": defv,
+        "resultRuleVersionId": rulev, "inputMapping": {"sample_id": "sample_id", "call_id": "call_id", "conversation": "conversation", "question_id": "question_id", "ticket_id": "ticket_id", "dialogues": "dialogues"},
+        "sampling": {"mode": "all"}, "dataWindow": {"mode": "all"}}).json()
+    db = SessionLocal()
+    try:
+        tr, _ = start_task_run(db, t["id"], trigger="manual")
+        tr_id = tr.id
+        db.commit()
+    finally:
+        db.close()
+    execute_task_run(tr_id)
+    db = SessionLocal()
+    try:
+        runs = db.query(Run).filter_by(task_run_id=tr_id).all()
+        return tr_id, runs
+    finally:
+        db.close()

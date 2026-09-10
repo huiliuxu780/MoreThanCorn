@@ -203,7 +203,7 @@ def fail_stale_agent_execution(run_id: str | None) -> None:
     db = SessionLocal()
     try:
         run = db.get(Run, run_id)
-        if run and run.status == "queued":
+        if run and run.status in ("queued", "running"):
             run.status = "failed"
             run.error = {"code": LEGACY_ARCHIVED_CODE,
                          "message": f"{LEGACY_ARCHIVED_MESSAGE}（执行路径已解除注册）"}

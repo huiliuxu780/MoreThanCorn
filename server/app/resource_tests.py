@@ -348,12 +348,10 @@ def run_test(db: Session, rtype: str, rid: str, payload: dict | None = None, act
                                     **({"sampled": (result.get("output") or {}).get("sampled")}
                                        if (result.get("output") or {}).get("sampled") is not None else {})},
                        actor=actor)
-    db.add(CallRecord(kind=rtype, target_type=rtype, target_id=rid,
-                      request={"summary": str(payload or {})[:500]},
-                      response={"summary": str(result.get("output", ""))[:500]},
-                      status="success" if result.get("ok") else "failed",
-                      latency_ms=result.get("latencyMs"),
-                      error={"message": result["error"]} if result.get("error") else None))
+    # P0-09 排查：此处曾写一条无 run_id/node_run_id 的孤儿 CallRecord——
+    # canonical schema（g040 收紧）下 run_id NOT NULL，且无任何读取方消费
+    # 双空记录（runs.py 按 run_id/node_run_id 过滤）。资源测试的权威记录是
+    # 上方 CheckRun（SDD-12 P0-04，带配置指纹），不再重复落 CallRecord。
     db.commit()
     log_change(db, rtype, rid, "test" if result.get("ok") else "test_fail", actor,
                {"latencyMs": result.get("latencyMs"), "error": result.get("error", "")})

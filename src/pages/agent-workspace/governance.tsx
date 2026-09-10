@@ -1,56 +1,57 @@
-/** 发布治理子页：效果评测 + 版本面板 + Golden Set 双 Provider 主动对比（R8-UI-4 功能保留，自配置页迁入）。 */
-import { useEffect, useState } from "react"
+/** 发布治理子页：版本创建/发布（全类型 Agent）+ 效果评测 + Golden Set 主动评测。
+ *  2026-09-10 P0-E/B4：发布入口从 module 配置页提升到治理页（custom Agent 同权）；
+ *  Golden Set 随 openai-agents/deepseek-harness 退役改为 AgentScope 单引擎（Provider 可选）。 */
+import { useState } from "react"
 import { toast } from "sonner"
 import { AgentEvalPanel, AgentVersionsPanel } from "@/components/agent-ops-panels"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
+import { ModulePublishDialog } from "@/components/module-publish-dialog"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { agentApi } from "@/services/wf-api"
 
-interface ProviderOpt { id: string; name: string; kind: string; status: string }
 type GoldenResult = Awaited<ReturnType<typeof agentApi.goldenEval>>
 
-export function AgentGovernanceSection({ agentId }: { agentId: string }) {
-  const [providers, setProviders] = useState<ProviderOpt[]>([])
-  const [goldenSel, setGoldenSel] = useState<string[]>([])
+export function AgentGovernanceSection({ agentId , archived }: { agentId: string; archived?: boolean }) {
   const [goldenLimit, setGoldenLimit] = useState(3)
   const [goldenRunning, setGoldenRunning] = useState(false)
   const [goldenResults, setGoldenResults] = useState<GoldenResult[]>([])
-
-  useEffect(() => {
-    agentApi.providers().then((r) => setProviders(r.items.filter((p) => p.status === "enabled"))).catch(() => undefined)
-  }, [])
+  const [publishOpen, setPublishOpen] = useState(false)
+  const [versionsTick, setVersionsTick] = useState(0)
 
   const runGolden = async () => {
-    if (goldenSel.length === 0) { toast.error("至少选择一个 Provider"); return }
     setGoldenRunning(true); setGoldenResults([])
+    // B4 收尾：旧双 Provider 对比退役（runtime-providers 端点已下线），单引擎真跑
     const out: GoldenResult[] = []
-    for (const pid of goldenSel) {
-      try { out.push(await agentApi.goldenEval(agentId, pid, goldenLimit)) }
-      catch (e) { toast.error((e as Error).message) }
-    }
+    try { out.push(await agentApi.goldenEval(agentId, "", goldenLimit)) }
+    catch (e) { toast.error((e as Error).message) }
     setGoldenResults(out); setGoldenRunning(false)
   }
 
   return (
     <div className="space-y-4">
-      <h2 className="text-[28px] font-semibold leading-[38px]">发布治理</h2>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <AgentEvalPanel agentId={agentId} />
-        <AgentVersionsPanel agentId={agentId} />
+      <div className="flex items-center gap-3">
+        <h2 className="text-[28px] font-semibold leading-[38px]">发布治理</h2>
+        {!archived && (
+          <Button size="sm" className="ml-auto" onClick={() => setPublishOpen(true)}>
+            发布新版本
+          </Button>
+        )}
       </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <AgentEvalPanel agentId={agentId} archived={archived} />
+        <AgentVersionsPanel key={versionsTick} agentId={agentId} />
+      </div>
+      <ModulePublishDialog
+        agentId={agentId}
+        open={publishOpen}
+        onClose={() => setPublishOpen(false)}
+        onPublished={() => setVersionsTick((t) => t + 1)}
+      />
       <section className="space-y-3 rounded-md border bg-surface p-4">
-        <h3 className="text-base font-medium leading-6">Golden Set 主动评测（双 Provider 同 Ground Truth 对比）</h3>
+        <h3 className="text-base font-medium leading-6">Golden Set 主动评测（AgentScope 单引擎真跑）</h3>
         <div className="flex flex-wrap items-center gap-3">
-          {providers.map((p) => (
-            <label key={p.id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Checkbox checked={goldenSel.includes(p.id)}
-                onCheckedChange={(c) => setGoldenSel((s) => (c === true ? [...s, p.id] : s.filter((x) => x !== p.id)))} />
-              {p.name}（{p.kind}）
-            </label>
-          ))}
           <Select value={String(goldenLimit)} onValueChange={(v) => setGoldenLimit(Number(v))}>
             <SelectTrigger className="h-8 w-24"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -58,9 +59,9 @@ export function AgentGovernanceSection({ agentId }: { agentId: string }) {
             </SelectContent>
           </Select>
           <Button size="sm" disabled={goldenRunning} onClick={() => void runGolden()}>
-            {goldenRunning ? "评测中…" : "运行对比"}
+            {goldenRunning ? "评测中…" : "运行评测"}
           </Button>
-          <span className="text-[11px] text-(--text-tertiary)">同步真跑；结果不持久化，Run 以 trigger=eval 入运行历史</span>
+          <span className="text-[11px] text-(--text-tertiary)">同步真跑；结果不持久化，Run 以 trigger=eval 入运行历史；仅 quality-analysis Module Agent 支持</span>
         </div>
         {goldenResults.map((g) => (
           <div key={g.providerId} className="space-y-1 rounded-md border px-3 py-2">

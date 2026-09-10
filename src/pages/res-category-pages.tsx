@@ -20,7 +20,41 @@ export function ResToolsPage() {
 }
 
 export function ResKnowledgePage() {
-  return <ResCategoryList types={["knowledge"]} createTo="/resources/ai/new" />
+  const [kbStatus, setKbStatus] = useState<{
+    status: string
+    reasons: string[]
+  } | null>(null)
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_WF_API_BASE ?? "http://127.0.0.1:8120"}/api/v2/knowledge-bases/config-status`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("wf_api_token") ?? ""}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setKbStatus({ status: d.status, reasons: d.reasons ?? [] }))
+      .catch(() => undefined)
+  }, [])
+  return (
+    <div className="space-y-3">
+      {kbStatus && (
+        <div
+          className={`rounded-md border px-3 py-2 text-xs ${
+            kbStatus.status === "NOT_CONFIGURED"
+              ? "border-amber-400/60 bg-amber-50 text-amber-900 dark:bg-amber-950 dark:text-amber-100"
+              : "border-emerald-400/60 bg-emerald-50 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100"
+          }`}
+          data-testid="knowledge-status"
+        >
+          <span className="font-medium">
+            Knowledge 状态：{kbStatus.status === "NOT_CONFIGURED" ? "NOT_CONFIGURED（未配置火山引擎/embedding 鉴权）" : "READY"}
+          </span>
+          {kbStatus.reasons.length > 0 && (
+            <span className="ml-2 text-muted-foreground">{kbStatus.reasons.join("；")}</span>
+          )}
+          <span className="ml-2">发布链同口径 fail-closed：不可用时阻止发布，不伪造 KB。</span>
+        </div>
+      )}
+      <ResCategoryList types={["knowledge"]} createTo="/resources/ai/new" />
+    </div>
+  )
 }
 
 export function ResDataPage() {
