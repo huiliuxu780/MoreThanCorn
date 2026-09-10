@@ -1,323 +1,263 @@
-# 05 · Agent 管理、版本与发布模型
+# 05 · Agent 管理、原生资源装配与版本发布
 
+> 版本：v3.0
 > 日期：2026-09-08
-> 版本：v2.1（双向子运行与 PromptBundle 补充版）
-> 状态：设计稿；未实施
-> 上位方案：11 号稿 v5.1
-> 说明：本稿取代旧版“Agent 只做批量分析、没有对话”的前提，也取代“Skill 等于工具包”的定义。前端 IA 见 08 号稿。
+> 状态：`DOC_REWRITE / NOT_IMPLEMENTATION_READY`
+> 权威前提：AgentScope app 是 Agent 运行时唯一真相源；本文件只定义必要产品控制面。
 
-## 0. 结论
+## 0. 纠偏结论
 
-Agent 是用户可见的**完整能力方案根资产**，不是某个 Runtime 类，也不是一段 manifest。它可同时具备：
+旧方案将 Agent、Module、Version、Release、MountBinding、Session、Runtime Provider 和 AgentState 全部建成平台模型，再把部分字段送给 AgentScope。这会形成两套 Agent 平台。
 
-- 多轮 Chat；
-- 单次结构化执行；
-- 由版本化定义固定的 Pipeline；
-- Planning；
-- Task/Trigger 驱动的批量或自动执行；
-- Skill、Tool、Knowledge 和受控 Workflow 子调用。
+新方案不再建立平行运行时：
 
-Module 是内置方案模板及受代码评审的核心实现来源。Agent 是某个 Module 的实例或从零创建的自定义方案。AgentVersion 冻结完整可执行闭包，Release 把该版本部署到环境并绑定 Runtime。
+- Agent 运行配置使用 AgentScope `AgentRecord/AgentData`。
+- System Prompt 使用 `AgentData.system_prompt`。
+- Model、Knowledge、Workspace 等实际运行选择使用 `SessionConfig`。
+- Skill/MCP 实际挂载使用 AgentScope Workspace。
+- Toolkit 使用官方 `get_toolkit()`。
+- Session、消息和 AgentState 使用 AgentScope storage/ChatService。
+- AgentScope 没有版本/发布能力，因此平台只保留不可变的版本发布控制面。
 
-## 1. 当前模型的事实与缺口
+## 1. Agent / Module / Version / Release
 
 ### 1.1 Agent
 
-当前 Agent 表有 id、name、description、avatar、status、archived、type、module_key/version、workflow_id、config JSON、config_revision、沙箱/生产版本指针。
+Agent 是产品身份和管理入口。运行时对应 AgentScope `AgentRecord`，核心 `AgentData` 已证字段为：`id`、`name`、`system_prompt`、`context_config`、`react_config`、`invite_config`。
 
-缺口：
+头像、岗位说明、标签、所有者等纯产品展示字段可以作为平台扩展，但不得复制 AgentData 中的运行字段。
 
-1. type 同时承担历史类型、产品类型和前端可编辑判断，语义过载；
-2. config 是无 Schema 的共享 JSON，各子页整包覆盖；
-3. Custom 没有 module_key/workflow_id，现有发布编译器不能为它产生 definition；
-4. Module 核心来自 manifest，页面扩展来自 config/AgentSkill，二者没有统一；
-5. archived 与 type 被前端错误合并，导致 Custom 显示“已封存·只读”；
-6. execution、planning、内部 roles、pipeline state schema 都没有模型落点；
-7. `config.workflows` 没有 Runtime 消费路径；Workflow 旧 agent 节点又已 deprecated 并被迁移为 workflow 节点，双向组合目前均未闭环。
+### 1.2 Module
 
-### 1.2 AgentVersion
+Module 只表示可复用的创建模板/预置方案，不再是一条独立运行轨道。无论从预置 Module 还是自定义创建，最终都生成相同的 AgentScope AgentData。
 
-已有 definition、common_config、dependency_snapshot、artifact_hash，是正确骨架；但闭包不完整：
+禁止继续保留：
 
-- Module 只冻结 manifest 资源；
-- Custom 无法创建版本；
-- AgentSkill 不进入版本；
-- Skill/Knowledge 没有版本；
-- config.connections/workflows/knowledges 不进入 Module Runtime；
-- Pipeline/Role/State Schema 不存在；
-- Runtime package/commit 没有进入 artifact。
+- Custom 和 Module 两套发布链；
+- Module manifest/spec 与 Agent.config 同时影响运行；
+- Module 专用 runtime builder。
 
-### 1.3 Release
+### 1.3 AgentVersion
 
-已有 environment、runtime_provider_id、runtime_profile、runtime_binding_snapshot、canary_percent。继续保留“Provider 属于 Release，不属于 AgentSpec”的边界。
+AgentScope 2.0.7 没有 Agent 版本发布模型，而产品已经要求版本化，因此平台可以保留不可变 AgentVersion，但内容必须使用 AgentScope-native schema：
 
-同一套 Golden Set 可以对多个 Provider 做评测，但不等于同一个有效 Release 可跨 Provider 分流。如果保留“一 Agent 一 Provider”，切换 Provider 必须结束现有 active Release 或走明确迁移操作。
+```text
+AgentVersion
+├── AgentData snapshot
+├── session-defaults snapshot
+├── workspace-resource manifest
+├── external-tool manifest
+├── agentscope_version
+└── content_digest
+```
 
-## 2. 目标领域模型
+`session-defaults` 只是新建 Session 的默认值。运行中的 Model、Knowledge、Workspace 仍以 SessionConfig 为真相源。
 
-### 2.1 AgentDefinition
+### 1.4 AgentRelease
 
-Agent 草稿从任意 config JSON 收敛为有 Schema 的定义：
+Release 只回答“允许创建新 Session 的发布版本是什么”，不参与每回合拼装另一套运行配置。
 
-| 区域 | 关键字段 |
-|---|---|
-| identity | name、description、avatar、labels |
-| capabilities | supports_chat、supports_structured_run、supports_batch、supports_hitl |
-| runner | kind=agent 或 pipeline；implementation ref |
-| planning | enabled、limits、task visibility |
-| conversation | greeting、context policy、attachment policy、memory policy |
-| prompt_bundle | identity、playbook、persona 及编译顺序/hash |
-| input/output | schema refs、structured output policy |
-| policies | permission、budget、timeout、retry、parallelism、data class |
-| invocation | 可调用资源类型、深度、子 Run、总预算与环检测策略 |
-| roles | 内嵌角色草稿 |
-| mounts | 统一 MountBinding |
-| template | module/template key、core version、derived_from |
+```text
+AgentRelease
+├── agent_version_id
+├── environment/status
+├── materialization_status
+├── agentscope_agent_id
+└── verification result
+```
 
-runner 与 planning 正交。不要再用 type=autonomous/dialogue/expert-group/custom/module 推导实际执行能力。
+发布必须将 AgentVersion 确定性物化为 AgentScope AgentRecord 和对应 Workspace 资源。如何保证不可变 materialization 尚需 spike；未验证前不冻结表结构。
 
-### 2.2 ModuleTemplate 与 ModuleVersion
+## 2. 唯一真相源
 
-Module 是内置方案的模板，不是每次运行的对象。
-
-- ModuleTemplate：稳定 key、展示信息、风险级、可用能力；
-- ModuleVersion：不可变 Core，包括声明式 PipelineDefinition、角色、核心 mounts、Schema 和治理策略；具体阶段、角色和 SOP 不写死在通用控制器；
-- Agent 引用一个 ModuleVersion 并保存实例扩展；
-- 修改 Core 生成新 ModuleVersion 或派生模板，不原地改实例；
-- manifest 首期可继续作为受代码评审的来源，但导入后必须能形成同一版本快照，不能长期与数据库双主。
-
-### 2.3 Internal Role
-
-dispatcher、executor、unit verifier、synthesizer、final verifier 默认是 AgentVersion 内的 RoleVersion，不是顶层 Agent 行。
-
-RoleVersion 至少包含 role_key、instructions、model policy、planning policy、输入/输出 Schema、允许的 extension slots 和 mounts。只有需要独立复用、授权、评测、发布或直接对话时，才提升为顶层 Agent。
-
-### 2.4 MountBinding
-
-Skill、Tool、Knowledge、Workflow 使用同一挂载关系：
-
-| 字段 | 说明 |
-|---|---|
-| agent_id | 所属 Agent 草稿 |
-| resource_type/resource_id | 资源身份 |
-| version_policy | 草稿 latest 或 pinned |
-| pinned_version_id | 发布时必填或解析 |
-| scope | global、stage、role |
-| scope_key | stage_key 或 role_key |
-| slot_key | 内置方案允许的扩展槽 |
-| source | core、extension |
-| enabled | 草稿状态 |
-| config_revision | 并发控制 |
-
-Connection 不是自由挂载能力；它由 Tool、MCP、Knowledge、Model Provider 间接引用。
-
-Workflow mount 表示 Agent/role 被授权调用某个 WorkflowVersion。其配置还需声明同步/异步、输入输出映射、子 Run 预算和可见工具名。它不是把 Workflow 定义复制进 Agent，也不是 AgentScope Pipeline 的 stage 定义。
-
-## 3. 资源版本规则
-
-| 资源 | 当前 | 目标发布规则 |
+| 字段/能力 | 运行真相源 | 平台控制面 |
 |---|---|---|
-| Skill | content 原地更新 | SkillVersion；AgentVersion 再保存 content hash |
-| Tool | 已有 ToolVersion | Mount 必须固定 ToolVersion ID |
-| Knowledge | source_config 原地更新 | KnowledgeSnapshot，包括文档集合与索引 revision |
-| Workflow | 已有 WorkflowVersion | 作为受控 callable mount 时固定 WorkflowVersion；Workflow 内 agent-run 节点反向固定 AgentVersion |
-| Model | 轻量 version | 冻结 model key、provider-neutral params、version |
-| Connection | 环境/凭据治理 | Release 只冻结引用和环境，不复制 Secret |
+| 名称、System Prompt、ReAct、Context、Invite | AgentData | AgentVersion 冻结快照 |
+| 默认模型 | 产品默认值 | 创建 Session 时写入 SessionConfig |
+| 实际模型 | SessionConfig.chat_model_config | 不复制 |
+| 默认知识库 | 产品默认值 | 创建 Session 时写入 SessionKnowledgeConfig |
+| 实际知识库 | SessionKnowledgeConfig | 不复制 |
+| 工作目录 | SessionConfig.workspace_id/cwd | 产品项目选择器只提供初值 |
+| Session/AgentState | SessionRecord.state | 只保存 ID 引用 |
+| Skill/MCP 实际挂载 | Workspace | Release 可冻结资源 manifest，不做 actual state |
+| Toolkit | AgentScope get_toolkit() | extra tools 仅补平台独有能力 |
 
-发布时禁止 latest 漂移；草稿预览可以 latest，但 UI 必须标注“未冻结”。
+## 3. System Prompt
 
-## 4. AgentVersion 与 Release
+目标产品 BIBLE/IDENTITY/PERSONA 的编辑体验可以复刻，但它们不是三个运行时 Prompt。
 
-### 4.1 AgentVersion
+```text
+编辑态：IDENTITY + BIBLE/工作手册 + PERSONA
+→ 确定性编译、预览、digest
+→ AgentData.system_prompt
+```
 
-一个 AgentVersion 必须是完整、可校验、可重放的方案：
+要求：
 
-- AgentDefinition；
-- ModuleVersion/Core；
-- ExecutionSpec；
-- PromptBundle 内容、来源顺序与 hash；
-- Pipeline controller/version/state schema；
-- 所有 RoleVersion；
-- Core 与 Extension mounts；
-- ToolVersion、SkillVersion、KnowledgeSnapshot、WorkflowVersion；
-- 模型与参数；
-- 输入、输出和中间 Schema；
-- 权限、预算、超时、并发、重试和 barrier policy；
-- InvocationGraph 深度、总子 Run、环检测、取消和幂等策略；
-- Runtime Contract 版本；
-- AgentScope 精确 package/commit；
-- artifact hash。
+1. 编译顺序固定并可预览。
+2. 保存到 AgentScope 的只有最终 system_prompt。
+3. Prompt 不承担工具授权、路径隔离、凭据或预算。
+4. 不将用户输入、外部事件 payload 或隐式思维链拼进系统提示词快照。
 
-只要存在未解析 latest、缺失版本、disabled 依赖、无效 stage/slot 或越权 extension，创建版本就失败。状态字段 ready/installed 不能替代依赖冻结。
+## 4. Skill 的安装、挂载和运行
 
-### 4.2 Release
+AgentScope 已区分用户库和 Workspace，平台必须沿用。
 
-Release 只做部署期决策：
+### 4.1 安装到用户库
 
-- AgentVersion；
-- environment；
-- Runtime Provider；
-- runtime profile；
-- Connection 环境引用；
-- canary；
-- active/rolled_back/offline。
+Hub 安装产生 SkillRecord，保存名称、描述、来源、Hub/Card、版本、SKILL.md 摘要和 enabled。此时 Skill 还没有进入某个 Agent 的 Workspace。
 
-回滚等于重新激活完整旧 AgentVersion 的依赖闭包。若 Skill/Knowledge 在旧版本中没有内容快照，不能声称支持完整回滚。
+### 4.2 加入 Workspace
 
-## 5. Run、Session 与 Task
+使用 AgentScope `/workspace/skill/from-library`，或 `/workspace/skill` 上传，将 Skill archive 安装进指定 Agent/Session Workspace。
 
-| 概念 | 管理范围 |
-|---|---|
-| Run | 一次执行事实；Chat 每 turn 也是 Run |
-| ChatSession | 多轮消息与 AgentState；不是所有执行的容器 |
-| ExecutionState | Pipeline/Planning 单次 Run 的暂停、恢复、checkpoint |
-| Task | 重复运行某个 AgentVersion/WorkflowVersion 的业务定义 |
-| TaskRun | Task 的一次批次，包含 N 个 Run |
-| Trigger | 为 Task 产生 TaskRun |
+### 4.3 运行装配
 
-无状态单次输入输出只创建 Run。自动任务可增加 batching，因此“批量分析”和“自动任务”共享 Task/Trigger/TaskRun，不建立两套内核。
+```text
+workspace.list_skills(agent_id)
+→ Toolkit(skills_or_loaders=...)
+```
 
-### 5.1 Agent / Workflow 子运行
+平台不再创建另一张 AgentSkill/MountBinding 作为实际挂载真相源。产品页面上的“已安装”和“此 Agent 可用”必须分别对应 Library 与 Workspace。
 
-两个方向使用同一种 ChildInvocation 事实：
+### 4.4 已知缺口
 
-- Agent → Workflow：AgentScope 工具调用经 Gateway 发起目标 WorkflowVersion 子 Run；
-- Workflow → Agent：`agent-run` 节点发起目标 AgentVersion 子 Run；
-- ChildInvocation 记录 parent_run_id、child_run_id、target_type/version_id、mount/node 来源、mode、idempotency_key、budget 和状态；
-- 根 Run 投影 InvocationGraph，在活动祖先链上跨 Agent/Workflow 做环检测，不能只检查 workflow_id，也不能把合法的重复兄弟调用误判成环；
-- 子 Run 不继承更高权限，不自动创建 Chat Session，也不读取目标资源的可变草稿。
+SkillRecord 当前不保存完整 archive，从 Library 加入 Workspace 时会回 Hub 下载；官方源码明确留有 Hub 消失后的保全 TODO。Release 的长期可复现性不能假装已解决。后续 spike 只比较固定 Hub artifact、最小 blob 保全或上游演进，不先造复杂 SkillVersion 体系。
 
-## 6. API 设计
+## 5. MCP 的安装、挂载和运行
 
-### 6.1 当前 API 的处置
+### 5.1 用户库
 
-| 当前 API | 问题 | 处置 |
-|---|---|---|
-| POST /api/agents | Custom/Module 两套 payload | 保留入口，统一写 AgentDefinition 草稿 |
-| PUT /api/agents/{id} | 整包 config 覆盖；revision 可省略 | 退役为兼容层；新写入口必须 PATCH 且 revision 必填 |
-| POST /api/agents/{id}/skills | 只写 AgentSkill | 迁移到 mounts |
-| config.connections/workflows/knowledges | 不是独立 API | 迁移到 mounts |
-| POST /api/agents/{id}/versions | 快照闭包不完整 | 改为完整编译、解析、校验、冻结 |
-| POST /api/agents/{id}/releases | Module 特例过多 | 对所有新 Agent 统一 |
-| POST /api/agents/{id}/run | Custom 不成立 | 对所有可执行 AgentVersion 统一 |
-| Chat sessions/turns | 本地模型旁路 | 保留产品 API，后端转 Runtime chat contract |
+安装或手工添加产生 MCPRecord，其中 `client: MCPClient` 是可连接配置。
 
-### 6.2 新 API
+### 5.2 Workspace
 
-建议端点：
+使用 AgentScope `/workspace/mcp/from-library` 或 Workspace MCP API 加入。官方语义中 Workspace `.mcp` 是实际状态，MCPRecord 是来源/期望状态。
 
-- GET /api/agents/{id}/draft
-- PATCH /api/agents/{id}/draft/identity
-- PATCH /api/agents/{id}/draft/conversation
-- PATCH /api/agents/{id}/draft/execution
-- GET /api/agents/{id}/draft/roles
-- PATCH /api/agents/{id}/draft/roles/{roleKey}
-- GET /api/agents/{id}/mounts
-- POST /api/agents/{id}/mounts
-- PATCH /api/agents/{id}/mounts/{mountId}
-- DELETE /api/agents/{id}/mounts/{mountId}
-- POST /api/agents/{id}/draft/validate
-- GET /api/agents/{id}/draft/dependency-closure
-- POST /api/agents/{id}/versions
-- GET /api/agents/{id}/versions/{versionId}/dependency-closure
-- POST /api/agents/{id}/releases
-- POST /api/agents/{id}/runs
-- POST /api/runs/{runId}/continuations
-- GET /api/runs/{runId}/pipeline-state
-- GET /api/runs/{runId}/invocation-graph
-- POST /api/runs/{parentRunId}/children（平台内部/Gateway；目标必须是已解析版本）
+### 5.3 运行
 
-所有草稿写 API 必须携带 expectedRevision 或 If-Match。服务端对字段局部 merge，返回新 revision 和受影响的发布闭包；不能依赖前端复制旧 config。
+```text
+workspace.list_mcps(agent_id, session_id)
+→ Toolkit(mcps=...)
+```
 
-### 6.3 Mount API 校验
+平台不得建立第三份 MCP actual state，也不得把 MCP 简化成工具名数组和固定 env URL。
 
-创建或修改 Mount 时校验：
+### 5.4 凭据
 
-1. 资源存在且状态可用；
-2. scope_key 对应当前 Pipeline/Role；
-3. slot_key 允许该 resource type；
-4. Core mount 不能从实例 API 删除；
-5. Extension 不得扩大工具权限或数据级别；
-6. Tool/Workflow 使用有效版本；
-7. Skill/Knowledge 草稿可 latest，但发布前必须解析；
-8. 变更进入 AuditLog。
+AgentScope 2.0.7 MCPRecord 的 values/client 配置可能含明文秘密。是否用平台 KMS 加密或替换存储必须单独做安全兼容审计，不能双写形成漂移。
 
-## 7. 编译链
+## 6. Tool
 
-统一编译链：
+AgentScope app 没有通用 ToolRecord 市场，但提供明确装配入口：
 
-1. 读取 AgentDefinition 草稿；
-2. 合并 ModuleVersion Core 与实例 extension；
-3. 校验 runner/planning/roles/slots；
-4. 解析 MountBinding 版本；
-5. 生成 provider-neutral ExecutionSpec；
-6. 生成完整 dependency closure；
-7. 计算 artifact hash；
-8. 创建 AgentVersion；
-9. Release 绑定 Runtime；
-10. Run 只读取 AgentVersion，不读取可变草稿。
+- Workspace built-ins：官方 Workspace 提供。
+- Task/Schedule/Team/Background tools：官方 get_toolkit 提供。
+- MCP tools：MCPClient 提供。
+- Middleware tools：Middleware.list_tools 提供。
+- 平台独有工具：`extra_agent_tools(user_id, agent_id, session_id)` 返回 AgentScope ToolBase。
 
-Chat 草稿预览可以读取草稿，但必须显式标记 definitionSource=draft；生产 Chat 绑定环境 Release 或指定 AgentVersion，不能悄悄跟随可变 config。
+因此平台可以保留 Tool Catalog 作为产品控制面，但每个可运行工具必须最终构造成 ToolBase，不能另建一套 Agent 工具协议。
 
-## 8. 迁移
+一期 extra tools 只考虑已证缺口：`run_workflow`、2.0.8 app 集成验证后的 `run_agent_flow`、明确业务数据工具。是否通过外部执行事件 park/resume，要用 `RequireExternalExecutionEvent / ExternalExecutionResultEvent` 实测。
 
-### M0 · 盘点
+## 7. Knowledge、Workspace 与 Model
 
-- 标记 config.skills、AgentSkill、config.workflows、config.knowledges、config.connections 的真实使用者；
-- 禁止新增第四套 execution config；
-- 记录现有 Custom/Module 数据迁移规则。
+### 7.1 Knowledge
 
-### M1 · 新模型
+KnowledgeBase 由 AgentScope 管理；Session 通过 SessionKnowledgeConfig 保存 knowledge_base_ids 和 RAGMiddleware 参数。Agent 管理页只配置默认值，新 Session 创建时写入。
 
-- 新增 AgentDefinition Schema、ModuleVersion/RoleVersion/MountBinding；
-- 增加 SkillVersion、KnowledgeSnapshot；
-- 保持旧字段只读兼容。
+### 7.2 Workspace
 
-### M2 · 双读单写
+Workspace 由 WorkspaceManager 分配，SessionConfig.workspace_id/cwd 指向。Skill、MCP、文件和内置工具均通过同一 Workspace 生效。
 
-- 新 UI 只写新模型；
-- 编译器优先读新模型，旧数据经迁移适配；
-- 对同一实例比较旧/新 ExecutionSpec hash。
+### 7.3 Model
 
-### M3 · 统一运行与发布
+模型不是 AgentData 字段。Agent 的“默认模型”只是 Session 创建默认值；实际执行由 SessionConfig.chat_model_config 或 ScheduleData.chat_model_config 决定。
 
-- Custom、Module 都走 AgentVersion/Release/Runtime；
-- Chat 移除本地模型旁路；
-- 旧 autonomous/dialogue/expert-group 保持历史只读。
+## 8. Session 与执行
 
-### M4 · 退役
+- 用户对话：复用长期 Session。
+- 无状态 Schedule：每次 fire fresh Session。
+- 有状态 Schedule：复用 schedule 固定 Session。
+- 手动一次性 Agent 执行：若走 AgentScope app，同样使用独立 Session；产品上不必展示为对话。
+- 平台不得复制 AgentState、消息或官方 AgentEvent。
+- Pipeline 的 Session 托管等待 2.0.8 spike，不发明答案。
 
-- 停止写 config.skills 和 AgentSkill；
-- 停止把 Connection 当 Agent mount；
-- manifest 从双主降为模板构建源或完全导入；
-- 删除兼容 PUT 前先验证无调用者。
+## 9. API 边界
 
-## 9. 验收
+### 9.1 直接代理或复用 AgentScope
 
-1. Custom 能创建版本、Release、Chat 和结构化 Run；
-2. 同一个 Skill 在创建页、工作区、版本闭包和 Runtime 中身份一致；
-3. 修改 Skill 后旧 AgentVersion 行为不变；
-4. Module stage extension 只对目标 stage 生效；
-5. 删除/替换 Core 被拒绝，派生后可改；
-6. 发布闭包无 latest 漂移；
-7. 不同子页并发编辑不会互相覆盖；
-8. Chat turn 有 Run，Session 重启恢复 AgentState；
-9. 无状态 Run 不创建 Session；
-10. Provider capability 与真实合约测试一致；
-11. 评测多 Provider 不改变 Release 的单 Provider 约束；
-12. Agent 能通过授权 mount 调用固定 WorkflowVersion；未授权目标不可枚举、不可调用；
-13. Workflow 的 agent-run 节点调用固定 AgentVersion，结果和失败映射可审计；
-14. Agent→Workflow→Agent 形成版本环时在外部副作用前被阻断；
-15. 全部资源变更和发布都有 AuditLog。
+- Agent CRUD；
+- Session CRUD/status/messages/stream/interrupt；
+- Schedule CRUD 与 schedule sessions；
+- Skill/MCP library；
+- Workspace skill/MCP/files/status；
+- KnowledgeBase；
+- Model/Credential（安全审计后）。
 
-## 10. 不做
+代理层只做租户认证、权限、字段脱敏和产品路由适配，不得把原生对象拆写进多套平台表。
 
-- 不把 Skill 定义成 Tool 的别名；
-- 不把 AgentScope 内部 Task 合并为平台 Task；
-- 不把每个内部角色建成顶层 Agent；
-- 不把 playbook/BIBLE 当成权限或状态机；
-- 不把 Workflow、AgentScope Pipeline 和 Agent 三者合并为同一实体；
-- 不让草稿 latest 引用进入 Release；
-- 不继续以任意 config JSON 作为长期权威模型；
-- 不在新模型闭环前增加 Pipeline/Planning 表单；
-- 不把“保存成功”当作“Runtime 已生效”。
+### 9.2 平台补充
+
+- AgentVersion/Release 控制面；
+- Module 模板目录；
+- Workflow 与数据接入；
+- AgentFlow 产品控制面（2.0.8 spike 后）。
+
+这些 API 不承担 AgentScope 已有运行生命周期。
+
+## 9.3 Flow 与 Workflow 如何注册
+
+两个 Flow 必须分开：
+
+- `Workflow` 是现有确定性编排资产，继续注册在 MoreThanCorn Workflow 控制面；其中 Agent 节点调用 AgentScope Session/ChatService。
+- `AgentFlow` 是 AgentScope Pipeline 的产品控制面。AgentScope 2.0.8-dev 目前只有 `PipelineProtocol/GoalPipeline`，没有 app 级 registry、storage 和 HTTP CRUD，所以不能谎称“已注册进 AgentScope”。
+
+在正式 spike 闭合前只冻结两条调用边：
+
+```text
+自动任务 → 解析已发布 AgentFlow 版本 → 构造官方 Pipeline → 执行
+Agent → extra_agent_tools 中的 run_agent_flow ToolBase → 同一入口
+```
+
+AgentFlow definition/version 若最终仍需由平台保存，只保存 AgentScope 没有的控制面事实；Pipeline 的运行状态、事件和 Session 归属必须等 2.0.8 app spike 后按官方能力决定，禁止先接回旧 Agent Runner。
+
+## 10. 当前代码迁移审计
+
+### 必须退出运行主链
+
+- `agent_chat.py` 的自建 Session、截断历史和 llm_delta 旁路。
+- `runtime_providers` 将 AgentScope 压成 execute/status/trace 的主路径。
+- `adapter.py` 的固定 MCP URL、env model credential 和自建 trace mapper。
+- `Agent.config.skills/workflows/connections` 作为运行配置。
+- `AgentSkill` 作为 AgentScope 实际 Skill mount。
+- 平台自建 Agent schedule。
+
+### 可能保留但必须瘦身
+
+- Agent/Version/Release：只作产品身份和不可变控制面。
+- Tool/Skill/Knowledge/MCP 表：只有 AgentScope 没有的产品扩展字段才能保留。
+- Run/RunEvent：只保留 Workflow、批量、业务写回等非 AgentScope 职责；Agent 观测不得双写。
+
+## 11. 门禁
+
+1. Agent CRUD 最终读写 AgentScope AgentRecord/AgentData。
+2. IDENTITY/BIBLE/PERSONA 编译后只写一个 system_prompt。
+3. 模型和知识库实际值来自 SessionConfig。
+4. Skill/MCP 清楚区分 Library 与 Workspace。
+5. Toolkit 由官方 get_toolkit 组装。
+6. 平台 extra tool 是 ToolBase，不是第二套工具协议。
+7. 无 AgentState、Message、Schedule、MCP actual state 双写。
+8. Release 可复现性缺口有真实 spike 结果。
+9. AgentScope app 通过真实模型、Skill、MCP、Knowledge 和重启恢复测试。
+
+## 12. 开放问题
+
+- AgentVersion 如何物化为不可变 AgentRecord，而不破坏可编辑 Agent 身份？
+- Skill archive 保全采用上游能力还是最小平台 blob？
+- MCP 凭据如何接入现有 KMS 且不形成双写？
+- 默认模型/知识/Workspace 在 Agent、Schedule 和手动 Session 之间如何继承？
+- 2.0.8 Pipeline 中各 Agent 的 Session/State 如何进入 app 层？
+
+这些问题必须通过 spike 或上游契约回答，实施者不得自行拍板。

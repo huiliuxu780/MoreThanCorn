@@ -1,0 +1,7 @@
+{"ts": 1788888047.006836, "key": "schedule_stateless_created", "payload": {"schedule_id": "a4fc09ff51a94268afa3e1b70fdb9ac4"}}
+{"ts": 1788888122.19939, "key": "stateless_fires", "payload": {"session_ids": ["fb4e6ae82d4c4abf954f1f0a82d36e34", "84237b3ee789449496c40d86e76285bf"], "fresh_each_fire": true}}
+{"ts": 1788888197.2205389, "key": "pause_blocks_new_fires", "payload": {"at_pause": 2, "after_75s": 2}}
+{"ts": 1788888242.3354912, "key": "resume_rearms", "payload": {"sessions": 3}}
+{"ts": 1788888372.358111, "key": "stateful_reuse", "payload": {"session_ids": ["c8f66b1fcacd46ef820451fb0e22ecc7_stateful"], "single_session": true}}
+{"ts": 1788888372.360835, "key": "prompt_from_description", "payload": {"description_in_first_user_turn": true}}
+{"ts": 1788888372.3681312, "key": "cleanup_disabled", "payload": {"schedules": ["a4fc09ff51a94268afa3e1b70fdb9ac4", "c8f66b1fcacd46ef820451fb0e22ecc7"]}}

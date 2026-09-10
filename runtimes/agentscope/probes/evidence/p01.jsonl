@@ -1,0 +1,33 @@
+{"ts": 1788886890.218515, "key": "openapi_paths", "payload": {"count": 67}}
+{"ts": 1788886890.223999, "key": "credential", "payload": {"credential_id": "8a2f2677399e42908023f709dbacb6be", "key": "sk-89e...ed6c (len=35)"}}
+{"ts": 1788886890.228291, "key": "agent", "payload": {"agent_id": "202ceb1cbd7a4fe6afc86ea025816835"}}
+{"ts": 1788886890.235352, "key": "fatal", "payload": {"error": "KeyError: 'id'"}}
+{"ts": 1788886942.900075, "key": "openapi_paths", "payload": {"count": 67}}
+{"ts": 1788886942.905793, "key": "credential", "payload": {"credential_id": "ef188510e69d437aa1d976d4d7116464", "key": "sk-89e...ed6c (len=35)"}}
+{"ts": 1788886942.9096289, "key": "agent", "payload": {"agent_id": "bc625a172ba94836a04738ba1ca02a05"}}
+{"ts": 1788886942.9144561, "key": "session", "payload": {"session_id": "ec0f25e33f9e4aaeada113b41f5828b9"}}
+{"ts": 1788887033.5597482, "key": "fatal", "payload": {"error": "TimeoutError: condition not met within 90s (last=False)"}}
+{"ts": 1788887103.627527, "key": "openapi_paths", "payload": {"count": 67}}
+{"ts": 1788887103.6323268, "key": "credential", "payload": {"credential_id": "0e44c9db855e45068d08e91f0e1c8e2e", "key": "sk-89e...ed6c (len=35)"}}
+{"ts": 1788887103.6347039, "key": "agent", "payload": {"agent_id": "28a5ce66262544d480db6b0e6bcb2af8"}}
+{"ts": 1788887103.6377048, "key": "session", "payload": {"session_id": "eeb812493879479d9157e7a277f99e7d"}}
+{"ts": 1788887194.348232, "key": "fatal", "payload": {"error": "TimeoutError: condition not met within 90s (last=False)"}}
+{"ts": 1788887513.5491252, "key": "openapi_paths", "payload": {"count": 67}}
+{"ts": 1788887513.554372, "key": "credential", "payload": {"credential_id": "8b7abe660b9e48f0be03cf3e2ce0b30f", "key": "sk-89e...ed6c (len=35)"}}
+{"ts": 1788887513.558091, "key": "agent", "payload": {"agent_id": "81fde8ca25ce4686888f9ea954c31fa3"}}
+{"ts": 1788887513.5622091, "key": "session", "payload": {"session_id": "30326896304242198e79a22580b9452b"}}
+{"ts": 1788887604.199347, "key": "fatal", "payload": {"error": "TimeoutError: condition not met within 90s (last=False)"}}
+{"ts": 1788887705.278194, "key": "openapi_paths", "payload": {"count": 67}}
+{"ts": 1788887705.281735, "key": "credential", "payload": {"credential_id": "dbacbb4272fd4f71ae00e75ad340621c", "key": "sk-89e...ed6c (len=35)"}}
+{"ts": 1788887705.285048, "key": "agent", "payload": {"agent_id": "01a332d96ecc490e89dc6dcb003f65ad"}}
+{"ts": 1788887705.288366, "key": "session", "payload": {"session_id": "14631ec9ea5948b799d115d7306c25a9"}}
+{"ts": 1788887736.7453928, "key": "turn1", "payload": {"event_count": 10, "types": ["HINT_BLOCK", "MODEL_CALL_END", "MODEL_CALL_START", "REPLY_END", "REPLY_START", "TEXT_BLOCK_DELTA", "TEXT_BLOCK_END", "TEXT_BLOCK_START"], "reply_text": "STORED ZULU-7741", "recall_stored_ok": true}}
+{"ts": 1788887772.0287201, "key": "turn2", "payload": {"recall_ok": true, "tool_event_ok": true, "tool_effect_ok": true, "event_count": 40, "types": ["MODEL_CALL_END", "MODEL_CALL_START", "REPLY_END", "REPLY_START", "TEXT_BLOCK_DELTA", "TEXT_BLOCK_END", "TEXT_BLOCK_START", "TOOL_CALL_DELTA", "TOOL_CALL_END", "TOOL_CALL_START", "TOOL_RESULT_END", "TOOL_RESULT_START", "TOOL_RESULT_TEXT_DELTA"]}}
+{"ts": 1788887772.0303192, "key": "fatal", "payload": {"error": "HTTPStatusError: Client error '422 Unprocessable Entity' for url 'http://127.0.0.1:8401/sessions/14631ec9ea5948b799d115d7306c25a9/messages'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422"}}
+{"ts": 1788887791.682782, "key": "openapi_paths", "payload": {"count": 67}}
+{"ts": 1788887791.6855848, "key": "credential", "payload": {"credential_id": "7224fc08e6d7440cb1f58f34dff05c6d", "key": "sk-89e...ed6c (len=35)"}}
+{"ts": 1788887791.688222, "key": "agent", "payload": {"agent_id": "b6b5bf49ff45426b9cd5c4f2438fb758"}}
+{"ts": 1788887791.690958, "key": "session", "payload": {"session_id": "ec8ac0674ce340e0a856a818767ca0a2"}}
+{"ts": 1788887822.936212, "key": "turn1", "payload": {"event_count": 10, "types": ["HINT_BLOCK", "MODEL_CALL_END", "MODEL_CALL_START", "REPLY_END", "REPLY_START", "TEXT_BLOCK_DELTA", "TEXT_BLOCK_END", "TEXT_BLOCK_START"], "reply_text": "STORED ZULU-7741", "recall_stored_ok": true}}
+{"ts": 1788887857.202143, "key": "turn2", "payload": {"recall_ok": true, "tool_event_ok": true, "tool_effect_ok": true, "event_count": 28, "types": ["MODEL_CALL_END", "MODEL_CALL_START", "REPLY_END", "REPLY_START", "TEXT_BLOCK_DELTA", "TEXT_BLOCK_END", "TEXT_BLOCK_START", "TOOL_CALL_DELTA", "TOOL_CALL_END", "TOOL_CALL_START", "TOOL_RESULT_END", "TOOL_RESULT_START", "TOOL_RESULT_TEXT_DELTA"]}}
+{"ts": 1788887857.207693, "key": "persistence", "payload": {"message_count": 4, "roles": ["user", "assistant", "user", "assistant"], "status": {"session_id": "ec8ac0674ce340e0a856a818767ca0a2", "status": "idle"}}}

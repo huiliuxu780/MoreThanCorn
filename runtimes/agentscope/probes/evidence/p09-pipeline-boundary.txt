@@ -1,0 +1,2 @@
+module files: ['__init__.py', '_base.py', '_goal_pipeline.py']
+markers: {"def_checkpoint": false, "def_resume": false, "def_redo": false, "class_checkpoint_state": false, "pipeline_router_in_app": false, "pipeline_in_create_app_params": false}

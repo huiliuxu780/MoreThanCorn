@@ -1,0 +1,144 @@
+{
+  "collected_at": "2026-09-10T09:17:21.571Z",
+  "page": "http://localhost:5199/agents/new?template=preset-frontend",
+  "models_endpoint": "http://127.0.0.1:8120/api/registry/models",
+  "picked_model": "qwen-max",
+  "create_request_payload": {
+    "name": "EVID-MODEL-TEST",
+    "description": "专注界面设计与实现：组件架构、视觉语言打磨、响应式适配与性能调优，遵循增量交付与分层验证。",
+    "modelRef": {
+      "modelId": "qwen-max"
+    },
+    "type": "custom",
+    "rolePrompt": "# 角色：前端工程师\n## 目标：以增量方式交付高质量前端界面。\n## 技能：组件架构、视觉打磨、响应式适配、无障碍与性能优化。\n## 限制：只做前端实现与验证，不擅自变更后端契约。",
+    "skills": []
+  },
+  "create_response_status": 201,
+  "created_agent_id": "1a2051ac561d498abff9e8e17fd8985c",
+  "server_model_binding": "qwen-max",
+  "prod_release_id": "0212c284481749888d3d97c010e5b852",
+  "release_frozen_model_key": "qwen-max",
+  "release_frozen_model_id": "e84c1103dc34423a9f827f0992826ded",
+  "executable_after_publish": true,
+  "cleanup": {
+    "release_status": "rolled_back",
+    "agent_archived": true,
+    "executable_after_cleanup": false
+  },
+  "timeline": [
+    {
+      "name": "script_start",
+      "at": "2026-09-10T09:17:12.954Z",
+      "elapsed_ms": 370
+    },
+    {
+      "name": "create_page_loaded",
+      "at": "2026-09-10T09:17:13.954Z",
+      "elapsed_ms": 1369
+    },
+    {
+      "name": "model_picked",
+      "at": "2026-09-10T09:17:15.673Z",
+      "elapsed_ms": 3088
+    },
+    {
+      "name": "agent_created",
+      "at": "2026-09-10T09:17:16.572Z",
+      "elapsed_ms": 3987
+    },
+    {
+      "name": "config_page_refreshed",
+      "at": "2026-09-10T09:17:21.375Z",
+      "elapsed_ms": 8790
+    },
+    {
+      "name": "prod_release_published",
+      "at": "2026-09-10T09:17:21.482Z",
+      "elapsed_ms": 8897
+    },
+    {
+      "name": "cleanup_done",
+      "at": "2026-09-10T09:17:21.571Z",
+      "elapsed_ms": 8986
+    }
+  ],
+  "results": [
+    {
+      "name": "create_button_disabled_without_model",
+      "pass": true,
+      "expected": "true",
+      "actual": "true",
+      "detail": "disabled=true"
+    },
+    {
+      "name": "model_dropdown_lists_real_models",
+      "pass": true,
+      "expected": ">=2 个真实模型",
+      "actual": "3",
+      "detail": "options=请选择模型|qwen3.8-max|qwen-max|qwen-plus"
+    },
+    {
+      "name": "create_button_enabled_after_model",
+      "pass": true,
+      "expected": "false",
+      "actual": "false",
+      "detail": "disabled=false"
+    },
+    {
+      "name": "agent_created_via_ui",
+      "pass": true,
+      "expected": "201 + id",
+      "actual": "201 1a2051ac561d498abff9e8e17fd8985c",
+      "detail": "id=1a2051ac561d498abff9e8e17fd8985c status=201"
+    },
+    {
+      "name": "post_payload_contains_modelRef",
+      "pass": true,
+      "expected": "modelRef.modelId=qwen-max",
+      "actual": "{\"name\":\"EVID-MODEL-TEST\",\"description\":\"专注界面设计与实现：组件架构、视觉语言打磨、响应式适配与性能调优，遵循增量交付与分层验证。\",\"modelRef\":{\"modelId\":\"qwen-max\"},\"type\":\"custom\",\"rolePrompt\":\"# 角色：前端工程师\\n## 目标：以增量方式交付高质量前端界面。\\n## 技能：组件架构、视觉打磨、响应式适配、无障碍与性能优化。\\n## 限制：只做前端实现与验证，不擅自变更后端契约。\",\"skills\":[]}",
+      "detail": "payload={\"name\":\"EVID-MODEL-TEST\",\"description\":\"专注界面设计与实现：组件架构、视觉语言打磨、响应式适配与性能调优，遵循增量交付与分层验证。\",\"modelRef\":{\"modelId\":\"qwen-max\"},\"type\":\"custom\",\"rolePrompt\":\"# 角色：前端工程师\\n## 目标：以增量方式交付高质量前端界面。\\n## 技能：组件架构、视觉打磨、响应式适配、无障碍与性能优化。\\n## 限制：只做前端实现与验证，不擅自变更后端契约。\",\"skills\":[]}"
+    },
+    {
+      "name": "server_binding_matches_picked",
+      "pass": true,
+      "expected": "qwen-max",
+      "actual": "qwen-max",
+      "detail": "server=qwen-max"
+    },
+    {
+      "name": "config_page_shows_model_after_refresh",
+      "pass": true,
+      "expected": "qwen-max",
+      "actual": "visible",
+      "detail": "config 页刷新后包含 qwen-max"
+    },
+    {
+      "name": "release_snapshot_frozen_model_matches",
+      "pass": true,
+      "expected": "frozen_model_key=qwen-max",
+      "actual": "qwen-max",
+      "detail": "release=0212c284481749888d3d97c010e5b852 frozen_key=qwen-max frozen_id=e84c1103dc34423a9f827f0992826ded"
+    },
+    {
+      "name": "executable_true_after_publish",
+      "pass": true,
+      "expected": "true",
+      "actual": "true",
+      "detail": "executable=true"
+    },
+    {
+      "name": "cleanup_release_rolled_back_agent_archived",
+      "pass": true,
+      "expected": "rolled_back+archived+false",
+      "actual": "rolled_back+true+false",
+      "detail": "release=rolled_back archived=true executable=false"
+    }
+  ],
+  "failures": 0,
+  "screenshots": [
+    "model-selection/01-before-select.png",
+    "model-selection/02-dropdown-open.png",
+    "model-selection/03-model-picked.png",
+    "model-selection/04-config-after-refresh.png"
+  ]
+}

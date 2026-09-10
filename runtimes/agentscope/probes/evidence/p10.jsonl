@@ -1,0 +1,1 @@
+{"ts": 1788889373.074901, "key": "restart_recovery", "payload": {"before": "BEFORE-RESTART", "after": "BEFORE-RESTART", "messages_survived": true, "status_after_restart": "idle", "agent_survived": false}}

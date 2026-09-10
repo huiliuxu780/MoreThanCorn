@@ -1,0 +1,152 @@
+{
+  "collected_at": "2026-09-10T08:04:55.495Z",
+  "api": "http://127.0.0.1:8120",
+  "rule": "executable = not archived AND has active prod Release（前端选择器与后端 _validate_target 同一判定）",
+  "results": [
+    {
+      "name": "agents_executable_snapshot",
+      "ok": true,
+      "total": 13,
+      "executable": [
+        "业务分析-通话打标"
+      ]
+    },
+    {
+      "name": "reject_archived_数据分析师",
+      "ok": true,
+      "status": 422,
+      "code": "TARGET_ARCHIVED",
+      "message": "Agent「数据分析师」已归档，退出产品运行面，不可作为执行者"
+    },
+    {
+      "name": "reject_archived_前端工程师",
+      "ok": true,
+      "status": 422,
+      "code": "TARGET_ARCHIVED",
+      "message": "Agent「前端工程师」已归档，退出产品运行面，不可作为执行者"
+    },
+    {
+      "name": "reject_unarchived_no_release_数据分析师",
+      "ok": true,
+      "unarchive_status": 200,
+      "post_status": 422,
+      "code": "TARGET_NOT_EXECUTABLE",
+      "message": "Agent「数据分析师」无 active prod Release，请先发布生产版本再选为执行者（禁止跨环境静默降级）",
+      "rearchived": true
+    },
+    {
+      "name": "positive_control_active_agent",
+      "ok": true,
+      "agent": "业务分析-通话打标",
+      "create_status": 200,
+      "automation_id": "f7f444b1e2c94cb5b2e3a5a30b78b5b4",
+      "delete_status": 200
+    },
+    {
+      "name": "selector_sources",
+      "ok": true,
+      "agents_executable_only": [
+        "业务分析-通话打标"
+      ],
+      "workflows_published_only": [
+        "测试",
+        "dbg-wf2"
+      ],
+      "workflows_all": [
+        {
+          "id": "882abaa71e0048c4a997ce9e5f4c7f81",
+          "name": "测试",
+          "status": "published"
+        },
+        {
+          "id": "a066766a4fa143a094add96ec6c6788e",
+          "name": "dbg-wf2",
+          "status": "published"
+        }
+      ],
+      "agentflows_with_release": [],
+      "agentflows_all": []
+    }
+  ],
+  "failures": 0,
+  "agents_snapshot": [
+    {
+      "id": "ed057326b9404876912a6962c52d9640",
+      "name": "数据分析师",
+      "archived": true,
+      "executable": false
+    },
+    {
+      "id": "4d78a08ab9cf4467af954b57dbca2e22",
+      "name": "前端工程师",
+      "archived": true,
+      "executable": false
+    },
+    {
+      "id": "f19ca1919e2a4b099ac742548602a064",
+      "name": "E2E-统一创建-X",
+      "archived": true,
+      "executable": false
+    },
+    {
+      "id": "e773172b6b434ed1a3011af443bb0f55",
+      "name": "业务分析-通话打标",
+      "archived": false,
+      "executable": true
+    },
+    {
+      "id": "265e50186b804401acfa94e30109bce6",
+      "name": "前端工程师",
+      "archived": true,
+      "executable": false
+    },
+    {
+      "id": "965d6d8b2b974f2bbca6e91a60196958",
+      "name": "前端工程师",
+      "archived": true,
+      "executable": false
+    },
+    {
+      "id": "470d0a84b2f44fb0b21cad7ca211236c",
+      "name": "前端工程师",
+      "archived": true,
+      "executable": false
+    },
+    {
+      "id": "5848323617b948b0bfaafe23b2ead7ef",
+      "name": "前端工程师",
+      "archived": true,
+      "executable": false
+    },
+    {
+      "id": "2ec32968e295437a878a17300d1cf84c",
+      "name": "质检-OpenAI POC",
+      "archived": true,
+      "executable": false
+    },
+    {
+      "id": "e2787f2ba3c441ac934ff2ee2a3636fd",
+      "name": "业务分析-OpenAI POC",
+      "archived": true,
+      "executable": false
+    },
+    {
+      "id": "3782d2fef86a48b383b4fe83b2c6b6e1",
+      "name": "DSH消费者分析",
+      "archived": true,
+      "executable": false
+    },
+    {
+      "id": "e8f98f40b1e94f4fb5cc6d167e54e5c2",
+      "name": "DSH规则质检",
+      "archived": true,
+      "executable": false
+    },
+    {
+      "id": "b1f603c36d294308a74b6750c55aafd6",
+      "name": "业务分析-通话打标-OpenAI",
+      "archived": true,
+      "executable": false
+    }
+  ]
+}

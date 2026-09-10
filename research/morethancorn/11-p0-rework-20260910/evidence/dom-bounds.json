@@ -1,0 +1,582 @@
+{
+  "generatedAt": "2026-09-10T13:33:18.273Z",
+  "base": "http://localhost:5199",
+  "results": [
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "route": "/tasks",
+      "scrollW": 1024,
+      "innerW": 1024,
+      "scrollH": 768,
+      "innerH": 768,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "route": "/batch-tasks",
+      "scrollW": 1024,
+      "innerW": 1024,
+      "scrollH": 768,
+      "innerH": 768,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "route": "/autonomous-tasks",
+      "scrollW": 1024,
+      "innerW": 1024,
+      "scrollH": 768,
+      "innerH": 768,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "route": "/autonomous-tasks [新建自动任务弹窗]",
+      "scrollW": 1024,
+      "innerW": 1024,
+      "scrollH": 768,
+      "innerH": 768,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "route": "/agents",
+      "scrollW": 1024,
+      "innerW": 1024,
+      "scrollH": 768,
+      "innerH": 768,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "route": "/agents/new",
+      "scrollW": 1024,
+      "innerW": 1024,
+      "scrollH": 768,
+      "innerH": 768,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "route": "/agents/new?template=preset-frontend",
+      "scrollW": 1024,
+      "innerW": 1024,
+      "scrollH": 768,
+      "innerH": 768,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "route": "/agents/e773172b6b434ed1a3011af443bb0f55",
+      "scrollW": 1024,
+      "innerW": 1024,
+      "scrollH": 768,
+      "innerH": 768,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "route": "/agents/e773172b6b434ed1a3011af443bb0f55/chat",
+      "scrollW": 1024,
+      "innerW": 1024,
+      "scrollH": 768,
+      "innerH": 768,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "route": "/workflows",
+      "scrollW": 1024,
+      "innerW": 1024,
+      "scrollH": 768,
+      "innerH": 768,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "route": "/agentflows",
+      "scrollW": 1024,
+      "innerW": 1024,
+      "scrollH": 768,
+      "innerH": 768,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "route": "/settings",
+      "scrollW": 1024,
+      "innerW": 1024,
+      "scrollH": 768,
+      "innerH": 768,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "route": "/tasks",
+      "scrollW": 1280,
+      "innerW": 1280,
+      "scrollH": 720,
+      "innerH": 720,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "route": "/batch-tasks",
+      "scrollW": 1280,
+      "innerW": 1280,
+      "scrollH": 720,
+      "innerH": 720,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "route": "/autonomous-tasks",
+      "scrollW": 1280,
+      "innerW": 1280,
+      "scrollH": 720,
+      "innerH": 720,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "route": "/autonomous-tasks [新建自动任务弹窗]",
+      "scrollW": 1280,
+      "innerW": 1280,
+      "scrollH": 720,
+      "innerH": 720,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "route": "/agents",
+      "scrollW": 1280,
+      "innerW": 1280,
+      "scrollH": 720,
+      "innerH": 720,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "route": "/agents/new",
+      "scrollW": 1280,
+      "innerW": 1280,
+      "scrollH": 720,
+      "innerH": 720,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "route": "/agents/new?template=preset-frontend",
+      "scrollW": 1280,
+      "innerW": 1280,
+      "scrollH": 720,
+      "innerH": 720,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "route": "/agents/e773172b6b434ed1a3011af443bb0f55",
+      "scrollW": 1280,
+      "innerW": 1280,
+      "scrollH": 720,
+      "innerH": 720,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "route": "/agents/e773172b6b434ed1a3011af443bb0f55/chat",
+      "scrollW": 1280,
+      "innerW": 1280,
+      "scrollH": 720,
+      "innerH": 720,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "route": "/workflows",
+      "scrollW": 1280,
+      "innerW": 1280,
+      "scrollH": 720,
+      "innerH": 720,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "route": "/agentflows",
+      "scrollW": 1280,
+      "innerW": 1280,
+      "scrollH": 720,
+      "innerH": 720,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "route": "/settings",
+      "scrollW": 1280,
+      "innerW": 1280,
+      "scrollH": 720,
+      "innerH": 720,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "route": "/tasks",
+      "scrollW": 1440,
+      "innerW": 1440,
+      "scrollH": 900,
+      "innerH": 900,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "route": "/batch-tasks",
+      "scrollW": 1440,
+      "innerW": 1440,
+      "scrollH": 900,
+      "innerH": 900,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "route": "/autonomous-tasks",
+      "scrollW": 1440,
+      "innerW": 1440,
+      "scrollH": 900,
+      "innerH": 900,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "route": "/autonomous-tasks [新建自动任务弹窗]",
+      "scrollW": 1440,
+      "innerW": 1440,
+      "scrollH": 900,
+      "innerH": 900,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "route": "/agents",
+      "scrollW": 1440,
+      "innerW": 1440,
+      "scrollH": 900,
+      "innerH": 900,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "route": "/agents/new",
+      "scrollW": 1440,
+      "innerW": 1440,
+      "scrollH": 900,
+      "innerH": 900,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "route": "/agents/new?template=preset-frontend",
+      "scrollW": 1440,
+      "innerW": 1440,
+      "scrollH": 900,
+      "innerH": 900,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "route": "/agents/e773172b6b434ed1a3011af443bb0f55",
+      "scrollW": 1440,
+      "innerW": 1440,
+      "scrollH": 900,
+      "innerH": 900,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "route": "/agents/e773172b6b434ed1a3011af443bb0f55/chat",
+      "scrollW": 1440,
+      "innerW": 1440,
+      "scrollH": 900,
+      "innerH": 900,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "route": "/workflows",
+      "scrollW": 1440,
+      "innerW": 1440,
+      "scrollH": 900,
+      "innerH": 900,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "route": "/agentflows",
+      "scrollW": 1440,
+      "innerW": 1440,
+      "scrollH": 900,
+      "innerH": 900,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "route": "/settings",
+      "scrollW": 1440,
+      "innerW": 1440,
+      "scrollH": 900,
+      "innerH": 900,
+      "bad": [],
+      "okW": true,
+      "okH": true,
+      "okRight": true,
+      "pass": true
+    }
+  ]
+}

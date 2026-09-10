@@ -1,0 +1,198 @@
+{
+  "generatedAt": "2026-09-10T14:25:51.305Z",
+  "agent": "e773172b6b434ed1a3011af443bb0f55（业务分析-通话打标，已发布 prod）",
+  "mode": "real browser + real LLM + 页内 SSE tee（无 mock）",
+  "geometry": {
+    "mtc_1440": {
+      "history_sidebar": {
+        "x": 64,
+        "w": 240,
+        "h": 900
+      },
+      "textarea": {
+        "x": 401,
+        "y": 775,
+        "w": 702,
+        "h": 64
+      },
+      "send_button": {
+        "x": 1063,
+        "y": 839,
+        "w": 36,
+        "h": 36
+      },
+      "current_task_button": {
+        "x": 1086,
+        "y": 6,
+        "w": 98,
+        "h": 32
+      },
+      "composer_buttons": [
+        "选择工作目录",
+        "添加文件或图片",
+        "选择模型",
+        "发送"
+      ]
+    },
+    "qw_1440": {
+      "history_sidebar": {
+        "x": 64,
+        "w": 240
+      },
+      "feed_column_w": 720,
+      "current_task_button": {
+        "w": 96,
+        "h": 28
+      },
+      "composer": "textarea + 底行（选择工作目录 + '+' + 模型选择 + 圆形发送按钮[空 disabled]）"
+    },
+    "qw_source": "qoderwake-live-observations.md §2（本日早轮活体实测；本轮对 QW 产品零操作）"
+  },
+  "timeline": [
+    {
+      "name": "script_start",
+      "at": "2026-09-10T14:25:03.725Z",
+      "elapsed_ms": 837
+    },
+    {
+      "name": "t1_sent",
+      "at": "2026-09-10T14:25:09.472Z",
+      "elapsed_ms": 6584
+    },
+    {
+      "name": "t1_completed",
+      "at": "2026-09-10T14:25:27.768Z",
+      "elapsed_ms": 24880
+    },
+    {
+      "name": "t2_sent",
+      "at": "2026-09-10T14:25:31.179Z",
+      "elapsed_ms": 28291
+    },
+    {
+      "name": "t2_completed",
+      "at": "2026-09-10T14:25:38.239Z",
+      "elapsed_ms": 35351
+    },
+    {
+      "name": "t3_sent",
+      "at": "2026-09-10T14:25:38.634Z",
+      "elapsed_ms": 35746
+    },
+    {
+      "name": "t3_stopped",
+      "at": "2026-09-10T14:25:42.351Z",
+      "elapsed_ms": 39463
+    },
+    {
+      "name": "t4_sent",
+      "at": "2026-09-10T14:25:42.737Z",
+      "elapsed_ms": 39849
+    },
+    {
+      "name": "t4_network_restored",
+      "at": "2026-09-10T14:25:46.856Z",
+      "elapsed_ms": 43968
+    },
+    {
+      "name": "t4_completed",
+      "at": "2026-09-10T14:25:51.235Z",
+      "elapsed_ms": 48347
+    }
+  ],
+  "results": [
+    {
+      "name": "t1_sse_event_timeline",
+      "pass": true,
+      "expected": "REPLY_START≥1 + TEXT_BLOCK_DELTA≥3 + REPLY_END≥1（页内 tee UI 实际消费的 SSE 帧）",
+      "actual": "START=1 DELTA=283 END=1 total=290",
+      "evidence": "[\"REPLY_START\",\"HINT_BLOCK\",\"MODEL_CALL_START\",\"TEXT_BLOCK_START\",\"TEXT_BLOCK_DELTA\"] … [\"TEXT_BLOCK_END\",\"MODEL_CALL_END\",\"REPLY_END\"]",
+      "ts": "2026-09-10T14:25:27.772Z"
+    },
+    {
+      "name": "t1_dom_growth_ge3_before_reply_end",
+      "pass": true,
+      "expected": "REPLY_END 前 DOM ≥3 次不同长度增长",
+      "actual": "beforeEnd=283 total=283 completed=true",
+      "evidence": "MutationObserver(data-testid=live-text) 时间戳采样 vs REPLY_END 帧时间",
+      "ts": "2026-09-10T14:25:27.772Z"
+    },
+    {
+      "name": "t1_scroll_up_not_pulled_back",
+      "pass": true,
+      "expected": "流式中上滚至顶后 2s 不被强制拉回底部（同一标记容器实测）",
+      "actual": "top=0 max=312",
+      "evidence": "data-scroll-probe 同元素 scrollTop 前后对照",
+      "ts": "2026-09-10T14:25:27.772Z"
+    },
+    {
+      "name": "t1_refresh_restore",
+      "pass": true,
+      "expected": "reload 后 T1 回复从持久化恢复且 session 入 URL",
+      "actual": "restored=true session=397dc3b09a294464a517cd81bc531662",
+      "evidence": "http://localhost:5199/agents/e773172b6b434ed1a3011af443bb0f55/chat?session=397dc3b09a294464a517cd81bc531662",
+      "ts": "2026-09-10T14:25:30.843Z"
+    },
+    {
+      "name": "t2_toolcard_aggregated_single_call",
+      "pass": true,
+      "expected": "工具调用发生（TOOL_CALL_START 帧）且工具卡恒为单卡（同 tool_call_id 聚合，状态演进不分裂）",
+      "actual": "samples=9 allSingle=true TOOL_CALL_START=1,TOOL_CALL_END=1,TOOL_RESULT_END=1",
+      "evidence": "[\"n=1:SkillSkillsuccess\",\"n=1:SkillSkillsuccess\",\"n=1:SkillSkillsuccess\"]",
+      "ts": "2026-09-10T14:25:38.240Z"
+    },
+    {
+      "name": "t3_stop_button_cancels_stream",
+      "pass": true,
+      "expected": "流式中点停止 → 流终止、composer 回 idle（无悬挂 loading）",
+      "actual": "clicked=true idle=true badge=已取消",
+      "evidence": "停止按钮真实点击 + composer 状态实测",
+      "ts": "2026-09-10T14:25:42.351Z"
+    },
+    {
+      "name": "t4_reconnect_no_duplicate_text",
+      "pass": true,
+      "expected": "显式中止当前 SSE + 断网 2.5s 后新增至少 1 次成功 SSE open，回复完成且不重复：持久化 assistant 标记恰 1 条×1 次；刷新后全文=2",
+      "actual": "dropped=true fetches=3 opens=1->2 hits=[0,0,0,1] body=2 frames=17",
+      "evidence": "页内 AbortController 强制断开现有 SSE + CDP offline→online + GET messages 持久化级计数 + reload 全文计数",
+      "ts": "2026-09-10T14:25:51.235Z"
+    },
+    {
+      "name": "t4_ui_terminal_after_blip",
+      "pass": true,
+      "expected": "强制断流并重挂后 UI 不永久悬挂：composer 回 idle、live 残片清除",
+      "actual": "idle=true stopBtn=false liveAtDiag=0 rt=idle fetches=3",
+      "evidence": "产品修复=agent-chat.tsx 状态对账 + 看门狗 + 死通道重挂 + 退避重试链",
+      "ts": "2026-09-10T14:25:51.236Z"
+    },
+    {
+      "name": "qw_geometry_alignment_1440",
+      "pass": true,
+      "expected": "左历史栏 x≈64 w≈240 / 居中列（textarea 实测）≈720±80 / 「当前任务」入口 + 发送钮在场",
+      "actual": "{\"hist\":{\"x\":64,\"w\":240,\"h\":900},\"ta\":{\"x\":401,\"y\":775,\"w\":702,\"h\":64},\"send\":true,\"task\":true}",
+      "evidence": "{\"qw\":{\"history_sidebar\":{\"x\":64,\"w\":240},\"feed_column_w\":720,\"current_task_button\":{\"w\":96,\"h\":28},\"composer\":\"textarea + 底行（选择工作目录 + '+' + 模型选择 + 圆形发送按钮[空 disabled]）\"},\"composer_buttons\":[\"选择工作目录\",\"添加文件或图片\",\"选择模型\",\"发送\"]}",
+      "ts": "2026-09-10T14:25:51.286Z"
+    },
+    {
+      "name": "cleanup_session_deleted",
+      "pass": true,
+      "expected": "仅脚本自建会话被清理；既有/用户会话零触碰",
+      "actual": "{\"session_id\":\"397dc3b09a294464a517cd81bc531662\",\"preexisting_guard\":true,\"delete_status\":200,\"deleted\":true}",
+      "evidence": "DELETE /api/v2/agents/e773172b6b434ed1a3011af443bb0f55/sessions/397dc3b09a294464a517cd81bc531662",
+      "ts": "2026-09-10T14:25:51.305Z"
+    }
+  ],
+  "failures": 0,
+  "cleanup": {
+    "session_id": "397dc3b09a294464a517cd81bc531662",
+    "preexisting_guard": true,
+    "delete_status": 200,
+    "deleted": true
+  },
+  "screenshots": [
+    "streaming/t1-completed.png",
+    "streaming/t2-toolcard.png",
+    "streaming/t3-stopped.png",
+    "streaming/t4-after-reconnect.png"
+  ]
+}

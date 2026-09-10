@@ -1,0 +1,63 @@
+{
+  "collected_at": "2026-09-10T21:40:13.017498+08:00",
+  "note": "FINAL snapshot v2 — 二轮返工全部修复/验证/清理完成（含 3 条 E2E 遗留启用调度+6 occurrence 显式清理）后采集",
+  "databases_wf": [
+    "wf_dev"
+  ],
+  "agent_total": 23,
+  "agent_archived": 22,
+  "agent_active": [
+    "业务分析-通话打标 (e773172b6b434ed1a3011af443bb0f55) custom/published"
+  ],
+  "agent_version": 33,
+  "release_total": 38,
+  "release_active": 1,
+  "release_active_prod": 1,
+  "release_active_old_provider": 0,
+  "runtime_providers": 3,
+  "runtime_providers_enabled_legacy": 0,
+  "agentscope_agents": 30,
+  "agentscope_sessions": 19,
+  "agentscope_messages": 54,
+  "agentscope_schedules": 0,
+  "session_index": 17,
+  "chat_sessions": 1,
+  "schedules_platform": 2,
+  "schedules_enabled": 0,
+  "tasks_total": 23,
+  "tasks_by_status": [
+    "active=3",
+    "archived=13",
+    "paused=7"
+  ],
+  "task_runs_total": 41,
+  "task_runs_by_status": [
+    "cancelled=2",
+    "failed=5",
+    "partial=1",
+    "running=7",
+    "succeeded=26"
+  ],
+  "automations": 0,
+  "automation_triggers": 0,
+  "runs": 177,
+  "quality_results": 104,
+  "skills": 3,
+  "mcp_servers": 1,
+  "knowledge_sources": 1,
+  "connections": 14,
+  "connections_unarchived": 10,
+  "workflows": 2,
+  "workflow_versions": 2,
+  "agentflow_all_tables": 1,
+  "orphans_all_classes": 0,
+  "canonical_live_evidence": {
+    "task_e2e": {
+      "task_id": "acaecc961bce4940bc153bc39dc63ceb(archived)",
+      "task_run_id": "17a856f032e847d492257defe1634106",
+      "release": "7b1132edbc054b45afd8c30edac0ab81",
+      "note": "runs/sessions 见 evidence/e2e-task-execution.json（会话受删除守卫保护）"
+    }
+  },
+  "agentflow_note": "agentflow_definition=1：名为「测试」、created_by=dev、创建于本轮进行中(17:58)——判定为用户现场真实操作产物，来源不归本轮脚本，按规约保留不动（其余四表 0）"
+}

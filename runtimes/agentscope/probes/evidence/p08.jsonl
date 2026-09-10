@@ -1,0 +1,13 @@
+{"ts": 1788888733.521952, "key": "kb_create", "payload": {"status": 422}}
+{"ts": 1788888733.522084, "key": "fatal", "payload": {"error": "HTTPStatusError: Client error '422 Unprocessable Entity' for url 'http://127.0.0.1:8401/knowledge_bases/'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422"}}
+{"ts": 1788888788.424991, "key": "kb_create", "payload": {"status": 201}}
+{"ts": 1788888788.431078, "key": "doc_upload", "payload": {"status": 201}}
+{"ts": 1788888908.774168, "key": "fatal", "payload": {"error": "TimeoutError: condition not met within 120s (last=None)"}}
+{"ts": 1788889000.677063, "key": "kb_create", "payload": {"status": 201}}
+{"ts": 1788889000.680948, "key": "doc_upload", "payload": {"status": 201}}
+{"ts": 1788889181.2801678, "key": "fatal", "payload": {"error": "TimeoutError: condition not met within 180s (last=None)"}}
+{"ts": 1788889212.730753, "key": "kb_create", "payload": {"status": 201}}
+{"ts": 1788889212.735679, "key": "doc_upload", "payload": {"status": 201}}
+{"ts": 1788889215.751094, "key": "indexing", "payload": {"documents": [{"id": "577842128af84f8c9645d1336ff5391a", "filename": "policy.txt", "size": 153, "content_type": "text/plain", "status": "ready", "error": null, "chunk_count": 1, "created_at": "2026-09-08T17:40:12.733177", "updated_at": "2026-09-08T17:40:12.851501"}]}}
+{"ts": 1788889215.952817, "key": "direct_search", "payload": {"hit_count": 1, "top_excerpt": "{'results': [{'score': 0.8317472122301157, 'document_id': '577842128af84f8c9645d1336ff5391a', 'chunk': {'content': {'type': 'text', 'text': 'Internal policy P-77: the maximum refund amount for a stand"}}
+{"ts": 1788889251.180625, "key": "rag_effect", "payload": {"reply_excerpt": "dard billing disputes and the required approval code.\n\n\nThe maximum refund for a standard billing dispute is 480 CNY. For refunds above this amount, the manager approval code MGR-REFUND-9 is required.", "fact_retrieved_ok": true, "retrieval_events": ["TOOL_CALL_DELTA", "TOOL_CALL_END", "TOOL_CALL_START", "TOOL_RESULT_END", "TOOL_RESULT_START", "TOOL_RESULT_TEXT_DELTA"]}}

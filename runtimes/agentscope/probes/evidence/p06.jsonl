@@ -1,0 +1,5 @@
+{"ts": 1788888639.874354, "key": "upload", "payload": {"status": 422}}
+{"ts": 1788888639.874482, "key": "fatal", "payload": {"error": "HTTPStatusError: Client error '422 Unprocessable Entity' for url 'http://127.0.0.1:8401/workspace/skill/upload?agent_id=175ffa84ac05470cb4a1e72a945f5849&session_id=ec1c8285724f4937a1235e74474336c9'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422"}}
+{"ts": 1788888700.1792169, "key": "upload", "payload": {"status": 201}}
+{"ts": 1788888700.182813, "key": "workspace_skills", "payload": {"names": ["probe-vault"]}}
+{"ts": 1788888733.411009, "key": "skill_effect", "payload": {"in_workspace": true, "reply": "I need to retrieve the vault code using the `probe-vault` skill.\n\n\nVAULT-4242", "skill_followed_ok": true, "tool_events": ["TOOL_CALL_DELTA", "TOOL_CALL_END", "TOOL_CALL_START", "TOOL_RESULT_END", "TOOL_RESULT_START", "TOOL_RESULT_TEXT_DELTA"]}}

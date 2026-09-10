@@ -1,0 +1,192 @@
+{
+  "generatedAt": "2026-09-10T10:07:46.729Z",
+  "mode": "hardened (P0-5): final-state assertions, structured results, verified cleanup, residue guard",
+  "ids": {
+    "agentId": "45249f785e32442a9e11bbfca0412d66",
+    "mcpId": "012b145449ae4c32980e30f4e73a775a",
+    "connId": "feda15060f3f4fd09b7bf90ca91c99b1",
+    "taskId": "a0eaf823d0da4fa682af18b0b30cfefc",
+    "autoId": "f0820f1e14c548cd8c8d02f62e1fbbbf",
+    "installedSkillId": "4674a22b2e60400b98ef855ebe868e60",
+    "sessionId": "3a43a87885db42fb90dfaf5238e17611"
+  },
+  "results": [
+    {
+      "name": "template_market_cards",
+      "pass": true,
+      "expected": "article 模板卡片 ≥8（与按钮分开计数，不以按钮数冒充卡片数）",
+      "actual": "cards=9",
+      "evidence": "/agents/new DOM",
+      "ts": "2026-09-10T10:06:44.823Z"
+    },
+    {
+      "name": "template_market_card_buttons",
+      "pass": true,
+      "expected": "每卡「查看详情」+「创建」各一",
+      "actual": "create=9 detail=9 cards=9",
+      "evidence": "/agents/new DOM（悬停操作区，DOM 常驻）",
+      "ts": "2026-09-10T10:06:44.823Z"
+    },
+    {
+      "name": "agent_created_via_ui",
+      "pass": true,
+      "expected": "统一创建页（模板→填名称→选模型→创建）跳转 /agents/<id>",
+      "actual": "45249f785e32442a9e11bbfca0412d66",
+      "evidence": "http://localhost:5199/agents/45249f785e32442a9e11bbfca0412d66",
+      "ts": "2026-09-10T10:06:46.999Z"
+    },
+    {
+      "name": "skill_mount_via_ui_backend",
+      "pass": true,
+      "expected": "安装后 config.skills 含「客服话术质检技能」的 registry id（发布冻结链的权威挂载位）",
+      "actual": "clicked=true config.skills=[\"4674a22b2e60400b98ef855ebe868e60\"] registryId=4674a22b2e60400b98ef855ebe868e60",
+      "evidence": "GET /api/agents/45249f785e32442a9e11bbfca0412d66 + /api/registry/resources?types=skill",
+      "ts": "2026-09-10T10:06:51.606Z"
+    },
+    {
+      "name": "mcp_mount_api_assisted",
+      "pass": true,
+      "expected": "connection + mcp_server 创建并写入 agent.config.mcps（API-ASSISTED，如实标注）",
+      "actual": "conn=feda15060f3f4fd09b7bf90ca91c99b1 mcp=012b145449ae4c32980e30f4e73a775a",
+      "evidence": "POST /api/connections + /api/ai-resources/mcp-servers",
+      "ts": "2026-09-10T10:06:51.631Z"
+    },
+    {
+      "name": "version_and_prod_release_via_ui",
+      "pass": true,
+      "expected": "UI 发布后存在 prod active Release",
+      "actual": "{\"releaseId\":\"5b46470330984228afe8bf3ee17beaac\",\"environment\":\"prod\",\"status\":\"active\",\"canaryPercent\":0,\"versionNo\":1,\"createdAt\":\"2026-09-10T18:06:57.614895+0",
+      "evidence": "GET /api/agents/45249f785e32442a9e11bbfca0412d66/releases",
+      "ts": "2026-09-10T10:07:00.621Z"
+    },
+    {
+      "name": "release_snapshot_frozen_skill_mcp",
+      "pass": true,
+      "expected": "runtime_binding_snapshot._frozen_skills 含「客服话术质检技能」且 _frozen_mcps 含 e2e-safe-mcp",
+      "actual": "skill=true mcp=true",
+      "evidence": "psql release 5b46470330984228afe8bf3ee17beaac",
+      "ts": "2026-09-10T10:07:00.646Z"
+    },
+    {
+      "name": "stream_increments_ge3",
+      "pass": true,
+      "expected": "REPLY_END 前 DOM ≥3 次不同长度增长且回复完成持久化",
+      "actual": "distinct=48 observer=48 completed=true",
+      "evidence": "MutationObserver 全程采样（data-testid=live-text）",
+      "ts": "2026-09-10T10:07:08.345Z"
+    },
+    {
+      "name": "skill_workspace_injected",
+      "pass": true,
+      "expected": "运行时 session workspace 已注入所装 Skill",
+      "actual": "status=200 body=[{\"name\":\"客服话术质检\",\"description\":\"逐句检查客服话术合规性，输出违禁词列表与整改建议\",\"dir\":\"/Users/rivers/MoreThanCorn/runtimes/agentscope/var/workspaces/a39ccba256e8444aa3c11c2597947adf",
+      "evidence": "GET /api/v2/agents/45249f785e32442a9e11bbfca0412d66/sessions/3a43a87885db42fb90dfaf5238e17611/skills",
+      "ts": "2026-09-10T10:07:08.366Z"
+    },
+    {
+      "name": "skill_behavior_followed",
+      "pass": true,
+      "expected": "助手回复（排除用户消息）体现所装 SKILL 行为：违禁词清单",
+      "actual": "根据「客服话术质检」技能步骤，对句子进行逐句检查：\n\n**原句拆分：**\n1. “我保证这个产品能用一辈子”\n2. “无效全额退款再加赔一倍”\n\n**对照违禁词表检查：**\n\n| 序号 | 违禁词/短语 | 违规类型 | 说明 |\n|------|-------------|----------|------|\n| 1 | **保证** | 绝对化承诺 | ",
+      "evidence": "UI 对话真实模型回复；runtime 侧 Skill 工具调用+SKILL.md 注入见 messages 表",
+      "ts": "2026-09-10T10:07:15.404Z"
+    },
+    {
+      "name": "hitl_card_and_approve_via_ui",
+      "pass": true,
+      "expected": "发送被接受→HITL 卡出现→UI 批准→工具结果 ECHO:E2E-OK 落屏",
+      "actual": "sent=true hitl=true echo=true",
+      "evidence": "UI 真实点击批准",
+      "ts": "2026-09-10T10:07:18.959Z"
+    },
+    {
+      "name": "refresh_restore",
+      "pass": true,
+      "expected": "reload 后工具结果与 Skill 行为回复均从持久化恢复",
+      "actual": "restored=true",
+      "evidence": "page.reload 后 DOM",
+      "ts": "2026-09-10T10:07:21.973Z"
+    },
+    {
+      "name": "single_run_returns_run_and_session",
+      "pass": true,
+      "expected": "200 + run_id + session_id（平台 Run 行 + 真实 Session）",
+      "actual": "{\"run_id\":\"c89f4798e4364ae3b319a1ba56263cdb\",\"session_id\":\"32406cb368fa4bae979770ac2b11280d\",\"status\":\"started\"}",
+      "evidence": "POST /api/v2/agents/45249f785e32442a9e11bbfca0412d66/runs",
+      "ts": "2026-09-10T10:07:22.084Z"
+    },
+    {
+      "name": "run_visible_in_board_panel",
+      "pass": true,
+      "expected": "board 出现该 run 的会话投影行（{agent} · manual）且 GET /api/runs?agentId= 可查回该 run",
+      "actual": "boardRow=true runInList=succeeded",
+      "evidence": "/agents/45249f785e32442a9e11bbfca0412d66/board DOM + GET /api/runs?agentId=45249f785e32442a9e11bbfca0412d66",
+      "ts": "2026-09-10T10:07:28.091Z"
+    },
+    {
+      "name": "task_wizard_selector_lists_published_agent",
+      "pass": true,
+      "expected": "向导执行目标下拉（UI 实开）含已发布 custom Agent「E2E-BROWSER-805901」",
+      "actual": "[\"E2E-BROWSER-805901\",\"业务分析-通话打标\"]",
+      "evidence": "/batch-tasks/new DOM",
+      "ts": "2026-09-10T10:07:31.567Z"
+    },
+    {
+      "name": "task_created_referencing_agent",
+      "pass": true,
+      "expected": "创建验证：201 + task id（执行 E2E 由 e2e_task_execution.mjs 15 项覆盖，不在此重复）",
+      "actual": "201 a0eaf823d0da4fa682af18b0b30cfefc",
+      "evidence": "{\"id\":\"a0eaf823d0da4fa682af18b0b30cfefc\",\"name\":\"E2E-REF-TASK\",\"workflowId\":null,\"status\":\"active\",\"executionTarget\":{\"t",
+      "ts": "2026-09-10T10:07:31.600Z"
+    },
+    {
+      "name": "automation_selector_real_pick",
+      "pass": true,
+      "expected": "自动任务执行对象下拉（UI 实开）含「E2E-BROWSER-805901」并被点选",
+      "actual": "[\"请选择 Agent\",\"E2E-BROWSER-805901\",\"业务分析-通话打标\"]",
+      "evidence": "/autonomous-tasks 弹窗 DOM",
+      "ts": "2026-09-10T10:07:36.416Z"
+    },
+    {
+      "name": "automation_created_via_ui_with_selector",
+      "pass": true,
+      "expected": "保存成功且 executor=所选 E2E Agent",
+      "actual": "{\"kind\":\"agent\",\"id\":\"45249f785e32442a9e11bbfca0412d66\",\"name\":\"E2E-BROWSER-805901\",\"avatar\":null,\"missing\":false}",
+      "evidence": "GET /api/v2/automations",
+      "ts": "2026-09-10T10:07:38.428Z"
+    },
+    {
+      "name": "automation_run_now",
+      "pass": true,
+      "expected": "run-now 200 + trigger_log_id",
+      "actual": "{\"trigger_log_id\":\"ec59590146fb49ecab7a144a98bf6ad6\",\"status\":\"running\",\"session_id\":\"29521210d24a4a2b8e00d14e975cd3d5\"}",
+      "evidence": "POST /api/v2/automations/f0820f1e14c548cd8c8d02f62e1fbbbf/run-now",
+      "ts": "2026-09-10T10:07:38.569Z"
+    },
+    {
+      "name": "automation_history_has_run",
+      "pass": true,
+      "expected": "history 出现真实触发记录（终态或进行中）",
+      "actual": "{\"id\":\"ec59590146fb49ecab7a144a98bf6ad6\",\"source\":\"manual\",\"status\":\"completed\",\"session_id\":\"29521210d24a4a2b8e00d14e975cd3d5\",\"workflow_run_id\":null,\"agentflo",
+      "evidence": "GET /api/v2/automations/f0820f1e14c548cd8c8d02f62e1fbbbf/history",
+      "ts": "2026-09-10T10:07:46.609Z"
+    },
+    {
+      "name": "e2e_cleanup_verified",
+      "pass": true,
+      "expected": "automation 删除 / task 归档 / release rolled_back(余0) / agent 归档 / mcp+conn 删除 全部成功",
+      "actual": "{\"auto_delete\":200,\"task_archive\":200,\"release_rollback\":\"0\",\"agent_archive\":true,\"mcp_delete\":200,\"conn_delete\":200}",
+      "evidence": "逐步状态码验证",
+      "ts": "2026-09-10T10:07:46.697Z"
+    },
+    {
+      "name": "no_residue_after_cleanup",
+      "pass": true,
+      "expected": "未归档 e2e-mcp-conn 连接 0 条 + E2E Agent active Release 0 条",
+      "actual": "conn_unarchived=0 activeRel=0",
+      "evidence": "psql 直查（归档留痕行不计为残留）",
+      "ts": "2026-09-10T10:07:46.729Z"
+    }
+  ],
+  "failures": 0
+}

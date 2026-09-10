@@ -1,0 +1,518 @@
+{
+  "collected_at": "2026-09-10T02:18:08.461539+00:00",
+  "agents": [
+    {
+      "id": "3782d2fef86a48b383b4fe83b2c6b6e1",
+      "name": "DSH消费者分析",
+      "type": "module",
+      "status": "published",
+      "archived": false,
+      "module_key": "dsh-consumer-analysis",
+      "config_keys": [
+        "modelRef",
+        "purpose",
+        "spec"
+      ],
+      "versions": [
+        {
+          "id": "ce43f8c6889049458b6da53f26e67c43",
+          "version_no": 1,
+          "created_at": "2026-09-01T17:43:38.651956+08:00"
+        },
+        {
+          "id": "8d53c26c1a59493eb3e352bdee348c91",
+          "version_no": 2,
+          "created_at": "2026-09-01T18:02:23.874276+08:00"
+        }
+      ],
+      "releases": [
+        {
+          "id": "4ee90d88dd0c42409ba375ae07ddcf6d",
+          "environment": "sandbox",
+          "status": "rolled_back",
+          "runtime_provider_id": "c56c081e5cd84d1991bb1170cd794901",
+          "runtime_profile": "independent_no_tools_v1",
+          "has_binding_snapshot": true,
+          "agentscope_agent_id": null,
+          "created_at": "2026-09-01T17:43:38.665036+08:00"
+        },
+        {
+          "id": "e32eb33f3a514baaba84d5a22ad89561",
+          "environment": "sandbox",
+          "status": "active",
+          "runtime_provider_id": "c56c081e5cd84d1991bb1170cd794901",
+          "runtime_profile": "independent_no_tools_v1",
+          "has_binding_snapshot": true,
+          "agentscope_agent_id": null,
+          "created_at": "2026-09-01T18:02:23.881662+08:00"
+        },
+        {
+          "id": "9c64cad1e13346fb8d0ae43283119435",
+          "environment": "prod",
+          "status": "active",
+          "runtime_provider_id": null,
+          "runtime_profile": null,
+          "has_binding_snapshot": true,
+          "agentscope_agent_id": "738c7465e5cb4893bbd82288cee29406",
+          "created_at": "2026-09-10T03:14:34.097359+08:00"
+        }
+      ],
+      "session_index": [],
+      "analysis_tasks": [
+        {
+          "id": "d860950bb8314fccaee541a9db4cd453",
+          "name": "DSH消费者试跑V1",
+          "status": "active"
+        },
+        {
+          "id": "4c5f8852434d42b1b103081618354963",
+          "name": "DSH消费者全量V1",
+          "status": "active"
+        }
+      ],
+      "task_run_count": 4,
+      "task_run_ids_sample": [
+        "403e1a56170a4ba1803ed169a30b47bd",
+        "667c79dbf71d4e37804b48891809c020",
+        "5fc0c42516744d9e834f4e45b8b07eb8",
+        "6b94ec9b8ab049deb994a19e06d44246"
+      ],
+      "run_count": 23,
+      "skill_mounts": [],
+      "automations": []
+    },
+    {
+      "id": "e8f98f40b1e94f4fb5cc6d167e54e5c2",
+      "name": "DSH规则质检",
+      "type": "module",
+      "status": "published",
+      "archived": false,
+      "module_key": "dsh-quality-rules-analysis",
+      "config_keys": [
+        "modelRef",
+        "purpose",
+        "skills",
+        "spec"
+      ],
+      "versions": [
+        {
+          "id": "5b167a94c554480fa2047bb65a35fe61",
+          "version_no": 1,
+          "created_at": "2026-09-01T17:43:38.676620+08:00"
+        },
+        {
+          "id": "ddf1f0b415104cbe95b89b4bcb5103a1",
+          "version_no": 2,
+          "created_at": "2026-09-01T18:02:23.891365+08:00"
+        },
+        {
+          "id": "27e961b72beb471f848372d72654b45a",
+          "version_no": 3,
+          "created_at": "2026-09-01T20:32:53.633009+08:00"
+        }
+      ],
+      "releases": [
+        {
+          "id": "327bf93303a741f3b93347003c8b3774",
+          "environment": "sandbox",
+          "status": "rolled_back",
+          "runtime_provider_id": "c56c081e5cd84d1991bb1170cd794901",
+          "runtime_profile": "independent_no_tools_v1",
+          "has_binding_snapshot": true,
+          "agentscope_agent_id": null,
+          "created_at": "2026-09-01T17:43:38.683422+08:00"
+        },
+        {
+          "id": "aa15329d98464fa1ab9859b288ff447c",
+          "environment": "sandbox",
+          "status": "rolled_back",
+          "runtime_provider_id": "c56c081e5cd84d1991bb1170cd794901",
+          "runtime_profile": "independent_no_tools_v1",
+          "has_binding_snapshot": true,
+          "agentscope_agent_id": null,
+          "created_at": "2026-09-01T18:02:23.898775+08:00"
+        },
+        {
+          "id": "ffdcab05883c4e6b88b429e2ad98356f",
+          "environment": "sandbox",
+          "status": "active",
+          "runtime_provider_id": "c56c081e5cd84d1991bb1170cd794901",
+          "runtime_profile": "independent_no_tools_v1",
+          "has_binding_snapshot": true,
+          "agentscope_agent_id": null,
+          "created_at": "2026-09-01T20:32:53.642924+08:00"
+        },
+        {
+          "id": "68b04ff75139418baa587eb6c3e2e1d0",
+          "environment": "prod",
+          "status": "active",
+          "runtime_provider_id": null,
+          "runtime_profile": null,
+          "has_binding_snapshot": true,
+          "agentscope_agent_id": "0be158de19d341e0a13c56583ec51cb4",
+          "created_at": "2026-09-10T03:14:34.148333+08:00"
+        }
+      ],
+      "session_index": [],
+      "analysis_tasks": [
+        {
+          "id": "323183499f2240058f20774d34da8ab5",
+          "name": "DSH质检试跑V1",
+          "status": "active"
+        },
+        {
+          "id": "736b64f640eb4865a0cf35609d5f74e4",
+          "name": "DSH质检全量V1",
+          "status": "active"
+        }
+      ],
+      "task_run_count": 4,
+      "task_run_ids_sample": [
+        "1e12a99c3a044df3a7ecd0f5fd18ce4a",
+        "d726c46db9c54cdcb29d61234d4f58f3",
+        "9cdf17e95da6495da2a9f71c8a9b6dbc",
+        "8952e3b0ae094c08bf88c3bf8cd3ee07"
+      ],
+      "run_count": 23,
+      "skill_mounts": [],
+      "automations": []
+    },
+    {
+      "id": "2ec32968e295437a878a17300d1cf84c",
+      "name": "质检-OpenAI POC",
+      "type": "module",
+      "status": "published",
+      "archived": false,
+      "module_key": "quality-analysis",
+      "config_keys": [
+        "modelRef",
+        "spec"
+      ],
+      "versions": [
+        {
+          "id": "c4bc298d57bd4ecba2208436b12a73dd",
+          "version_no": 1,
+          "created_at": "2026-09-02T13:18:21.036312+08:00"
+        }
+      ],
+      "releases": [
+        {
+          "id": "97a357522cb043d68105e5f2a762051a",
+          "environment": "sandbox",
+          "status": "active",
+          "runtime_provider_id": "cf5ff394fc514f0d94b3d57ce7089d71",
+          "runtime_profile": "quality-analysis-1.0.0",
+          "has_binding_snapshot": true,
+          "agentscope_agent_id": null,
+          "created_at": "2026-09-02T13:18:31.448744+08:00"
+        },
+        {
+          "id": "279e9ccf250c49b19eccd7a4a0c986a3",
+          "environment": "prod",
+          "status": "active",
+          "runtime_provider_id": null,
+          "runtime_profile": null,
+          "has_binding_snapshot": true,
+          "agentscope_agent_id": "f642c45cd43f41c9a4cd597a6258b87a",
+          "created_at": "2026-09-10T03:14:34.195547+08:00"
+        }
+      ],
+      "session_index": [
+        {
+          "id": "fbc52d1043da49d0ab5be24f693edbfd",
+          "session_id": "2b1e86577a08442cb684a0323ccd3bf9",
+          "runtime_agent_id": "f642c45cd43f41c9a4cd597a6258b87a"
+        },
+        {
+          "id": "58dd002f0fe7453191d3c036c889c74d",
+          "session_id": "1aeeaa79445d4a5482df68ec8e6d65d2",
+          "runtime_agent_id": "f642c45cd43f41c9a4cd597a6258b87a"
+        }
+      ],
+      "analysis_tasks": [
+        {
+          "id": "c05d94ce25294050bd42b67ced6e71ff",
+          "name": "OpenAI Agents - Quality POC",
+          "status": "active"
+        }
+      ],
+      "task_run_count": 3,
+      "task_run_ids_sample": [
+        "7fabafe2727148c892d6e370f3dbce32",
+        "0f2735c84f3c40a69dd38b432de93746",
+        "1a62a2c9829147faa75d9d83a8d13e9a"
+      ],
+      "run_count": 43,
+      "skill_mounts": [],
+      "automations": []
+    },
+    {
+      "id": "e2787f2ba3c441ac934ff2ee2a3636fd",
+      "name": "业务分析-OpenAI POC",
+      "type": "module",
+      "status": "published",
+      "archived": false,
+      "module_key": "business-analysis",
+      "config_keys": [
+        "modelRef",
+        "spec"
+      ],
+      "versions": [
+        {
+          "id": "3d11888ef7514253bcea434ebcde3b92",
+          "version_no": 1,
+          "created_at": "2026-09-02T16:01:34.628108+08:00"
+        }
+      ],
+      "releases": [
+        {
+          "id": "4e438ab374214d6ba74e7c1bc3f8bc88",
+          "environment": "sandbox",
+          "status": "active",
+          "runtime_provider_id": "cf5ff394fc514f0d94b3d57ce7089d71",
+          "runtime_profile": "business-analysis-1.0.0",
+          "has_binding_snapshot": true,
+          "agentscope_agent_id": null,
+          "created_at": "2026-09-02T16:01:34.638651+08:00"
+        },
+        {
+          "id": "68bd35f11611439e847970605fb6d162",
+          "environment": "prod",
+          "status": "active",
+          "runtime_provider_id": null,
+          "runtime_profile": null,
+          "has_binding_snapshot": true,
+          "agentscope_agent_id": "37d9e404f8404e7e86092606689417aa",
+          "created_at": "2026-09-10T03:14:34.238376+08:00"
+        }
+      ],
+      "session_index": [],
+      "analysis_tasks": [
+        {
+          "id": "84e6d759b7724e3fa08ad7623ed7fad2",
+          "name": "OpenAI Agents - 业务分析 POC",
+          "status": "active"
+        }
+      ],
+      "task_run_count": 1,
+      "task_run_ids_sample": [
+        "5ace2feea0c6493caf63ad30d8f213ff"
+      ],
+      "run_count": 13,
+      "skill_mounts": [],
+      "automations": []
+    },
+    {
+      "id": "b1f603c36d294308a74b6750c55aafd6",
+      "name": "业务分析-通话打标-OpenAI",
+      "type": "module",
+      "status": "published",
+      "archived": false,
+      "module_key": "business-analysis",
+      "config_keys": [
+        "modelRef",
+        "spec"
+      ],
+      "versions": [
+        {
+          "id": "5be8641213074b5b968158c0d29fabb2",
+          "version_no": 1,
+          "created_at": "2026-09-03T10:11:54.336978+08:00"
+        }
+      ],
+      "releases": [
+        {
+          "id": "9f94d30402d34775b25d8bed51e26858",
+          "environment": "sandbox",
+          "status": "active",
+          "runtime_provider_id": "cf5ff394fc514f0d94b3d57ce7089d71",
+          "runtime_profile": "business-analysis-1.0.0",
+          "has_binding_snapshot": true,
+          "agentscope_agent_id": null,
+          "created_at": "2026-09-03T10:11:54.348686+08:00"
+        },
+        {
+          "id": "3865cca5697143f4bd61a83940882acb",
+          "environment": "prod",
+          "status": "active",
+          "runtime_provider_id": null,
+          "runtime_profile": null,
+          "has_binding_snapshot": true,
+          "agentscope_agent_id": "1cb2ceb207f242a685eb5cbd1a63d142",
+          "created_at": "2026-09-10T03:14:34.284245+08:00"
+        }
+      ],
+      "session_index": [
+        {
+          "id": "93bd55ce84e54afda99fff36cd7500d0",
+          "session_id": "149ead56e65e4bcab4223405677e53c8",
+          "runtime_agent_id": "1cb2ceb207f242a685eb5cbd1a63d142"
+        }
+      ],
+      "analysis_tasks": [
+        {
+          "id": "2fb6ad90c5dc457f8072bdf82287b32c",
+          "name": "OpenAI Agents - 通话业务打标",
+          "status": "active"
+        }
+      ],
+      "task_run_count": 1,
+      "task_run_ids_sample": [
+        "685dfb85a454435c9037c17c205625f5"
+      ],
+      "run_count": 24,
+      "skill_mounts": [
+        {
+          "skill_id": "4674a22b2e60400b98ef855ebe868e60"
+        }
+      ],
+      "automations": []
+    }
+  ],
+  "runtime_providers": [
+    {
+      "id": "d8aaeb9d1591435681774ce147a2fca7",
+      "kind": "agentscope",
+      "status": "enabled",
+      "base_url": "http://127.0.0.1:8301"
+    },
+    {
+      "id": "c56c081e5cd84d1991bb1170cd794901",
+      "kind": "deepseek-harness",
+      "status": "enabled",
+      "base_url": "http://127.0.0.1:8302"
+    },
+    {
+      "id": "cf5ff394fc514f0d94b3d57ce7089d71",
+      "kind": "openai-agents",
+      "status": "enabled",
+      "base_url": "http://127.0.0.1:8303"
+    }
+  ],
+  "skills": [
+    {
+      "id": "20a753b5dbcc4a368c747248c7e97ae2",
+      "name": "native-business-analysis",
+      "source": "builtin"
+    },
+    {
+      "id": "79e4ac5ac32440aabdf52378509a49ac",
+      "name": "consumer-analysis",
+      "source": "builtin"
+    },
+    {
+      "id": "4674a22b2e60400b98ef855ebe868e60",
+      "name": "客服话术质检技能",
+      "source": "upload"
+    },
+    {
+      "id": "e40e7331d2184a93b20a933057f0092a",
+      "name": "frontmatter-验收技能",
+      "source": "upload"
+    },
+    {
+      "id": "8eeed7cfc1304688be1f6228bacd4a51",
+      "name": "frontmatter-验收技能",
+      "source": "upload"
+    },
+    {
+      "id": "d24f3052967942af8f397db1064930e8",
+      "name": "zip-验收技能",
+      "source": "upload"
+    }
+  ],
+  "schedules": [
+    {
+      "id": "d525c47611314922a241ef6e92d61017",
+      "name": "DEMO002B-sched-b5f8b1a2",
+      "enabled": true,
+      "cron_expr": "0 0 1 1 *",
+      "task_id": "b63c5f27ed784284807cf2ebb61100f6"
+    },
+    {
+      "id": "573d7a99e20e4b41b89527891458d619",
+      "name": "DEMO-002B-e5effc",
+      "enabled": false,
+      "cron_expr": "0 * * * *",
+      "task_id": "dbdb1ca3010f4c51b64b42057447d6eb"
+    }
+  ],
+  "workflow_target_tasks": [
+    {
+      "id": "77c8d7322b10469db3ea3cd340ae3c25",
+      "name": "audit-A",
+      "status": "active",
+      "workflow_id": "w"
+    },
+    {
+      "id": "dbdb1ca3010f4c51b64b42057447d6eb",
+      "name": "DEMO-002B-e5effc",
+      "status": "active",
+      "workflow_id": "a066766a4fa143a094add96ec6c6788e"
+    },
+    {
+      "id": "b63c5f27ed784284807cf2ebb61100f6",
+      "name": "DEMO002B-b5f8b1a2",
+      "status": "active",
+      "workflow_id": "a066766a4fa143a094add96ec6c6788e"
+    }
+  ],
+  "counts": {
+    "run": 171,
+    "quality_result": 104,
+    "task_run": 37,
+    "automation_definition": 0
+  },
+  "agentscope_native": {
+    "agents": 5,
+    "sessions": 3,
+    "messages": 6,
+    "schedules": 0,
+    "skills": 0,
+    "mcps": 0,
+    "knowledge_bases": 0
+  },
+  "orphan_fk_scan": [
+    {
+      "check": "analysis_task.workflow_id→workflow",
+      "orphan_count": 1,
+      "sample": [
+        [
+          "77c8d7322b10469db3ea3cd340ae3c25",
+          "audit-A",
+          "w"
+        ]
+      ]
+    },
+    {
+      "check": "release.agent_version_id→agent_version",
+      "orphan_count": 0,
+      "sample": []
+    },
+    {
+      "check": "agent_session_index.agent_id→agent",
+      "orphan_count": 0,
+      "sample": []
+    },
+    {
+      "check": "task_run.task_id→analysis_task",
+      "orphan_count": 0,
+      "sample": []
+    },
+    {
+      "check": "agent_skill.skill_id→skill",
+      "orphan_count": 0,
+      "sample": []
+    },
+    {
+      "check": "schedule.task_id→analysis_task",
+      "orphan_count": 0,
+      "sample": []
+    },
+    {
+      "check": "release.runtime_provider_id→provider",
+      "orphan_count": 0,
+      "sample": []
+    }
+  ]
+}

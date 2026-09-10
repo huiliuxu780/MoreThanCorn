@@ -1,0 +1,2 @@
+{"ts": 1788888047.0070348, "key": "sessions", "payload": {"s1": "4300957973ca49bbbf67c580e6b2bb58", "s2": "0f07e137bf7f4c9fbf45350752b1e74d", "distinct": true}}
+{"ts": 1788888142.760436, "key": "isolation", "payload": {"same_session_recall_ok": true, "other_session_answer": "NO", "isolated_ok": true}}

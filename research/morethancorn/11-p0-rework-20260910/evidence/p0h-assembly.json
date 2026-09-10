@@ -1,0 +1,90 @@
+{
+  "generatedAt": "2026-09-10T11:42:57",
+  "results": [
+    {
+      "name": "runtime_view_reachable",
+      "pass": true,
+      "detail": "{\"editing\":{\"digest\":\"1b469e999a9f96dcf10dd646097cc710bb79bbd6b5461dbb9a8571fc11f55e74\"},\"published\":{\"release_id\":\"a32f"
+    },
+    {
+      "name": "local_mcp_server_up",
+      "pass": true,
+      "detail": "event: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{\"experimental\":{}"
+    },
+    {
+      "name": "connection_create",
+      "pass": true,
+      "detail": "{\"id\":\"50da87e1edc84b63ab18c89c0ce5909b\",\"name\":\"p0h-safe-mcp-conn\",\"kind\":\"api_key\",\"protocol\":\"mcp-http\",\"status\":\"draft\",\"lifecycle\":\"draft\",\"revision\":1}"
+    },
+    {
+      "name": "mcp_resource_create",
+      "pass": true,
+      "detail": "{\"id\":\"d0aaf6c7de7244a8acd169d97cacd1bd\",\"name\":\"safe-mcp-echo\",\"status\":\"disabled\"}"
+    },
+    {
+      "name": "agent_mount_update",
+      "pass": true,
+      "detail": "{\"id\":\"e773172b6b434ed1a3011af443bb0f55\",\"config\":{\"skills\":[\"4674a22b2e60400b98ef855ebe868e60\"],\"modelRef\":{\"modelId\":\"qwen3.8-max\"},\"rolePrompt\":\"你负责对一通已脱敏的服务"
+    },
+    {
+      "name": "version_create",
+      "pass": true,
+      "detail": "{\"versionId\":\"cb59b7b96fa94fb0b1c6113acc6a8aa5\",\"versionNo\":10,\"artifactHash\":\"2208da972b67ecf89712b18f45204b1b0d3f53b8536abb983ef0e907ab62de67\"}"
+    },
+    {
+      "name": "prod_release_materialized",
+      "pass": true,
+      "detail": "{\"releaseId\":\"ba87ea3b93f1420e9dffa5e586482b7c\",\"environment\":\"prod\",\"versionNo\":10,\"status\":\"active\",\"canaryPercent\":0}"
+    },
+    {
+      "name": "session_open",
+      "pass": true,
+      "detail": "{\"session_id\":\"c31be4c7e7c34d9b89e96e8cb7db08da\",\"index_id\":\"9bec651487e544e59239272aa9034cfa\"}"
+    },
+    {
+      "name": "workspace_skill_uploaded",
+      "pass": true,
+      "detail": "[{\"name\": \"客服话术质检\", \"description\": \"逐句检查客服话术合规性，输出违禁词列表与整改建议\", \"dir\": \"/Users/rivers/MoreThanCorn/runtimes/agentscope/var/workspaces/5de2881a2b204dd2baef66309901a0b8/skills/5de2881a2b204dd2baef66309901a0b8/客服话术质检\", \"markdown\": \"# SKILL：客服话术质检\\n## 步骤：逐句检查合规话术\\n1. 拆分句子；2. 对照违禁词表（绝对化承诺/夸大疗效/无条件退款承诺等）；3"
+    },
+    {
+      "name": "workspace_mcp_registered",
+      "pass": true,
+      "detail": "[{\"name\": \"safe-mcp-echo\", \"is_stateful\": false, \"mcp_config\": {\"type\": \"http_mcp\", \"url\": \"http://127.0.0.1:8310/mcp\", \"headers\": null, \"timeout\": 30.0}, \"enable_tools\": null, \"disable_tools\": null, \"execution_timeout\": null, \"is_healthy\": true, \"tools\": [{\"name\": \"mcp__safe-mcp-echo__safe_echo\", \""
+    },
+    {
+      "name": "mcp_tool_call_closed_loop",
+      "pass": true,
+      "detail": "{\"calls\": [\"mcp__safe-mcp-echo__safe_echo\"], \"text\": \"工具返回的原样内容如下：\\n\\n```\\nECHO:P0H-MCP-OK\\n```\"}"
+    },
+    {
+      "name": "skill_followed_by_agent",
+      "pass": true,
+      "detail": "工具返回的原样内容如下：\n\n```\nECHO:P0H-MCP-OK\n```根据「客服话术质检」Skill 的步骤，对句子 **「我保证这个产品能用一辈子，无效全额退款再加赔一倍。」** 进行逐句检查：\n\n### 1. 拆分句子\n- 分句①：我保证这个产品能用一辈子\n- 分句②：无效全额退款再加赔一倍\n\n### 2. 对照违禁词表检查\n\n| 分句 | 命中违禁类别 | 违禁词/短语 | 说明 |\n|---|---|---|---|\n| ① | 绝对化承诺 | **保证** | 对产品效果作出确定性担保，属绝对化用语 |\n| ① | 夸大功效/不实承诺 | **能用一辈子** | 对产品使用寿命作"
+    },
+    {
+      "name": "knowledge_not_configured_honest",
+      "pass": true,
+      "detail": "{\"status\": \"NOT_CONFIGURED\", \"reasons\": [\"ks-4m1z5: 停用\"], \"knowledge_sources\": [{\"id\": \"d3bf8f36367d4dd283de2a1267c58ea8\", \"name\": \"ks-4m1z5\", \"status\": \"disabled\", \"mount\": \"unmounted\", \"reason\": \"KnowledgeSource 已停用（不注册、不挂载、留痕）\"}], \"note\": \"无火山引擎鉴权时保持 NOT_CONFIGURED；禁止 synthetic KB ID 与伪造调用成功。\"}"
+    },
+    {
+      "name": "knowledge_resource_create",
+      "pass": true,
+      "detail": "{\"id\":\"41c90ba8cc084165ac38e62586dbacb7\",\"name\":\"p0h-kb-unconfigured\",\"status\":\"disabled\"}"
+    },
+    {
+      "name": "knowledge_enable_blocked_without_real_auth",
+      "pass": true,
+      "detail": "422 {\"detail\":{\"code\":\"VALIDATION_FAILED\",\"message\":\"尚未通过真实检查，不能启用；请先执行检查/测试\",\"details\":{\"scope\":\"resource\",\"targetId\":\"41c90ba8cc084165ac38e62586dbacb7\",\"reason\":\"untested\"}}}"
+    },
+    {
+      "name": "knowledge_publish_blocked",
+      "pass": true,
+      "detail": "version 409 {\"detail\":{\"code\":\"DEPENDENCY_INVALID\",\"issues\":[{\"code\":\"DEP_DISABLED\",\"message\":\"KNOWLEDGE 41c90ba8cc084165ac38e62586dbacb7 DISABLED\"}]}}"
+    },
+    {
+      "name": "cleanup_done",
+      "pass": true,
+      "detail": "mcp/kb/connection deleted; skill mount kept (product data)"
+    }
+  ]
+}

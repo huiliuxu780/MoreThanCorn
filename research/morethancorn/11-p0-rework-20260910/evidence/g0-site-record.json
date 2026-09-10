@@ -1,0 +1,101 @@
+{
+  "collected_at": "2026-09-10T16:56:30.575472+08:00",
+  "git": {
+    "branch": "main",
+    "head": "f6824f9",
+    "uncommitted_total": 195,
+    "modified": 71,
+    "deleted": 6,
+    "untracked": 118
+  },
+  "db": {
+    "agent_archived_false": 1,
+    "agent_archived_true": 13,
+    "agent_version": 24,
+    "release_groups": [
+      "prod/active/(null provider)=1",
+      "prod/rolled_back/(null)=20",
+      "sandbox/rolled_back/deepseek-harness=5",
+      "sandbox/rolled_back/openai-agents=3"
+    ],
+    "agentscope_agents": 21,
+    "agentscope_sessions": 9,
+    "agentscope_messages": 24,
+    "agentscope_schedules": 0,
+    "session_index": 7,
+    "analysis_task": {
+      "active": 3,
+      "archived": 3,
+      "paused": 7
+    },
+    "task_run": {
+      "succeeded": 23,
+      "failed": 5,
+      "cancelled": 2,
+      "partial": 1,
+      "running": 7
+    },
+    "automation_definition": 0,
+    "automation_trigger": 0,
+    "workflow": 2,
+    "workflow_version": 2,
+    "agentflow": {
+      "definition": 0,
+      "version": 0,
+      "release": 0,
+      "run": 0
+    },
+    "skill": 3,
+    "mcp_server": 1,
+    "knowledge_source": 1,
+    "connection": 11
+  },
+  "unarchived_agents_with_active_prod_release": [
+    {
+      "agent": "e773172b6b434ed1a3011af443bb0f55 业务分析-通话打标 custom published",
+      "release": "7b1132edbc054b45afd8c30edac0ab81 (prod/active, agent_version 62c97abf)"
+    }
+  ],
+  "name_scan": {
+    "agent": [
+      "ff6bccce EVID-MODEL-TEST archived=true",
+      "f19ca191 E2E-统一创建-X archived=true",
+      "ed057326 数据分析师 archived=true",
+      "4d78a08a 前端工程师(审计点名草稿) archived=true",
+      "前端工程师×4(E2E 残留) archived=true"
+    ],
+    "workflow": [
+      "882abaa7 测试 (历史, active task DEMO-002B 依赖, 只读保留)"
+    ],
+    "task": [
+      "52f17fce E2E-REF-TASK archived",
+      "7bc5ab6a E2E-REF-TASK archived",
+      "e88b5fc2 E2E-TASK-EXEC-* archived"
+    ],
+    "skill": [],
+    "connection": [],
+    "mcp": [],
+    "knowledge": []
+  },
+  "classification": {
+    "product": "agent 业务分析-通话打标 + release 7b1132ed + runtime agent 9944a987 及其 sessions; skill×3; workflow 测试/dbg-wf2(DEMO 依赖); connection×11; mcp-b17dz / ks-4m1z5 disabled 留痕",
+    "historical_audit": "5 历史归档 Agent; release 20 prod rolled_back + 8 sandbox rolled_back(旧 provider); 09-09 rivers sessions(含真对话证据 2b1e8657); 09-02..09-07 遗留 running task_run×7 + run 87fb777f(历史状态, 非本轮, 不动)",
+    "acceptance_temp_archived": "EVID-MODEL-TEST / E2E-统一创建-X / 数据分析师 / 前端工程师×5 / E2E-REF-TASK×2 / E2E-TASK-EXEC-1 (全部 archived, 留作审计证据, 不再物理删)",
+    "unknown_origin": "无"
+  },
+  "orphans": {
+    "run_to_deleted_session": [
+      "run 3d77426c→sess 92e1f05a",
+      "run f3ff2262→sess eef11159",
+      "run 6d878c35→sess 2f585c33"
+    ],
+    "note": "3 条 09-10 晨 E2E run 的 session 已被当时的会话清理链删除; 属验收临时数据纠缠, 本轮 P0-4 以显式 ID 单事务删除这 3 条 run(先 dry-run)以清零孤儿",
+    "index_to_session": 0,
+    "release_to_agent": 0,
+    "release_to_version": 0,
+    "taskrun_to_task": 0,
+    "run_to_taskrun": 0,
+    "agentscope_agent_unreferenced": "0 (21/21 被 release snapshot 或 index 引用)"
+  },
+  "live_mutation_note": "16:43 用户 dev 现场向 Task E2E 会话 ed7b3b0c 发送『测试』并获 Agent 回复(+2 messages, 真实使用证据); 另 1 个 chat session+index 行经 UI 删除(sessions 10→9 / index 8→7 / messages 净 -10)。属用户真实操作, 不恢复; 报告终值以本轮最后一次快照为准。"
+}

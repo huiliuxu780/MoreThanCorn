@@ -1,0 +1,7 @@
+EVIDENCE p03 schedule_stateless_created {"schedule_id": "a4fc09ff51a94268afa3e1b70fdb9ac4"}
+EVIDENCE p03 stateless_fires {"session_ids": ["fb4e6ae82d4c4abf954f1f0a82d36e34", "84237b3ee789449496c40d86e76285bf"], "fresh_each_fire": true}
+EVIDENCE p03 pause_blocks_new_fires {"at_pause": 2, "after_75s": 2}
+EVIDENCE p03 resume_rearms {"sessions": 3}
+EVIDENCE p03 stateful_reuse {"session_ids": ["c8f66b1fcacd46ef820451fb0e22ecc7_stateful"], "single_session": true}
+EVIDENCE p03 prompt_from_description {"description_in_first_user_turn": true}
+EVIDENCE p03 cleanup_disabled {"schedules": ["a4fc09ff51a94268afa3e1b70fdb9ac4", "c8f66b1fcacd46ef820451fb0e22ecc7"]}

@@ -1,0 +1,218 @@
+{
+  "generatedAt": "2026-09-10T04:16:25.885Z",
+  "geometry": {
+    "tasks-nav-expanded@1440x900": {
+      "doc": {
+        "scrollW": 1440,
+        "scrollH": 900,
+        "vw": 1440,
+        "vh": 900
+      },
+      "rail": {
+        "x": 0,
+        "y": 0,
+        "w": 240,
+        "h": 900
+      },
+      "settingsSidebar": null,
+      "workspaceShell": null,
+      "main": null
+    },
+    "settings@1440x900": {
+      "doc": {
+        "scrollW": 1440,
+        "scrollH": 900,
+        "vw": 1440,
+        "vh": 900
+      },
+      "rail": {
+        "x": 0,
+        "y": 0,
+        "w": 240,
+        "h": 900
+      },
+      "settingsSidebar": {
+        "x": 240,
+        "y": 0,
+        "w": 240,
+        "h": 900
+      },
+      "workspaceShell": null,
+      "main": {
+        "x": 480,
+        "y": 0,
+        "w": 960,
+        "h": 900
+      }
+    },
+    "agent-detail@1440x900": {
+      "doc": {
+        "scrollW": 1440,
+        "scrollH": 900,
+        "vw": 1440,
+        "vh": 900
+      },
+      "rail": {
+        "x": 0,
+        "y": 0,
+        "w": 240,
+        "h": 900
+      },
+      "settingsSidebar": null,
+      "workspaceShell": {
+        "x": 240,
+        "y": 0,
+        "w": 1200,
+        "h": 900
+      },
+      "main": {
+        "x": 480,
+        "y": 48,
+        "w": 960,
+        "h": 852
+      }
+    },
+    "tasks-nav-expanded@1280x720": {
+      "doc": {
+        "scrollW": 1280,
+        "scrollH": 720,
+        "vw": 1280,
+        "vh": 720
+      },
+      "rail": {
+        "x": 0,
+        "y": 0,
+        "w": 240,
+        "h": 720
+      },
+      "settingsSidebar": null,
+      "workspaceShell": null,
+      "main": null
+    },
+    "settings@1280x720": {
+      "doc": {
+        "scrollW": 1280,
+        "scrollH": 720,
+        "vw": 1280,
+        "vh": 720
+      },
+      "rail": {
+        "x": 0,
+        "y": 0,
+        "w": 240,
+        "h": 720
+      },
+      "settingsSidebar": {
+        "x": 240,
+        "y": 0,
+        "w": 240,
+        "h": 720
+      },
+      "workspaceShell": null,
+      "main": {
+        "x": 480,
+        "y": 0,
+        "w": 800,
+        "h": 720
+      }
+    },
+    "agent-detail@1280x720": {
+      "doc": {
+        "scrollW": 1280,
+        "scrollH": 720,
+        "vw": 1280,
+        "vh": 720
+      },
+      "rail": {
+        "x": 0,
+        "y": 0,
+        "w": 240,
+        "h": 720
+      },
+      "settingsSidebar": null,
+      "workspaceShell": {
+        "x": 240,
+        "y": 0,
+        "w": 1040,
+        "h": 720
+      },
+      "main": {
+        "x": 480,
+        "y": 48,
+        "w": 800,
+        "h": 672
+      }
+    },
+    "tasks-nav-expanded@1024x768": {
+      "doc": {
+        "scrollW": 1024,
+        "scrollH": 768,
+        "vw": 1024,
+        "vh": 768
+      },
+      "rail": {
+        "x": 0,
+        "y": 0,
+        "w": 240,
+        "h": 768
+      },
+      "settingsSidebar": null,
+      "workspaceShell": null,
+      "main": null
+    },
+    "settings@1024x768": {
+      "doc": {
+        "scrollW": 1024,
+        "scrollH": 768,
+        "vw": 1024,
+        "vh": 768
+      },
+      "rail": {
+        "x": 0,
+        "y": 0,
+        "w": 240,
+        "h": 768
+      },
+      "settingsSidebar": {
+        "x": 240,
+        "y": 0,
+        "w": 240,
+        "h": 768
+      },
+      "workspaceShell": null,
+      "main": {
+        "x": 480,
+        "y": 0,
+        "w": 544,
+        "h": 768
+      }
+    },
+    "agent-detail@1024x768": {
+      "doc": {
+        "scrollW": 1024,
+        "scrollH": 768,
+        "vw": 1024,
+        "vh": 768
+      },
+      "rail": {
+        "x": 0,
+        "y": 0,
+        "w": 240,
+        "h": 768
+      },
+      "settingsSidebar": null,
+      "workspaceShell": {
+        "x": 240,
+        "y": 0,
+        "w": 784,
+        "h": 768
+      },
+      "main": {
+        "x": 480,
+        "y": 48,
+        "w": 544,
+        "h": 720
+      }
+    }
+  }
+}

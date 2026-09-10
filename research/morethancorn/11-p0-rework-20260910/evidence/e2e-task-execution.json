@@ -1,0 +1,184 @@
+{
+  "generatedAt": "2026-09-10T13:34:12.778Z",
+  "mode": "UI wizard create + UI start + real AgentScope execution (no mocks)",
+  "ids": {
+    "data_definition_id": "b4f681032e6e4ef5a5a37fc8aed160a1",
+    "result_rule_set_id": "d9da60a9d97f404e8f08afd9e4ec8702",
+    "wizard_agent_options": [
+      "业务分析-通话打标"
+    ],
+    "task_id": "acaecc961bce4940bc153bc39dc63ceb",
+    "task_name": "E2E-TASK-EXEC-1789047223382",
+    "task_run_id": "17a856f032e847d492257defe1634106",
+    "taskrun_resolved_release": "7b1132edbc054b45afd8c30edac0ab81",
+    "run_ids": [
+      "920ac4f0cf3e40a0b2ee3ada3975f301",
+      "b41139bf513442d181274257c8e24796"
+    ],
+    "agentscope_session_ids": [
+      "64bc48e806ef433fa97dc60364b90e0b",
+      "92e1b4ebdb684c11a226fad80037909d"
+    ],
+    "failpath_agent_id": "f91960eb613f41fa93b9021b1f91a69b",
+    "failpath_task_id": "2223d6342a824603b52060f08dcbf67d",
+    "task_archived": 200,
+    "failpath_task_archived": 200,
+    "failpath_agent_archived": true
+  },
+  "timeline": [
+    {
+      "name": "script_start",
+      "at": "2026-09-10T13:33:42.383Z",
+      "elapsed_ms": 423
+    },
+    {
+      "name": "wizard_opened",
+      "at": "2026-09-10T13:33:43.372Z",
+      "elapsed_ms": 1411
+    },
+    {
+      "name": "task_created_via_ui_wizard",
+      "at": "2026-09-10T13:33:50.059Z",
+      "elapsed_ms": 8098
+    },
+    {
+      "name": "ui_start_clicked",
+      "at": "2026-09-10T13:33:51.391Z",
+      "elapsed_ms": 9430
+    },
+    {
+      "name": "taskrun_terminal",
+      "at": "2026-09-10T13:34:01.813Z",
+      "elapsed_ms": 19852
+    },
+    {
+      "name": "detail_refresh_verified",
+      "at": "2026-09-10T13:34:06.842Z",
+      "elapsed_ms": 24881
+    },
+    {
+      "name": "failpath_release_rolled_back",
+      "at": "2026-09-10T13:34:11.316Z",
+      "elapsed_ms": 29355
+    },
+    {
+      "name": "failpath_verified",
+      "at": "2026-09-10T13:34:12.770Z",
+      "elapsed_ms": 30809
+    },
+    {
+      "name": "cleanup_done",
+      "at": "2026-09-10T13:34:12.778Z",
+      "elapsed_ms": 30817
+    }
+  ],
+  "results": [
+    {
+      "name": "wizard_agent_selector_lists_published_only",
+      "pass": true,
+      "expected": "业务分析-通话打标 可选且无草稿/归档泄漏",
+      "actual": "prod=业务分析-通话打标 leak=[]",
+      "evidence": "[\"业务分析-通话打标\"]"
+    },
+    {
+      "name": "ui_wizard_create_task",
+      "pass": true,
+      "expected": "跳转 /autonomous-tasks/<id> + toast 自主任务已创建",
+      "actual": "acaecc961bce4940bc153bc39dc63ceb toast=yes",
+      "evidence": "http://localhost:5199/autonomous-tasks/acaecc961bce4940bc153bc39dc63ceb"
+    },
+    {
+      "name": "task_target_binding",
+      "pass": true,
+      "expected": "executionTarget=agent/e773172b/latest_prod_release",
+      "actual": "{\"type\":\"agent\",\"agentId\":\"e773172b6b434ed1a3011af443bb0f55\",\"versionPolicy\":\"latest_prod_release\",\"pinnedAgentVersionId\":null}",
+      "evidence": "GET /api/tasks/acaecc961bce4940bc153bc39dc63ceb"
+    },
+    {
+      "name": "task_detail_shows_executor",
+      "pass": true,
+      "expected": "执行目标区展示 agentId e773172b… + 类型/版本策略",
+      "actual": "true",
+      "evidence": "/batch-tasks/acaecc961bce4940bc153bc39dc63ceb"
+    },
+    {
+      "name": "ui_start_task_run",
+      "pass": true,
+      "expected": "toast 批次已启动（taskRunId 前 8 位）",
+      "actual": "批次已启动（17a856f0）",
+      "evidence": ""
+    },
+    {
+      "name": "taskrun_created",
+      "pass": true,
+      "expected": "TaskRun 行存在",
+      "actual": "17a856f032e847d492257defe1634106",
+      "evidence": "GET /api/tasks/acaecc961bce4940bc153bc39dc63ceb/runs"
+    },
+    {
+      "name": "taskrun_terminal_succeeded",
+      "pass": true,
+      "expected": "succeeded（抽样 2/2，failed=0）",
+      "actual": "{\"status\":\"succeeded\",\"total\":20,\"succeeded\":2,\"failed\":0}",
+      "evidence": ""
+    },
+    {
+      "name": "taskrun_frozen_release",
+      "pass": true,
+      "expected": "冻结 active prod Release id",
+      "actual": "7b1132edbc054b45afd8c30edac0ab81",
+      "evidence": ""
+    },
+    {
+      "name": "runs_exist_with_session",
+      "pass": true,
+      "expected": "2 条 Run 均挂真实 AgentScope Session",
+      "actual": "2 runs, sessions=[\"64bc48e806ef433fa97dc60364b90e0b\",\"92e1b4ebdb684c11a226fad80037909d\"]",
+      "evidence": "GET /api/runs?taskRunId=17a856f032e847d492257defe1634106"
+    },
+    {
+      "name": "outputs_real_not_fixed",
+      "pass": true,
+      "expected": "两条输出非空且互不相同（真实逐条打标，非固定假结果）",
+      "actual": "nonEmpty=true distinct=true sizes=468/459",
+      "evidence": "[\"{\\\"content\\\":\\\"{\\\\n  \\\\\\\"service_type_code\\\\\\\": \\\\\\\"CONSULTATION\\\\\\\",\\\\n  \\\\\\\"customer_intents\\\\\\\": [\\\\n    {\\\\n      \\\\\\\"intent\\\\\\\": \\\\\\\"预约改期\\\\\\\",\",\"{\\\"content\\\":\\\"{\\\\n  \\\\\\\"sample_id\\\\\\\": \\\\\\\"sample-001\\\\\\\",\\\\n  \\\\\\\"service_type_code\\\\\\\": \\\\\\\"REPAIR\\\\\\\",\\\\n  \\\\\\\"customer_intents\\\\\\\": [\\\\n    {\\\\\"]"
+    },
+    {
+      "name": "sessions_indexed",
+      "pass": true,
+      "expected": "全部 Session 可在 Agent 会话索引查回",
+      "actual": "2/2",
+      "evidence": ""
+    },
+    {
+      "name": "detail_refresh_recovery",
+      "pass": true,
+      "expected": "详情页最近运行=已完成，reload 后仍在",
+      "actual": "before=true after=true",
+      "evidence": "/batch-tasks/acaecc961bce4940bc153bc39dc63ceb"
+    },
+    {
+      "name": "taskrun_list_refresh_recovery",
+      "pass": true,
+      "expected": "运行记录页（taskId 过滤）含该任务批次行，reload 后仍在",
+      "actual": "before=true after=true",
+      "evidence": "/operations/task-runs?taskId=acaecc961bce4940bc153bc39dc63ceb"
+    },
+    {
+      "name": "failpath_explicit_error_no_loading",
+      "pass": true,
+      "expected": "明确报错 toast + 页面可交互 + 无 queued/running 悬挂",
+      "actual": "toast=yes interactive=true dangling=0",
+      "evidence": "启动失败：422: \"NO_RELEASED_VERSION：Agent 没有符合版本策略的活跃 Release（AgentScope 换底后不再绑定 Provider）\""
+    },
+    {
+      "name": "cleanup_all_archived",
+      "pass": true,
+      "expected": "task×2 归档 + 临时 Agent 归档 + release rolled_back",
+      "actual": "{\"data_definition_id\":\"b4f681032e6e4ef5a5a37fc8aed160a1\",\"result_rule_set_id\":\"d9da60a9d97f404e8f08afd9e4ec8702\",\"wizard_agent_options\":[\"业务分析-通话打标\"],\"task_id\":\"acaecc961bce4940bc153bc39dc63ceb\",\"task_name\":\"E2E-TASK-EXEC-1789047223382\",\"task_run_id\":\"17a856f032e847d492257defe1634106\",\"taskrun_resol",
+      "evidence": ""
+    }
+  ],
+  "failures": 0,
+  "cleanup_ok": true
+}

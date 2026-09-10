@@ -1,487 +1,328 @@
-# 08 · Agent 工作区现状审计与执行配置设计
+# 08 · AgentScope 原生前端与 QoderWake 产品体验复刻
 
+> 版本：v3.0
 > 日期：2026-09-08
-> 版本：v2.1
-> 状态：设计稿；当前页面已实测，目标改造未实施
-> 上位方案：11 号稿 v5.1；后端模型：05 号稿 v2.1
-> 参考边界：qoderwake/原站只提供 IA、任务看板和交互参考，不是本项目领域模型或 Runtime 契约
+> 状态：`DOC_REWRITE / UI_NOT_IMPLEMENTATION_READY`
+> 目标：Agent/任务/自动任务/AgentFlow 的产品体验以 QoderWake 实测为准，所有运行状态以 AgentScope 原生 API 为准。
 
-## 0. 结论
+## 0. 纠偏
 
-当前前端已经实现 Agent 卡片列表、九子页工作区和独立 Chat，不再是旧版“三 tab、无对话”的页面。旧 08 号稿主体已被代码事实推翻。
+旧前端稿把大量当前 mock、旧平台表和未来推测写成配置页与观测页。现在统一改为：
 
-视觉结构可以保留，但配置语义不能直接沿用。当前页面有三类问题：
+1. 已观察到的 QoderWake 页面结构和交互可以直接复刻。
+2. 自动任务创建、编辑、启停和手动运行已用 TEST 数据闭合；删除、关注动作、失败回滚和 Flow 重跑仍保持 `EVIDENCE_GAP`。
+3. Agent 页面不展示平台自创 Session、AgentState、Plan Event、Trace 或 Pipeline 状态。
+4. AgentScope API 返回什么状态，页面才展示什么状态。
+5. 没有真实 API 的页面不得以 mock 数据伪装完成。
 
-1. **状态错误**：Custom 被工作区壳误判为已封存，只读子页与可编辑 Config 同时出现；
-2. **幽灵配置**：Module 可安装 Skill，Connection、Workflow、Knowledge 可保存，但 Runtime/Release 不消费；
-3. **执行缺页**：没有 Pipeline、Planning、内部角色、stage scope、选择性重做、状态恢复和完整发布闭包。
+## 1. 信息架构
 
-目标不是再增加几个下拉框，而是让页面只展示后端模型与 Runtime 真正支持的操作。
+```text
+工作
+├── 任务看板
+└── 自动任务
 
-## 1. 视觉实测
+资源与员工
+├── Agent
+├── AgentFlow
+├── Workflow
+└── 资源
+    ├── Skills
+    ├── MCP/连接器
+    ├── 知识库
+    ├── 模型/凭据
+    └── 工作空间/项目
 
-实测地址：当前本地运行前端的 Agent 页面。证据保存于：
+数据接入
+└── 外部事件与数据源（AgentScope 缺口，规格待真实场景）
+```
 
-- research/morethancorn/09-agentscope-plan-audit/screenshots/01-agent-list.png
-- research/morethancorn/09-agentscope-plan-audit/screenshots/02-custom-home.png
-- research/morethancorn/09-agentscope-plan-audit/screenshots/03-custom-config.png
-- research/morethancorn/09-agentscope-plan-audit/screenshots/04-custom-skills.png
-- research/morethancorn/09-agentscope-plan-audit/screenshots/05-module-skills.png
-- research/morethancorn/09-agentscope-plan-audit/screenshots/06-module-config.png
+不加入当前范围：IM/@Agent、市场规模复刻、Group 管理、CLI、Hook 配置。
 
-已确认：
+## 2. Agent 列表
 
-- 列表同时有 Custom 和 Module 卡片，并提供对话动作；
-- Custom 详情顶栏显示“已封存·只读”，但 Config 有保存按钮；
-- Custom Skill 页因只读无安装按钮；
-- Module Skill 页有上传/安装按钮，但后端发布和 Runtime 不消费；
-- Module Config 仍显示 Provider 实现包含已退役的 deepseek-harness；
-- Module 核心资源只读，实例可编辑身份、展示能力、模型和业务定位；
-- Chat 是独立二栏工作区，但只渲染文本增量。
+目标体验复刻 QoderWake 管理页已证结构：
 
-视觉证据位于 research/morethancorn/09-agentscope-plan-audit/screenshots/：
+- 搜索名称或角色；
+- 运行状态、角色、环境、排序筛选；
+- Agent 卡：状态、环境、头像、名称、角色、描述、执行数量、最近运行；
+- 管理、分享、对话；
+- 新建 Agent 入口。
 
-- 01-agent-list.png
-- 02-custom-home.png
-- 03-custom-config.png
-- 04-custom-skills.png
-- 05-module-skills.png
-- 06-module-config.png
+数据边界：
 
-## 2. 当前页面、状态与 API
+- 名称/system prompt/context/react/invite 来自 AgentScope AgentData。
+- 头像、岗位、标签等只作为产品扩展。
+- “在线”“运行数量”“最近运行”只有真实 AgentScope/OTel 查询能够支撑后才显示；当前目标页面样本不能证明我们的计算口径。
 
-| 页面 | 表单/本地状态 | API | 当前真实结果 |
-|---|---|---|---|
-| Agent 列表 | search、status、type、sort、pagination | GET /api/agents；GET /api/agents/modules | search/pagination 服务端；type/sort 只作用当前页；type 下拉无 Custom |
-| 新建内置方案 | module、name、description、avatar、model | POST /api/agents | 创建 Module 实例 |
-| 新建 Custom | name、description、avatar、prompt、skill IDs、model | POST /api/agents | Skill IDs 只进 config.skills；不进 AgentSkill |
-| 概览 | Agent、run stats、能力、记忆摘要 | Agent/capability APIs | 展示为主 |
-| 任务看板 | 最近 Run、Run detail | GET /api/agents/{id}/runs | 平面 Run/Event，无 stage/unit |
-| 记忆 | content、revision、timeline | GET/PUT /memory | Chat 本地 prompt 消费；Module Runtime 不消费 |
-| Skill | market/mine、upload dialog | resource API；AgentSkill API | Custom 被只读；Module 可安装但运行不生效 |
-| 连接器 | market/installed、mounted IDs | 全量 PUT Agent config | 只写 config.connections |
-| Wakerflow | option、mounted IDs | Workflow list；全量 PUT config | 只写 config.workflows；Agent 无法真正枚举/调用 Workflow |
-| Workflow 设计器 Agent 节点 | 旧 agent/agent-select/agent-exec | 节点注册表与迁移器 | 已 deprecated，并被改写为 workflow 节点；不是新版 AgentVersion 子运行 |
-| 知识库 | option、mounted IDs | Knowledge list；全量 PUT config | 只写 config.knowledges |
-| Custom Config | prompt、capabilities、skills、model、revision | 全量 PUT Agent config | 人设可影响本地 Chat；Skill 仍走错误路径 |
-| Module Config | identity、caps、model、purpose、sample、provider | PUT Agent；versions/releases/run | purpose 写入 config.spec.purpose，但 Module 编译读取顶层 purpose；该字段实际不生效 |
-| 发布治理 | provider select、Golden limit、versions、eval | versions/releases/eval APIs | Module 部分成立；多 Provider 评测与单 Provider Release 文案混杂 |
-| Chat | sessions、messages、draft、attachments、model | sessions/messages/turns/uploads；Run SSE | 本地模型旁路；附件只传名称；只展示 llm_delta |
+## 3. Agent 工作区
 
-## 3. 页面级纠错
+目标产品已观察到的二级导航可以复刻为页面壳，但每页必须绑定真实 AgentScope 能力。
 
-### 3.1 列表
-
-“运行时”筛选当前实际筛的是 Agent.type，不是 Runtime Provider，也不是执行形态。目标拆为：
-
-- 方案：内置、派生、自定义；
-- 执行：单 Agent、Pipeline；
-- 能力：Chat、Planning、Batch、HITL；
-- Runtime：AgentScope；
-- 生命周期：草稿、沙箱、生产、已封存。
-
-筛选和排序必须进 GET /api/agents 查询参数，total 返回过滤后的总数。动作由 capability 决定：supports_chat 才显示对话，supports_structured_run 才显示运行。
-
-### 3.2 生命周期
-
-archived 只等于真实归档状态，不能用 agent.type != module 推导。Custom 和 Module 都可以有 draft/published/released/archived 生命周期。
-
-只读原因要明确显示：
-
-- archived；
-- core asset；
-- permission denied；
-- viewing released version；
-- resource unavailable。
-
-不要把这些都叫“已封存”。
-
-### 3.3 新建
-
-首屏保留两条路径：
-
-1. 选择内置方案：质检、审计、工单核验等；
-2. 自定义 Agent。
-
-内置方案卡展示：
-
-- runner 类型；
-- 是否支持 Chat/Batch/HITL；
-- 核心 Pipeline 阶段摘要；
-- Core 资源数；
-- 可扩展 Skill/Tool/Knowledge 槽；
-- 风险级；
-- 当前模板版本。
-
-Custom 创建首期默认 runner=agent。用户可开启 Planning；不要在创建对话框内一次塞完 Pipeline 设计。创建后进入工作区的“执行”页完善。
-
-Skill 选择必须创建 MountBinding 草稿，不能再写 config.skills。
-
-## 4. 目标工作区 IA
-
-栏目不再全量固定，而按 Agent capabilities 和 runner 渲染：
-
-| 栏目 | 显示条件 | 职责 |
+| 子页 | 数据来源 | 处置 |
 |---|---|---|
-| 概览 | 全部 | 身份、执行形态、版本、环境、健康、最近工作 |
-| 工作 | supports_run | Run/TaskRun、stage/unit attempt、等待项 |
-| 对话 | supports_chat | Session 与 turn Run |
-| 执行 | supports_run | Pipeline/Planning/单 Agent 配置 |
-| 能力 | 有可扩展 slot | Skill、Tool、Knowledge、Workflow mounts |
-| 记忆 | memory policy 可用 | 长期记忆；不混 AgentState/PipelineState |
-| 评测 | 可版本化 | 样本、Golden Set、回归、Provider 对比 |
-| 发布 | 可发布 | 版本、依赖闭包、Release、回滚、审计 |
-| 设置 | 全部 | 身份、标签、归档 |
+| 概览 | AgentData + 已证原生执行数据 | 保留；指标不足时隐藏，不造数 |
+| 任务看板 | 该 Agent 相关 Session/Schedule Sessions | 复用任务看板投影 |
+| 自动任务 | AgentScope ScheduleRecord | 直接采用 |
+| 对话 | Session/messages/status/SSE | 直接采用 |
+| Skill | Skill library + Workspace skills | 明确安装与加入 Workspace 两态 |
+| 连接器 | MCP library + Workspace MCPs | 明确安装与加入 Workspace 两态 |
+| 知识库 | KnowledgeBase + SessionKnowledgeConfig 默认 | 真实接入后开放 |
+| 项目/工作目录 | WorkspaceManager + SessionConfig | 直接采用 |
+| 权限 | ResourceAccess + PermissionContext | 只展示已证规则 |
+| WakerFlow | AgentFlow 可调用关系 | 2.0.8 app 集成后开放 |
+| 记忆 | AgentScope long-term-memory 实际配置 | 未接通前不展示成功态 |
+| 自进化 Skill | 目标产品可见但 AgentScope/我方契约未证 | 延后，不用 mock |
+| Agent 档案 | AgentData + 产品扩展 | 保留 |
 
-连接器不再作为 Agent 的通用安装页面。它是 Tool、MCP、Knowledge、Model Provider 的依赖；只有明确的 connection slot 才显示。
+## 4. Agent 配置页
 
-原“Wakerflow”改名“流程/编排”。平台 WorkflowVersion 与 AgentScope Pipeline 是不同概念：
+### 4.1 身份与工作手册
 
-- Workflow 是平台可视化流程资产；Agent 可将授权 WorkflowVersion 作为工具调用，Workflow 也可通过通用 agent-run 节点调用 AgentVersion；
-- Pipeline 是 AgentVersion 内的 Runtime 执行拓扑；
-- 参考产品的 WakerFlow 只是交互参考，不进入本项目数据模型。
+可以使用 IDENTITY、BIBLE/工作手册、PERSONA 的编辑分区，但保存前必须显示编译预览；最终只写 AgentScope `AgentData.system_prompt`。
 
-“流程/编排”页要分两个关系区：
+页面不得宣称 Prompt 可以限制工具权限、文件范围或副作用。
 
-- 本 Agent 可调用：来源于 Workflow MountBinding，显示固定版本、工具名、scope、同步/异步和权限；
-- 谁在调用本 Agent：只读反向引用，显示 WorkflowVersion、agent-run 节点和版本策略。
+### 4.2 ReAct 与 Context
 
-不能只显示一个“已安装”标签，也不能把双向引用合成无方向的关联。
+字段直接由 AgentData 的 react_config/context_config schema 渲染。不能继续维护一套平台同名 config，再由 adapter 翻译。
 
-## 5. 执行页
+### 4.3 默认模型
 
-### 5.1 顶部摘要
+页面文案必须是“新 Session 默认模型”，因为 AgentScope 实际模型在 SessionConfig 或 ScheduleData，不属于 AgentData。
 
-显示：
+### 4.4 默认 Knowledge/Workspace
 
-- runner：单 Agent 或由 ModuleVersion 声明固定的 Pipeline；
-- Planning：开/关，以及在哪些 role 中开启；
-- Core template/version；
-- Draft revision；
-- 最近发布 AgentVersion；
-- Runtime Provider 只在 Release 区显示，不作为 runner 类型；
-- 变更影响：是否需要重新评测、重新发布。
+同样是新建 Session 时的默认值。Session 详情显示并允许按官方权限修改实际 SessionConfig。
 
-### 5.2 Pipeline 模式
+## 5. Skill 页面
 
-核心拓扑来自当前 ModuleVersion 的声明式 PipelineDefinition，实例中只读展示。首个质检模板示例为：
+Skill 页面必须展示两个不同状态：
 
-1. classify；
-2. dispatch；
-3. execute units；
-4. unit verify；
-5. barrier；
-6. synthesize；
-7. final verify。
+```text
+我的 Skill 库
+└── AgentScope SkillRecord
 
-每个 stage 卡片展示：
+当前 Agent/Workspace 可用
+└── workspace.list_skills(agent_id)
+```
 
-- stage_key、role；
-- 输入/输出 Schema；
-- Core mounts；
-- Extension slots；
-- Tool permission；
-- Planning 开关；
-- timeout、retry、parallelism；
-- 失败去向。
+### 5.1 用户库
 
-可编辑内容只在 extension slot：
+- 列表、详情、来源、版本、enabled、卸载。
+- Hub 市场或上传入口按实际可用 Hub 决定。
+- 不照搬 QoderWake 数万条市场规模和分类数字。
 
-- 添加或替换允许的 Skill、Tool、Knowledge；
-- 配置业务定位和非核心参数；
-- 在模板允许范围内收紧权限/预算；
-- 不能删除 Core verifier、barrier、Schema 或必需工具。
+### 5.2 加入 Agent Workspace
 
-选择性重做配置不是自由流程编辑器。内置质检方案展示只读策略：
+- 从 Library 选择并调用 `/workspace/skill/from-library`。
+- 也可以走 Workspace Skill 上传。
+- UI 必须展示 partial success：官方批量加入返回 `added` 和 `failed`。
+- 从 Library 删除不会移除 Workspace 副本，删除确认必须解释这一点。
 
-- unit retry max；
-- retryable error classes；
-- verifier feedback mapping；
-- final verifier failedUnitIds；
-- exhausted unit 的 barrier policy。
+### 5.3 禁止
 
-修改 Core 按钮应写“派生新方案”，而不是“解锁编辑”。
+- 不再用平台 AgentSkill 关系冒充 AgentScope mount。
+- 不把 Skill 名称写进 Prompt 当作“已注入”。
+- 不在 Runtime 未加载 SKILL.md 时显示“已生效”。
 
-这里的“只读”不是说所有方案都写死成七个阶段。不同 ModuleVersion 可声明不同 stages/edges/roles；通用 Runtime 只固定版本、权限、预算、checkpoint、幂等、环检测和终态等治理不变量。
+## 6. MCP/连接器页面
 
-### 5.3 Planning 模式
+同样分为 MCP Library 与 Workspace MCP：
 
-显示：
+- Library：MCPRecord，支持重命名、enabled、重新填写 values、卸载。
+- Workspace：通过官方 Workspace API 加入/移除。
+- 实际运行：Toolkit.mcps。
+- 凭据字段必须 write-only；AgentScope 当前存储语义与平台 KMS 的兼容方案未通过前，不上线编辑。
 
-- planning enabled；
-- max tasks/depth/iterations；
-- 是否允许动态新增 task；
-- 可用 Tool/Skill/Knowledge；
-- 副作用工具确认策略；
-- 计划是否对用户可见；
-- Run 结束时的计划快照策略。
+“连接成功”“工具数”“可用”只能由真实连接和工具发现结果得出。
 
-这里配置的是 AgentScope 一次执行内的 TaskContext，不是平台自动任务。
+## 7. Knowledge 与 Workspace
 
-### 5.4 混合模式
+### Knowledge
 
-Pipeline stage 可单独启用 Planning。UI 在对应 role card 内显示 Planning 配置，不能把整个方案强制标成“Pipeline 或 Planning 二选一”。
+- 列表/详情以 AgentScope KnowledgeBase API 为准。
+- Agent 默认知识库在创建 Session 时写入 SessionKnowledgeConfig。
+- Session 中显示实际 knowledge_base_ids 和 RAG 参数。
+- 索引未完成、失败或依赖不可达必须显示真实状态。
 
-### 5.5 身份与工作手册
+### Workspace
 
-配置页不照搬三个文件编辑器，但要把 PromptBundle 的来源说清：
+- 页面使用 Workspace status/directories/files API。
+- SessionConfig.cwd 是当前聚焦目录；文案不能误导为 Bash 一定在该目录执行。
+- Skill/MCP 的实际挂载结果和文件工作目录在同一 Workspace 页面可追踪。
 
-- Identity：身份、职责和边界；
-- Playbook：方案级工作手册，对应 BIBLE 的价值；
-- Persona：交互语气、格式和风格；
-- Skill：可复用专项方法，不重复塞入 Playbook；
-- Hard policy：只读展示，真正由权限/控制器强制，不允许用 Prompt 冒充。
+## 8. 对话页面
 
-发布预览展示最终编译顺序、token 估算、来源和 hash，避免用户不知道哪段覆盖哪段。
+### 数据和动作
 
-## 6. 能力页与 Mount 表单
+- 新建 Session：AgentScope Session API。
+- 消息历史：`/{session_id}/messages` 游标分页。
+- 发送：ChatService chat API。
+- 实时输出：`/{session_id}/stream` SSE，消费原生 AgentEvent。
+- 状态：Session status。
+- 中断：Session interrupt。
+- HITL：按官方确认/外部执行事件交互。
 
-能力页按资源类型分 tab，但底层使用同一 MountBinding。
+### 不再做
 
-每一行必须展示：
+- 不走当前 `agent_chat.py` 的自建 session 和固定历史截断。
+- 不把事件压成只有 `llm_delta`。
+- 不将 ThinkingBlock 解释为可展示隐式推理；产品默认不显示隐式思维链。
+- 不为每个 assistant turn 再造平台 Run，除非跨产品业务需求有独立证据。
 
-- 名称与资源类型；
-- pinned version 或“草稿未冻结”；
-- scope：全局、stage、role；
-- scope key；
-- slot；
-- Core/Extension；
-- 状态与最近检查；
-- 是否已包含在最近发布版本；
-- 权限/数据级变化提示。
+## 9. 任务看板
 
-新增挂载流程：
+我方 `/tasks` 页面直接采用 `.replica/specs/QW-001-task-board.md`，不再继续自行设计。
 
-1. 选择资源；
-2. 选择允许的 slot；
-3. 选择 scope；
-4. 选择版本策略；草稿可以 latest，生产必须 pinned；
-5. 预览权限、依赖与发布影响；
-6. 保存 MountBinding；
-7. 页面重新读取服务端返回的草稿，不直接修改 agent.config 对象。
+### 已证布局
 
-当资源类型是 Workflow 时额外配置：调用工具名、同步/异步、输入/输出映射、子 Run 预算。资源选择器只显示当前用户、环境和 slot 有权调用的 WorkflowVersion。
+- 周期指标；
+- 需要操作/查收结果；
+- 全部任务；
+- 列表/泳道；
+- 搜索、Agent/Team、触发方式、状态、周期；
+- 任务、执行者、来源、状态、最近更新。
+- 五泳道：需要操作、执行中、已完成、排队中、失败/取消。
+- 已结束聚合包含成功、失败、取消。
+- 触发来源筛选：手动、定时、事件、API、@Agent、对话。
 
-阻断规则：
+### 数据策略
 
-- 没有版本的 Tool/Workflow 不能发布；
-- Skill/Knowledge 没有可快照内容不能发布；
-- Core 不可卸载；
-- Extension 不能扩权超过 slot；
-- Module/Custom 使用同一表单和 API；
-- Runtime 尚未支持的资源不显示“安装”动作。
+任务看板是联合只读视图，候选来源包括 AgentScope user/channel Session、Schedule Session、AgentFlow execution 和 Workflow execution。不同来源保留原生详情页。
 
-## 7. 工作看板与 Run 详情
+不能预设：统一 WorkItem 表、查收持久字段、重跑/取消写语义。搜索和泳道已证为服务端查询；补证见 `.replica/research/QW-001-task-board-state-matrix.md`。
 
-### 7.1 层级
+## 10. 自动任务
 
-    TaskRun（可选，批量外层）
-      └─ Run（一次输入，一条执行事实）
-           ├─ Stage
-           │    └─ Unit
-           │         └─ Attempt 1..N
-           ├─ Tool/Model/Knowledge calls
-           ├─ ChildInvocation
-           │    └─ WorkflowVersion / AgentVersion 子 Run
-           └─ Events
+我方 `/autonomous-tasks` 页面直接采用 `.replica/specs/QW-003-005-automation.md`。
 
-NodeRun 继续服务平台 Workflow 图节点。AgentScope Pipeline stage 不强行伪装成 NodeRun；新增专用 PipelineState/StageAttempt/UnitAttempt 投影或使用结构化事件+状态快照。
+### 列表和详情
 
-### 7.2 看板状态
+直接复刻已证指标、筛选、表列、enabled switch、详情概览、触发条件、响应对象、高级设置和运行历史。
 
-至少区分：
+### 创建/编辑
 
-- queued；
-- running；
-- waiting input/confirmation/external result；
-- paused；
-- succeeded；
-- partial；
-- failed；
-- cancelled。
+直接复刻已证字段：名称、最多五个触发、定时/API、定期/一次性、Agent/AgentFlow、执行对象、最大运行次数、截止日期。事件和定时拉取按数据源 capability 条件出现。
 
-Pipeline 卡片要显示：当前 stage、完成 units/总 units、正在重做的 unit、剩余预算、等待原因。不能只给一个 running 圆点。
+Agent 与 AgentFlow 使用分支表单：
 
-Run 详情另提供 InvocationGraph：父子 Run、调用方向、目标固定版本、耗时/预算、失败传播和被阻断的递归环。不能只把子调用埋在 Tool call 文本中。
+- Agent：Prompt、模型、默认/本地/项目 Workspace；
+- AgentFlow：阶段和人工确认节点概览、固定值或 trigger payload 输入映射；
+- 保存后 target kind 与 target id 均锁定，切换目标需要新建定义。
 
-### 7.3 选择性重做可视化
+### AgentScope 映射
 
-用户应看到：
+- 定时 Agent → AgentScope ScheduleRecord。
+- stateful=false → 每次 fresh Session。
+- stateful=true → 多次复用 Session。
+- 执行历史 → schedule sessions。
+- 手动调试 → 独立 Session，产品统计按目标已证规则排除。
+- API → 默认 fresh Session；只有显式 conversation key 才复用 Session，该 key 不承担幂等。
+- MQ/Event → 平台外部入口后触发 AgentScope；不另建 Agent scheduler。
 
-- 哪个 unit 失败；
-- verifier 的结构化原因；
-- 是否 retryable；
-- 当前是第几个 attempt；
-- 兄弟 units 是否复用已冻结结果；
-- final verifier 要求重开的 unit IDs；
-- 是否因 exhausted 导致 barrier blocked。
+### 已闭合与仍阻断
 
-首期重做由策略自动触发；手工“重做此 unit”是否开放另行拍板，不在本稿默认加入。
+已闭合：创建必填校验、默认启用、编辑、即时启停、手动运行 `running → success`、同一 Session 进入历史和任务看板、手动运行不计自动统计。暂停/max-runs/deadline 只阻止新自动触发，不取消已经运行中的任务。
 
-## 8. Chat 工作区
+仍阻断：删除和历史保留、启停失败回滚、运行中取消、API response/error schema、我方鉴权/幂等/限流/重放保护、AgentFlow target 的正式运行方式。
 
-保留左 Session、右消息和 composer 的现有布局，但语义改为 AgentScope Runtime Chat：
+## 11. AgentFlow
 
-- 一个 Session 保存 N 个 turn；
-- 每个 assistant turn 绑定一个 Run；
-- AgentScope AgentState 持久化并可跨进程恢复；
-- 消息块支持 text、thinking、data、tool call/result、hint；
-- task.updated 驱动计划面板；
-- Pipeline 事件若由 Chat 发起，显示 stage/unit 状态；
-- 附件必须解析内容或构造 AgentScope 支持的多模态 source，不能只传文件名；
-- Skill 必须装配正文/loader；
-- 工具调用经平台 Gateway；
-- Workflow 工具只列出当前 AgentVersion 已授权并冻结的 Workflow mounts；
-- 用户确认和 external execution result 走 continuation。
+产品面可直接复刻 QoderWake 已证内容：
 
-模型选择要明确作用域：
+- 列表和新建卡；
+- 详情头部；
+- 画布/脚本切换；
+- 阶段和 Agent 节点；
+- 输入参数；
+- 版本历史；
+- 运行记录；
+- 触发配置；
+- 对话式创建/修改。
 
-- 草稿 Chat：可临时选模型，标记不进入 Release；
-- 发布环境 Chat：默认使用 Release 冻结的模型；临时 override 是否允许需权限；
-- 不能让页面选择任意模型而破坏已发布版本可重放性。
+但前端不得在 2.0.8 Pipeline app spike 前实现或宣称：选择性重做、跨进程恢复、任意 DAG、Flow 嵌套、完整运行 trace。QoderWake 页面没有证明这些能力，AgentScope dev 也没有提供 app 层保证。
 
-## 9. 发布与评测
+## 12. Workflow
 
-发布页在创建版本前展示依赖闭包：
+Workflow 保留现有产品和编辑器。Agent 节点必须调用 AgentScope Session/ChatService；Agent 调 Workflow 的入口未来作为 AgentScope ToolBase。前端不把 Workflow 与 AgentFlow 合并成一个编辑器。
 
-- Core template/version；
-- runner/Pipeline controller；
-- RoleVersions；
-- mounts 与 pinned versions；
-- model/schema/policy；
-- AgentScope/runtime contract version；
-- 未冻结、disabled、missing、越权项目。
+## 13. 观测展示
 
-版本对比不能只 diff definition，还要覆盖 common config、roles、mounts、policies 和 dependency snapshot。
+### 当前允许展示
 
-Golden Set 可以选择多个 Provider 做对比，但文案必须说明：这是评测，不是让同一个 active Release 同时绑定多个 Provider。Release 操作遵守后端约束。
+- Session messages；
+- Session status；
+- 原生 AgentEvent 实时流；
+- Schedule sessions；
+- 经过实测接通后由 OTel backend 返回的 Agent/model/tool spans。
 
-## 10. 保存状态与并发
+### 当前禁止展示为已完成
 
-所有编辑页共享一个服务端 draft revision：
+- 永久完整 Trace；
+- 成本与 Token 趋势；
+- AgentFlow 阶段 trace；
+- 跨 Workflow/Agent/Flow 谱系；
+- 自创 plan_progress、decision summary、checkpoint timeline。
 
-- 首次加载得到 revision；
-- 修改产生 dirty section；
-- PATCH 携带 expectedRevision；
-- 冲突时展示服务端变更区和本地变更区，不静默覆盖；
-- 成功后用服务端返回草稿刷新；
-- 切页时 dirty 状态需要确认；
-- 发布成功后仍保留可继续编辑的草稿，但页面明确最近发布版本。
+现有 `trace-view.tsx` 和 RunEvent API 只能代表旧平台能力，不得默认用于 AgentScope 页面。
 
-禁止继续复制初始 agent.config 后整包 PUT；这会让另一个子页刚保存的字段消失。
+## 14. API 适配原则
 
-## 11. 前端 API 映射
+前端可以继续使用 `/api/*` 同源路径，但后端薄代理必须保持 AgentScope 原生对象语义：
 
-| UI 动作 | 目标 API |
+| 产品页面 | 原生能力 |
 |---|---|
-| 加载工作区 | GET /api/agents/{id}/draft |
-| 改身份 | PATCH /api/agents/{id}/draft/identity |
-| 改对话 | PATCH /api/agents/{id}/draft/conversation |
-| 改执行 | PATCH /api/agents/{id}/draft/execution |
-| 改内部角色 | PATCH /api/agents/{id}/draft/roles/{roleKey} |
-| 查询挂载 | GET /api/agents/{id}/mounts |
-| 安装/绑定 | POST /api/agents/{id}/mounts |
-| 改 scope/版本/启停 | PATCH /api/agents/{id}/mounts/{mountId} |
-| 卸载 | DELETE /api/agents/{id}/mounts/{mountId} |
-| 校验草稿 | POST /api/agents/{id}/draft/validate |
-| 预览发布闭包 | GET /api/agents/{id}/draft/dependency-closure |
-| 创建版本 | POST /api/agents/{id}/versions |
-| 发布 | POST /api/agents/{id}/releases |
-| 运行 | POST /api/agents/{id}/runs |
-| 恢复/确认 | POST /api/runs/{runId}/continuations |
-| Pipeline 状态 | GET /api/runs/{runId}/pipeline-state |
-| 子运行关系图 | GET /api/runs/{runId}/invocation-graph |
-| Chat Session | 继续使用 /api/agents/{id}/chat/sessions |
-| Chat turn | 继续使用产品端点，服务端内部改走 Runtime Chat |
+| Agent | Agent router/storage |
+| Chat | Session + Chat routers |
+| 自动任务 | Schedule router |
+| 自动任务历史 | Schedule sessions |
+| Skill 库 | Skill router |
+| Agent Skill | Workspace skill router |
+| MCP 库 | MCP router |
+| Agent MCP | Workspace MCP router |
+| Knowledge | KnowledgeBase router |
+| Workspace | Workspace router |
 
-这些是目标 API，不代表当前已实现。
+薄代理只加租户认证、脱敏和路由适配，不将一次请求拆成 AgentScope 与平台两处可变写入。
 
-## 12. 逐页验收
+## 15. 页面状态要求
 
-### 列表
+每个页面必须真实实现：loading、empty、error、permission denied、partial success、disabled reason。状态文案来自真实 API；不得使用静态“可用/已连接/已生效”。
 
-- 服务端支持 lifecycle、template、runner、planning、supports_chat、provider 筛选；
-- sort 与 pagination 作用于完整集合；
-- Custom 不再遗漏；
-- “运行时”只指 Runtime Provider，不能过滤 Agent type；
-- card 动作由 capability 决定。
+高风险动作必须有确认和失败回滚：删除 Skill/MCP、移出 Workspace、中断 Session、启停 Schedule、删除自动任务、运行 AgentFlow。
 
-### 新建
+## 16. 实施顺序
 
-- 内置方案卡显示 Core 与扩展边界；
-- Custom 创建后可发布和运行；
-- Skill 选择产生 MountBinding；
-- 不允许创建只有 UI 配置、没有编译路径的 Agent。
+1. AgentScope app 原生 API spike。
+2. Agent 配置、Session/Chat、Workspace。
+3. Skill Library/Workspace 与 MCP Library/Workspace。
+4. Knowledge 与真实模型配置。
+5. 固化已证任务/自动任务网络契约，继续补删除、关注动作和失败路径。
+6. 高保真实现任务看板和自动任务。
+7. 2.0.8 Pipeline app spike 后实现 AgentFlow 页面真实状态。
+8. 最后接外部数据入口。
 
-### 工作区
+## 17. 前端验收门禁
 
-- Custom 不再被误标归档；
-- 不支持的栏目隐藏或显示明确“尚未接通”，不提供成功保存按钮；
-- Execution 页可区分 Pipeline、Planning 与混合模式；
-- Module Core 只读，extension slot 可编辑；
-- 所有保存经过 revision。
+1. 每个“保存成功”都能追到 AgentScope 原生对象变化。
+2. 每个“已生效”都能通过下一次 Agent assembly 验证。
+3. Skill/MCP Library 与 Workspace 两态不混。
+4. 默认模型/知识与 Session 实际配置不混。
+5. 无状态自动任务的 fresh Session 可从 schedule sessions 看到。
+6. 页面不展示未经验证的 Trace、Token、成本或 Pipeline 状态。
+7. 任务/自动任务布局和交互通过目标截图与状态矩阵复核。
+8. 自动任务创建/编辑/启停/手动运行按已证矩阵实施；删除、关注动作、失败回滚等未证副作用保持不可实施。
 
-### 能力
+## 18. 证据
 
-- 同一 Skill 在创建页、能力页、版本闭包和 Runtime 中 ID 一致；
-- stage scope 可验证；
-- 修改资源不影响旧版本；
-- Core 不能卸载；
-- Connection 不作为普通能力自由挂载。
-- Workflow mount 能显示版本、调用方向、输入输出映射和子 Run 预算；未授权 Workflow 不可枚举；
-- Workflow 的 agent-run 反向引用可追到固定 AgentVersion。
-
-### Chat
-
-- Skill 正文可导致可观察行为变化；
-- 附件内容而非文件名可被回答；
-- tool/thinking/task events 可见；
-- 每 turn 有 Run；
-- 重启后 Session 上下文恢复；
-- 发布环境不被任意模型 override。
-
-### Pipeline
-
-- 能看拓扑、unit、attempt、verifier feedback；
-- 故意让一个 unit 失败，只重做它；
-- 兄弟 unit 的调用次数不变；
-- waiting/resume 与 checkpoint 可见；
-- final verdict 有结构化原因。
-
-### 发布
-
-- 未版本化 Skill/Knowledge 阻断；
-- dependency closure 可审阅；
-- diff 包含 roles/mounts/policies；
-- Provider 评测与 Release 绑定文案不混淆；
-- 回滚恢复完整旧行为。
-
-### 双向编排
-
-- Agent 在 Chat 或无状态 Run 中调用 WorkflowVersion，产生可追踪子 Run；
-- Workflow 的 agent-run 节点调用 AgentVersion，不再退化为底层 workflow；
-- Agent→Workflow→Agent 的版本环在外部副作用前被阻断；
-- 子调用继承 trace、取消和权限上限，但不自动创建 Chat Session；
-- 草稿 latest 预览与生产 pinned 状态在页面上明显区分。
-
-## 13. 实施顺序
-
-1. 不先画新表单；先完成 05 号稿目标模型和 Runtime Contract v1.2；
-2. 用只读数据适配器让现有页面展示真实 capability 与挂载状态；
-3. 建统一 draft/mount API；
-4. 修 lifecycle/type 分离和列表服务端筛选；
-5. 新增 Execution 页；
-6. 改能力页为 MountBinding；
-7. 改 Run 看板为 Pipeline 层级；
-8. 最后切 Chat Runtime 与完整事件渲染；
-9. 删除旧 config 写路径前做调用扫描和数据迁移。
-
-## 14. 明确不照搬
-
-- 不照搬 qoderwake 的领域命名、后端实体和运行契约；
-- 不把参考产品的 Wakerflow 当成 AgentScope Pipeline；
-- 不因为参考产品有对话就让所有自动任务创建 Session；
-- 不用在线状态模拟非驻留 Agent；
-- 不把内部角色全部做成员工卡；
-- 不把无法生效的资源按钮保留为“先做 UI”；
-- 不用颜色或“已安装”文案代替版本、作用域和依赖闭包事实。
+- `.replica/CODEBASE_CONTRACT.md`
+- `.replica/DOMAIN_MAPPING.md`
+- `.replica/research/page-inventory.md`
+- `.replica/research/QW-001-task-board-state-matrix.md`
+- `.replica/research/QW-003-005-automation-state-matrix.md`
+- `.replica/research/network-contracts.md`
+- `.replica/specs/QW-001-task-board.md`
+- `.replica/specs/QW-003-005-automation.md`
+- `research/morethancorn/10-qoderwake-product-research/01-qoderwake-product-observation.md`
+- `research/morethancorn/10-qoderwake-product-research/03-agentscope-2.0.8-contract.md`
