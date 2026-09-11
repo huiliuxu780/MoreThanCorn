@@ -1,31 +1,41 @@
 /**
- * AgentFlow 详情（2026-09-10 第二轮返工：对齐 QoderWake WakerFlow 详情「阶段卡画布」）。
+ * AgentFlow 详情（09-11 治理轮：展示形式对齐原站 WakerFlow 详情实测台账
+ * research/morethancorn/10-qoderwake-product-research §4.5 + flow-01..04 截图）。
  *
- * 原站事实（/wakerflow/<uuid>，实测 1440×900）：
- *  - 头部：返回 + 标题 + 视图切换（WakerFlow | 执行记录）+ 管理触发方式 + 运行；
- *  - WakerFlow 视图：**阶段卡画布**（浅底 #FCFCFC），每阶段一张白卡
- *    （圆角8/边框/内距 16×12）：阶段标签（11px 三级色）+ 阶段标题 + 说明 + 步骤行
- *    （Waker avatar+名 chip）；节点级「请输入调整内容」；右下画布缩放组；
- *  - 执行记录视图：阶段卡按 run 状态着色（已完成/失败/未执行）+ 右栏「运行记录」
- *    run 列表（第 N 次运行 · 触发方式 · 状态 · 相对时间，选中高亮）。
+ * 原站事实：头部=返回+标题+铅笔重命名+视图 radio(WakerFlow|执行记录)+添加触发方式+运行；
+ * 工具条=显示模式段控(画布|脚本)+右「输入参数」折叠+时钟(历史版本)；
+ * 画布=阶段卡(阶段标签/标题/说明/步骤行 Waker chip)+节点级调整+左下浮动缩放组；
+ * 脚本视图=DSL 只读代码+保存；执行记录=画布按 run 着色(卡右上状态 chip+「N 个执行节点」)
+ * +右「运行记录」行(第 N 次·触发·状态·相对时间+行内重跑/报告图标)；历史版本=右面板行+当前版本 chip。
  *
- * 我方映射：definition.nodes 为线性链（agent/aggregate）→ 每节点=一个阶段卡；
- * 节点级调整=就地改 Prompt 后生成新版本（不改已发布版本）。
+ * 我方诚实映射：脚本视图=版本 definition JSON 只读（我方契约为 JSON 非 DSL，不伪造 DSL）；
+ * 节点执行过程=拍板路线 a：node_run.session_id 复用 session stream 代理（NodeRunPanel）。
  */
 import * as React from "react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
+import CodeMirror from "@uiw/react-codemirror"
+import { json } from "@codemirror/lang-json"
 import {
-  ArrowLeft, Check, Minus, Pencil, Play, Plus, RefreshCw, ZoomIn, ZoomOut, Maximize2,
+  ArrowLeft, Clock, FileText, History, Pencil, Play, Plus,
+  RefreshCw, RotateCw, Trash2, ZoomIn, ZoomOut, Maximize2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select"
 import { avatarFor } from "@/lib/agent-avatar"
 import { asApi } from "@/services/as-api"
 import { useAsyncData } from "@/hooks/use-async-data"
+import { NodeRunPanel, type NodeRunPanelTarget } from "@/components/agentflow/node-run-panel"
 import { toast } from "sonner"
 
 interface NodeSpec {
@@ -57,6 +67,13 @@ interface RunRow {
   ended_at: string | null
   nodes: NodeRunRow[]
 }
+interface VersionRow {
+  id: string
+  version_no: number
+  digest: string
+  created_at: string
+  definition?: { nodes?: NodeSpec[] }
+}
 
 const TRIGGER_LABEL: Record<string, string> = {
   manual: "手动运行", schedule: "定时运行", api: "API 触发", event: "事件触发",
@@ -76,8 +93,7 @@ function relTime(v: string | null | undefined): string {
   const h = Math.floor(min / 60)
   if (h < 24) return `${h} 小时前`
   const d = Math.floor(h / 24)
-  if (d === 1) return "昨天"
-  if (d <= 30) return `${d} 天前`
+  if (d <= 30) return "昨天"
   return new Date(v).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })
 }
 
@@ -95,20 +111,30 @@ export default function AgentFlowDetailPage() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const view = params.get("view") === "runs" ? "runs" : "flow"
+  const mode = params.get("mode") === "script" ? "script" : "canvas"
   const versions = useAsyncData(() => asApi.flowVersions(fid), [fid])
   const runs = useAsyncData(() => asApi.flowRuns(fid), [fid])
   const flows = useAsyncData(() => asApi.flows(), [])
   const flow = (flows.data?.items ?? []).find((f) => f.id === fid) as
-    | { id: string; name: string; description: string; active_release_id: string | null }
+    | { id: string; name: string; description: string; active_release_id: string | null; active_version_no: number | null }
     | undefined
 
   const [agents, setAgents] = React.useState<{ id: string; name: string }[]>([])
-  const [runOpen, setRunOpen] = React.useState(false)
   const [runInput, setRunInput] = React.useState("{}")
+  const [paramsOpen, setParamsOpen] = React.useState(false)
+  const [histOpen, setHistOpen] = React.useState(false)
   const [selectedRun, setSelectedRun] = React.useState<string | null>(null)
   const [editing, setEditing] = React.useState<NodeSpec | null>(null)
   const [editNote, setEditNote] = React.useState("")
+  const [renameOpen, setRenameOpen] = React.useState(false)
+  const [renameVal, setRenameVal] = React.useState("")
+  const [nodePanel, setNodePanel] = React.useState<NodeRunPanelTarget | null>(null)
+  const [reportRun, setReportRun] = React.useState<RunRow | null>(null)
   const [zoom, setZoom] = React.useState(1)
+  // 09-11 审计 P0：最小节点编辑器——UI 可造首版本（添加/删除阶段+Agent 选择）
+  const [addOpen, setAddOpen] = React.useState(false)
+  const [newNode, setNewNode] = React.useState({ id: "", agent_id: "", prompt_template: "" })
+  const [delNode, setDelNode] = React.useState<NodeSpec | null>(null)
 
   React.useEffect(() => {
     fetch(`${import.meta.env.VITE_WF_API_BASE ?? "http://127.0.0.1:8120"}/api/agents?page=1&pageSize=100`, {
@@ -119,16 +145,12 @@ export default function AgentFlowDetailPage() {
       .catch(() => undefined)
   }, [])
 
-  const latest = (versions.data?.items ?? [])[0] as
-    | { id: string; version_no: number; digest?: string; definition?: { nodes?: NodeSpec[] } }
-    | undefined
+  const versionRows = React.useMemo(() => (versions.data?.items ?? []) as unknown as VersionRow[], [versions.data])
+  const latest = versionRows[0]
   const nodes: NodeSpec[] = latest?.definition?.nodes ?? []
   const agentName = (id: string) => agents.find((a) => a.id === id)?.name ?? (id ? id.slice(0, 8) : "未指定")
 
-  const runRows = React.useMemo(
-    () => (runs.data?.items ?? []) as unknown as RunRow[],
-    [runs.data],
-  )
+  const runRows = React.useMemo(() => (runs.data?.items ?? []) as unknown as RunRow[], [runs.data])
   React.useEffect(() => {
     if (view === "runs" && !selectedRun && runRows.length) setSelectedRun(runRows[0].id)
   }, [view, selectedRun, runRows])
@@ -153,22 +175,25 @@ export default function AgentFlowDetailPage() {
     }
   }
 
-  const startRun = async () => {
+  const startRun = async (input?: Record<string, unknown>) => {
     if (!flow?.active_release_id) {
       toast.error("请先发布版本")
       return
     }
-    let input: Record<string, unknown> = {}
-    try {
-      input = JSON.parse(runInput || "{}")
-    } catch {
-      toast.error("输入 JSON 不合法")
-      return
+    let body: Record<string, unknown>
+    if (input !== undefined) {
+      body = input
+    } else {
+      try {
+        body = JSON.parse(runInput || "{}")
+      } catch {
+        toast.error("输入 JSON 不合法")
+        return
+      }
     }
     try {
-      const r = await asApi.runFlow(flow.active_release_id, input)
+      const r = await asApi.runFlow(flow.active_release_id, body)
       toast.success(`运行已启动：${String(r.status)}`)
-      setRunOpen(false)
       runs.retry()
       setParams({ view: "runs" })
     } catch (e) {
@@ -192,6 +217,76 @@ export default function AgentFlowDetailPage() {
     }
   }
 
+  const applyRename = async () => {
+    const name = renameVal.trim()
+    if (!name) {
+      toast.error("名称不能为空")
+      return
+    }
+    try {
+      await asApi.patchFlow(fid, { name })
+      toast.success("已重命名")
+      setRenameOpen(false)
+      flows.retry()
+    } catch (e) {
+      toast.error(`重命名失败：${(e as Error).message}`)
+    }
+  }
+
+  const persistNodes = async (next: NodeSpec[], msg: string) => {
+    if (next.length === 0) {
+      toast.error("至少保留一个节点")
+      return
+    }
+    try {
+      await asApi.createFlowVersion(fid, {
+        nodes: next,
+        edges: next.slice(0, -1).map((n, i) => ({ from: n.id, to: next[i + 1].id })),
+      })
+      toast.success(msg)
+      versions.retry()
+    } catch (e) {
+      toast.error(`保存失败：${(e as Error).message}`)
+    }
+  }
+
+  const addNode = async () => {
+    const id = newNode.id.trim() || `stage-${nodes.length + 1}`
+    if (!newNode.agent_id) {
+      toast.error("请选择执行 Agent")
+      return
+    }
+    await persistNodes(
+      [...nodes, { id, kind: "agent", agent_id: newNode.agent_id, prompt_template: newNode.prompt_template }],
+      "已生成新版本（新增阶段）",
+    )
+    setAddOpen(false)
+    setNewNode({ id: "", agent_id: "", prompt_template: "" })
+  }
+
+  const openNodePanel = (nodeId: string) => {
+    const nr = nodeRunOf(nodeId)
+    if (!nr?.session_id || !nr.agent_id) {
+      toast.info("该节点尚无执行会话（未执行或会话未登记）")
+      return
+    }
+    setNodePanel({ nodeId, agentId: nr.agent_id, sessionId: nr.session_id, status: nr.status, attempt: nr.attempt })
+  }
+
+  const zoomGroup = (
+    <div className="absolute bottom-4 left-4 z-10 flex flex-col items-center gap-1 rounded-md border bg-surface p-1 shadow-sm">
+      <Button variant="ghost" size="icon" className="size-7" aria-label="适应" onClick={() => setZoom(1)}>
+        <Maximize2 className="size-3.5" />
+      </Button>
+      <Button variant="ghost" size="icon" className="size-7" aria-label="缩小" onClick={() => setZoom((z) => Math.max(0.6, +(z - 0.1).toFixed(1)))}>
+        <ZoomOut className="size-3.5" />
+      </Button>
+      <Button variant="ghost" size="icon" className="size-7" aria-label="放大" onClick={() => setZoom((z) => Math.min(1.6, +(z + 0.1).toFixed(1)))}>
+        <ZoomIn className="size-3.5" />
+      </Button>
+    </div>
+  )
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
@@ -199,6 +294,12 @@ export default function AgentFlowDetailPage() {
           <ArrowLeft className="size-4" />
         </Button>
         <h1 className="truncate text-sm font-semibold">{flow?.name ?? fid}</h1>
+        <Button
+          variant="ghost" size="icon" className="size-6" aria-label="重命名"
+          onClick={() => { setRenameVal(flow?.name ?? ""); setRenameOpen(true) }}
+        >
+          <Pencil className="size-3.5" />
+        </Button>
         {flow?.active_release_id ? <Badge variant="secondary">已发布</Badge> : <Badge variant="outline">未发布</Badge>}
         <div className="ml-2 flex h-7 w-fit items-center gap-1 rounded-md bg-(--segment-bg) p-0.5" role="radiogroup" aria-label="视图">
           {([["flow", "AgentFlow"], ["runs", "执行记录"]] as const).map(([k, label]) => (
@@ -207,7 +308,7 @@ export default function AgentFlowDetailPage() {
               type="button"
               role="radio"
               aria-checked={view === k}
-              onClick={() => setParams(k === "flow" ? {} : { view: "runs" })}
+              onClick={() => setParams(k === "flow" ? (mode === "script" ? { mode: "script" } : {}) : { view: "runs" })}
               className={`h-6 rounded px-2.5 text-xs transition-colors ${view === k
                 ? "bg-(--segment-active) font-medium text-foreground"
                 : "text-muted-foreground hover:text-foreground"}`}
@@ -220,93 +321,146 @@ export default function AgentFlowDetailPage() {
         <Button size="sm" variant="outline" onClick={() => toast.info("触发方式在「自动任务」中配置（执行者选本 AgentFlow）")}>
           管理触发方式
         </Button>
-        <Button size="sm" onClick={() => setRunOpen(true)}>
+        <Button size="sm" onClick={() => void startRun()}>
           <Play className="size-4" /> 运行
         </Button>
       </header>
 
-      {view === "flow" ? (
-        <div className="relative flex min-h-0 flex-1 flex-col" style={{ background: "var(--surface-muted, #FCFCFC)" }}>
-          <div className="min-h-0 flex-1 overflow-auto p-4">
-            {nodes.length === 0 ? (
-              <div className="mx-auto max-w-md rounded-lg border border-dashed bg-surface p-8 text-center text-sm text-muted-foreground">
-                暂无阶段：先在「自动任务」或脚本中定义节点后保存为首个版本。
-              </div>
-            ) : (
-              <div className="flex items-start gap-3" style={{ transform: `scale(${zoom})`, transformOrigin: "top left" }}>
-                {nodes.map((n, i) => (
-                  <div key={n.id} className="flex items-start gap-3">
-                    <div
-                      className="relative flex w-[220px] shrink-0 flex-col gap-3 border bg-surface px-3 py-4 shadow-sm"
-                      style={{ borderColor: "var(--border)", borderRadius: "8px" }}
-                    >
-                      <button
-                        type="button"
-                        className="absolute right-2 top-2 rounded p-0.5 text-muted-foreground hover:bg-muted"
-                        aria-label="请输入调整内容"
-                        title="请输入调整内容"
-                        onClick={() => { setEditing(n); setEditNote(n.prompt_template) }}
-                      >
-                        <Pencil className="size-3.5" />
-                      </button>
-                      <div className="text-[11px] font-medium" style={{ color: "var(--text-tertiary)" }}>
-                        阶段 {String(i + 1).padStart(2, "0")}
-                      </div>
-                      <div className="text-sm font-medium">{n.id}</div>
-                      <p className="line-clamp-3 text-xs leading-5 text-muted-foreground">
-                        {n.prompt_template || "（未填写步骤说明）"}
-                      </p>
-                      <div className="flex items-center gap-2 border-t pt-2 text-xs">
-                        <img src={avatarFor(n.agent_id || "?")} alt="" className="size-6 rounded-full object-cover" />
-                        <span className="truncate">{agentName(n.agent_id)}</span>
-                      </div>
-                    </div>
-                    {i < nodes.length - 1 && <span className="mt-16 shrink-0 text-muted-foreground">→</span>}
-                  </div>
-                ))}
-              </div>
-            )}
+      {view === "flow" && (
+        <div className="flex h-10 shrink-0 items-center gap-2 border-b px-4">
+          <div className="flex h-7 w-fit items-center gap-1 rounded-md bg-(--segment-bg) p-0.5" role="radiogroup" aria-label="显示模式">
+            {([["canvas", "画布"], ["script", "脚本"]] as const).map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                role="radio"
+                aria-checked={mode === k}
+                onClick={() => setParams(k === "canvas" ? {} : { mode: "script" })}
+                className={`h-6 rounded px-2.5 text-xs transition-colors ${mode === k
+                  ? "bg-(--segment-active) font-medium text-foreground"
+                  : "text-muted-foreground hover:text-foreground"}`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-          <div className="flex shrink-0 items-center gap-2 border-t bg-background px-4 py-2">
-            <span className="text-xs text-muted-foreground">
-              版本 {latest ? `v${latest.version_no}` : "—"} · digest {String(latest?.digest ?? "").slice(0, 12) || "—"}
-            </span>
-            <div className="ml-auto flex items-center gap-1">
-              <Button variant="ghost" size="icon" className="size-7" aria-label="缩小" onClick={() => setZoom((z) => Math.max(0.6, +(z - 0.1).toFixed(1)))}>
-                <ZoomOut className="size-3.5" />
-              </Button>
-              <span className="w-10 text-center text-xs tabular-nums">{Math.round(zoom * 100)}%</span>
-              <Button variant="ghost" size="icon" className="size-7" aria-label="放大" onClick={() => setZoom((z) => Math.min(1.6, +(z + 0.1).toFixed(1)))}>
-                <ZoomIn className="size-3.5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="size-7" aria-label="适应" onClick={() => setZoom(1)}>
-                <Maximize2 className="size-3.5" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => void saveVersion()}>
-                <Plus className="size-3.5" /> 保存为版本
-              </Button>
-              {latest && !flow?.active_release_id && (
-                <Button
-                  size="sm"
-                  onClick={async () => {
-                    try {
-                      await asApi.releaseFlow(fid, latest.id)
-                      toast.success("已发布")
-                      flows.retry()
-                    } catch (e) {
-                      toast.error(`发布失败：${(e as Error).message}`)
-                    }
-                  }}
-                >
-                  发布
-                </Button>
+          <span className="ml-auto" />
+          <Button variant={paramsOpen ? "secondary" : "ghost"} size="sm" onClick={() => setParamsOpen((v) => !v)}>
+            输入参数
+          </Button>
+          <Button variant="ghost" size="icon" className="size-7" aria-label="历史版本" onClick={() => setHistOpen(true)}>
+            <Clock className="size-4" />
+          </Button>
+        </div>
+      )}
+      {view === "flow" && paramsOpen && (
+        <div className="shrink-0 space-y-1 border-b bg-surface px-4 py-2">
+          <p className="text-[11px] text-muted-foreground">手动运行需要填写以下信息（作为首节点模板变量）：</p>
+          <Textarea rows={3} value={runInput} onChange={(e) => setRunInput(e.target.value)} className="font-mono text-xs" />
+        </div>
+      )}
+
+      {view === "flow" ? (
+        mode === "canvas" ? (
+          <div className="relative flex min-h-0 flex-1 flex-col" style={{ background: "var(--surface-muted)" }}>
+            <div className="min-h-0 flex-1 overflow-auto p-4">
+              {nodes.length === 0 ? (
+                <div className="mx-auto max-w-md space-y-3 rounded-lg border border-dashed bg-surface p-8 text-center text-sm text-muted-foreground">
+                  <p>暂无阶段：添加首个阶段后即可发布运行。</p>
+                  <Button size="sm" onClick={() => setAddOpen(true)}>
+                    <Plus className="size-4" /> 添加首个阶段
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-start gap-3" style={{ transform: `scale(${zoom})`, transformOrigin: "top left" }}>
+                  {nodes.map((n, i) => (
+                    <div key={n.id} className="flex items-start gap-3">
+                      <div
+                        className="relative flex w-[220px] shrink-0 flex-col gap-3 border bg-surface px-3 py-4 shadow-sm"
+                        style={{ borderColor: "var(--border)", borderRadius: "8px" }}
+                      >
+                        <span className="absolute right-2 top-2 flex items-center gap-0.5">
+                          <button
+                            type="button"
+                            className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+                            aria-label="调整步骤说明"
+                            title="调整步骤说明"
+                            onClick={() => { setEditing(n); setEditNote(n.prompt_template) }}
+                          >
+                            <Pencil className="size-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-destructive"
+                            aria-label="删除该阶段"
+                            title="删除该阶段（生成新版本）"
+                            onClick={() => setDelNode(n)}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        </span>
+                        <div className="text-[11px] font-medium" style={{ color: "var(--text-tertiary)" }}>
+                          阶段 {String(i + 1).padStart(2, "0")}
+                        </div>
+                        <div className="text-sm font-medium">{n.id}</div>
+                        <p className="line-clamp-3 text-xs leading-5 text-muted-foreground">
+                          {n.prompt_template || "（未填写步骤说明）"}
+                        </p>
+                        <div className="flex items-center gap-2 border-t pt-2 text-xs">
+                          <img src={avatarFor(n.agent_id || "?")} alt="" className="size-6 rounded-full object-cover" />
+                          <span className="truncate">{agentName(n.agent_id)}</span>
+                        </div>
+                      </div>
+                      {i < nodes.length - 1 && <span className="mt-16 shrink-0 text-muted-foreground">→</span>}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
+            {zoomGroup}
+            <div className="flex shrink-0 items-center gap-2 border-t bg-background px-4 py-2">
+              <span className="text-xs text-muted-foreground">
+                版本 {latest ? `v${latest.version_no}` : "—"} · digest {String(latest?.digest ?? "").slice(0, 12) || "—"}
+              </span>
+              <div className="ml-auto flex items-center gap-1">
+                <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
+                  <Plus className="size-3.5" /> 添加阶段
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => void saveVersion()}>
+                  <Plus className="size-3.5" /> 保存为版本
+                </Button>
+                {latest && !flow?.active_release_id && (
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        await asApi.releaseFlow(fid, latest.id)
+                        toast.success("已发布")
+                        flows.retry()
+                      } catch (e) {
+                        toast.error(`发布失败：${(e as Error).message}`)
+                      }
+                    }}
+                  >
+                    发布
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-auto">
+            <CodeMirror
+              value={JSON.stringify(latest?.definition ?? {}, null, 2)}
+              readOnly
+              height="100%"
+              extensions={[json()]}
+            />
+          </div>
+        )
       ) : (
         <div className="flex min-h-0 flex-1">
-          <div className="min-h-0 flex-1 overflow-auto" style={{ background: "var(--surface-muted, #FCFCFC)" }}>
+          <div className="relative min-h-0 flex-1 overflow-auto" style={{ background: "var(--surface-muted)" }}>
             {!current ? (
               <p className="py-16 text-center text-sm text-muted-foreground">暂无运行记录</p>
             ) : (
@@ -327,45 +481,60 @@ export default function AgentFlowDetailPage() {
                     return (
                       <div key={n.id} className="flex items-start gap-3">
                         <div
-                          className="flex w-[220px] shrink-0 flex-col gap-3 border bg-surface px-3 py-4 shadow-sm"
-                          style={{ borderColor: "var(--border)", borderRadius: "8px" }}
+                          className="flex w-[220px] shrink-0 cursor-pointer flex-col gap-3 border bg-surface px-3 py-4 shadow-sm transition-colors hover:border-brand/60"
+                          style={{
+                            borderColor: nr?.status === "failed" ? "var(--status-danger)" : "var(--border)",
+                            borderRadius: "8px",
+                          }}
+                          onClick={() => openNodePanel(n.id)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault()
+                              openNodePanel(n.id)
+                            }
+                          }}
+                          aria-label={`查看节点 ${n.id} 执行过程`}
                         >
-                          <div className="text-[11px] font-medium" style={{ color: "var(--text-tertiary)" }}>阶段 {String(i + 1).padStart(2, "0")}</div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-[11px] font-medium" style={{ color: "var(--text-tertiary)" }}>
+                              阶段 {String(i + 1).padStart(2, "0")}
+                            </div>
+                            {nr && (
+                              <span
+                                className="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium"
+                                style={{ background: tone?.bg, color: tone?.fg }}
+                              >
+                                {STATUS_LABEL[nr.status] ?? nr.status}
+                              </span>
+                            )}
+                          </div>
                           <div className="text-sm font-medium">{n.id}</div>
-                          <div className="flex items-center gap-2 text-xs">
+                          <div className="text-[11px] text-muted-foreground">
+                            {current.nodes.filter((x) => x.node_id === n.id).length} 个执行节点
+                          </div>
+                          <div className="flex items-center gap-2 border-t pt-2 text-xs">
                             <img src={avatarFor(n.agent_id || "?")} alt="" className="size-6 rounded-full object-cover" />
                             <span className="truncate">{agentName(n.agent_id)}</span>
-                            <span
-                              className="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium"
-                              style={{ background: tone?.bg ?? "var(--fill-tertiary)", color: tone?.fg ?? "var(--text-tertiary)" }}
-                            >
-                              {nr?.status === "succeeded" || nr?.status === "success" ? <Check className="size-2.5" /> : <Minus className="size-2.5" />}
-                              {nr ? STATUS_LABEL[nr.status] ?? nr.status : "未执行"}
-                            </span>
                           </div>
                           {nr && (
                             <div className="flex items-center gap-2 border-t pt-2 text-[11px] text-muted-foreground">
-                              <span>attempt {nr.attempt}</span>
-                              {nr.session_id && (
-                                <button
-                                  type="button"
-                                  className="underline"
-                                  onClick={() => navigate(`/agents/${nr.agent_id}/chat?session=${nr.session_id}`)}
-                                >
-                                  Session {nr.session_id.slice(0, 8)}
-                                </button>
-                              )}
+                              <span>第 {nr.attempt} 次尝试</span>
                               <button
                                 type="button"
                                 className="ml-auto inline-flex items-center gap-1 underline"
-                                onClick={async () => {
-                                  try {
-                                    await asApi.rerunNode(current.id, n.id)
-                                    toast.success("已发起节点重跑（新 attempt）")
-                                    runs.retry()
-                                  } catch (e) {
-                                    toast.error(`重跑失败：${(e as Error).message}`)
-                                  }
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  void (async () => {
+                                    try {
+                                      await asApi.rerunNode(current.id, n.id)
+                                      toast.success("已发起节点重跑（新 attempt）")
+                                      runs.retry()
+                                    } catch (err) {
+                                      toast.error(`重跑失败：${(err as Error).message}`)
+                                    }
+                                  })()
                                 }}
                               >
                                 <RefreshCw className="size-3" /> 重跑
@@ -380,31 +549,48 @@ export default function AgentFlowDetailPage() {
                 </div>
               </>
             )}
+            {zoomGroup}
           </div>
           <aside className="w-64 shrink-0 overflow-y-auto border-l" aria-label="运行记录">
             <div className="border-b px-3 py-2 text-sm font-semibold">运行记录（{runRows.length}）</div>
             <ul className="p-2">
               {runRows.map((r) => (
                 <li key={r.id}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRun(r.id)}
+                  <div
                     className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
-                      current?.id === r.id ? "bg-muted" : "hover:bg-muted/50"
+                      current?.id === r.id ? "border bg-muted" : "hover:bg-muted/50"
                     }`}
                   >
-                    <div className="flex items-center gap-1.5">
-                      <span className={`size-1.5 rounded-full ${
-                        r.status === "succeeded" ? "bg-status-success"
-                          : r.status === "failed" ? "bg-status-danger" : "bg-status-warning"
-                      }`} />
-                      <span className="font-medium">第 {runIndex(r)} 次运行</span>
-                      <span className="ml-auto text-muted-foreground">{STATUS_LABEL[r.status] ?? r.status}</span>
+                    <button type="button" className="w-full text-left" onClick={() => setSelectedRun(r.id)}>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`size-1.5 rounded-full ${
+                          r.status === "succeeded" ? "bg-status-success"
+                            : r.status === "failed" ? "bg-status-danger" : "bg-status-warning"
+                        }`} />
+                        <span className="font-medium">第 {runIndex(r)} 次运行</span>
+                        <span className="ml-auto text-muted-foreground">{STATUS_LABEL[r.status] ?? r.status}</span>
+                      </div>
+                      <div className="mt-0.5 text-muted-foreground">
+                        {TRIGGER_LABEL[r.trigger_kind] ?? r.trigger_kind} · {relTime(r.started_at)}
+                      </div>
+                    </button>
+                    <div className="mt-1 flex items-center gap-1">
+                      <Button
+                        variant="ghost" size="icon" className="size-6" aria-label="以相同输入重跑"
+                        title="以相同输入重跑"
+                        onClick={() => void startRun(r.input)}
+                      >
+                        <RotateCw className="size-3" />
+                      </Button>
+                      <Button
+                        variant="ghost" size="icon" className="size-6" aria-label="运行报告"
+                        title="运行报告"
+                        onClick={() => setReportRun(r)}
+                      >
+                        <FileText className="size-3" />
+                      </Button>
                     </div>
-                    <div className="mt-0.5 text-muted-foreground">
-                      {TRIGGER_LABEL[r.trigger_kind] ?? r.trigger_kind} · {relTime(r.started_at)}
-                    </div>
-                  </button>
+                  </div>
                 </li>
               ))}
               {!runRows.length && <li className="py-6 text-center text-xs text-muted-foreground">暂无运行记录</li>}
@@ -413,20 +599,177 @@ export default function AgentFlowDetailPage() {
         </div>
       )}
 
-      <Dialog open={runOpen} onOpenChange={setRunOpen}>
+      {/* 历史版本面板（原站时钟入口） */}
+      <Sheet open={histOpen} onOpenChange={setHistOpen}>
+        <SheetContent side="right" className="w-80 overflow-y-auto sm:max-w-80">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2 text-sm">
+              <History className="size-4" /> 历史版本（{versionRows.length}）
+            </SheetTitle>
+          </SheetHeader>
+          <ul className="space-y-2 pt-3">
+            {versionRows.map((v) => (
+              <li key={v.id} className="rounded-md border bg-surface px-3 py-2">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="font-semibold">版本 {v.version_no}</span>
+                  {v.version_no === flow?.active_version_no && (
+                    <Badge variant="secondary" className="text-[10px]">当前版本</Badge>
+                  )}
+                  {v.id === latest?.id && v.version_no !== flow?.active_version_no && (
+                    <Badge variant="outline" className="text-[10px]">最新</Badge>
+                  )}
+                </div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  {new Date(v.created_at).toLocaleString()} · {String(v.digest ?? "").slice(0, 12)}…
+                </div>
+              </li>
+            ))}
+            {!versionRows.length && <li className="py-10 text-center text-xs text-muted-foreground">暂无版本</li>}
+          </ul>
+        </SheetContent>
+      </Sheet>
+
+      {/* 运行报告 */}
+      <Sheet open={!!reportRun} onOpenChange={(o) => !o && setReportRun(null)}>
+        <SheetContent side="right" className="w-[480px] overflow-y-auto sm:max-w-[480px]">
+          <SheetHeader>
+            <SheetTitle className="text-sm">
+              运行报告 · 第 {reportRun ? runIndex(reportRun) : 0} 次运行
+            </SheetTitle>
+          </SheetHeader>
+          {reportRun && (
+            <div className="space-y-3 pt-3 text-xs">
+              <div className="flex items-center gap-2">
+                <Badge variant={reportRun.status === "succeeded" ? "secondary" : reportRun.status === "failed" ? "destructive" : "outline"}>
+                  {STATUS_LABEL[reportRun.status] ?? reportRun.status}
+                </Badge>
+                <span className="text-muted-foreground">
+                  {TRIGGER_LABEL[reportRun.trigger_kind] ?? reportRun.trigger_kind} · {new Date(reportRun.started_at).toLocaleString()}
+                </span>
+              </div>
+              {reportRun.error && <p className="text-destructive">错误：{reportRun.error}</p>}
+              <section>
+                <h4 className="mb-1 font-medium text-muted-foreground">输入</h4>
+                <pre className="max-h-40 overflow-auto rounded-md border bg-(--segment-bg) p-2 whitespace-pre-wrap break-words">
+                  {JSON.stringify(reportRun.input ?? {}, null, 2)}
+                </pre>
+              </section>
+              <section>
+                <h4 className="mb-1 font-medium text-muted-foreground">输出</h4>
+                <pre className="max-h-72 overflow-auto rounded-md border bg-(--segment-bg) p-2 whitespace-pre-wrap break-words">
+                  {JSON.stringify(reportRun.output ?? {}, null, 2)}
+                </pre>
+              </section>
+              <section>
+                <h4 className="mb-1 font-medium text-muted-foreground">节点执行（{reportRun.nodes.length}）</h4>
+                <ul className="space-y-1">
+                  {reportRun.nodes.map((n) => (
+                    <li key={n.id} className="flex items-center gap-2 rounded-md border px-2 py-1">
+                      <span className="font-mono">{n.node_id}</span>
+                      <span className="text-muted-foreground">attempt {n.attempt}</span>
+                      <span className="ml-auto" style={{ color: statusTone(n.status).fg }}>
+                        {STATUS_LABEL[n.status] ?? n.status}
+                      </span>
+                      {n.session_id && n.agent_id && (
+                        <Button
+                          variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]"
+                          onClick={() => {
+                            setReportRun(null)
+                            setNodePanel({ nodeId: n.node_id, agentId: n.agent_id!, sessionId: n.session_id!, status: n.status, attempt: n.attempt })
+                          }}
+                        >
+                          执行过程
+                        </Button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      <NodeRunPanel target={nodePanel} onClose={() => setNodePanel(null)} />
+
+      {/* 添加阶段（审计 P0：UI 可造首版本） */}
+      <Dialog open={addOpen} onOpenChange={(o) => !o && setAddOpen(false)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>运行 AgentFlow</DialogTitle>
-            <DialogDescription>使用当前 active Release；输入将作为首节点模板变量。</DialogDescription>
+            <DialogTitle>添加阶段</DialogTitle>
+            <DialogDescription>新阶段追加到链尾；保存即生成新版本（不改动已发布版本）。</DialogDescription>
           </DialogHeader>
-          <Textarea rows={4} value={runInput} onChange={(e) => setRunInput(e.target.value)} />
+          <div className="space-y-3">
+            <Input
+              value={newNode.id}
+              onChange={(e) => setNewNode((v) => ({ ...v, id: e.target.value }))}
+              placeholder={`阶段 id（留空自动 stage-${nodes.length + 1}）`}
+            />
+            <Select
+              value={newNode.agent_id || "__none__"}
+              onValueChange={(v) => setNewNode((x) => ({ ...x, agent_id: v === "__none__" ? "" : v }))}
+            >
+              <SelectTrigger><SelectValue placeholder="选择执行 Agent" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__" disabled>选择执行 Agent</SelectItem>
+                {agents.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Textarea
+              rows={3}
+              value={newNode.prompt_template}
+              onChange={(e) => setNewNode((v) => ({ ...v, prompt_template: e.target.value }))}
+              placeholder="步骤说明（Prompt 模板）"
+            />
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRunOpen(false)}>取消</Button>
-            <Button onClick={() => void startRun()}>运行</Button>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>取消</Button>
+            <Button onClick={() => void addNode()}>保存为新版本</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* 删除阶段确认 */}
+      <Dialog open={!!delNode} onOpenChange={(o) => !o && setDelNode(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除阶段「{delNode?.id}」？</DialogTitle>
+            <DialogDescription>删除后生成新版本；已发布版本不受影响。</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDelNode(null)}>取消</Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (!delNode) return
+                void persistNodes(nodes.filter((n) => n.id !== delNode.id), "已生成新版本（删除阶段）")
+                setDelNode(null)
+              }}
+            >
+              删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 重命名 */}
+      <Dialog open={renameOpen} onOpenChange={(o) => !o && setRenameOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>重命名 AgentFlow</DialogTitle>
+            <DialogDescription>仅改展示名；版本与运行记录不受影响。</DialogDescription>
+          </DialogHeader>
+          <Textarea rows={2} value={renameVal} onChange={(e) => setRenameVal(e.target.value)} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameOpen(false)}>取消</Button>
+            <Button onClick={() => void applyRename()}>保存</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 节点级调整 */}
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent>
           <DialogHeader>

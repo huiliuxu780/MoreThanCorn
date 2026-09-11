@@ -116,18 +116,39 @@ function AgentCard({ r, role, onOpen, onChat, onConfig }: {
   )
 }
 
-/** 首格虚线占位卡（台账 §1b：dashed + 叠卡 art + 标签）。 */
-function CreateCard() {
+/** 首格虚线占位卡（台账 §1b：dashed + 叠卡 art + 标签）。
+ *  09-11：每次悬停回收（mouse-leave）五张工牌洗牌换序——牌堆"活"的手感。 */
+export function CreateCard() {
+  const [order, setOrder] = useState([0, 1, 2, 3, 4])
+  const reshuffle = () => {
+    setOrder((cur) => {
+      const next = [...cur]
+      for (let i = next.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[next[i], next[j]] = [next[j], next[i]]
+      }
+      if (next.every((v, k) => v === cur[k])) next.push(next.shift() as number)
+      return next
+    })
+  }
   return (
     <Link
       to="/agents/new"
+      onMouseLeave={reshuffle}
       className="group flex min-h-[212px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-surface p-4 text-center transition-colors hover:border-brand/60"
     >
+      {/* 09-11：叠卡=工牌形态（挂绳孔+证件照+姓名/职级条），扇出几何仍为原站实测度量 */}
       <span className="create-fan flex h-[104px] items-center justify-center" aria-hidden="true">
-        {AVATARS.slice(0, 6).map((a, i) => (
-          <img key={a} src={a} alt=""
-            className="h-[93px] w-[74px] rounded-lg border bg-surface-raised object-cover shadow-sm"
-            style={{ marginLeft: i === 0 ? 0 : -58, zIndex: i }} />
+        {order.map((idx, i) => (
+          <span
+            key={AVATARS[idx]}
+            className="fan-badge flex h-[93px] w-[74px] flex-col items-center overflow-hidden rounded-lg border bg-surface-raised pt-1 shadow-sm"
+            style={{ marginLeft: i === 0 ? 0 : -58, zIndex: i }}
+          >
+            <span className="h-1 w-5 shrink-0 rounded-full" style={{ background: "var(--fill-tertiary)" }} />
+            <img src={AVATARS[idx]} alt="" className="mt-0.5 h-[64px] w-[58px] shrink-0 rounded-md object-cover" />
+            <span className="mt-1 h-1 w-8 shrink-0 rounded-full" style={{ background: "var(--fill-secondary)" }} />
+          </span>
         ))}
       </span>
       <span className="flex items-center gap-2 text-base leading-6 text-muted-foreground">
@@ -188,11 +209,13 @@ export default function WfAgentsListPage() {
       />
       </div>
       {/* segment：使用中/已封存（台账 §4/§12：list gap10、bar mb24） */}
-      <div className="mb-2 flex h-8 w-fit items-center gap-2.5 rounded-lg bg-(--segment-bg) p-1">
+      <div className="mb-2 flex h-8 w-fit items-center gap-2.5 rounded-lg bg-(--segment-bg) p-1" role="radiogroup" aria-label="Agent 状态筛选">
         {(["active", "archived"] as const).map((s) => (
           <button
             key={s}
             type="button"
+            role="radio"
+            aria-checked={statusFilter === s}
             onClick={() => { setStatusFilter(s); update({ page: 1 }, true) }}
             className={`h-6 rounded px-2.5 text-xs leading-4 transition-colors ${statusFilter === s
               ? "bg-(--segment-active) font-medium text-foreground"

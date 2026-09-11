@@ -274,10 +274,77 @@ def _reconcile_impl(db: Session) -> dict:
     return stats
 
 
+_RESUMED_PARKED: set[str] = set()
+_WORKSPACE_TOOLS = {"Bash", "Write", "Edit", "Read", "Grep", "Glob"}
+_RESUME_PROMPT = (
+    "系统恢复通知：上一次回复因运行时重启中断，存在未完成的工具调用。"
+    "请从中断处继续：完成或放弃挂起的工具调用，完成你的任务，"
+    "然后通过 TeamSay 向 leader 汇报结果。"
+)
+
+
+def recover_parked_team_sessions(db: Session) -> int:
+    """09-11 批2：运行时重启会把 in-flight 的 team member 回复杀死，留下
+    「parked on N awaiting tool call」僵尸会话——后续 wakeup 全被 skip，子智能体
+    永久不跑（用户报「子智能体能力不生效」根因）。watcher 每周期检测：team 会话、
+    5 分钟无更新、末条 assistant 消息含未决的 workspace 内建工具调用（排除 HITL/平台工具）
+    → 经 runtime turns 发恢复指令唤醒；每进程每会话仅一次。"""
+    from sqlalchemy import text as sa_text
+
+    rows = db.execute(
+        sa_text(
+            "select id, agent_id, payload from sessions "
+            "where team_id is not null and updated_at < now() - interval '5 minutes'"
+        ),
+    ).fetchall()
+    recovered = 0
+    for row in rows:
+        sid = row.id
+        if sid in _RESUMED_PARKED:
+            continue
+        payload = row.payload or {}
+        ctx = (payload.get("state") or {}).get("context") or []
+        if not ctx:
+            continue
+        last = ctx[-1]
+        if not isinstance(last, dict) or last.get("role") != "assistant":
+            continue
+        content = last.get("content") or []
+        calls = [c for c in content if isinstance(c, dict) and c.get("type") == "tool_call"]
+        results = {
+            c.get("id") for c in content if isinstance(c, dict) and c.get("type") == "tool_result"
+        }
+        pending = [c for c in calls if c.get("id") not in results]
+        if not pending:
+            continue
+        if any(c.get("name") not in _WORKSPACE_TOOLS for c in pending):
+            continue  # 平台工具/HITL 等待不自动恢复
+        _RESUMED_PARKED.add(sid)
+        reply_id = str(
+            ((payload.get("state") or {}).get("reply_context") or {}).get("reply_id")
+            or last.get("id")
+            or ""
+        )
+        if not reply_id:
+            continue
+        try:
+            # 补 UserConfirmResultEvent(confirmed=False)：关闭重启遗留的未决工具调用，
+            # 回复以 interrupted 收尾并落 fallback 消息；随后 inbox 里的恢复指令
+            # （leader 的 TeamSay/新任务）才能正常唤醒 worker。
+            rt.chat_confirm("dev", row.agent_id, sid, reply_id, pending, False)
+            recovered += 1
+            log.info("recover parked team session %s (pending=%s)", sid,
+                     [c.get("name") for c in pending])
+        except rt.RuntimeError_ as exc:
+            log.warning("recover parked session %s failed: %s", sid, exc)
+    return recovered
+
+
 def watcher_loop() -> None:
     while True:
         db = SessionLocal()
         try:
+            recover_parked_team_sessions(db)
             reconcile_once(db)
         except Exception:  # noqa: BLE001
             log.exception("automation watcher cycle failed")

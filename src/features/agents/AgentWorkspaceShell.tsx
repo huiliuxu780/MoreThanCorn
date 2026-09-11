@@ -8,7 +8,7 @@ import type * as React from "react"
 import { useNavigate } from "react-router-dom"
 import {
   ArrowLeft, BookMarked, ClipboardList, Copy, Database, FileText, GitBranch, Home,
-  MessageCircleMore, MoreHorizontal, Plug, Settings2, ShieldCheck, Sparkles,
+  MessageCircleMore, MoreHorizontal, Plug, Settings2, ShieldAlert, ShieldCheck, Sparkles,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -19,7 +19,7 @@ import type { AgentInfo } from "@/services/wf-api"
 
 export type WorkspaceSection =
   | "home" | "board" | "autonomous" | "memory" | "skills" | "connectors" | "workflows" | "knowledge"
-  | "config" | "governance" | "profile"
+  | "config" | "permissions" | "governance" | "profile"
 
 const NAV: { group?: string; key: WorkspaceSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: "home", label: "概览", icon: Home },
@@ -31,6 +31,7 @@ const NAV: { group?: string; key: WorkspaceSection; label: string; icon: React.C
   { key: "workflows", label: "AgentFlow", icon: GitBranch },
   { key: "knowledge", label: "知识库", icon: Database },
   { group: "权限与管理", key: "config", label: "配置", icon: Settings2 },
+  { key: "permissions", label: "安全与权限", icon: ShieldAlert },
   { key: "governance", label: "发布治理", icon: ShieldCheck },
   { key: "profile", label: "Agent 档案", icon: FileText },
 ]

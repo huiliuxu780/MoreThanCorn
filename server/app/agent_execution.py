@@ -53,7 +53,10 @@ def resources_manifest(cfg: dict[str, Any]) -> dict[str, Any]:
     声明 Agent 被允许经内部 Tool 回调执行的 Workflow/AgentFlow（清单强制）。
     """
     return {
-        "skill_ids": list(cfg.get("skills") or cfg.get("skill_ids") or []),
+        "skill_ids": [
+            s for s in (cfg.get("skills") or cfg.get("skill_ids") or [])
+            if s not in set(cfg.get("skills_disabled") or [])
+        ],
         "mcp_ids": list(cfg.get("mcps") or cfg.get("mcp_ids") or []),
         "tool_ids": list(cfg.get("tools") or cfg.get("tool_ids") or []),
         "knowledge_ids": list(cfg.get("knowledges") or cfg.get("knowledge_ids")
@@ -168,6 +171,22 @@ def runtime_credential_id(db: Session, user_id: str, model_id: str) -> str:
 # model's Parameters class (pydantic) — unknown keys raise at session/run
 # time.  Whitelist = union of DashScope/OpenAI-chat Parameters fields in
 # AgentScope 2.0.8.  Platform-only keys (timeout) are frozen separately.
+# 09-11 权限策略：六开关组，默认全开（opt-out），发布时冻结进 release 快照
+TOOL_POLICY_KEYS = ("shell", "file_write", "file_read", "schedule", "subagent", "platform_tools")
+
+
+def resolve_permission_policy(raw: dict | None) -> dict:
+    from .permission_seed import resolve_permission_policy as _resolve
+
+    return _resolve(raw)
+
+
+def normalize_tool_policy(raw: dict | None) -> dict[str, bool]:
+    """缺省键视为开启——存量 Agent 行为不变。"""
+    src = raw or {}
+    return {k: bool(src.get(k, True)) for k in TOOL_POLICY_KEYS}
+
+
 MODEL_PARAM_WHITELIST = frozenset({
     "temperature", "top_p", "top_k", "max_tokens",
     "thinking_enable", "thinking_budget", "reasoning_effort",
@@ -483,6 +502,12 @@ def materialize_release(
         "frozen_model_id": frozen_model_id,
         "frozen_model_key": model_row.model_key,
         "frozen_model_params": frozen_params,
+        "frozen_tool_policy": normalize_tool_policy(
+            (version.definition or {}).get("permissions")
+        ),
+        "frozen_permission_policy": resolve_permission_policy(
+            (version.definition or {}).get("permissions")
+        ),
         "frozen_exec_timeout_seconds": frozen_exec_timeout,
         "resources": resources,
         "_frozen_skills": frozen_skills,

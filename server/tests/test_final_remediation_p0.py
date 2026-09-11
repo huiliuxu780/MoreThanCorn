@@ -357,6 +357,37 @@ def test_p0_02_split_model_params_whitelist():
     assert timeout == 30.0
 
 
+def test_p0_02_thinking_params_freeze_per_agent(fake_runtime):
+    """每 Agent 深度思考开关：modelRef.params 的 thinking_enable/thinking_budget
+    在发布时冻结进 release 快照，并原样进入运行时 SessionConfig（09-11 治理轮 P1）。"""
+    model_id, model_key = _make_model(u("qwen-think"), default_params={})
+    aid = _make_custom_agent(model_id, model_key)
+    db = SessionLocal()
+    try:
+        a = db.get(Agent, aid)
+        a.config = {**(a.config or {}),
+                    "modelRef": {"modelId": model_key,
+                                 "params": {"thinking_enable": True,
+                                            "thinking_budget": 8192}}}
+        db.commit()
+    finally:
+        db.close()
+    vid = _make_version(aid)
+    rel = _publish(aid, vid)
+
+    db = SessionLocal()
+    try:
+        row = db.get(Release, rel["releaseId"])
+        params = (row.runtime_binding_snapshot or {})["frozen_model_params"]
+        assert params == {"thinking_enable": True, "thinking_budget": 8192}, params
+        agent = db.get(Agent, aid)
+        ex.start_session(db, "dev", agent, trigger_kind="manual")
+        cfg = fake_runtime["sessions"][-1]["chat_model_config"]
+        assert cfg["parameters"] == {"thinking_enable": True, "thinking_budget": 8192}
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------------
 # P0-03 Schedule 钉住 Release
 # ---------------------------------------------------------------------------

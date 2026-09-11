@@ -5,6 +5,18 @@
  *  Module 资产（criteria/工具/主数据/Schema）只读；实例仅编辑名称/描述/业务定位/模型。 */
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
+const PERM_LABELS: [string, string][] = [
+  ["shell", "Shell 命令（Bash）"],
+  ["file_write", "文件写入（Write/Edit）"],
+  ["file_read", "文件读取与检索（Read/Grep/Glob）"],
+  ["schedule", "调度管理（Schedule 四件）"],
+  ["subagent", "子 Agent 与团队（AgentCreate/Team…）"],
+  ["platform_tools", "平台工具（run_workflow/run_agent_flow）"],
+]
+const DEFAULT_PERMS: Record<string, boolean> = {
+  shell: true, file_write: true, file_read: true,
+  schedule: true, subagent: true, platform_tools: true,
+}
 import { toast } from "sonner"
 
 import { AgentVersionDiffDialog } from "@/components/agent-version-diff"
@@ -14,6 +26,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { agentApi, wfApi, type AgentInfo, type AgentVersionInfo } from "@/services/wf-api"
 
@@ -47,7 +60,13 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
   const [desc, setDesc] = useState(agent.description ?? "")
   const [purpose, setPurpose] = useState<string>((agent.config as { spec?: { purpose?: string } })?.spec?.purpose ?? "")
   const [modelId, setModelId] = useState<string>(((agent.config as { modelRef?: { modelId?: string } })?.modelRef?.modelId) ?? "")
-  const [models, setModels] = useState<{ modelKey: string }[]>([])
+  const [thinking, setThinking] = useState(
+    ((agent.config as { modelRef?: { params?: Record<string, unknown> } })?.modelRef?.params?.thinking_enable) === true)
+  const [thinkingBudget, setThinkingBudget] = useState<number | "">(() => {
+    const b = (agent.config as { modelRef?: { params?: Record<string, unknown> } })?.modelRef?.params?.thinking_budget
+    return typeof b === "number" ? b : ""
+  })
+  const [models, setModels] = useState<{ modelKey: string; capabilities?: string[] }[]>([])
   const [versions, setVersions] = useState<AgentVersionInfo[]>([])
   const [releases, setReleases] = useState<ReleaseOpt[]>([])
   const [diffOpen, setDiffOpen] = useState(false)
@@ -63,6 +82,10 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<(RunResult & { runId?: string }) | null>(null)
   const [callsOpen, setCallsOpen] = useState(true)
+  const [perms, setPerms] = useState<Record<string, boolean>>({
+    ...DEFAULT_PERMS,
+    ...(((agent.config as { permissions?: Record<string, boolean> }).permissions) ?? {}),
+  })
 
   useEffect(() => {
     agentApi.modules().then((r) => setMeta(r.items.find((m) => m.key === agent.moduleKey) ?? null)).catch(() => undefined)
@@ -84,7 +107,15 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
         name, description: desc,
         config: {
           ...(agent.config as object), spec: { purpose }, capabilities: caps,
-          modelRef: { ...(agent.config as { modelRef?: object })?.modelRef, modelId },
+          permissions: perms,
+          modelRef: {
+            ...(agent.config as { modelRef?: object })?.modelRef, modelId,
+            params: {
+              ...((agent.config as { modelRef?: { params?: Record<string, unknown> } })?.modelRef?.params ?? {}),
+              thinking_enable: thinking,
+              ...(thinking && thinkingBudget !== "" ? { thinking_budget: thinkingBudget } : {}),
+            },
+          },
         },
       }, agent.configRevision)
       toast.success("已保存")
@@ -124,7 +155,7 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
 
   const inputProps = Object.keys((meta?.inputSchema?.properties ?? {}) as object)
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       {/* 09-07：头部/发布入口上移至 AgentWorkspaceShell hero；此处保留 Draft vs Last-published 对照 */}
       <div className="flex shrink-0 items-center justify-end gap-2 px-4 pt-2">
         <Button size="sm" variant="outline" onClick={save}>保存</Button>
@@ -189,8 +220,44 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
                   </Select>
                   <span className="text-[11px]" style={{ color: INK3 }}>模型随版本冻结；凭据由平台 Connection 注入</span>
                 </div>
+                <div className="flex items-center gap-3 pt-3">
+                  <Label className="w-16 text-xs">深度思考</Label>
+                  <Switch
+                    checked={thinking}
+                    disabled={!!modelId && !(models.find((m) => m.modelKey === modelId)?.capabilities ?? []).includes("thinking")}
+                    onCheckedChange={setThinking}
+                    aria-label="深度思考"
+                  />
+                  {thinking && (
+                    <Input
+                      type="number" min={1} className="h-8 w-36" placeholder="思考预算 token（可选）"
+                      value={thinkingBudget}
+                      onChange={(e) => setThinkingBudget(e.target.value === "" ? "" : Number(e.target.value))}
+                    />
+                  )}
+                  <span className="text-[11px]" style={{ color: INK3 }}>
+                    开启后回复携带推理过程；发布时冻结进版本快照，需重新发布生效
+                  </span>
+                </div>
               </Card>
-              <Card no={3} title="指令（Module 资产 · 只读）"
+              <Card no={3} title="能力与权限（发布时冻结）">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {PERM_LABELS.map(([key, label]) => (
+                    <div key={key} className="flex items-center gap-2">
+                      <Switch
+                        checked={perms[key] !== false}
+                        onCheckedChange={(v) => setPerms((cur) => ({ ...cur, [key]: v }))}
+                        aria-label={label}
+                      />
+                      <span className="text-xs text-muted-foreground">{label}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px]" style={{ color: "var(--text-tertiary)" }}>
+                  关闭后该工具族不装配进 Agent；需重新发布生效。
+                </p>
+              </Card>
+              <Card no={4} title="指令（Module 资产 · 只读）"
                 right={<span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">只读</span>}>
                 <div className="mb-2 rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
                   criteria/工具/主数据由 Module 版本冻结；实例仅可追加「业务定位」。

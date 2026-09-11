@@ -34,6 +34,8 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TraceView, type TraceEvent } from "@/components/run/trace-view"
+import { AgentActivity } from "@/components/beui/agents/agent-activity"
+import type { AgentActivityItem } from "@/components/beui/agents/agent-activity"
 import { DefinitionRow } from "@/components/app/form-field"
 import { FilterBar, SearchField } from "@/components/app/filters"
 import { ErrorState, TableSkeleton } from "@/components/app/list-state"
@@ -463,7 +465,7 @@ export default function RunDetailPage() {
           <p className="text-sm">{run.blockedReason}</p>
         </StatusNotice>
       ) : hasErrors ? (
-        <StatusNotice tone="warning" title={`${run.summary.error} 个 Interaction 执行失败`}>
+        <StatusNotice tone="warning" title={`${run.summary.error} 个交互执行失败`}>
           <div className="space-y-0.5 text-sm">
             {(run.errors ?? []).map((e) => (
               <div key={e.type} className="flex justify-between gap-6">
@@ -478,7 +480,7 @@ export default function RunDetailPage() {
             className="mt-2 h-7"
             onClick={() => update({ filters: serializeListFilters({ ...filters, executionStatus: "ERROR" }) }, true)}
           >
-            查看失败 Interaction
+            查看失败交互
           </Button>
         </StatusNotice>
       ) : null}
@@ -493,6 +495,28 @@ export default function RunDetailPage() {
         </TabsList>
 
         <TabsContent value="trace" className="mt-3">
+          {events.length > 0 && (
+            <AgentActivity
+              className="mb-3"
+              defaultOpen
+              collapseOnComplete={false}
+              status={run.status === "SUCCESS" || run.status === "PARTIAL_SUCCESS" || run.status === "FAILED" || run.status === "CANCELLED" ? "complete" : "working"}
+              items={events.slice(0, 80).map((ev): AgentActivityItem => {
+                const id = `ev-${ev.sequence}`
+                const t = `${ev.channel}/${ev.type}`
+                if (t.includes("tool") || t.includes("mcp")) {
+                  return { id, type: "tool", action: "run", target: ev.type }
+                }
+                if (t.includes("model") || t.includes("llm")) {
+                  return { id, type: "trace", kind: "message", label: `LLM · ${ev.type}` }
+                }
+                if (t.includes("node")) {
+                  return { id, type: "step", label: ev.nodeId ?? ev.type, status: "complete" }
+                }
+                return { id, type: "trace", kind: ev.channel || "run", label: ev.type }
+              })}
+            />
+          )}
           {trace ? (
             <div className="flex h-[560px]"><TraceView trace={trace} events={events} focusSpanId={focusSpanId} /></div>
           ) : (
@@ -513,8 +537,8 @@ export default function RunDetailPage() {
               <SelectTrigger className="h-9 w-36"><SelectValue placeholder="通道" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">全部通道</SelectItem>
-                <SelectItem value="CONTROL">CONTROL</SelectItem>
-                <SelectItem value="CONTENT">CONTENT</SelectItem>
+                <SelectItem value="CONTROL">控制类</SelectItem>
+                <SelectItem value="CONTENT">内容类</SelectItem>
               </SelectContent>
             </Select>
           </FilterBar>
@@ -535,23 +559,23 @@ export default function RunDetailPage() {
         </TabsContent>
 
         <TabsContent value="executions" className="mt-3 space-y-2">
-        <SectionHeader title="Interaction Executions" description="SUCCESS + High Risk 合法；ERROR 表示没有成功产生有效业务结果" />
+        <SectionHeader title="交互执行明细" description="成功+高风险为合法；失败表示未成功产生有效业务结果" />
         <FilterBar>
-          <SearchField value={searchInput} onChange={setSearchInput} placeholder="搜索 Interaction..." />
+          <SearchField value={searchInput} onChange={setSearchInput} placeholder="搜索交互…" />
           <Select value={filters.executionStatus ?? "__all__"} onValueChange={(v) => update({ filters: serializeListFilters({ ...filters, executionStatus: v === "__all__" ? "" : v }) }, true)}>
             <SelectTrigger className="h-9 w-32"><SelectValue placeholder="执行状态" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">全部状态</SelectItem>
-              <SelectItem value="SUCCESS">SUCCESS</SelectItem>
-              <SelectItem value="ERROR">ERROR</SelectItem>
-              <SelectItem value="SKIPPED">SKIPPED</SelectItem>
+              <SelectItem value="SUCCESS">成功</SelectItem>
+              <SelectItem value="ERROR">失败</SelectItem>
+              <SelectItem value="SKIPPED">跳过</SelectItem>
             </SelectContent>
           </Select>
           <Select value={filters.errorType ?? "__all__"} onValueChange={(v) => update({ filters: serializeListFilters({ ...filters, errorType: v === "__all__" ? "" : v }) }, true)}>
             <SelectTrigger className="h-9 w-48"><SelectValue placeholder="错误类型" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">全部错误类型</SelectItem>
-              <SelectItem value="Tool timeout">Tool timeout</SelectItem>
+              <SelectItem value="Tool timeout">工具超时</SelectItem>
               <SelectItem value="Structured output invalid">Structured output invalid</SelectItem>
               <SelectItem value="Missing required input">Missing required input</SelectItem>
             </SelectContent>
@@ -565,7 +589,7 @@ export default function RunDetailPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Interaction</TableHead>
+                    <TableHead>交互</TableHead>
                     <TableHead>坐席</TableHead>
                     <TableHead>业务场景</TableHead>
                     <TableHead>执行状态</TableHead>

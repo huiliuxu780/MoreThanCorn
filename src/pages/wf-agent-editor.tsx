@@ -18,6 +18,7 @@ import { AgentSkillsSection } from "./agent-workspace/skills"
 import { AgentConnectorsSection } from "./agent-workspace/connectors"
 import { AgentMountsSection } from "./agent-workspace/mounts"
 import { AgentGovernanceSection } from "./agent-workspace/governance"
+import { AgentPermissionsSection } from "./agent-workspace/permissions"
 import { AgentTaskBoardSection } from "./agent-workspace/board"
 import { AgentAutonomousSection } from "./agent-workspace/autonomous"
 import { AgentProfileSection } from "./agent-workspace/profile"
@@ -70,7 +71,7 @@ function ArchivedAutonomousView({ agent }: { agent: AgentInfo }) {
   )
 }
 
-const SECTIONS: WorkspaceSection[] = ["home", "board", "autonomous", "memory", "skills", "connectors", "workflows", "knowledge", "config", "governance", "profile"]
+const SECTIONS: WorkspaceSection[] = ["home", "board", "autonomous", "memory", "skills", "connectors", "workflows", "knowledge", "config", "permissions", "governance", "profile"]
 
 export default function WfAgentEditorPage() {
   const { agentId = "", section: sectionParam } = useParams()
@@ -102,6 +103,7 @@ export default function WfAgentEditorPage() {
       case "connectors": return <AgentConnectorsSection agent={agent} readOnly={archived} />
       case "workflows": return <AgentMountsSection agent={agent} kind="workflows" readOnly={archived} />
       case "knowledge": return <AgentMountsSection agent={agent} kind="knowledges" readOnly={archived} />
+      case "permissions": return <AgentPermissionsSection agent={agent} archived={archived} />
       case "governance": return <AgentGovernanceSection agentId={agent.id} archived={archived} />
       case "config":
         if (agent.type === "custom") return <CustomAgentConfig agent={agent} />

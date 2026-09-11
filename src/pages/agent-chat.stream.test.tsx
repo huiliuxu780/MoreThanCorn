@@ -145,14 +145,14 @@ describe("对话页流式时序", () => {
 
     // 工具卡生命周期
     push({ id: "tc1", type: "TOOL_CALL_START", tool_call_id: "tool-1", tool_call_name: "Bash" })
-    await waitFor(() => expect(screen.getByText("调用中")).toBeTruthy())
+    await waitFor(() => expect(screen.getAllByText("调用中").length).toBeGreaterThan(0))
     push({ id: "tc2", type: "TOOL_CALL_DELTA", tool_call_id: "tool-1", delta: '{"command":"ls"}' })
     push({ id: "tc3", type: "TOOL_CALL_END", tool_call_id: "tool-1" })
-    await waitFor(() => expect(screen.getByText("等待结果")).toBeTruthy())
+    await waitFor(() => expect(screen.getAllByText("调用中").length).toBeGreaterThan(0))
     push({ id: "tr1", type: "TOOL_RESULT_START", tool_call_id: "tool-1", tool_call_name: "Bash" })
     push({ id: "tr2", type: "TOOL_RESULT_TEXT_DELTA", tool_call_id: "tool-1", delta: "ok" })
     push({ id: "tr3", type: "TOOL_RESULT_END", tool_call_id: "tool-1", state: "success" })
-    await waitFor(() => expect(screen.getAllByText("success").length).toBeGreaterThan(0))
+    await waitFor(() => expect(screen.getAllByText("已完成").length).toBeGreaterThan(0))
 
     // REPLY_END → 平滑合并（持久化正文出现，live 清空，全程不闪空）
     push({ id: "e9", type: "REPLY_END", session_id: "sess-1", reply_id: "r1", finished_reason: "completed" })
@@ -236,11 +236,16 @@ describe("对话页流式时序", () => {
 
     await waitFor(
       () => {
-        expect(screen.getByText(/等待用户确认工具调用（HITL：1 个工具调用等待确认）/)).toBeTruthy()
+        expect(screen.getAllByText("等待用户确认工具调用").length).toBeGreaterThan(0)
+        expect(screen.getAllByText(/1 个工具调用等待确认/).length).toBeGreaterThan(0)
         expect(screen.getByRole("button", { name: "批准执行" })).toBeTruthy()
+        expect(screen.getByRole("button", { name: "拒绝" })).toBeTruthy()
       },
       { timeout: 2500 },
     )
+    // 09-11 审计补测：拒绝路径调用 confirm(false)
+    fireEvent.click(screen.getByRole("button", { name: "拒绝" }))
+    await waitFor(() => expect(asApi.confirm).toHaveBeenCalledWith("agent-1", "sess-1", false))
   })
 
   it("重挂时等待外部结果：恢复等待态且不显示错误的批准按钮", async () => {
@@ -248,7 +253,7 @@ describe("对话页流式时序", () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText("等待外部执行结果（HITL）")).toBeTruthy()
+      expect(screen.getAllByText("等待外部执行结果").length).toBeGreaterThan(0)
     })
     expect(screen.queryByRole("button", { name: "批准执行" })).toBeNull()
     expect(screen.queryByRole("button", { name: "拒绝" })).toBeNull()

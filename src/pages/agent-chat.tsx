@@ -11,16 +11,13 @@
 import * as React from "react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import {
-  Check,
-  ChevronDown,
   Copy,
   FolderOpen,
+  Loader2,
   MoreHorizontal,
   PanelRight,
   Plus,
   RotateCw,
-  Send,
-  Square,
   Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -42,7 +39,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Textarea } from "@/components/ui/textarea"
+import { PromptInput } from "@/components/beui/agents/prompt-input"
+import { AgentActivity } from "@/components/beui/agents/agent-activity"
+import type { AgentActivityItem } from "@/components/beui/agents/agent-activity"
+import { ApprovalCard } from "@/components/beui/agents/approval-card"
+import { Message } from "@/components/beui/agents/message"
+import { MessageBubble } from "@/components/beui/agents/message-bubble"
 import { agentApi, wfApi, type AgentInfo } from "@/services/wf-api"
 import { asApi, openRuntimeStream, type SessionRow } from "@/services/as-api"
 import {
@@ -51,16 +53,41 @@ import {
   maskSecrets,
   type ChatStreamState,
 } from "@/services/chat-stream"
+import { Markdown } from "@/components/chat/markdown"
+import { ThinkingCollapse } from "@/components/chat/deep-thinking"
+import {
+  ImagesSection,
+  RelatedSection,
+  type SourceItem,
+} from "@/components/chat/answer-sections"
+/* beUI 移植基线（09-11 拍板）：思考/回答/工具/来源走 beUI agent 组件 */
+import { StreamingResponse } from "@/components/beui/agents/streaming-response"
+import { ToolResult } from "@/components/beui/agents/tool-result"
+import { AgentProgress } from "@/components/beui/agents/agent-progress"
 
 const SUBAGENT_TOOLS = new Set(["AgentCreate", "AgentInvite", "TeamCreate", "TeamDelete", "TeamSay"])
 const PLATFORM_TOOLS = new Set(["run_workflow", "run_agent_flow"])
 function toolBadge(name: string): { label: string; variant: "default" | "secondary" | "outline" } {
-  if (name === "Skill") return { label: "Skill", variant: "default" }
-  if (name === "search_knowledge") return { label: "Knowledge", variant: "default" }
+  if (name === "Skill") return { label: "技能", variant: "default" }
+  if (name === "search_knowledge") return { label: "知识", variant: "default" }
   if (name.startsWith("mcp__")) return { label: `MCP·${name.split("__")[1] ?? ""}`, variant: "default" }
   if (SUBAGENT_TOOLS.has(name)) return { label: "子Agent", variant: "default" }
   if (PLATFORM_TOOLS.has(name)) return { label: "平台", variant: "secondary" }
-  return { label: "Tool", variant: "outline" }
+  return { label: "工具", variant: "outline" }
+}
+
+/** 09-11：运行时 TOOL_RESULT 文本 delta 为 JSON 字符串封装，展示前解包防双重转义。 */
+function unwrapJsonString(s: string): string {
+  const t = s.trim()
+  if (t.startsWith('"') && t.endsWith('"')) {
+    try {
+      const v = JSON.parse(t)
+      if (typeof v === "string") return v
+    } catch {
+      /* 保持原文 */
+    }
+  }
+  return s
 }
 
 function blockText(b: unknown): string {
@@ -105,6 +132,14 @@ function persistedTerminalStatus(
   return "completed"
 }
 
+const STREAM_STATUS_LABEL: Record<string, string> = {
+  idle: "空闲", running: "执行中", completed: "已完成", interrupted: "已取消",
+  failed: "执行失败", hitl: "等待确认", exceeded: "超出迭代",
+}
+const TRIGGER_LABEL: Record<string, string> = {
+  chat: "对话", manual: "手动", schedule: "定时", api: "API 触发",
+  event: "事件触发", batch: "批量", eval: "评测",
+}
 const fmtTime = (iso?: string) =>
   iso ? new Date(iso).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""
 
@@ -119,12 +154,12 @@ export default function AgentChatPage() {
   const [stream, setStream] = React.useState<ChatStreamState>(initialStreamState)
   const [draft, setDraft] = React.useState("")
   const [histTab, setHistTab] = React.useState<"chat" | "auto">("chat")
-  const [autoScroll, setAutoScroll] = React.useState(true)
+  // 09-11 bug3：读者感知滚动——贴底时自动跟随流式；上读即停，浮标回最新（移除令人困惑的开关）
+  const [atBottom, setAtBottom] = React.useState(true)
   const [rightOpen, setRightOpen] = React.useState(true)
   const [sessionTitles, setSessionTitles] = React.useState<Record<string, string>>({})
   const [runtimeView, setRuntimeView] = React.useState<{ published: unknown; running: unknown } | null>(null)
   const [models, setModels] = React.useState<{ modelKey: string }[]>([])
-  const [modelOpen, setModelOpen] = React.useState(false)
   const [delTarget, setDelTarget] = React.useState<string | null>(null)
   const streamRef = React.useRef<AbortController | null>(null)
   const bottomRef = React.useRef<HTMLDivElement>(null)
@@ -139,6 +174,13 @@ export default function AgentChatPage() {
   const streamSnapRef = React.useRef(stream)
   streamSnapRef.current = stream
   const mergingRef = React.useRef(false)
+  // 09-11 批7：composer 生成状态条（对齐原站 qc-generation-status-bar：模型重新连接/深度思考/生成中）
+  const [reconnecting, setReconnecting] = React.useState(false)
+  // 09-11：显式「新对话草稿」态——否则自动选中最近会话的 effect 会把新建意图拽回旧会话
+  const [draftNew, setDraftNew] = React.useState(false)
+  // 09-11 bug1：setParams 走低优先级 transition，setDraftNew(false) 先提交时自动选中 effect
+  // 会用旧 sessions 列表抢跑 replace；pending 新会话 id 落定前抑制自动选中。
+  const pendingNewRef = React.useRef<string | null>(null)
 
   const loadSessions = React.useCallback(() => {
     asApi
@@ -272,6 +314,7 @@ export default function AgentChatPage() {
             (ev) => {
               lastEventRef.current = Date.now()
               reconnectRef.current = 0
+              setReconnecting(false)
               const type = String((ev as Record<string, unknown>).type ?? "")
               setStream((s) => {
                 const next = applyStreamEvent(s, ev as Record<string, unknown>)
@@ -285,6 +328,7 @@ export default function AgentChatPage() {
               if (ctrl.signal.aborted) return
               if (statusRef.current === "running" && reconnectRef.current < 5) {
                 reconnectRef.current += 1
+                setReconnecting(true)
                 const delay = Math.min(1000 * 2 ** (reconnectRef.current - 1), 8000)
                 window.setTimeout(() => {
                   if (ctrl.signal.aborted) return
@@ -294,6 +338,7 @@ export default function AgentChatPage() {
                 }, delay)
               } else {
                 streamAliveRef.current = false
+                setReconnecting(false)
               }
             },
             ctrl,
@@ -306,6 +351,7 @@ export default function AgentChatPage() {
           if (ctrl.signal.aborted) return
           if (statusRef.current === "running" && reconnectRef.current < 5) {
             reconnectRef.current += 1
+            setReconnecting(true)
             const delay = Math.min(1000 * 2 ** (reconnectRef.current - 1), 8000)
             window.setTimeout(() => {
               if (ctrl.signal.aborted) return
@@ -316,6 +362,7 @@ export default function AgentChatPage() {
             return
           }
           streamAliveRef.current = false
+          setReconnecting(false)
           toast.error(`流连接失败：${(e as Error).message}`)
         })
     },
@@ -356,14 +403,20 @@ export default function AgentChatPage() {
 
   // §六：有历史 Session 时自动选择最近一个对话任务（不给“还没有会话”空主区）
   React.useEffect(() => {
-    if (sid || sessions.length === 0) return
+    if (sid) pendingNewRef.current = null
+    if (sid || draftNew || pendingNewRef.current || sessions.length === 0) return
     const chat = sessions.filter((s) => ["chat", "manual"].includes(s.trigger_kind))
     const pick = chat[0] ?? sessions[0]
     if (pick) setParams({ session: pick.session_id }, { replace: true })
-  }, [sid, sessions, setParams])
+  }, [sid, draftNew, sessions, setParams])
 
   React.useEffect(() => {
-    if (!sid) return
+    if (!sid) {
+      setMessages([])
+      setStream(initialStreamState())
+      statusRef.current = "idle"
+      return
+    }
     loadMessages(sid)
     attachStream(sid)
     void reconcileAfterReattach(sid)
@@ -386,30 +439,16 @@ export default function AgentChatPage() {
   }, [sid, reconcileAfterReattach])
 
   React.useEffect(() => {
-    if (autoScroll) bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [stream.live, stream.tools, messages, autoScroll])
+    if (atBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [stream.live, stream.tools, messages, atBottom])
 
   const onScroll = () => {
     const el = scrollRef.current
     if (!el) return
-    setAutoScroll(el.scrollHeight - el.scrollTop - el.clientHeight < 48)
+    setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 48)
   }
 
   const published = !!runtimeView?.published
-  const newSession = async () => {
-    if (!published) {
-      toast.error("该 Agent 尚未发布生产版本：请先在「发布治理」创建版本并发布到线上，再开始对话")
-      return
-    }
-    try {
-      const r = await asApi.openSession(agentId)
-      setParams({ session: r.session_id })
-      loadSessions()
-    } catch (e) {
-      toast.error(`创建会话失败：${(e as Error).message}`)
-    }
-  }
-
   /** §五.2：乐观回显 + §五.3：POST /turn 只触发不阻塞。无 Session 时先建。 */
   const sendText = async (text: string) => {
     const body = text.trim()
@@ -425,6 +464,8 @@ export default function AgentChatPage() {
         // 无对话任务时，输入消息自动产生一个新任务（Session）
         const r = await asApi.openSession(agentId)
         sessionId = r.session_id
+        pendingNewRef.current = sessionId
+        setDraftNew(false)
         setParams({ session: sessionId })
         loadSessions()
       }
@@ -448,7 +489,11 @@ export default function AgentChatPage() {
         attachStream(sessionId)
         setStream((s) => ({ ...s, status: "running" }))
         statusRef.current = "running"
-        window.setTimeout(() => reconcileAfterReattach(sessionId), 4000)
+        const c = streamRef.current
+        const t = window.setTimeout(() => {
+          if (!c?.signal.aborted) void reconcileAfterReattach(sessionId)
+        }, 4000)
+        c?.signal.addEventListener("abort", () => window.clearTimeout(t))
       }
     } catch (e) {
       toast.error(`发送失败：${(e as Error).message}`)
@@ -492,7 +537,84 @@ export default function AgentChatPage() {
       : !["chat", "manual"].includes(s.trigger_kind),
   )
   const currentSession = sessions.find((s) => s.session_id === sid)
-  const sessionTitle = sid ? (sessionTitles[sid] ?? `${currentSession?.trigger_kind ?? "对话任务"}`) : ""
+  const sessionTitle = sid ? (sessionTitles[sid] ?? `${TRIGGER_LABEL[currentSession?.trigger_kind ?? ""] ?? currentSession?.trigger_kind ?? "对话任务"}`) : ""
+  // 09-11 bug1：执行过程对历史会话恒 0 —— live 流状态之外，从持久化消息推导模型调用/工具/思考计数
+  const histStats = React.useMemo(() => {
+    let modelCalls = 0
+    let tools = 0
+    let thinking = 0
+    for (const m of messages) {
+      if (m.role !== "assistant") continue
+      modelCalls += 1
+      for (const b of (m.content as Record<string, unknown>[] | undefined) ?? []) {
+        if (!b || typeof b !== "object") continue
+        const t = (b as Record<string, unknown>).type
+        if (t === "tool_call") tools += 1
+        if (t === "thinking") thinking += 1
+      }
+    }
+    return { modelCalls, tools, thinking }
+  }, [messages])
+  const liveActive =
+    stream.status === "running" || stream.live.length > 0 || stream.tools.length > 0
+  const historyItems = React.useMemo(() => {
+    const items: AgentActivityItem[] = []
+    let mc = 0
+    for (const m of messages) {
+      if (m.role !== "assistant") continue
+      mc += 1
+      items.push({ id: `h-mc-${String(m.id ?? mc)}`, type: "trace", kind: "message", label: `模型调用 #${mc}`, detail: "已完成" })
+      for (const b of (m.content as Record<string, unknown>[] | undefined) ?? []) {
+        if (!b || typeof b !== "object") continue
+        const rec = b as Record<string, unknown>
+        if (rec.type === "tool_call") {
+          items.push({ id: `h-tl-${String(rec.id ?? items.length)}`, type: "tool", action: "run", target: String(rec.name ?? "tool") })
+        } else if (rec.type === "thinking") {
+          items.push({ id: `h-th-${String(rec.id ?? items.length)}`, type: "trace", kind: "thinking", label: "深度思考完成" })
+        }
+      }
+    }
+    return items
+  }, [messages])
+  // 09-11 批4：子智能体运行可见——从 AgentCreate/TeamSay 等工具调用的入参/结果派生状态与结果
+  const subagentRows = React.useMemo(() => {
+    const rows: { id: string; tool: string; target: string; state: string; result: string }[] = []
+    const push = (id: string, tool: string, input: unknown, result: string, state: string) => {
+      const rec = (input ?? {}) as Record<string, unknown>
+      const target = String(
+        rec.agent_name ?? rec.name ?? rec.team_name ?? rec.message ?? rec.to ?? tool,
+      ).slice(0, 60)
+      rows.push({ id, tool, target, state, result })
+    }
+    for (const m of messages) {
+      const content = (m.content as Record<string, unknown>[] | undefined) ?? []
+      const results = new Map(
+        content
+          .filter((b) => b && (b as Record<string, unknown>).type === "tool_result")
+          .map((b) => [String((b as Record<string, unknown>).id ?? ""), b as Record<string, unknown>]),
+      )
+      for (const b of content) {
+        if (!b || (b as Record<string, unknown>).type !== "tool_call") continue
+        const rec = b as Record<string, unknown>
+        const name = String(rec.name ?? "")
+        if (!SUBAGENT_TOOLS.has(name)) continue
+        const tr = results.get(String(rec.id ?? ""))
+        push(
+          String(rec.id ?? rows.length),
+          name,
+          rec.input,
+          tr ? maskSecrets(JSON.stringify(tr.output ?? tr.content ?? "").slice(0, 600)) : "",
+          tr ? "success" : "running",
+        )
+      }
+    }
+    for (const t of stream.tools) {
+      if (!SUBAGENT_TOOLS.has(t.name)) continue
+      if (rows.some((r) => r.id === t.id)) continue
+      rows.push({ id: t.id, tool: t.name, target: t.name, state: t.state, result: maskSecrets(t.result.slice(0, 600)) })
+    }
+    return rows
+  }, [messages, stream.tools])
   const structuredArtifacts = messages.flatMap((m, i) => {
     const so = m.structured_output as Record<string, unknown> | null | undefined
     return so ? [{ index: i, role: String(m.role), so }] : []
@@ -534,9 +656,14 @@ export default function AgentChatPage() {
             variant="ghost"
             size="sm"
             onClick={() => {
-              // 原站：无任务时「新建」直接开一个对话任务
-              if (!sid) void newSession()
-              else setParams({}, { replace: true })
+              // 09-11 批5：自动任务 tab 的「新建」=自动任务新建弹窗，不再误建对话会话
+              if (histTab === "auto") {
+                navigate("/autonomous-tasks?new=1")
+                return
+              }
+              // 原站：无任务时「新建」直接开一个对话任务；有任务时进入新对话草稿态
+              setDraftNew(true)
+              setParams({}, { replace: true })
             }}
           >
             <Plus className="size-3" /> 新建
@@ -553,10 +680,13 @@ export default function AgentChatPage() {
                 <button
                   type="button"
                   className="min-w-0 flex-1 text-left"
-                  onClick={() => setParams({ session: s.session_id })}
+                  onClick={() => {
+                    setDraftNew(false)
+                    setParams({ session: s.session_id })
+                  }}
                 >
                   <div className="truncate font-medium">
-                    {sessionTitles[s.session_id] ?? s.trigger_kind}
+                    {sessionTitles[s.session_id] ?? TRIGGER_LABEL[s.trigger_kind] ?? s.trigger_kind}
                   </div>
                   <div className="text-muted-foreground">{fmtTime(s.created_at)}</div>
                 </button>
@@ -566,13 +696,18 @@ export default function AgentChatPage() {
                       variant="ghost"
                       size="icon"
                       className="size-6 shrink-0 opacity-0 group-hover:opacity-100"
-                      aria-label={`更多操作 ${sessionTitles[s.session_id] ?? s.trigger_kind}`}
+                      aria-label={`更多操作 ${sessionTitles[s.session_id] ?? TRIGGER_LABEL[s.trigger_kind] ?? s.trigger_kind}`}
                     >
                       <MoreHorizontal className="size-3" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => setParams({ session: s.session_id })}>
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setDraftNew(false)
+                        setParams({ session: s.session_id })
+                      }}
+                    >
                       打开对话任务
                     </DropdownMenuItem>
                     <DropdownMenuItem
@@ -593,10 +728,10 @@ export default function AgentChatPage() {
       </aside>
 
       {/* 中：消息流 + composer */}
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="relative flex min-w-0 flex-1 flex-col">
         <header className="flex h-11 shrink-0 items-center gap-2 border-b px-4">
           <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">
-            {sessionTitle || agent?.name || "对话"}
+            {draftNew && !sid ? "新对话" : sessionTitle || agent?.name || "对话"}
           </h1>
           {currentSession?.agentflow_node_run_id && <Badge variant="secondary">AgentFlow 节点</Badge>}
           {currentSession?.automation_id && <Badge variant="outline">自动任务</Badge>}
@@ -640,8 +775,20 @@ export default function AgentChatPage() {
           </Button>
         </header>
 
+        {!atBottom && (
+          <button
+            type="button"
+            className="absolute bottom-40 right-6 z-10 flex items-center gap-1 rounded-full border bg-surface px-3 py-1.5 text-xs shadow-md hover:bg-muted"
+            onClick={() => {
+              setAtBottom(true)
+              bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+            }}
+          >
+            回到最新
+          </button>
+        )}
         <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-[720px] space-y-4 px-4 py-4">
+          <div className="mx-auto flex min-h-full max-w-[720px] flex-col justify-end space-y-4 px-4 py-4">
             {messages.length === 0 && stream.live.length === 0 && (
               <div className="space-y-3 rounded-lg border border-dashed p-6 text-center">
                 <img src={avatarFor(agentId, agent?.avatar)} alt="avatar" className="mx-auto size-10 rounded-full" />
@@ -689,46 +836,87 @@ export default function AgentChatPage() {
               const err = m.error as Record<string, unknown> | null | undefined
               const so = m.structured_output as Record<string, unknown> | null | undefined
               const fr = String(m.finished_reason ?? "")
+              // 分节卡数据源（09-11 P2）：sources=知识检索工具结果；images=image 块；
+              // related=结构化结果中的 related_questions（无数据整节不渲染，不伪造）
+              const sources: SourceItem[] = toolUses
+                .filter((tu) => String(tu.name ?? "") === "search_knowledge")
+                .map((tu) => ({ tu, tr: toolResults.get(String(tu.id ?? "")) }))
+                .filter((x): x is { tu: Record<string, unknown>; tr: Record<string, unknown> } => !!x.tr)
+                .map((x, i) => ({
+                  title: String(
+                    (x.tu.input as Record<string, unknown> | undefined)?.query ??
+                      (x.tu.input as Record<string, unknown> | undefined)?.keyword ??
+                      `知识检索 ${i + 1}`,
+                  ),
+                  content: maskSecrets(JSON.stringify(x.tr.output ?? x.tr.content ?? "").slice(0, 300)),
+                }))
+              const images = content
+                .filter((b) => b && (b as Record<string, unknown>).type === "image")
+                .map((b) =>
+                  String(
+                    (b as Record<string, unknown>).image_url ??
+                      (b as Record<string, unknown>).url ??
+                      "",
+                  ),
+                )
+                .filter(Boolean)
+              const relatedRaw = so?.related_questions
+              const related = Array.isArray(relatedRaw) ? relatedRaw.map(String).slice(0, 5) : []
               if (role === "user") {
                 return (
-                  <div key={String(m.id ?? i)} className="flex justify-end">
-                    <div className="max-w-[80%]">
-                      <div className="rounded-md bg-muted px-3 py-2 text-sm">{text}</div>
-                      <div className="mt-1 flex items-center justify-end gap-2 text-[11px] text-muted-foreground">
-                        <span>{fmtTime(String(m.created_at ?? ""))}</span>
-                        <button type="button" className="rounded p-0.5 hover:bg-muted" aria-label="复制" onClick={() => copyText(text)}>
-                          <Copy className="size-3" />
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded p-0.5 hover:bg-muted"
-                          title="重试＝重新发送该条用户输入"
-                          aria-label="重试"
-                          onClick={() => void sendText(text)}
-                        >
-                          <RotateCw className="size-3" />
-                        </button>
-                      </div>
+                  <Message key={String(m.id ?? i)} from="user" animateIn>
+                    <div className="flex w-full flex-col items-end gap-1">
+                    <MessageBubble align="end">
+                      <span className="text-sm">{text}</span>
+                    </MessageBubble>
+                    <div className="flex w-full items-center justify-end gap-2 text-[11px] text-muted-foreground">
+                      <span>{fmtTime(String(m.created_at ?? ""))}</span>
+                      <button type="button" className="rounded p-0.5 hover:bg-muted" aria-label="复制" onClick={() => copyText(text)}>
+                        <Copy className="size-3" />
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded p-0.5 hover:bg-muted"
+                        title="重试＝重新发送该条用户输入"
+                        aria-label="重试"
+                        onClick={() => void sendText(text)}
+                      >
+                        <RotateCw className="size-3" />
+                      </button>
                     </div>
-                  </div>
+                    </div>
+                  </Message>
                 )
               }
               return (
-                <div key={String(m.id ?? i)} className="space-y-1">
+                <Message key={String(m.id ?? i)} from="assistant" animateIn>
+                 <div className="w-full space-y-1">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <img src={avatarFor(agentId, agent?.avatar)} alt="avatar" className="size-5 rounded-full" />
                     <span className="font-medium text-foreground">{agent?.name ?? "Agent"}</span>
                     <span>{fmtTime(String(m.created_at ?? ""))}</span>
                   </div>
+                  <div className="space-y-1 pl-7">
                   {[...thinkingById.entries()].map(([id, ttext]) => (
-                    <details key={`th-${id}`} className="rounded-md border bg-muted/30 px-2 py-1 text-xs">
-                      <summary className="cursor-pointer text-muted-foreground">深度思考</summary>
-                      <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs">
-                        {maskSecrets(ttext.slice(0, 4000))}
-                      </pre>
-                    </details>
+                    <ThinkingCollapse
+                      key={`th-${id}`}
+                      content={maskSecrets(ttext.slice(0, 4000))}
+                      defaultOpen={false}
+                    />
                   ))}
-                  {text && <div className="whitespace-pre-wrap break-words text-sm">{text}</div>}
+                  {text && (
+                    <StreamingResponse
+                      status="complete"
+                      copyText={text}
+                      sources={
+                        sources.length
+                          ? sources.map((s, i) => ({ id: `src-${i}`, title: s.title, url: s.url }))
+                          : undefined
+                      }
+                    >
+                      <Markdown content={text} />
+                    </StreamingResponse>
+                  )}
                   {fr && fr !== "completed" && (
                     <p className="text-xs text-muted-foreground">
                       {fr === "interrupted" ? "状态：已取消" : `状态：${fr}`}
@@ -744,26 +932,35 @@ export default function AgentChatPage() {
                     const name = String(tu.name ?? "")
                     const badge = toolBadge(name)
                     return (
-                      <div key={`tu-${String(tu.id)}`} className="rounded-md border px-2 py-1.5 text-xs">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant={badge.variant}>{badge.label}</Badge>
-                          <span className="font-medium">{name}</span>
-                          <Badge variant={tr ? "secondary" : "outline"}>{tr ? "已完成" : "无结果块"}</Badge>
-                        </div>
-                        <details className="mt-1">
-                          <summary className="cursor-pointer text-muted-foreground">参数 / 响应</summary>
-                          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words">
-                            {maskSecrets(JSON.stringify(tu.input ?? {}).slice(0, 800))}
+                      <ToolResult
+                        key={`tu-${String(tu.id)}`}
+                        tool={
+                          <span className="flex items-center gap-1">
+                            {SUBAGENT_TOOLS.has(name) && (
+                              <img src={avatarFor(name)} alt="" className="size-4 shrink-0 rounded-full object-cover" />
+                            )}
+                            <Badge variant={badge.variant}>{badge.label}</Badge>
+                          </span>
+                        }
+                        title={name}
+                        status={tr ? "success" : "running"}
+                        defaultOpen={false}
+                        maxHeight={280}
+                        copyText={maskSecrets(JSON.stringify(tu.input ?? {}))}
+                      >
+                        <pre className="whitespace-pre-wrap break-words">
+                          {maskSecrets(JSON.stringify(tu.input ?? {}).slice(0, 800))}
+                        </pre>
+                        {tr && (
+                          <pre className="mt-1 whitespace-pre-wrap break-words">
+                            {maskSecrets(unwrapJsonString(JSON.stringify(tr.output ?? tr.content ?? "")).slice(0, 1200))}
                           </pre>
-                          {tr && (
-                            <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words">
-                              {maskSecrets(JSON.stringify(tr.output ?? tr.content ?? "").slice(0, 1200))}
-                            </pre>
-                          )}
-                        </details>
-                      </div>
+                        )}
+                      </ToolResult>
                     )
                   })}
+                  <ImagesSection urls={images} />
+                  <RelatedSection items={related} onPick={(q) => void sendText(q)} />
                   {so && (
                     <details className="rounded-md border bg-muted/40 px-2 py-1.5 text-xs">
                       <summary className="cursor-pointer font-medium">结构化结果</summary>
@@ -772,40 +969,81 @@ export default function AgentChatPage() {
                       </pre>
                     </details>
                   )}
-                </div>
+                  </div>
+                 </div>
+                </Message>
               )
             })}
 
-            {/* 流式 live 区 */}
+            {/* 流式 live 区（beUI 基线）：AgentActivity=执行过程态 */}
+            {(liveActive
+              ? stream.modelCalls.length > 0 || stream.tools.length > 0 || stream.live.some((b) => b.kind === "thinking")
+              : historyItems.length > 0) && (
+              <AgentActivity
+                defaultOpen={stream.status === "running"}
+                collapseOnComplete={false}
+                status={stream.status === "running" ? "working" : "complete"}
+                items={(liveActive ? [
+                  ...stream.modelCalls.map((m, i): AgentActivityItem => ({
+                    id: `mc-${m.id}`,
+                    type: "trace",
+                    kind: "message",
+                    label: `模型调用 #${i + 1}`,
+                    detail: m.status === "running" ? "调用中" : "已完成",
+                  })),
+                  ...stream.tools.map((t): AgentActivityItem => ({
+                    id: `tl-${t.id}`,
+                    type: "tool",
+                    action: "run",
+                    target: t.name || "tool",
+                  })),
+                  ...stream.live
+                    .filter((b) => b.kind === "thinking")
+                    .map((b): AgentActivityItem => ({
+                      id: `th-${b.id}`,
+                      type: "trace",
+                      kind: "thinking",
+                      label: b.finished ? "深度思考完成" : "深度思考中",
+                    })),
+                ] : historyItems)}
+              />
+            )}
+            {stream.status === "running" && stream.live.length === 0 && stream.tools.length === 0 && (
+              <AgentProgress label="执行中" running />
+            )}
             {stream.tools.map((t) => {
               const badge = toolBadge(t.name)
               return (
-                <div key={t.id} data-testid="live-tool-card" className="rounded-md border px-2 py-1.5 text-xs">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={badge.variant}>{badge.label}</Badge>
-                    <span className="font-medium">{t.name}</span>
-                    <Badge
-                      variant={
-                        t.state === "success"
-                          ? "secondary"
-                          : t.state === "error" || t.state === "denied"
-                            ? "destructive"
-                            : "outline"
-                      }
-                    >
-                      {t.state === "running" ? "调用中" : t.state === "called" ? "等待结果" : t.state}
-                    </Badge>
-                  </div>
+                <ToolResult
+                  key={t.id}
+                  tool={
+                    <span className="flex items-center gap-1">
+                      {SUBAGENT_TOOLS.has(t.name) && (
+                        <img src={avatarFor(t.name)} alt="" className="size-4 shrink-0 rounded-full object-cover" />
+                      )}
+                      <Badge variant={badge.variant}>{badge.label}</Badge>
+                    </span>
+                  }
+                  title={t.name}
+                  status={
+                    t.state === "success"
+                      ? "success"
+                      : t.state === "error" || t.state === "denied"
+                        ? "error"
+                        : t.state === "interrupted"
+                          ? "cancelled"
+                          : "running"
+                  }
+                  defaultOpen
+                  maxHeight={280}
+                >
                   {t.args && (
-                    <details className="mt-1">
-                      <summary className="cursor-pointer text-muted-foreground">参数</summary>
-                      <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words">{maskSecrets(t.args.slice(0, 800))}</pre>
-                    </details>
+                    <pre className="whitespace-pre-wrap break-words">{maskSecrets(t.args.slice(0, 800))}</pre>
                   )}
                   {t.result && (
-                    <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words">{maskSecrets(t.result.slice(0, 1200))}</pre>
+                    <pre className="mt-1 whitespace-pre-wrap break-words">{maskSecrets(unwrapJsonString(t.result).slice(0, 1200))}</pre>
                   )}
-                </div>
+                </ToolResult>
               )
             })}
             {stream.live
@@ -815,18 +1053,18 @@ export default function AgentChatPage() {
               )
               .map((b) =>
               b.kind === "text" ? (
-                <div
-                  key={b.id}
-                  data-testid="live-text"
-                  className="whitespace-pre-wrap break-words text-sm"
-                >
-                  {b.text}
+                <div key={b.id} data-testid="live-text" className="text-sm">
+                  <StreamingResponse status={b.finished ? "complete" : "streaming"}>
+                    <Markdown content={b.text} />
+                  </StreamingResponse>
                 </div>
               ) : b.kind === "thinking" ? (
-                <details key={b.id} open={!b.finished} className="rounded-md border bg-muted/30 px-2 py-1 text-xs">
-                  <summary className="cursor-pointer text-muted-foreground">深度思考（流式）</summary>
-                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words">{maskSecrets(b.text.slice(0, 4000))}</pre>
-                </details>
+                <ThinkingCollapse
+                  key={b.id}
+                  loading={!b.finished}
+                  content={maskSecrets(b.text.slice(0, 4000))}
+                  defaultOpen
+                />
               ) : (
                 <div key={b.id} className="rounded-md border px-2 py-1 text-xs text-muted-foreground">
                   {b.kind === "hint" ? "提示：" : b.kind === "data" ? "数据：" : ""}
@@ -834,58 +1072,37 @@ export default function AgentChatPage() {
                 </div>
               ),
             )}
-            {stream.status === "hitl" && (
-              <div className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-xs dark:bg-amber-950">
-                <p className="font-medium">
-                  {stream.statusDetail}
-                  {stream.statusDetail === "等待用户确认工具调用"
-                    ? `（HITL：${stream.hitlToolCalls.length} 个工具调用等待确认）`
-                    : "（HITL）"}
-                </p>
-                <ul className="mt-1 space-y-0.5 text-muted-foreground">
-                  {stream.hitlToolCalls.slice(0, 5).map((t, i) => (
-                    <li key={i}>
-                      {String((t as Record<string, unknown>).name ?? `tool-${i}`)}
-                    </li>
-                  ))}
-                </ul>
-                {stream.statusDetail === "等待用户确认工具调用" && (
-                  <div className="mt-2 flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        if (!sid) return
-                        asApi.confirm(agentId, sid, true)
-                          .then(() => {
-                            statusRef.current = "running"
-                            lastEventRef.current = Date.now()
-                            setStream((s) => ({ ...s, status: "running", statusDetail: "" }))
-                          })
-                          .catch((e) => toast.error(`确认失败：${(e as Error).message}`))
-                      }}
-                    >
-                      批准执行
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        if (!sid) return
-                        asApi.confirm(agentId, sid, false)
-                          .then(() => {
-                            statusRef.current = "running"
-                            lastEventRef.current = Date.now()
-                            setStream((s) => ({ ...s, status: "running", statusDetail: "" }))
-                          })
-                          .catch((e) => toast.error(`拒绝失败：${(e as Error).message}`))
-                      }}
-                    >
-                      拒绝
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
+            {stream.status === "hitl" && (() => {
+              const isToolConfirm = stream.statusDetail === "等待用户确认工具调用"
+              const confirm = (ok: boolean) => {
+                if (!sid) return
+                asApi
+                  .confirm(agentId, sid, ok)
+                  .then(() => {
+                    statusRef.current = "running"
+                    lastEventRef.current = Date.now()
+                    setStream((s2) => ({ ...s2, status: "running", statusDetail: "" }))
+                  })
+                  .catch((e) => toast.error(`${ok ? "确认" : "拒绝"}失败：${(e as Error).message}`))
+              }
+              return (
+                <ApprovalCard
+                  title={stream.statusDetail}
+                  description={
+                    isToolConfirm
+                      ? `${stream.hitlToolCalls.length} 个工具调用等待确认：${stream.hitlToolCalls
+                          .slice(0, 5)
+                          .map((t) => String((t as Record<string, unknown>).name ?? "tool"))
+                          .join("、")}`
+                      : "等待外部执行结果回填，无需人工批准"
+                  }
+                  status="pending"
+                  approveLabel="批准执行"
+                  onApprove={isToolConfirm ? () => confirm(true) : undefined}
+                  onReject={isToolConfirm ? () => confirm(false) : undefined}
+                />
+              )
+            })()}
             {(stream.status === "failed" || stream.status === "interrupted" || stream.status === "exceeded") && (
               <div className="rounded-md border px-3 py-2 text-xs text-destructive">
                 {stream.status === "failed" ? "执行失败" : stream.status === "interrupted" ? "已取消" : "超过最大迭代"}
@@ -897,7 +1114,7 @@ export default function AgentChatPage() {
         </div>
 
         <footer className="shrink-0 border-t p-3">
-          <div className="mx-auto max-w-[720px] rounded-lg border bg-surface p-2">
+          <div className="mx-auto max-w-[720px]">
             {!published && (
               <p className="mb-2 rounded-md border border-amber-400/60 bg-amber-50 px-2 py-1.5 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100">
                 该 Agent 尚未发布生产版本：请先在
@@ -911,90 +1128,48 @@ export default function AgentChatPage() {
                 创建版本并发布到线上，随后即可开始对话。
               </p>
             )}
-            <Textarea
-              rows={2}
-              className="border-0 shadow-none focus-visible:ring-0"
+            {(stream.status === "running" || reconnecting) && (
+              <div className="mb-1 flex h-9 items-center gap-2 rounded-xl bg-(--status-success-soft) px-3 text-xs">
+                <Loader2 className="size-3.5 animate-spin text-(--status-success)" aria-hidden />
+                <span className="font-medium text-(--status-success)">
+                  {reconnecting
+                    ? "模型重新连接"
+                    : stream.live.some((b) => b.kind === "thinking" && !b.finished)
+                      ? "深度思考"
+                      : "生成中"}
+                </span>
+                <span className="animate-pulse text-(--status-success)">…</span>
+              </div>
+            )}
+            <PromptInput
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onValueChange={setDraft}
+              minRows={2}
+              maxRows={6}
               placeholder="输入消息，@ 选择当前工作区上下文"
               disabled={!published}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault()
-                  void sendText(draft)
-                }
-              }}
-            />
-            <div className="flex items-center gap-1 px-1 pb-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={!published}
-                title="选择工作目录"
-                aria-label="选择工作目录"
-                onClick={() => toast.info("工作目录：AgentScope Workspace（当前会话工作区）")}
-              >
-                <FolderOpen className="size-3.5" /> 选择工作目录
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-8"
-                disabled={!published}
-                title="添加文件或图片"
-                aria-label="添加文件或图片"
-                onClick={() => toast.info("附件上传待接入（当前不伪造入口）")}
-              >
-                <Plus className="size-4" />
-              </Button>
-              <DropdownMenu open={modelOpen} onOpenChange={setModelOpen}>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="gap-1" disabled={!published} aria-label="选择模型">
-                    {String(
-                      (agent?.config?.modelRef as Record<string, unknown> | undefined)?.modelId ??
-                        (agent?.config?.modelRef as Record<string, unknown> | undefined)?.model ??
-                        "Auto",
-                    )}
-                    <ChevronDown className="size-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" side="top" className="max-h-72 overflow-y-auto">
-                  {models.length === 0 && (
-                    <DropdownMenuItem disabled>无可用模型</DropdownMenuItem>
-                  )}
-                  {models.map((m) => (
-                    <DropdownMenuItem key={m.modelKey} onSelect={() => setModelOpen(false)}>
-                      {m.modelKey}
-                      {m.modelKey ===
-                        ((agent?.config?.modelRef as Record<string, unknown> | undefined)?.modelId as string) && (
-                        <Check className="ml-auto size-3.5" />
-                      )}
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuItem className="text-xs text-muted-foreground" disabled>
-                    模型绑定来自已发布版本快照（发布治理中修改）
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <label className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
-                <input type="checkbox" checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} />
-                自动滚动
-              </label>
-              {stream.status === "running" ? (
-                <Button variant="outline" size="icon" onClick={() => void interrupt()} aria-label="停止">
-                  <Square className="size-4" />
-                </Button>
-              ) : (
-                <Button
-                  size="icon"
-                  onClick={() => void sendText(draft)}
-                  disabled={!draft.trim() || !published}
-                  aria-label="发送"
-                >
-                  <Send className="size-4" />
-                </Button>
+              loading={stream.status === "running"}
+              onStop={() => void interrupt()}
+              onSubmit={(v) => void sendText(v)}
+              models={models.map((m) => ({ value: m.modelKey, label: m.modelKey }))}
+              model={String(
+                (agent?.config?.modelRef as Record<string, unknown> | undefined)?.modelId ??
+                  (agent?.config?.modelRef as Record<string, unknown> | undefined)?.model ??
+                  "Auto",
               )}
-            </div>
+              onModelChange={() => toast.info("模型绑定来自已发布版本快照（发布治理中修改）")}
+              actions={[
+                { value: "workspace", label: "选择工作目录", icon: <FolderOpen className="size-3.5" /> },
+                { value: "attach", label: "添加文件或图片", icon: <Plus className="size-3.5" /> },
+              ]}
+              onAction={(a) =>
+                toast.info(
+                  a === "workspace"
+                    ? "工作目录：AgentScope Workspace（当前会话工作区）"
+                    : "附件上传待接入（当前不伪造入口）",
+                )
+              }
+            />
           </div>
         </footer>
       </main>
@@ -1029,17 +1204,17 @@ export default function AgentChatPage() {
               <h3 className="mb-1 font-medium text-muted-foreground">当前任务</h3>
               <p className="truncate font-medium">{sessionTitle || "—"}</p>
               <p className="text-muted-foreground">
-                状态：{stream.status}
+                状态：{STREAM_STATUS_LABEL[stream.status] ?? stream.status}
                 {currentSession ? ` · ${fmtTime(currentSession.created_at)}` : ""}
               </p>
               <p className="text-muted-foreground">
-                触发：{currentSession?.trigger_kind ?? "—"}
+                触发：{TRIGGER_LABEL[currentSession?.trigger_kind ?? ""] ?? currentSession?.trigger_kind ?? "—"}
                 {currentSession?.automation_id ? "（自动任务）" : ""}
               </p>
             </section>
             <section>
               <h3 className="mb-1 font-medium text-muted-foreground">
-                执行过程（{stream.modelCalls.length} 次模型调用 / {stream.tools.length} 个工具）
+                执行过程（{liveActive ? stream.modelCalls.length : histStats.modelCalls} 次模型调用 / {liveActive ? stream.tools.length : histStats.tools} 个工具{histStats.thinking > 0 && !liveActive ? ` / ${histStats.thinking} 段思考` : ""}）
               </h3>
               {stream.unsupported.length > 0 && (
                 <details>
@@ -1048,10 +1223,48 @@ export default function AgentChatPage() {
                   </summary>
                   <ul className="mt-1 max-h-24 space-y-0.5 overflow-auto text-muted-foreground">
                     {stream.unsupported.map((u, i) => (
-                      <li key={i}>{u.type}</li>
+                      <li key={`${u.type}-${u.at}-${i}`}>{u.type}</li>
                     ))}
                   </ul>
                 </details>
+              )}
+            </section>
+            <section>
+              <h3 className="mb-1 font-medium text-muted-foreground">子智能体运行（{subagentRows.length}）</h3>
+              {subagentRows.length === 0 ? (
+                <p className="rounded-md border border-dashed p-3 text-center text-muted-foreground">
+                  暂无子智能体活动（AgentCreate/TeamSay 等调用会显示在这里）
+                </p>
+              ) : (
+                <ul className="space-y-1">
+                  {subagentRows.map((r) => (
+                    <li key={r.id} className="rounded-md border px-2 py-1.5">
+                      <div className="flex items-center gap-2 text-xs">
+                        <Badge variant="secondary">{r.tool}</Badge>
+                        <span className="truncate">{r.target}</span>
+                        <span
+                          className="ml-auto shrink-0 text-[10px] font-medium"
+                          style={{
+                            color:
+                              r.state === "success"
+                                ? "var(--status-success)"
+                                : r.state === "error" || r.state === "denied"
+                                  ? "var(--status-danger)"
+                                  : "var(--status-running)",
+                          }}
+                        >
+                          {r.state === "success" ? "已完成" : r.state === "running" || r.state === "called" ? "执行中" : r.state}
+                        </span>
+                      </div>
+                      {r.result && (
+                        <details className="mt-1">
+                          <summary className="cursor-pointer text-[11px] text-muted-foreground">查看结果</summary>
+                          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words text-[11px]">{r.result}</pre>
+                        </details>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               )}
             </section>
             <section>

@@ -47,6 +47,11 @@ class FlowBody(BaseModel):
     description: str = ""
 
 
+class FlowPatchBody(BaseModel):
+    name: str | None = None
+    description: str | None = None
+
+
 class FlowVersionBody(BaseModel):
     definition: dict[str, Any]
 
@@ -88,6 +93,10 @@ def list_flows(db: Session = Depends(get_db), user: dict = Depends(require_role(
             .order_by(AgentFlowRelease.created_at.desc())
             .first()
         )
+        active_version_no = None
+        if release is not None:
+            rv = db.get(AgentFlowVersion, release.version_id)
+            active_version_no = rv.version_no if rv else None
         out.append(
             {
                 "id": d.id,
@@ -96,6 +105,7 @@ def list_flows(db: Session = Depends(get_db), user: dict = Depends(require_role(
                 "version_count": versions,
                 "node_count": node_count,
                 "active_release_id": release.id if release else None,
+                "active_version_no": active_version_no,
             }
         )
     return {"items": out}
@@ -108,6 +118,28 @@ def create_flow(body: FlowBody, db: Session = Depends(get_db), user: dict = Depe
     db.commit()
     db.refresh(d)
     return {"id": d.id}
+
+
+@flows_router.patch("/{fid}")
+def patch_flow(
+    fid: str,
+    body: FlowPatchBody,
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_role()),
+):
+    """09-11 治理轮：详情页标题就地重命名（对齐原站 WakerFlow 详情铅笔入口）。"""
+    row = db.get(AgentFlowDefinition, fid)
+    if row is None:
+        raise HTTPException(404, "agentflow not found")
+    if body.name is not None:
+        name = body.name.strip()
+        if not name:
+            raise HTTPException(422, "name 不能为空")
+        row.name = name[:64]
+    if body.description is not None:
+        row.description = body.description
+    db.commit()
+    return {"id": row.id, "name": row.name, "description": row.description}
 
 
 @flows_router.post("/{fid}/versions")
@@ -632,14 +664,19 @@ def session_manifest(
     from ..models import Release as _Release
 
     manifest: dict = {}
+    tool_policy: dict = {}
     if idx.release_id:
         rel = db.get(_Release, idx.release_id)
-        manifest = (rel.runtime_binding_snapshot or {}).get("resources") or {} if rel else {}
+        snap = (rel.runtime_binding_snapshot or {}) if rel else {}
+        manifest = snap.get("resources") or {}
+        tool_policy = snap.get("frozen_tool_policy") or {}
     # P1-8: prefer frozen tool versions from the release binding
     frozen_tools = {}
     if idx.release_id and rel:
         frozen_tools = (rel.runtime_binding_snapshot or {}).get("_frozen_tools") or {}
     tools = []
+    if tool_policy and tool_policy.get("platform_tools") is False:
+        manifest = {**manifest, "tool_ids": []}
     for tid in manifest.get("tool_ids") or []:
         ft = frozen_tools.get(tid)
         if ft:
@@ -663,7 +700,12 @@ def session_manifest(
                 "input_schema": tv.input_schema or {"type": "object", "properties": {}},
             }
         )
-    return {"tool_ids": tools}
+    permission_policy = (
+        (rel.runtime_binding_snapshot or {}).get("frozen_permission_policy") or {}
+        if idx.release_id and rel
+        else {}
+    )
+    return {"tool_ids": tools, "tool_policy": tool_policy, "permission_policy": permission_policy}
 
 
 @internal_router.post("/run-platform-tool")

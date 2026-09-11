@@ -10,7 +10,7 @@
  * MQ 消费适配器当前未实现——如实标记 UNC（见验收报告），不伪造入口。
  */
 import * as React from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate , useSearchParams } from "react-router-dom"
 import { Plus } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -138,6 +138,14 @@ export default function AutomationsV2Page() {
 
   // 新建弹窗
   const [open, setOpen] = React.useState(false)
+  // 09-11 批5：对话页「自动任务」tab 的新建入口带 ?new=1 直达新建弹窗
+  const [routeParams, setRouteParams] = useSearchParams()
+  React.useEffect(() => {
+    if (routeParams.get("new") === "1") {
+      setOpen(true)
+      setRouteParams({}, { replace: true })
+    }
+  }, [routeParams, setRouteParams])
   const [form, setForm] = React.useState({
     name: "",
     target_kind: "agent",

@@ -196,7 +196,9 @@ def to_dto(db: Session, rtype: str, obj) -> dict:
         usage["calls7d"] = calls_7d(db, obj.id)
     elif rtype == "skill":
         meta = {"category": obj.category, "source": obj.source,
-                "chars": len(obj.content or "")}
+                "chars": len(obj.content or ""),
+                "version": (obj.extra or {}).get("version"),
+                "versions": (obj.extra or {}).get("versions") or []}
     elif rtype == "datasource":
         meta = {"dsType": obj.type, "location": obj.location,
                 "connection": _conn_name(db, obj.connection_id),

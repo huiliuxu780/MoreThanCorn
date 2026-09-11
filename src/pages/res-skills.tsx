@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Eye, Pencil, Plus, Trash2, Upload, Users } from "lucide-react"
+import { Eye, MoreHorizontal, Pencil, Plus, Trash2, Upload, Users } from "lucide-react"
 import { toast } from "sonner"
+import { avatarFor } from "@/lib/agent-avatar"
 
 import { FilterBar, SearchField } from "@/components/app/filters"
 import { CardGridSkeleton, EmptyState } from "@/components/app/list-state"
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
@@ -25,7 +30,7 @@ interface SkillDto {
   name: string
   description: string
   status: string
-  metadata: { category: string; source: string; chars: number }
+  metadata: { category: string; source: string; chars: number; version?: string; versions?: { v: string; at: string }[] }
 }
 interface MountInfo { agentId: string; agentName: string }
 
@@ -121,9 +126,31 @@ export default function ResSkillsPage() {
             const ms = mounts[s.id] ?? []
             return (
               <div key={s.id}
-                className="space-y-2 rounded-lg border bg-surface p-4 shadow-sm transition-colors hover:border-muted-foreground/40 active:translate-y-px">
+                role="button"
+                tabIndex={0}
+                aria-label={`查看 ${s.name} 详情`}
+                onClick={() => openView(s)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    openView(s)
+                  }
+                }}
+                className="space-y-2 rounded-lg border bg-surface p-4 shadow-sm transition-colors hover:border-muted-foreground/40 active:translate-y-px cursor-pointer">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm font-semibold">{s.name}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-surface-muted text-foreground" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+                        <path d="M3 3h8v8H3V3zm2 2v4h4V5H5zm8-2h8v8h-8V3zm2 2v4h4V5h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm8-2h8v8h-8v-8zm2 2v4h4v-4h-4z" />
+                      </svg>
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold">{s.name}</span>
+                      <span className="block text-[11px] text-muted-foreground">
+                        {s.metadata?.version ? `V${s.metadata.version}` : "V1.0.0"}
+                      </span>
+                    </span>
+                  </span>
                   <span className="shrink-0 rounded-full border bg-surface-muted px-2 py-0.5 text-[11px] text-muted-foreground">
                     {isBuiltin(s) ? "内置" : "上传"}
                   </span>
@@ -131,30 +158,51 @@ export default function ResSkillsPage() {
                 <p className="line-clamp-2 min-h-10 text-xs leading-5 text-muted-foreground">
                   {s.description || "—"}
                 </p>
-                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                  {ms.length === 0 ? <span>未挂载</span> : ms.map((m) => (
-                    <button key={m.agentId} type="button"
-                      className="flex items-center gap-1 rounded-full border bg-surface-muted px-2 py-0.5 transition-colors hover:border-muted-foreground/40"
-                      title={`查看 ${m.agentName}`}
-                      onClick={() => navigate(`/agents/${m.agentId}`)}>
-                      <Users className="size-3" /> {m.agentName}
-                    </button>
-                  ))}
+                <div className="flex h-6 flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+                  {ms.length === 0 ? (
+                    <span>未挂载</span>
+                  ) : (
+                    <>
+                      <span className="flex -space-x-1.5">
+                        {ms.slice(0, 4).map((m) => (
+                          <img
+                            key={m.agentId}
+                            src={(m as { avatar?: string | null }).avatar || avatarFor(m.agentId)}
+                            alt={m.agentName}
+                            title={m.agentName}
+                            className="size-6 rounded-full border bg-surface-raised object-cover ring-2 ring-surface"
+                          />
+                        ))}
+                      </span>
+                      <span>{ms.length} 个 Agent 使用</span>
+                    </>
+                  )}
                   <span className="ml-auto tabular-nums">{s.metadata?.chars ?? 0} 字符</span>
                 </div>
-                <div className="flex gap-1 border-t pt-2">
-                  <Button variant="ghost" size="icon" className="size-7" title="查看正文" aria-label={`查看 ${s.name} 正文`} onClick={() => openView(s)}>
-                    <Eye className="size-3.5" />
+                <div className="flex items-center gap-1 border-t pt-2" onClick={(e) => e.stopPropagation()}>
+                  <Button variant="outline" size="sm" className="h-7 gap-1" onClick={() => openView(s)}>
+                    <Eye className="size-3.5" /> 查看正文
                   </Button>
-                  <Button variant="ghost" size="icon" className="size-7" title="挂载/卸载" aria-label={`挂载或卸载 ${s.name}`} onClick={() => setMount(s)}>
-                    <Users className="size-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="size-7" title="编辑" aria-label={`编辑 ${s.name}`} onClick={() => setEdit(s)}>
-                    <Pencil className="size-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="size-7" title="删除" aria-label={`删除 ${s.name}`} onClick={() => setDel(s)}>
-                    <Trash2 className="size-3.5" />
-                  </Button>
+                  <span className="ml-auto">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="size-7" aria-label={`更多操作 ${s.name}`}>
+                          <MoreHorizontal className="size-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => setMount(s)}>
+                          <Users className="size-3.5" /> 挂载/卸载
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => setEdit(s)}>
+                          <Pencil className="size-3.5" /> 编辑
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive" onSelect={() => setDel(s)}>
+                          <Trash2 className="size-3.5" /> 删除
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </span>
                 </div>
               </div>
             )
@@ -164,12 +212,12 @@ export default function ResSkillsPage() {
 
       {/* Skill 详情（对齐 QoderWake「安装 Skill」弹窗：800 宽 + 说明 + 选择 Agent + 安装） */}
       <Dialog open={!!view} onOpenChange={(o) => !o && setView(null)}>
-        <DialogContent className="max-h-[88vh] w-full sm:max-w-3xl overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[88vh] w-full flex-col sm:max-w-3xl">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Skill 详情</DialogTitle>
             <p className="text-xs text-muted-foreground">查看说明并选择要安装的 Agent。</p>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="flex-1 space-y-4 overflow-y-auto">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="text-base font-semibold">{view?.name}</span>
@@ -203,11 +251,10 @@ export default function ResSkillsPage() {
               </div>
             )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => setView(null)}>关闭</Button>
             {view && (
               <>
-                <Button variant="outline" onClick={() => { const s = view; setView(null); setEdit(s) }}>编辑正文</Button>
                 <Button onClick={() => { const s = view; setView(null); setMount(s) }}>安装到 Agent</Button>
               </>
             )}
@@ -307,7 +354,16 @@ function SkillFormDialog({ initial, onClose, onSaved }: {
     if (!name.trim() || !content.trim()) { toast.error("名称与 SKILL.md 内容必填"); return }
     try {
       if (initial) {
-        await resApi.update("skill", initial.id, { name: name.trim(), description: desc, category, content })
+        // 09-11 批4：版本管理——编辑保存=patch bump+历史留痕（对齐原站 V 号展示）
+        const cur = initial.metadata?.version || "1.0.0"
+        const [ma, mi, pa] = cur.split(".").map((x) => parseInt(x, 10) || 0)
+        const nextV = `${ma}.${mi}.${pa + 1}`
+        const history = Array.isArray(initial.metadata?.versions) ? (initial.metadata?.versions as { v: string; at: string }[]) : []
+        await resApi.update("skill", initial.id, {
+          name: name.trim(), description: desc, category, content,
+          version: nextV,
+          versions: [...history, { v: cur, at: new Date().toISOString() }].slice(-20),
+        })
       } else {
         await resApi.create("skill", { name: name.trim(), description: desc, category, content, source: "upload" })
       }
@@ -413,19 +469,33 @@ function SkillFormDialog({ initial, onClose, onSaved }: {
 
 function MountDialog({ skill, mounted, onClose, onSaved }: {
   skill: SkillDto
-  mounted: MountInfo[]
+  mounted: (MountInfo & { avatar?: string | null })[]
   onClose: () => void
   onSaved: () => void
 }) {
-  const [agents, setAgents] = useState<{ id: string; name: string; archived?: boolean }[]>([])
+  const [agents, setAgents] = useState<{
+    id: string; name: string; archived?: boolean; avatar?: string | null
+    config?: { skills?: string[]; skills_disabled?: string[] } & Record<string, unknown>
+    configRevision?: number
+  }[]>([])
   const [picked, setPicked] = useState<Set<string>>(new Set(mounted.map((m) => m.agentId)))
+  // 09-11 批8：挂载态 ≠ 启停态——skills_disabled 记录「已挂载但对该 Agent 停用」
+  const [disabled, setDisabled] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     pagedApi.agents({ page: 1, pageSize: 100, archived: "all" })
-      .then((r) => setAgents(r.items as unknown as { id: string; name: string; archived?: boolean }[]))
+      .then((r) => {
+        const rows = r.items as unknown as {
+          id: string; name: string; archived?: boolean
+          config?: { skills_disabled?: string[] } & Record<string, unknown>
+          configRevision?: number
+        }[]
+        setAgents(rows)
+        setDisabled(new Set(rows.filter((a) => (a.config?.skills_disabled ?? []).includes(skill.id)).map((a) => a.id)))
+      })
       .catch(() => undefined)
-  }, [])
+  }, [skill.id])
 
   const toggle = (id: string) => {
     setPicked((prev) => {
@@ -441,9 +511,36 @@ function MountDialog({ skill, mounted, onClose, onSaved }: {
     const add = [...picked].filter((id) => !cur.has(id))
     const rm = [...cur].filter((id) => !picked.has(id))
     try {
-      for (const id of add) await agentApi.installSkill(id, skill.id)
-      for (const id of rm) await agentApi.uninstallSkill(id, skill.id)
-      toast.success("挂载关系已更新")
+      // 09-11 修正：install/uninstall 已 410 退役；挂载=config.skills 声明合并（发布冻结生效）
+      for (const id of [...add, ...rm]) {
+        const a = agents.find((x) => x.id === id)
+        if (!a) continue
+        const base = new Set(a.config?.skills ?? [])
+        if (add.includes(id)) base.add(skill.id); else base.delete(skill.id)
+        await agentApi.update(
+          id,
+          { config: { ...(a.config ?? {}), skills: [...base] } },
+          a.configRevision,
+        )
+      }
+      // 启停态落库：合并写 config.skills_disabled（update 为整体替换语义）
+      const initialDisabled = new Set(
+        agents.filter((a) => (a.config?.skills_disabled ?? []).includes(skill.id)).map((a) => a.id),
+      )
+      for (const a of agents) {
+        if (!picked.has(a.id)) continue
+        const nowOff = disabled.has(a.id)
+        const wasOff = initialDisabled.has(a.id)
+        if (nowOff === wasOff) continue
+        const base = new Set(a.config?.skills_disabled ?? [])
+        if (nowOff) base.add(skill.id); else base.delete(skill.id)
+        await agentApi.update(
+          a.id,
+          { config: { ...(a.config ?? {}), skills_disabled: [...base] } },
+          a.configRevision,
+        )
+      }
+      toast.success("挂载关系与启停状态已更新（下次发布生效）")
       onClose()
       onSaved()
     } catch (e) {
@@ -461,12 +558,41 @@ function MountDialog({ skill, mounted, onClose, onSaved }: {
           挂载后该 Agent 的自主运行 system prompt 注入 SKILL.md 正文（单 skill 截断 8000 字符）。
         </p>
         <div className="max-h-64 space-y-2 overflow-y-auto">
-          {agents.filter((a) => !a.archived).map((a) => (
-            <label key={a.id} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
-              <Checkbox checked={picked.has(a.id)} onCheckedChange={() => toggle(a.id)} />
-              {a.name}
-            </label>
-          ))}
+          {agents.filter((a) => !a.archived).map((a) => {
+            const isPicked = picked.has(a.id)
+            const isOff = disabled.has(a.id)
+            return (
+              <div key={a.id} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                <Checkbox checked={isPicked} onCheckedChange={() => toggle(a.id)} aria-label={`挂载到 ${a.name}`} />
+                <img src={avatarFor(a.id)} alt="" className="size-6 shrink-0 rounded-full object-cover" />
+                <span className="min-w-0 flex-1 truncate">{a.name}</span>
+                <span
+                  className="shrink-0 rounded-full border px-2 py-0.5 text-[10px]"
+                  style={{
+                    color: !isPicked
+                      ? "var(--text-tertiary)"
+                      : isOff
+                        ? "var(--status-warning)"
+                        : "var(--status-success)",
+                  }}
+                >
+                  {!isPicked ? "未挂载" : isOff ? "已挂载 · 停用" : "已挂载 · 启用"}
+                </span>
+                <Switch
+                  checked={!isOff}
+                  disabled={!isPicked}
+                  onCheckedChange={(v) =>
+                    setDisabled((prev) => {
+                      const next = new Set(prev)
+                      if (v) next.delete(a.id); else next.add(a.id)
+                      return next
+                    })
+                  }
+                  aria-label={`对 ${a.name} 启用 ${skill.name}`}
+                />
+              </div>
+            )
+          })}
           {agents.length === 0 && <p className="py-4 text-center text-xs text-muted-foreground">暂无可挂载 Agent</p>}
         </div>
         <DialogFooter>

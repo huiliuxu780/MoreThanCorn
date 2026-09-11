@@ -439,7 +439,7 @@ function DesignerInner({ workflowId: wfProp, agentId: agentProp, agentMeta, avat
 export default function WfDesignerPage(props: DesignerPageProps) {
   return (
     <ReactFlowProvider>
-      <div className="h-[calc(100dvh-3.5rem)] min-h-0">
+      <div className="h-full min-h-0">
         <DesignerInner {...props} />
       </div>
       <ToastHost />

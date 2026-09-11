@@ -50,6 +50,7 @@ def build_definition(db: Session, agent: Agent) -> dict:
         return {
             "rolePrompt": cfg.get("rolePrompt", ""),
             "modelRef": cfg.get("modelRef") or {},
+            "permissions": cfg.get("permissions") or {},
             "skills": list(cfg.get("skills") or []),
             "tools": list(cfg.get("tools") or []),
             "workflows": list(cfg.get("workflows") or []),

@@ -543,7 +543,7 @@ export const agentApi = {
   draftDefinition: (id: string) =>
     req<{ definition: Record<string, unknown> }>(`/api/agents/${id}/definition-draft`),
   releases: (id: string) =>
-    req<{ releaseId: string; environment: string; status: string; canaryPercent: number; versionNo: number | null; createdAt: string }[]>(
+    req<{ releaseId: string; environment: string; status: string; canaryPercent: number; versionNo: number | null; createdAt: string; frozenModelParams?: Record<string, unknown> }[]>(
       `/api/agents/${id}/releases`),
   eventsUrl: (runId: string) => `${WF_BASE}/api/runs/${runId}/events`,
   /* ---------- SDD D-1：观测 / 评测（只读） ---------- */

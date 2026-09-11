@@ -148,7 +148,7 @@ export function AgentEvolutionPanel({ agentId }: { agentId: string }) {
 /* ---------- 版本指标 ---------- */
 export function AgentVersionsPanel({ agentId }: { agentId: string }) {
   const [versions, setVersions] = useState<{ versionId: string; versionNo: number; note: string; artifactHash: string; createdAt: string; frozenMembers: { ref: string; version: string | null }[] }[]>([])
-  const [releases, setReleases] = useState<{ environment: string; status: string; versionNo: number | null }[]>([])
+  const [releases, setReleases] = useState<{ environment: string; status: string; versionNo: number | null; frozenModelParams?: Record<string, unknown>; frozenToolPolicy?: Record<string, boolean>; frozenPermissionPolicy?: Record<string, unknown> }[]>([])
   useEffect(() => {
     agentApi.versionsWithMembers(agentId).then(setVersions).catch(() => undefined)
     agentApi.releases(agentId).then(setReleases).catch(() => undefined)
@@ -158,6 +158,7 @@ export function AgentVersionsPanel({ agentId }: { agentId: string }) {
       {versions.length === 0 && <div className="py-20 text-center text-xs" style={{ color: INK3 }}>暂无历史版本</div>}
       {versions.map((v) => {
         const rels = releases.filter((r) => r.status === "active" && r.versionNo === v.versionNo)
+        const thinkingParams = rels.map((r) => r.frozenModelParams ?? {}).find((p) => p.thinking_enable)
         return (
           <div key={v.versionId} className="rounded-lg border bg-surface p-4" style={{ borderColor: CARD }}>
             <div className="flex items-center gap-2">
@@ -167,6 +168,32 @@ export function AgentVersionsPanel({ agentId }: { agentId: string }) {
                   {r.environment === "prod" ? "线上生效" : "沙箱生效"}
                 </span>
               ))}
+              {(() => {
+                const pol = rels.map((r) => r.frozenToolPolicy ?? {}).find((p) => p && Object.values(p).some((v) => v === false))
+                const off = pol ? Object.entries(pol).filter(([, v]) => v === false).map(([k]) => k) : []
+                if (off.length === 0) return null
+                return (
+                  <span className="rounded bg-(--segment-bg) px-1.5 py-0.5 text-[10px]" style={{ color: INK2 }}>
+                    权限收紧：{off.join("、")}
+                  </span>
+                )
+              })()}
+              {(() => {
+                const pp = rels.map((r) => r.frozenPermissionPolicy ?? {}).find((x) => x && (x.master === true || (x.deny_tools as unknown[] | undefined)?.length || (x.ask_tools as unknown[] | undefined)?.length)) as Record<string, unknown> | undefined
+                if (!pp) return null
+                const deny = (pp.deny_tools as unknown[] | undefined)?.length ?? 0
+                const ask = (pp.ask_tools as unknown[] | undefined)?.length ?? 0
+                return (
+                  <span className="rounded bg-(--segment-bg) px-1.5 py-0.5 text-[10px]" style={{ color: INK2 }}>
+                    权限快照：主开关{pp.master === true ? "开" : "关"} · {ask} 询问 · {deny} 不可
+                  </span>
+                )
+              })()}
+              {thinkingParams && (
+                <span className="rounded bg-(--segment-bg) px-1.5 py-0.5 text-[10px]" style={{ color: INK2 }}>
+                  深度思考：开{typeof thinkingParams.thinking_budget === "number" ? `（预算 ${thinkingParams.thinking_budget}）` : ""}
+                </span>
+              )}
               <span className="flex-1" />
               <span className="text-[11px]" style={{ color: INK3 }}>{new Date(v.createdAt).toLocaleString()}</span>
             </div>

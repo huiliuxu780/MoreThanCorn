@@ -37,7 +37,7 @@ const page = await browser.newPage()
 await page.goto(`${BASE}/tasks`, { waitUntil: "domcontentloaded" })
 
 const readState = () => page.evaluate(() => {
-  const rail = document.querySelector('[data-testid="app-rail"]')
+  const rail = document.querySelector('[data-testid="app-sidebar"]')
   const active = rail?.querySelector('a[data-active]')
   const idle = rail?.querySelector('a[href="/agents"]')
   const cs = (el) => {
@@ -52,7 +52,7 @@ const readState = () => page.evaluate(() => {
 for (const [t, exp] of Object.entries(EXPECT)) {
   await page.evaluate((theme) => localStorage.setItem("mtc-theme", theme), t)
   await page.goto(`${BASE}/tasks`, { waitUntil: "domcontentloaded" })
-  await page.waitForSelector('[data-testid="app-rail"] a[data-active]', { timeout: 15000 })
+  await page.waitForSelector('[data-testid="app-sidebar"] a[data-active]', { timeout: 15000 })
   await new Promise((r) => setTimeout(r, 600))
 
   let s = await readState()
@@ -69,7 +69,7 @@ for (const [t, exp] of Object.entries(EXPECT)) {
   await page.screenshot({ path: `${OUT}/${t}.png` })
 
   /* 悬浮未选中项：与选中同底同前景，仅字重差 */
-  await page.hover('[data-testid="app-rail"] a[href="/agents"]')
+  await page.hover('[data-testid="app-sidebar"] a[href="/agents"]')
   await new Promise((r) => setTimeout(r, 350))
   s = await readState()
   check(`${t} 悬浮底 == 选中底`, s.idle?.bg === s.active?.bg && s.idle?.bg === exp.accent,
@@ -78,7 +78,7 @@ for (const [t, exp] of Object.entries(EXPECT)) {
     s.idle?.color === exp.text && s.idle?.icon === exp.text,
     `color=${s.idle?.color} icon=${s.idle?.icon}`)
   check(`${t} 悬浮字重仍 400（仅字重区分选中）`, s.idle?.weight === "400", s.idle?.weight)
-  const rail = await page.$('[data-testid="app-rail"]')
+  const rail = await page.$('[data-testid="app-sidebar"]')
   await rail.screenshot({ path: `${OUT}/${t}-rail-hover.png` })
 }
 

@@ -181,6 +181,11 @@ export const asApi = {
   flows: () => req<{ items: Record<string, unknown>[] }>("/api/v2/agentflows"),
   deleteFlow: (fid: string) =>
     req<{ ok: boolean }>(`/api/v2/agentflows/${fid}`, { method: "DELETE" }),
+  patchFlow: (fid: string, p: { name?: string; description?: string }) =>
+    req<{ id: string; name: string; description: string }>(`/api/v2/agentflows/${fid}`, {
+      method: "PATCH",
+      body: JSON.stringify(p),
+    }),
   createFlow: (name: string, description = "") =>
     req<{ id: string }>("/api/v2/agentflows", {
       method: "POST",

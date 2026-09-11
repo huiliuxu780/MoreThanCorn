@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent 安全与权限页原型 v3 · 四概览卡 tab（14 号稿）</title>
+<link rel="stylesheet" href="_skin.css">
+<style>
+  .topbar{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .topbar h1{font-size:21px;font-weight:650;letter-spacing:-.025em}
+  .spacer{flex:1}
+  .subdesc{font-size:12.5px;color:var(--ink-3);margin:0 0 18px}
+  .switch{position:relative;width:38px;height:21px;border-radius:999px;background:#e4e4e7;border:none;cursor:pointer;transition:background .18s;flex-shrink:0}
+  .switch::after{content:"";position:absolute;top:2.5px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .18s}
+  .switch.on{background:var(--ok,#16a34a)}
+  .switch.on::after{transform:translateX(16px)}
+  .switch[disabled]{opacity:.45;cursor:not-allowed}
+  .swrow{display:flex;align-items:center;gap:10px}
+  .swrow .lbl{font-size:13px;font-weight:600}
+  .swrow .desc{font-size:12px;color:var(--ink-3);margin-top:3px}
+  .alert{display:flex;gap:9px;align-items:flex-start;background:var(--warn-soft);border:1px solid var(--warn-line);color:#92400e;border-radius:10px;padding:10px 13px;font-size:12.5px;margin-top:12px}
+  .alert.hidden{display:none}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+  .seg button{border:none;background:transparent;padding:4px 10px;font-size:11.5px;font-weight:500;color:var(--ink-3);cursor:pointer;border-right:1px solid var(--line-soft)}
+  .seg button:last-child{border-right:none}
+  .seg button.on{background:var(--ink);color:#fff}
+  .seg button.on.ask{background:var(--warn,#d97706)}
+  .seg button.on.deny{background:var(--bad,#dc2626)}
+  .countbar{display:flex;gap:14px;align-items:center;font-size:12.5px;color:var(--ink-2);margin-bottom:12px}
+  .countbar b{font-size:15px;font-weight:650}
+  .countbar .c-ask{color:var(--warn,#d97706)} .countbar .c-deny{color:var(--bad,#dc2626)}
+  table.rules{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.rules th{text-align:left;font-size:11px;font-weight:600;color:var(--ink-4);letter-spacing:.04em;padding:8px 10px;border-bottom:1px solid var(--line)}
+  table.rules td{padding:9px 10px;border-bottom:1px solid var(--line-soft);vertical-align:top;color:var(--ink-2)}
+  table.rules tr:last-child td{border-bottom:none}
+  .rid{display:block;font-family:var(--mono);font-size:10.5px;color:var(--ink-4);margin-top:3px}
+  .risk{font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px}
+  .risk.crit{background:var(--bad-soft);color:var(--bad)}
+  .risk.high{background:var(--warn-soft);color:#92400e}
+  .catcard{border:1px solid var(--line);border-radius:12px;margin-bottom:14px;overflow:hidden;background:var(--surface)}
+  .catcard.disabled table.rules{opacity:.4;pointer-events:none}
+  .cat-h{display:flex;align-items:center;gap:10px;padding:11px 16px;background:#fafafa;border-bottom:1px solid var(--line-soft)}
+  .cat-h .t{font-size:13px;font-weight:600}
+  .cat-h .n{font-size:11px;color:var(--ink-4);font-weight:500}
+  .cat-h .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .fixednote{font-size:11.5px;color:var(--ink-4);background:#f4f4f5;border:1px dashed var(--line);border-radius:8px;padding:8px 11px;margin-top:10px}
+  .globlist{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+  .globlist .row{display:flex;gap:8px;align-items:center}
+  .globlist code{font-family:var(--mono);font-size:12px;background:#f4f4f5;border:1px solid var(--line-soft);border-radius:7px;padding:5px 9px;flex:1;color:var(--ink-2)}
+  .footer{display:flex;align-items:center;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
+  .footer .note{font-size:12px;color:var(--ink-4)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .group-h{display:flex;align-items:center;gap:8px;margin:18px 0 10px;font-size:12px;font-weight:650;color:var(--ink-3);letter-spacing:.02em}
+  .group-h::after{content:"";flex:1;height:1px;background:var(--line-soft)}
+  .group-h .gn{font-weight:500;color:var(--ink-4);font-size:11px}
+  .tabpane{display:none}
+  .tabpane.on{display:block}
+  .ovgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:4px 0 18px}
+  .ovcard{position:relative;text-align:left;border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:16px 16px 14px;cursor:pointer;transition:border-color .15s, background .15s;box-shadow:var(--sh-sm);font:inherit}
+  .ovcard:hover{border-color:#c9c9c7}
+  .ovcard[aria-selected="true"]{background:var(--ok-soft,#e6f7ec);border-color:var(--ok-line,#b7e4c7)}
+  .ovcard .topline{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .ovcard .ic{width:34px;height:34px;border-radius:9px;background:#f4f4f5;border:1px solid var(--line-soft);display:flex;align-items:center;justify-content:center;font-size:16px}
+  .ovcard[aria-selected="true"] .ic{background:#fff;border-color:var(--ok-line,#b7e4c7);color:var(--ok,#16a34a)}
+  .ovcard .st{font-size:11.5px;font-weight:600;color:var(--ink-4)}
+  .ovcard[aria-selected="true"] .st{color:var(--ok,#16a34a)}
+  .ovcard .ti{display:block;font-size:14px;font-weight:650;letter-spacing:-.01em;margin-bottom:5px}
+  .ovcard .de{display:block;font-size:11.5px;color:var(--ink-3);line-height:1.55}
+</style>
+</head>
+<body>
+<div class="proto-banner">讨论稿 v3 · Agent「安全与权限」页（14 号稿）｜ 四概览卡 tab（对齐原站 overview-card）：危险确认 / 敏感文件 / 工具权限 / 企业模式 ｜ 主开关全局置顶 ｜ 对齐原站 /wakers/&lt;id&gt;/permissions ｜ 冻结进 release v2</div>
+<div class="page">
+  <div class="topbar">
+    <h1>安全与权限</h1>
+    <span class="pill p-ok"><span class="dot"></span>危险确认已开启</span>
+    <div class="spacer"></div>
+    <span class="tag">Agent：业务分析-通话打标</span>
+  </div>
+  <p class="subdesc">控制这个 Agent 能做什么，以及遇到风险操作时如何处理。保存后写入配置草稿，<b>重新发布</b>后对新的运行生效（已发布版本不可变）。</p>
+
+
+  <!-- 四概览卡 tab（对齐原站 qc-permission-overview-card） -->
+  <div class="ovgrid" role="tablist" aria-label="权限概览">
+    <button class="ovcard" role="tab" id="ov0" aria-selected="true" aria-controls="pane0" onclick="switchTab(0,this)">
+      <span class="topline"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1 1 0 0 1 1.52 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></span><span class="st" id="st0">已开启</span></span>
+      <span class="ti">危险操作确认</span>
+      <span class="de">发现危险命令时暂停执行，由你确认（含六类守卫 22 规则）</span>
+    </button>
+    <button class="ovcard" role="tab" id="ov1" aria-selected="false" aria-controls="pane1" onclick="switchTab(1,this)">
+      <span class="topline"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg></span><span class="st" id="st1">已开启 · 2 路径</span></span>
+      <span class="ti">敏感文件保护</span>
+      <span class="de">访问指定文件或目录前请求确认</span>
+    </button>
+    <button class="ovcard" role="tab" id="ov2" aria-selected="false" aria-controls="pane2" onclick="switchTab(2,this)">
+      <span class="topline"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span><span class="st" id="st2">14 直接 · 2 询问 · 1 不可</span></span>
+      <span class="ti">工具使用权限</span>
+      <span class="de">17 件工具三态策略；不可＝装配期摘除</span>
+    </button>
+    <button class="ovcard" role="tab" id="ov3" aria-selected="false" aria-controls="pane3" onclick="switchTab(3,this)">
+      <span class="topline"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg></span><span class="st">已关闭</span></span>
+      <span class="ti">企业安全模式</span>
+      <span class="de">使用企业模型，任务数据仅保留在本机（P3 占位）</span>
+    </button>
+  </div>
+  <!-- 面板1 危险操作确认：主开关 + 六类守卫 -->
+  <div class="tabpane on" id="pane0" style="padding-top:4px">
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-b">
+      <div class="swrow">
+        <button class="switch on" id="master" onclick="toggleMaster()"></button>
+        <div>
+          <div class="lbl">危险操作需要确认</div>
+          <div class="desc">开启后，Agent 检测到高风险命令会先暂停执行，并向你请求确认（对话页出现批准/拒绝卡）。关闭时「命令守卫」tab 整页只读灰化，但严重级规则仍 bypass-immune 转直接阻止。</div>
+        </div>
+      </div>
+      <div class="alert hidden" id="masterAlert">⚠ 当前不会检查危险操作，Agent 将按其他已有权限继续执行。严重级规则在 bypass 下自动转为「直接阻止」（官方 bypass-immune 语义），不会被静默放行。</div>
+    </div>
+  </div>
+
+    <div id="guardBody">
+      <div class="group-h">A · 命令与系统安全 <span class="gn">命令注入 / 资源滥用 / 权限提升 · 9 规则</span></div>
+      <div class="catcard">
+        <div class="cat-h"><span class="t">命令注入</span><span class="n">已启用 3/3</span><div class="right"><button class="switch on" onclick="toggleCat(this)"></button></div></div>
+        <table class="rules"><thead><tr><th>检测内容</th><th style="width:90px">风险等级</th><th style="width:170px">处理方式</th><th style="width:80px">详情</th></tr></thead><tbody>
+          <tr><td>检测底层磁盘格式化或擦除命令<span class="rid">TOOL_CMD_FS_DESTRUCTION</span></td><td><span class="risk crit">严重</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+          <tr><td>检测可能导致数据丢失的 rm 命令<span class="rid">TOOL_CMD_DANGEROUS_RM</span></td><td><span class="risk high">高</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+          <tr><td>检测可能意外移动或覆盖文件的 mv 命令<span class="rid">TOOL_CMD_DANGEROUS_MV</span></td><td><span class="risk high">高</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+        </tbody></table>
+      </div>
+      <div class="catcard">
+        <div class="cat-h"><span class="t">资源滥用</span><span class="n">已启用 4/4</span><div class="right"><button class="switch on" onclick="toggleCat(this)"></button></div></div>
+        <table class="rules"><tbody>
+          <tr><td>检测经典 Bash fork 炸弹与大规模进程终止<span class="rid">TOOL_CMD_DOS_FORK_BOMB</span></td><td><span class="risk crit">严重</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+          <tr><td>检测会终止主机系统的重启或关机命令<span class="rid">TOOL_CMD_SYSTEM_REBOOT</span></td><td><span class="risk crit">严重</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+          <tr><td>检测可能中断系统服务的服务管理命令<span class="rid">TOOL_CMD_SERVICE_RESTART</span></td><td><span class="risk high">高</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+          <tr><td>检测可能杀死关键进程的进程终止命令<span class="rid">TOOL_CMD_PROCESS_KILL</span></td><td><span class="risk high">高</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+        </tbody></table>
+      </div>
+      <div class="catcard">
+        <div class="cat-h"><span class="t">权限提升</span><span class="n">已启用 2/2</span><div class="right"><button class="switch on" onclick="toggleCat(this)"></button></div></div>
+        <table class="rules"><tbody>
+          <tr><td>检测使用 sudo、su、doas、pkexec 或 runas 提权<span class="rid">TOOL_CMD_PRIVILEGE_ESCALATION</span></td><td><span class="risk crit">严重</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+          <tr><td>检测全局权限放开（chmod 777）或设置不可变标志<span class="rid">TOOL_CMD_UNSAFE_PERMISSIONS</span></td><td><span class="risk high">高</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="group-h">B · 代码与网络 <span class="gn">代码执行 / 网络滥用 · 10 规则</span></div>
+      <div class="catcard">
+        <div class="cat-h"><span class="t">代码执行</span><span class="n">已启用 8/8</span><div class="right"><button class="switch on" onclick="toggleCat(this)"></button></div></div>
+        <table class="rules"><tbody>
+          <tr><td>检测下载远程脚本并直接执行的 curl | bash 模式<span class="rid">TOOL_CMD_PIPE_TO_SHELL</span></td><td><span class="risk crit">严重</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+          <tr><td>命令包含不可打印的控制字符，可能绕过安全检查<span class="rid">TOOL_CMD_CONTROL_CHARS</span></td><td><span class="risk crit">严重</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+          <tr><td>检测将 base64 解码结果直接管道到 shell 解释器执行<span class="rid">TOOL_CMD_OBFUSCATED_EXEC</span></td><td><span class="risk high">高</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+          <tr><td>命令使用 $IFS 变量，可能绕过安全校验<span class="rid">TOOL_CMD_IFS_INJECTION</span></td><td><span class="risk high">高</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+          <tr><td>命令包含 Unicode 空白字符，可能造成解析不一致<span class="rid">TOOL_CMD_UNICODE_WHITESPACE</span></td><td><span class="risk high">高</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+          <tr><td>jq 命令包含 system() 函数，可用于执行任意 shell 命令<span class="rid">TOOL_CMD_JQ_SYSTEM</span></td><td><span class="risk high">高</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+          <tr><td>jq 命令使用了可读取任意文件或加载外部代码的标志<span class="rid">TOOL_CMD_JQ_FILE_FLAGS</span></td><td><span class="risk high">高</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+          <tr><td>命令使用了可绕过安全检查的 Zsh 专用内建功能<span class="rid">TOOL_CMD_ZSH_DANGEROUS</span></td><td><span class="risk high">高</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+        </tbody></table>
+      </div>
+      <div class="catcard">
+        <div class="cat-h"><span class="t">网络滥用</span><span class="n">已启用 2/2</span><div class="right"><button class="switch on" onclick="toggleCat(this)"></button></div></div>
+        <table class="rules"><tbody>
+          <tr><td>检测建立反弹 shell 或未授权网络通道的行为<span class="rid">TOOL_CMD_REVERSE_SHELL</span></td><td><span class="risk crit">严重</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+          <tr><td>检测对本地回环或云 metadata 地址的 WebFetch<span class="rid">TOOL_WEBFETCH_LOCAL_LOOPBACK</span></td><td><span class="risk high">高</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="group-h">C · 文件与逃逸 <span class="gn">敏感文件访问 3 规则 + Shell 逃逸固定层</span></div>
+      <div class="catcard">
+        <div class="cat-h"><span class="t">敏感文件访问</span><span class="n">已启用 3/3</span><div class="right"><button class="switch on" onclick="toggleCat(this)"></button></div></div>
+        <table class="rules"><tbody>
+          <tr><td>检测访问 cron 任务、SSH 密钥或 sudo 权限文件（读与改）<span class="rid">TOOL_CMD_SYSTEM_TAMPERING</span></td><td><span class="risk high">高</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+          <tr><td>检测访问 /proc/*/environ，可能泄露进程环境变量凭据<span class="rid">TOOL_CMD_PROC_ENVIRON</span></td><td><span class="risk high">高</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+          <tr><td>检测 WebFetch 使用非 HTTP(S) scheme（本地文件/SSRF）<span class="rid">TOOL_WEBFETCH_FILE_SCHEME</span></td><td><span class="risk high">高</span></td><td><span class="seg"><button class="on ask">确认后执行</button><button class="deny">直接阻止</button></span></td><td><a class="link" href="#">查看详情</a></td></tr>
+        </tbody></table>
+      </div>
+      <div class="catcard">
+        <div class="cat-h"><span class="t">Shell 逃逸检测</span><span class="n">平台固定安全层 · 7 子规则 · 不可关闭</span></div>
+        <div class="card-b" style="padding:12px 16px">
+          <div class="desc" style="font-size:12px;color:var(--ink-3)">检测 Shell 命令中的引号/反斜杠/换行/注释等易被规避过滤的混淆写法；命中即走审批流程。</div>
+          <div class="grid2" style="margin-top:10px">
+            <ul style="font-size:12px;color:var(--ink-2);margin:0;padding-left:18px;line-height:1.9">
+              <li><b>命令替换</b> <span class="tag">原生</span>：反引号、$()、&lt;()、=()、$[]、Zsh =cmd（官方解析器 bypass-immune ASK）</li>
+              <li><b>混淆标志</b> <span class="tag">规划 P2</span>：$'…'、$"…"、''-、""- 等特殊引用</li>
+              <li><b>反斜杠转义空白</b> <span class="tag">规划 P2</span>：引号外 \ 空格/TAB 拆 token</li>
+              <li><b>反斜杠转义操作符</b> <span class="tag">规划 P2</span>：引号外 \; \| \& 等（find -exec 豁免）</li>
+            </ul>
+            <ul style="font-size:12px;color:var(--ink-2);margin:0;padding-left:18px;line-height:1.9">
+              <li><b>换行符</b> <span class="tag">规划 P2</span>：引号外 \r/换行隐藏第二条命令（heredoc 豁免）</li>
+              <li><b>注释引号失同步</b> <span class="tag">规划 P2</span>：# 注释内出现单/双引号</li>
+              <li><b>引号内换行</b> <span class="tag">规划 P2</span>：引号内换行且下行以 # 起始</li>
+            </ul>
+          </div>
+          <div class="fixednote">诚实标注：仅「命令替换」为官方解析器原生执行（bypass-immune）；其余 6 子规则为平台解析器扩展（P2），扩展前标「规划」不假装生效。本层不提供关闭开关（关掉＝拆安全网）。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+
+  <!-- Tab1 工具使用权限 -->
+  <!-- 面板3 工具使用权限 -->
+  <div class="tabpane" id="pane2" style="padding-top:4px">
+
+    <div class="card">
+      <div class="card-h"><span class="t">工具使用权限</span><small>三态：直接使用 / 询问 / 不可使用；「不可」=装配期摘除，模型感知为无此能力</small></div>
+      <div class="card-b">
+        <div class="countbar">直接使用 <b id="cAllow">14</b> · 询问 <b class="c-ask" id="cAsk">2</b> · 不可使用 <b class="c-deny" id="cDeny">1</b></div>
+        <table class="rules">
+          <thead><tr><th style="width:200px">工具</th><th style="width:110px">族</th><th style="width:190px">策略</th><th>说明</th></tr></thead>
+          <tbody id="toolBody">
+            <tr data-s="ask"><td>Bash<span class="rid">workspace builtin</span></td><td>Shell</td><td><span class="seg"><button onclick="setS(this,'allow')">直接</button><button class="on ask" onclick="setS(this,'ask')">询问</button><button onclick="setS(this,'deny')">不可</button></span></td><td>shell 命令执行；询问态按「命令守卫」tab 规则命中暂停</td></tr>
+            <tr data-s="allow"><td>Write / Edit<span class="rid">workspace builtin</span></td><td>文件</td><td><span class="seg"><button class="on" onclick="setS(this,'allow')">直接</button><button onclick="setS(this,'ask')">询问</button><button onclick="setS(this,'deny')">不可</button></span></td><td>写/编辑文件（工作目录内）</td></tr>
+            <tr data-s="allow"><td>Read / Grep / Glob<span class="rid">workspace builtin</span></td><td>文件</td><td><span class="seg"><button class="on" onclick="setS(this,'allow')">直接</button><button onclick="setS(this,'ask')">询问</button><button onclick="setS(this,'deny')">不可</button></span></td><td>只读检索；敏感路径 glob 命中仍走询问</td></tr>
+            <tr data-s="allow"><td>TaskCreate / List / Get / Update<span class="rid">planning</span></td><td>计划</td><td><span class="seg"><button class="on" onclick="setS(this,'allow')">直接</button><button onclick="setS(this,'ask')">询问</button><button onclick="setS(this,'deny')">不可</button></span></td><td>运行内计划项管理</td></tr>
+            <tr data-s="allow"><td>ToolStop<span class="rid">background</span></td><td>后台</td><td><span class="seg"><button class="on" onclick="setS(this,'allow')">直接</button><button onclick="setS(this,'ask')">询问</button><button onclick="setS(this,'deny')">不可</button></span></td><td>停止后台任务</td></tr>
+            <tr data-s="ask"><td>ScheduleCreate<span class="rid">schedule</span></td><td>调度</td><td><span class="seg"><button onclick="setS(this,'allow')">直接</button><button class="on ask" onclick="setS(this,'ask')">询问</button><button onclick="setS(this,'deny')">不可</button></span></td><td>创建定时任务＝持久副作用，默认询问</td></tr>
+            <tr data-s="allow"><td>ScheduleView / ScheduleList<span class="rid">schedule</span></td><td>调度</td><td><span class="seg"><button class="on" onclick="setS(this,'allow')">直接</button><button onclick="setS(this,'ask')">询问</button><button onclick="setS(this,'deny')">不可</button></span></td><td>只读</td></tr>
+            <tr data-s="deny"><td>ScheduleDelete<span class="rid">schedule</span></td><td>调度</td><td><span class="seg"><button onclick="setS(this,'allow')">直接</button><button onclick="setS(this,'ask')">询问</button><button class="on deny" onclick="setS(this,'deny')">不可</button></span></td><td>删除调度＝不可逆，默认不可</td></tr>
+            <tr data-s="allow"><td>run_workflow / run_agent_flow<span class="rid">platform · manifest</span></td><td>平台</td><td><span class="seg"><button class="on" onclick="setS(this,'allow')">直接</button><button onclick="setS(this,'ask')">询问</button><button onclick="setS(this,'deny')">不可</button></span></td><td>平台编排调用</td></tr>
+            <tr><td colspan="4" style="color:var(--ink-4);font-size:11.5px">manifest 动态件（Skill / search_knowledge / MCP 工具）随发布快照冻结，此处只读展示清单与三态（P1 静态件先行）</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <!-- Tab2 命令守卫（内聚三类） -->
+
+  <!-- Tab3 文件与高级 -->
+  <!-- 面板2 敏感文件保护 -->
+  <div class="tabpane" id="pane1" style="padding-top:4px">
+    <div class="card">
+        <div class="card-h"><span class="t">敏感文件保护</span><div class="right"><button class="switch on"></button></div></div>
+        <div class="card-b">
+          <div class="desc" style="font-size:12px;color:var(--ink-3)">访问以下路径（glob）前请求确认；工作目录内的普通读写不受影响。</div>
+          <div class="globlist">
+            <div class="row"><code>**/.ssh/**</code><button class="btn sm danger">删除</button></div>
+            <div class="row"><code>**/.env*</code><button class="btn sm danger">删除</button></div>
+            <div class="row"><button class="btn sm">＋ 添加路径</button></div>
+          </div>
+        </div>
+      </div>
+  </div>
+  <!-- 面板4 企业安全模式 -->
+  <div class="tabpane" id="pane3" style="padding-top:4px">
+    <div class="card">
+        <div class="card-h"><span class="t">企业安全模式</span><div class="right"><button class="switch" disabled></button></div></div>
+        <div class="card-b">
+          <div class="desc" style="font-size:12px;color:var(--ink-3)">使用企业模型，任务数据仅保留在本机。</div>
+          <div class="fixednote">P3 诚实占位：需连接治理联动（仅允许本地/指定 Connection 的 provider），当前不可开启，不伪造开关行为。</div>
+        </div>
+      </div>
+  </div>
+
+  <div class="footer">
+    <button class="btn primary">保存</button>
+    <button class="btn">重置为发布值</button>
+    <span class="note">保存写入配置草稿；对运行生效需重新发布（冻结进 release 快照 v2）。发布治理页将显示「权限快照」chip。</span>
+  </div>
+</div>
+<script>
+function switchTab(i, btn){
+  document.querySelectorAll('.ovcard').forEach(t=>t.setAttribute('aria-selected','false'));
+  btn.setAttribute('aria-selected','true');
+  document.querySelectorAll('.tabpane').forEach((p)=>p.classList.toggle('on', p.id === 'pane'+i));
+}
+function toggleMaster(){
+  const sw=document.getElementById('master');
+  sw.classList.toggle('on');
+  const on=sw.classList.contains('on');
+  document.getElementById('masterAlert').classList.toggle('hidden', on);
+  document.getElementById('guardBody').style.opacity = on ? '1' : '.45';
+  document.getElementById('guardBody').style.pointerEvents = on ? 'auto' : 'none';
+  document.getElementById('st0').textContent = on ? '已开启' : '已关闭';
+}
+function toggleCat(btn){
+  btn.classList.toggle('on');
+  btn.closest('.catcard').classList.toggle('disabled', !btn.classList.contains('on'));
+}
+function setS(btn, kind){
+  const seg=btn.parentElement;
+  seg.querySelectorAll('button').forEach(b=>b.className='');
+  btn.className = 'on' + (kind==='ask'?' ask':kind==='deny'?' deny':'');
+  const counts={allow:0,ask:0,deny:0};
+  document.querySelectorAll('#toolBody tr[data-s]').forEach(tr=>{
+    const active=tr.querySelector('.seg button.on');
+    const k = active.classList.contains('ask')?'ask':active.classList.contains('deny')?'deny':'allow';
+    tr.dataset.s=k; counts[k]++;
+  });
+  document.getElementById('cAllow').textContent=counts.allow;
+  document.getElementById('cAsk').textContent=counts.ask;
+  document.getElementById('cDeny').textContent=counts.deny;
+  document.getElementById('st2').textContent=counts.allow+' 直接 · '+counts.ask+' 询问 · '+counts.deny+' 不可';
+}
+</script>
+</body>
+</html>

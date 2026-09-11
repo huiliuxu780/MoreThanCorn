@@ -257,6 +257,14 @@ def update_resource(coll: str, rid: str, payload: dict, db: Session = Depends(ge
     for k, attr in simple:
         if payload.get(k) is not None:
             setattr(obj, attr, payload[k])
+    if rtype == "skill" and payload.get("version") is not None:
+        # 09-11 批4：skill 版本管理——version/versions 存 extra JSONB
+        obj.extra = {
+            **(obj.extra or {}),
+            "version": payload["version"],
+            "versions": payload.get("versions") if payload.get("versions") is not None
+            else (obj.extra or {}).get("versions") or [],
+        }
     db.commit()
     log_change(db, rtype, rid, "update", detail={k: payload[k] for k, _ in simple if payload.get(k) is not None})
     return {"id": rid}

@@ -8,7 +8,7 @@ from ..legacy_agent_archive import assert_agent_executable
 from ..models import (Agent, AgentRuntimeProvider, AgentVersion, KnowledgeSource, Release, Run,
                       RunEvent, Tool, Workflow)
 from ..routers.workflows import _default_definition
-from ..auth import require_operator
+from ..auth import require_operator, require_role
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -449,7 +449,7 @@ def create_release(aid: str, payload: dict, db: Session = Depends(get_db),
     try:
         rel = publish_release(
             db,
-            actor=(payload or {}).get("actor") or "dev",
+            actor=_user.get("username", "dev"),  # 09-11 审计：actor 取自已认证主体，禁请求体伪造
             agent=a,
             version=v,
             environment=env,
@@ -486,14 +486,18 @@ def stop_canary(aid: str, rid: str, db: Session = Depends(get_db),
 
 
 @router.get("/{aid}/releases")
-def list_releases(aid: str, db: Session = Depends(get_db)):
+def list_releases(aid: str, db: Session = Depends(get_db), _user: dict = Depends(require_role())):
     rows = db.query(Release).filter_by(agent_id=aid).order_by(Release.created_at.desc()).all()
     out = []
     for r in rows:
         v = db.get(AgentVersion, r.agent_version_id)
+        binding = r.runtime_binding_snapshot or {}
         out.append({"releaseId": r.id, "environment": r.environment, "status": r.status,
                     "canaryPercent": r.canary_percent or 0,
-                    "versionNo": v.version_no if v else None, "createdAt": r.created_at.isoformat()})
+                    "versionNo": v.version_no if v else None, "createdAt": r.created_at.isoformat(),
+                    "frozenModelParams": binding.get("frozen_model_params") or {},
+                    "frozenToolPolicy": binding.get("frozen_tool_policy") or {},
+                    "frozenPermissionPolicy": binding.get("frozen_permission_policy") or {}})
     return out
 
 

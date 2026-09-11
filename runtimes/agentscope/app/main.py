@@ -21,6 +21,10 @@ import os
 import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
 
+# 09-11 权限策略：必须在 agentscope._service._chat 导入前包装 get_toolkit
+# （_chat 以 from-import 绑定；晚于它包装不生效）。
+from . import tool_policy  # noqa: F401,I001
+
 from agentscope._logging import logger
 from agentscope.app import create_app
 from agentscope.app._service._chat import ChatService

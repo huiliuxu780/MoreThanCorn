@@ -206,7 +206,8 @@ export default function AgentCreatePage() {
       const base = {
         name: name.trim(),
         description: desc.trim(),
-        avatar: avatar || undefined,
+        // 09-11：未手选头像时落库预览同款（hash(template.id)），杜绝新建页与保存后头像不一致
+        avatar: avatar || avatarFor(template.id),
         modelRef: { modelId },
       }
       const a =

@@ -7,14 +7,28 @@ import { Label } from "@/components/ui/label"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { agentApi, wfApi, type AgentInfo } from "@/services/wf-api"
 import { resApi } from "@/services/resource-api"
+const PERM_LABELS: [string, string][] = [
+  ["shell", "Shell 命令（Bash）"],
+  ["file_write", "文件写入（Write/Edit）"],
+  ["file_read", "文件读取与检索（Read/Grep/Glob）"],
+  ["schedule", "调度管理（Schedule 四件）"],
+  ["subagent", "子 Agent 与团队（AgentCreate/Team…）"],
+  ["platform_tools", "平台工具（run_workflow/run_agent_flow）"],
+]
+const DEFAULT_PERMS: Record<string, boolean> = {
+  shell: true, file_write: true, file_read: true,
+  schedule: true, subagent: true, platform_tools: true,
+}
 import { cn } from "@/lib/utils"
 
 interface Cfg {
   rolePrompt?: string; skills?: string[]; capabilities?: { name: string; description: string }[];
-  modelRef?: { modelId?: string }
+  modelRef?: { modelId?: string; params?: Record<string, unknown> }
+  permissions?: Record<string, boolean>
 }
 
 export function CustomAgentConfig({ agent }: { agent: AgentInfo }) {
@@ -23,8 +37,16 @@ export function CustomAgentConfig({ agent }: { agent: AgentInfo }) {
   const [caps, setCaps] = useState<{ name: string; description: string }[]>(cfg.capabilities ?? [])
   const [skills, setSkills] = useState<string[]>(cfg.skills ?? [])
   const [model, setModel] = useState(cfg.modelRef?.modelId ?? "")
-  const [models, setModels] = useState<{ modelKey: string }[]>([])
+  const [thinking, setThinking] = useState(cfg.modelRef?.params?.thinking_enable === true)
+  const [thinkingBudget, setThinkingBudget] = useState<number | "">(
+    typeof cfg.modelRef?.params?.thinking_budget === "number" ? (cfg.modelRef.params.thinking_budget as number) : "",
+  )
+  const [models, setModels] = useState<{ modelKey: string; capabilities?: string[] }[]>([])
   const [skillOpts, setSkillOpts] = useState<{ id: string; name: string }[]>([])
+  const [perms, setPerms] = useState<Record<string, boolean>>({
+    ...DEFAULT_PERMS,
+    ...(((agent.config as Cfg).permissions as Record<string, boolean> | undefined) ?? {}),
+  })
   const [revision, setRevision] = useState(agent.configRevision)
   const [saving, setSaving] = useState(false)
 
@@ -37,7 +59,19 @@ export function CustomAgentConfig({ agent }: { agent: AgentInfo }) {
     setSaving(true)
     try {
       const r = await agentApi.update(agent.id, {
-        config: { ...(agent.config as object), rolePrompt: prompt, capabilities: caps, skills, modelRef: { modelId: model } },
+        config: {
+          ...(agent.config as object), rolePrompt: prompt, capabilities: caps, skills,
+          // thinking 开关写入 modelRef.params：发布时经白名单冻结进 release 快照（frozen_model_params）
+          permissions: perms,
+          modelRef: {
+            modelId: model,
+            params: {
+              ...(cfg.modelRef?.params ?? {}),
+              thinking_enable: thinking,
+              ...(thinking && thinkingBudget !== "" ? { thinking_budget: thinkingBudget } : {}),
+            },
+          },
+        },
       }, revision)
       setRevision(r.configRevision)
       toast.success("已保存")
@@ -65,6 +99,41 @@ export function CustomAgentConfig({ agent }: { agent: AgentInfo }) {
             {models.map((m) => <SelectItem key={m.modelKey} value={m.modelKey}>{m.modelKey}</SelectItem>)}
           </SelectContent>
         </Select>
+        <div className="flex items-center gap-3 pt-2">
+          <Switch
+            checked={thinking}
+            disabled={!!model && !(models.find((m) => m.modelKey === model)?.capabilities ?? []).includes("thinking")}
+            onCheckedChange={setThinking}
+            aria-label="深度思考"
+          />
+          <Label className="text-sm">深度思考</Label>
+          {thinking && (
+            <Input
+              type="number" min={1} className="h-8 w-32" placeholder="思考预算 token（可选）"
+              value={thinkingBudget}
+              onChange={(e) => setThinkingBudget(e.target.value === "" ? "" : Number(e.target.value))}
+            />
+          )}
+        </div>
+        <p className="text-[11px] text-(--text-tertiary)">
+          开启后模型回复携带推理过程（对话页以「深度思考」折叠块展示）；发布时冻结进版本快照，需重新发布生效。
+          {model && !(models.find((m) => m.modelKey === model)?.capabilities ?? []).includes("thinking")
+            ? "当前所选模型不支持深度思考。" : ""}
+        </p>
+      </div>
+      <div className="space-y-2 rounded-lg border bg-surface p-4">
+        <Label>能力与权限（发布时冻结进版本快照）</Label>
+        {PERM_LABELS.map(([key, label]) => (
+          <div key={key} className="flex items-center gap-2">
+            <Switch
+              checked={perms[key] !== false}
+              onCheckedChange={(v) => setPerms((cur) => ({ ...cur, [key]: v }))}
+              aria-label={label}
+            />
+            <span className="text-xs text-muted-foreground">{label}</span>
+          </div>
+        ))}
+        <p className="text-[11px] text-(--text-tertiary)">关闭后该工具族不装配进 Agent，模型感知为无此能力；需重新发布生效。</p>
       </div>
       <div className="space-y-1.5 rounded-lg border bg-surface p-4">
         <Label>核心能力（概览页展示）</Label>

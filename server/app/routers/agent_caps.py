@@ -116,11 +116,15 @@ skills_router = APIRouter(prefix="/api/skills", tags=["skills"])
 
 @skills_router.get("/mounts")
 def skill_mount_map(db: Session = Depends(get_db)):
-    """docs/v2-design/10 §4.1：skillId → 挂载 Agent 列表（反查 join，避免前端 N+1）。"""
-    rows = db.execute(select(AgentSkill, Agent).join(Agent, Agent.id == AgentSkill.agent_id)).all()
+    """docs/v2-design/10 §4.1（09-11 修正）：skillId → 挂载 Agent 列表。
+    真实源 = agent.config.skills 声明（发布时冻结进 release 由运行时装配）；
+    遗留 AgentSkill 表 09-09 换底后停写，继续读它会展示假数据。"""
     mounts: dict[str, list[dict]] = {}
-    for link, a in rows:
-        mounts.setdefault(link.skill_id, []).append({"agentId": a.id, "agentName": a.name})
+    for a in db.query(Agent).filter(Agent.status != "archived").all():
+        for sid in (a.config or {}).get("skills") or []:
+            mounts.setdefault(sid, []).append(
+                {"agentId": a.id, "agentName": a.name, "avatar": a.avatar},
+            )
     return {"mounts": mounts}
 
 
