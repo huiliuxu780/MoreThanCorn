@@ -1,10 +1,16 @@
 # 11 · AgentScope 原生运行平台总体方案
 
-> 版本：v6.0
-> 日期：2026-09-08
-> 状态：`DOC_REWRITE / NOT_IMPLEMENTATION_READY`
+> 版本：v6.1
+> 日期：2026-09-12
+> 状态：`ARCHITECTURE_PARENT / EXECUTION_DETAILS_DELEGATED`
 > 代码状态：本轮零修改
 > 核心原则：AgentScope 已有的直接采用；QoderWake 只复制已实测产品行为；平台只补明确缺口。
+
+> **权威边界（2026-09-12）**：本文只负责 AgentScope 真源、Session/Schedule、
+> Toolkit 与三执行体的上位架构。触发字段、Invocation 状态机、事件目的地、幂等、
+> 预算和分析批次语义统一由
+> `docs/product-domain/execution-automation-batch-spec.md` §6/§7/§9/§10 定义；
+> 本文不得再发展平行的 T 轨模型。
 
 ## 0. 本轮纠偏
 
@@ -172,14 +178,23 @@ Knowledge 通过 `SessionKnowledgeConfig` 选择 knowledge_base_ids 和 RAGMiddl
 
 看板首先通过查询不同原生记录形成只读视图。是否需要额外持久状态，只能由“查收”等真实网络行为证明；不得预建新的统一 WorkItem 状态机。已证规格见 `.replica/specs/QW-001-task-board.md`。
 
-## 7. 自动任务：复制产品壳，采用 AgentScope Schedule
+## 7. 自动任务：上位产品壳与 AgentScope 映射
+
+本节只保留产品外形与 AgentScope 能力映射，不再定义独立触发状态机。
+本节所述 AutomationDefinition 的所有触发先建立 `AutomationInvocation`，再派发真实执行体；具体准入、幂等、
+conversation key、预算快照和终态对账以新领域 Spec 为准。
 
 ### 7.1 直接复刻
 
 - 定义列表、指标、筛选和 enabled switch；
-- 名称、最多五个触发方式；
-- 定时/API，定期/一次性；
-- 执行目标 Agent/AgentFlow；
+- 名称、每个 AutomationDefinition 最多五个触发方式；该限制不表示平台存在一个
+  所有业务共用的通用 Trigger/Batch 实体；
+- 顶层配置型 trigger 统一为 schedule/API/event；manual 是 run-now 动作，polling/MQ/webhook
+  是 event 的 DataSource 采集模式；当前 `kind=polling` 仅作兼容值；
+- 定时任务支持定期/一次性；
+- QoderWake 已观察到的执行目标为 Agent/AgentFlow；MoreThanCorn 基于自身已有
+  确定性 Workflow，目标 union 明确为 Agent/AgentFlow/Workflow 三型。第三型是我方
+  产品决策，不得写成 QoderWake 原站事实；
 - 执行指令和 Workspace；
 - 最大运行次数和截止日期；
 - 详情页运行概览、触发条件、响应对象、高级设置和运行历史；
@@ -191,17 +206,25 @@ Knowledge 通过 `SessionKnowledgeConfig` 选择 knowledge_base_ids 和 RAGMiddl
 
 | 场景 | 运行方式 |
 |---|---|
-| 定时执行 Agent | AgentScope ScheduleRecord/SchedulerManager |
+| 定时执行 Agent | Schedule fire → Invocation → AgentScope Schedule/Session 对账 |
 | 每次独立 | `stateful=false`，每次 fresh Session |
 | 跨次继承 | `stateful=true`，复用固定 Session |
 | 执行历史 | `GET /schedules/{id}/sessions` |
-| API 触发 Agent | 平台安全入口 → 默认 fresh Session；显式 conversation key 才复用 Session |
-| Event/MQ 触发 Agent | 数据入口 → 过滤映射 → 创建/唤醒 Session |
-| AgentFlow target | Pipeline app 集成经验证后接入，不先走旧 Runner |
+| API 触发 Agent | 平台入口 → Invocation → 默认 fresh Session；显式 conversation key 才复用 |
+| Event/MQ 触发 Agent | EventDelivery(destination=automation) → Invocation → Session |
+| AgentFlow target | Invocation → AgentFlowRun；Pipeline app 集成经验证后接入 |
+| Workflow target | Invocation → 现有 WorkflowRun，不包装为 TaskRun |
 
 ### 7.3 不复制与未证项
 
 不复制 `atk_` URL 凭据形态。目标产品请求体的 `wakeSessionUniqueId` 负责聊天续用而不负责幂等；MoreThanCorn 必须自行设计鉴权、幂等、限流和重放保护。事件/定时拉取按数据源 capability 条件展示，不写死为永远可见或永远不存在。暂停/max-runs/deadline 只阻止新自动触发，不取消已运行执行；删除历史、失败重试、并发和错过调度仍未闭合。规格见 `.replica/specs/QW-003-005-automation.md`。
+
+### 7.4 预算职责
+
+本文只规定 AgentScope adapter/Middleware 必须回传真实 usage，并在其实际支持时执行
+duration/token/tool/child-execution 限制。预算字段、hard/soft 语义、冻结时点和错误码
+由新领域 Spec §6.5/§7 定义。预算不能只写入 Prompt，也不能在运行时不支持中断时
+声称“硬限制已生效”。
 
 ## 8. Workflow 与 AgentFlow
 
@@ -224,11 +247,16 @@ AgentScope Schedule 解决到点唤醒 Agent，不解决 Kafka/RabbitMQ 消费�
 ```text
 外部数据源
 → 平台连接/订阅/过滤映射（具体模型待真实场景）
-→ 自动任务目标
-→ AgentScope Session | AgentFlow | Workflow
+→ EventDelivery
+   ├── destination=automation → AutomationInvocation
+   │      → AgentScope Session | AgentFlowRun | WorkflowRun
+   └── destination=analysis_task → TaskRun → N × AnalysisItemRun
 ```
 
-当前只冻结职责，不冻结此前拟定的六实体表结构。
+默认单工单/单事件走 automation 分支。只有事件明确表示“对一个可形成 DataSnapshot 的
+数据窗口执行 N 项独立分析”时才走 analysis_task 分支。每条 EventDelivery 只能选择
+一个目的地，不得同时创建 Invocation 和 TaskRun。当前只冻结职责，不冻结入口攒批；
+事件字段统一使用新领域 Spec §10.0 的 `EventRoute`，详细派发契约以该 Spec §10 为准。
 
 ## 10. 观测边界
 
@@ -291,6 +319,7 @@ AgentScope Schedule 解决到点唤醒 Agent，不解决 Kafka/RabbitMQ 消费�
 - 已补创建、编辑、启停、手动运行和看板投影证据；继续补删除、关注动作与失败路径。
 - 高保真实现任务看板与自动任务壳。
 - 定时 Agent 直接采用 AgentScope Schedule。
+- Invocation、预算和事件目的地按新领域 Spec 实现，不再恢复旧 T 轨状态机。
 
 ### R5 · AgentFlow spike
 

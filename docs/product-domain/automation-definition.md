@@ -1,11 +1,17 @@
-# 自主任务（AutomationDefinition）领域定义
+# 分析任务（AnalysisTask）兼容领域定义
 
-> MTC-002A（2026-09-05）。本文是产品语义与代码边界的单一事实源。
-> 状态：语义收敛 + 兼容层已落地；**持久层未迁移**。
+> **范围纠偏（2026-09-11）**：本文描述的是 `analysis_task → task_run → run`
+> 的批量分析链，只对分析任务有效；它不再定义 QoderWake 式通用自动任务。
+> 通用自动任务、单次执行与分析批次的权威边界见
+> `docs/product-domain/execution-automation-batch-spec.md`。
+
+> MTC-002A（2026-09-05）。
+> 状态：`SUPERSEDED_COMPATIBILITY_RECORD`；仅用于说明现有兼容层，已不再是跨域
+> 产品语义的单一事实源。**持久层未迁移**。
 
 ## 1. 产品定义
 
-**自主任务（AutomationDefinition）** 定义一项长期、可重复执行的工作：
+**分析任务（AnalysisTask）** 定义一项长期、可重复执行的批量分析工作：
 
 - 绑定 Agent 或 Workflow / WorkflowVersion（统一执行目标契约）；
 - 配置输入（Data Asset / Data Definition / scope / sampling / dataWindow / inputMapping）；

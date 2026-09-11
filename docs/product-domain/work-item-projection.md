@@ -1,5 +1,10 @@
 # WorkItemProjection —— 统一任务读模型
 
+> **范围说明（2026-09-11）**：当前实现只覆盖分析 `TaskRun` 与
+> `ScheduleOccurrence`，属于统一任务看板的一期子集，不代表最终完整来源。
+> Session、AgentFlowRun、WorkflowRun 与 AutomationInvocation 的目标投影见
+> `docs/product-domain/execution-automation-batch-spec.md` §11。
+
 > MTC-002B（2026-09-05）。实现：`server/app/work_item_projection.py` +
 > `server/app/routers/work_items.py`；前端 `workItemsApi` + `/tasks` 五泳道。
 > 状态机权威来源：MTC-002A-R 验收报告 §5。
