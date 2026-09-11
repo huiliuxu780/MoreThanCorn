@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from .. import agentscope_client as rt
 from ..agentflow_executor import rerun_node, resolve_agentflow_release, start_run
-from ..auth import require_role
+from ..auth import require_role, require_operator
 from ..board_projection import (
     ENDED,
     SOURCE_LABELS,
@@ -112,7 +112,7 @@ def list_flows(db: Session = Depends(get_db), user: dict = Depends(require_role(
 
 
 @flows_router.post("")
-def create_flow(body: FlowBody, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def create_flow(body: FlowBody, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     d = AgentFlowDefinition(name=body.name, description=body.description, created_by=user.get("username", "dev"))
     db.add(d)
     db.commit()
@@ -143,7 +143,7 @@ def patch_flow(
 
 
 @flows_router.post("/{fid}/versions")
-def create_version(fid: str, body: FlowVersionBody, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def create_version(fid: str, body: FlowVersionBody, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     d = db.get(AgentFlowDefinition, fid)
     if d is None:
         raise HTTPException(404, "flow not found")
@@ -173,7 +173,7 @@ def create_version(fid: str, body: FlowVersionBody, db: Session = Depends(get_db
 
 
 @flows_router.delete("/{fid}")
-def delete_flow(fid: str, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def delete_flow(fid: str, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     """删除 AgentFlow 定义（版本/发布级联；运行历史只读保留）。"""
     d = db.get(AgentFlowDefinition, fid)
     if d is None:
@@ -199,7 +199,7 @@ def list_versions(fid: str, db: Session = Depends(get_db), user: dict = Depends(
 
 
 @flows_router.post("/{fid}/releases")
-def release_flow(fid: str, body: FlowReleaseBody, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def release_flow(fid: str, body: FlowReleaseBody, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     v = db.get(AgentFlowVersion, body.version_id)
     if v is None or v.definition_id != fid:
         raise HTTPException(404, "version not found")
@@ -268,7 +268,7 @@ def list_flow_runs(fid: str, db: Session = Depends(get_db), user: dict = Depends
 
 
 @flows_router.post("/runs")
-def run_flow(body: FlowRunBody, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def run_flow(body: FlowRunBody, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     # P0-05: definition_id resolves via definition → version → active release
     # (the old code wrongly queried AgentFlowRelease.version_id == definition_id)
     try:
@@ -313,7 +313,7 @@ def get_run(rid: str, db: Session = Depends(get_db), user: dict = Depends(requir
 
 
 @flows_router.post("/runs/{rid}/nodes/{node_id}/rerun")
-def rerun(rid: str, node_id: str, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def rerun(rid: str, node_id: str, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     node = rerun_node(db, user.get("username", "dev"), rid, node_id)
     return {"node_run_id": node.id, "attempt": node.attempt, "status": node.status}
 
@@ -571,7 +571,17 @@ def _authorized_session(db: Session, session_id: str, session_token: str):
         .all()
     )
     for fr in running:
-        if hmac.compare_digest(digest, fr.run_token_hash or ""):
+        if not hmac.compare_digest(digest, fr.run_token_hash or ""):
+            continue
+        # 09-11 审计 P0：兜底仅认「该 flow run 的节点 Session」，否则任一 running
+        # run 令牌可冒充任意已索引 session（横向越权）。
+        from ..models import AgentFlowNodeRun
+        owns = (
+            db.query(AgentFlowNodeRun)
+            .filter_by(session_id=session_id, agentflow_run_id=fr.id)
+            .first()
+        )
+        if owns is not None:
             return idx
     raise HTTPException(401, "invalid session token")
 

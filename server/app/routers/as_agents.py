@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from .. import agent_execution as ex
 from .. import agentscope_client as rt
-from ..auth import require_role
+from ..auth import require_role, require_operator
 from ..db import get_db
 from ..models import Agent, AgentSessionIndex, AgentVersion, Release
 
@@ -62,7 +62,7 @@ def _session_runtime_ref(db: Session, uid: str, agent: Agent, sid: str) -> tuple
 
 
 @router.post("/{aid}/releases")
-def create_release(aid: str, body: ReleaseBody, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def create_release(aid: str, body: ReleaseBody, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     agent = _agent(db, aid)
     version = db.get(AgentVersion, body.agent_version_id)
     if version is None or version.agent_id != aid:
@@ -154,7 +154,7 @@ def list_sessions(aid: str, request: Request, db: Session = Depends(get_db), use
 
 
 @router.post("/{aid}/sessions")
-def open_session(aid: str, body: SessionBody, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def open_session(aid: str, body: SessionBody, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     agent = _agent(db, aid)
     uid = user.get("username", "dev")
     try:
@@ -173,7 +173,7 @@ def open_session(aid: str, body: SessionBody, request: Request, db: Session = De
 
 
 @router.post("/{aid}/sessions/{sid}/turns")
-def chat_turn(aid: str, sid: str, body: TurnBody, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def chat_turn(aid: str, sid: str, body: TurnBody, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     agent = _agent(db, aid)
     uid = user.get("username", "dev")
     index = db.query(AgentSessionIndex).filter_by(session_id=sid, agent_id=aid).first()
@@ -201,7 +201,7 @@ def status(aid: str, sid: str, request: Request, db: Session = Depends(get_db), 
 
 
 @router.post("/{aid}/sessions/{sid}/interrupt")
-def interrupt(aid: str, sid: str, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def interrupt(aid: str, sid: str, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     agent = _agent(db, aid)
     uid = user.get("username", "dev")
     runtime_id, runtime_uid = _session_runtime_ref(db, uid, agent, sid)
@@ -209,7 +209,7 @@ def interrupt(aid: str, sid: str, request: Request, db: Session = Depends(get_db
 
 
 @router.delete("/{aid}/sessions/{sid}")
-def delete_session(aid: str, sid: str, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def delete_session(aid: str, sid: str, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     """删除对话任务（2026-09-10）：运行时 Session 永久删除 + 平台索引行清理。
 
     运行时删除失败（如已不存在）不阻断索引清理——索引是平台侧视图，
@@ -302,7 +302,7 @@ def stream_proxy(aid: str, sid: str, request: Request, db: Session = Depends(get
 
 
 @router.post("/{aid}/runs")
-def single_run(aid: str, body: RunBody, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def single_run(aid: str, body: RunBody, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     """一次性运行（P0-B 09-10）：fresh Session + 平台 Run 行（执行事实）。
 
     - 带 output_schema：同步结构化执行，Run 直接落终态（succeeded/502）；
@@ -394,7 +394,7 @@ async def upload_skill(
     root: str = "skill",
     files: list[UploadFile] = [],
     db: Session = Depends(get_db),
-    user: dict = Depends(require_role()),
+    user: dict = Depends(require_operator),
 ):
     agent = _agent(db, aid)
     uid = user.get("username", "dev")
@@ -418,7 +418,7 @@ class McpBody(BaseModel):
 
 
 @router.post("/{aid}/sessions/{sid}/mcps")
-def add_mcp(aid: str, sid: str, body: McpBody, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def add_mcp(aid: str, sid: str, body: McpBody, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     agent = _agent(db, aid)
     uid = user.get("username", "dev")
     runtime_id, runtime_uid = _session_runtime_ref(db, uid, agent, sid)

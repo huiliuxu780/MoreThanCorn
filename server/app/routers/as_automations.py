@@ -17,7 +17,7 @@ from .. import agent_execution as ex
 from .. import agentscope_client as rt
 from ..agentflow_executor import resolve_agentflow_release
 from ..agentflow_executor import start_run as start_agentflow_run
-from ..auth import require_role
+from ..auth import require_role, require_operator
 from ..db import get_db
 from ..models import (
     Agent,
@@ -453,7 +453,7 @@ def list_automations(request: Request, db: Session = Depends(get_db), user: dict
 
 
 @router.post("")
-def create_automation(body: AutomationBody, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def create_automation(body: AutomationBody, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     if len(body.triggers) > MAX_TRIGGERS:
         raise HTTPException(422, f"at most {MAX_TRIGGERS} triggers")
     # P0-G（09-10）：保存阶段完整目标校验——无效目标 422，不落库
@@ -490,7 +490,7 @@ def get_automation(aid: str, db: Session = Depends(get_db), user: dict = Depends
 
 
 @router.put("/{aid}")
-def update_automation(aid: str, body: AutomationBody, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def update_automation(aid: str, body: AutomationBody, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     auto = _auto(db, aid)
     if (body.target_kind, body.agent_id, body.workflow_id, body.agentflow_id) != (
         auto.target_kind,
@@ -515,7 +515,7 @@ def update_automation(aid: str, body: AutomationBody, db: Session = Depends(get_
 
 
 @router.post("/{aid}/triggers")
-def add_trigger(aid: str, body: TriggerBody, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def add_trigger(aid: str, body: TriggerBody, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     auto = _auto(db, aid)
     count = db.query(AutomationTrigger).filter_by(automation_id=aid).count()
     if count >= MAX_TRIGGERS:
@@ -527,7 +527,7 @@ def add_trigger(aid: str, body: TriggerBody, db: Session = Depends(get_db), user
 
 
 @router.patch("/{aid}/enabled")
-def set_enabled(aid: str, enabled: bool, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def set_enabled(aid: str, enabled: bool, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     auto = _auto(db, aid)
     auto.enabled = enabled
     db.commit()
@@ -536,7 +536,7 @@ def set_enabled(aid: str, enabled: bool, db: Session = Depends(get_db), user: di
 
 
 @router.post("/{aid}/run-now")
-def run_now(aid: str, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def run_now(aid: str, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     """Manual debug run: real execution, excluded from auto statistics."""
     auto = _auto(db, aid)
     uid = user.get("username", "dev")
@@ -622,7 +622,7 @@ def history(aid: str, db: Session = Depends(get_db), user: dict = Depends(requir
 
 
 @router.post("/{aid}/api-keys")
-def create_api_key(aid: str, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def create_api_key(aid: str, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     _auto(db, aid)
     raw = f"mtc_{pysecrets.token_urlsafe(24)}"
     row = AutomationApiKey(
@@ -636,7 +636,7 @@ def create_api_key(aid: str, db: Session = Depends(get_db), user: dict = Depends
 
 
 @router.delete("/{aid}")
-def delete_automation(aid: str, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def delete_automation(aid: str, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     auto = _auto(db, aid)
     uid = user.get("username", "dev")
     if auto.runtime_schedule_id:

@@ -17,6 +17,11 @@ from .routers import (admin, agent_caps, agents, alerts, analytics, as_agents,
 # 鉴权白名单：登录与探活不需要身份
 _PUBLIC_PATHS = ("/api/auth/login", "/healthz", "/readyz", "/openapi.json", "/docs")
 
+# 09-11 审计 P0：机器端点自带 fail-closed 令牌门（X-MTC-Internal / API key /
+# x-source-token），强制鉴权模式下若仍要求登录 Bearer 会全 401 并连带权限层
+# fail-open；此处豁免登录门，其自有门不减。
+_MACHINE_PREFIXES = ("/api/internal/", "/api/v2/external/", "/api/v2/ingress/")
+
 
 def check_production_ready() -> None:
     """09 §12：生产启动门。缺关键配置拒绝启动（fail closed）。"""
@@ -100,7 +105,12 @@ async def auth_middleware(request, call_next):
     /api/* 必须携带有效登录令牌；否则 401。开发默认匿名透传。"""
     from fastapi.responses import JSONResponse
     path = request.url.path
-    if auth_enforced() and path.startswith("/api/") and path not in _PUBLIC_PATHS:
+    if (
+        auth_enforced()
+        and path.startswith("/api/")
+        and path not in _PUBLIC_PATHS
+        and not path.startswith(_MACHINE_PREFIXES)
+    ):
         from .auth import current_user
         if current_user(request) is None:
             return JSONResponse({"detail": "未授权：缺少有效登录凭证"}, status_code=401)
