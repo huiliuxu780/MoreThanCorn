@@ -26,6 +26,7 @@ from .models import (
     AgentFlowRun,
     AgentFlowVersion,
     AgentSessionIndex,
+    AutomationDefinition,
 )
 
 
@@ -228,43 +229,190 @@ def start_run(
     automation_id: str | None = None,
     parent_session_id: str | None = None,
 ) -> AgentFlowRun:
+    """F0：run-now 不再阻塞 HTTP —— 落 queued 行 + 入 job 队列即返回（AC-004）。
+
+    真实执行在 worker（``execute_agentflow_run``）里消费运行时 SSE 流并逐节点
+    增量落 NodeRun/SessionIndex；节点 Session 回调令牌在 worker 开跑时签发
+    （哈希落 run 行），节点执行前不会有任何回调，无窗口风险。"""
     version = db.get(AgentFlowVersion, release.version_id)
     definition = version.definition or {}
-    # P0-08: flow-run 级内部 Tool 回调令牌——节点 Session 由运行时创建，
-    # 令牌绑定整个 run（哈希落库），运行时为每个节点 Session 登记原文。
-    run_token = _secrets.token_urlsafe(32)
     run = AgentFlowRun(
         release_id=release.id,
         trigger_kind=trigger_kind,
-        status="running",
+        status="queued",
         input=flow_input,
         automation_id=automation_id,
         parent_session_id=parent_session_id,
-        run_token_hash=hashlib.sha256(run_token.encode()).hexdigest(),
     )
     db.add(run)
     db.commit()
     db.refresh(run)
-    body = _build_flow_body(db, user_id, definition, flow_input)
-    body["internal_token"] = run_token
-    body["agentflow_run_id"] = run.id
-    runtime_map = {n["id"]: n["agent_id"] for n in body["nodes"]}
     try:
-        result = rt.flow_run(body)
+        # 绑定校验前置：节点 agent 缺失等配置错误在提交时即失败，不留僵尸 queued 行
+        _build_flow_body(db, user_id, definition, flow_input)
     except Exception as exc:  # noqa: BLE001
         run.status = "failed"
         run.error = repr(exc)
         run.ended_at = datetime.now(timezone.utc)
         db.commit()
-        return run
-    _record_nodes(db, run, definition, result, runtime_map=runtime_map)
-    run.status = result.get("status", "failed")
-    run.output = result.get("output")
-    run.error = "" if run.status == "succeeded" else "node failed"
-    run.ended_at = datetime.now(timezone.utc)
+        raise ValueError(f"agentflow run {run.id} preflight failed: {exc}") from exc
+    from .models import JobQueue
+
+    db.add(
+        JobQueue(
+            type="agentflow-execution",
+            payload={"run_id": run.id, "user_id": user_id},
+        )
+    )
     db.commit()
     db.refresh(run)
     return run
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _wrap_node_output(value: Any) -> dict | None:
+    if isinstance(value, dict):
+        return value
+    if value is None:
+        return None
+    return {"text": value}
+
+
+def _handle_flow_event(
+    db: Session,
+    run: AgentFlowRun,
+    node_defs: dict[str, dict],
+    runtime_map: dict[str, str],
+    attempts: dict[str, int],
+    uid: str,
+    ev: dict,
+) -> None:
+    """消费一条运行时 stage/flow 事件，增量落库（F0 ③④）。
+
+    stage start（此刻 Session 已在运行时建好）→ NodeRun(running)+SessionIndex；
+    stage end → 终态回写；flow:complete → run 终态。每事件独立 commit，
+    保证看板/SSE 逐步可见且 worker 崩溃后已落事实不丢。"""
+    name = ev.get("event") or ""
+    data = ev.get("data") or {}
+    if name == "flow:complete":
+        run.output = data.get("output")
+        run.status = data.get("status", "failed")
+        run.error = "" if run.status == "succeeded" else "node failed"
+        run.ended_at = _now()
+        db.commit()
+        return
+    if not name.startswith("stage:"):
+        return
+    nid = name[len("stage:"):]
+    phase = data.get("phase")
+    if phase == "start":
+        session_id = data.get("session_id")
+        attempt = attempts.get(nid, 0) + 1
+        attempts[nid] = attempt
+        row = AgentFlowNodeRun(
+            run_id=run.id,
+            node_id=nid,
+            attempt=attempt,
+            agent_id=(node_defs.get(nid) or {}).get("agent_id"),
+            session_id=session_id,
+            status="running",
+            input_version=attempt,
+            started_at=_now(),
+        )
+        db.add(row)
+        db.flush()
+        if session_id:
+            db.add(
+                AgentSessionIndex(
+                    session_id=session_id,
+                    user_id=uid,
+                    agent_id=(node_defs.get(nid) or {}).get("agent_id") or "",
+                    runtime_agent_id=runtime_map.get(nid),
+                    trigger_kind="agentflow",
+                    agentflow_run_id=run.id,
+                    agentflow_node_run_id=row.id,
+                )
+            )
+        db.commit()
+    elif phase == "end":
+        attempt = attempts.get(nid, 0)
+        row = (
+            db.query(AgentFlowNodeRun)
+            .filter_by(run_id=run.id, node_id=nid, attempt=attempt)
+            .first()
+        )
+        if row is None:
+            return
+        row.status = data.get("status", "failed")
+        row.output = _wrap_node_output(data.get("output"))
+        row.error = data.get("error") or ""
+        row.session_id = data.get("session_id") or row.session_id
+        row.ended_at = _now()
+        db.commit()
+
+
+def execute_agentflow_run(run_id: str, user_id: str | None = None) -> None:
+    """job worker 入口（queue type=agentflow-execution, F0 ②③④）。
+
+    消费运行时 ``/mtc/flows/run/stream``，逐事件增量落库。域内失败（节点失败/
+    运行时不可达）结算为 run 终态并正常完成 job；worker 进程崩溃则靠 job 租约
+    回收重试（run 仍为 running 时整体重跑，节点 attempt 递增、不撞唯一约束）。"""
+    from .db import SessionLocal
+
+    db = SessionLocal()
+    try:
+        run = db.get(AgentFlowRun, run_id)
+        if run is None or run.status not in ("queued", "running"):
+            return
+        if run.ended_at is not None:
+            return  # 已有终态：job 重复投递防御，不重算
+        release = db.get(AgentFlowRelease, run.release_id)
+        version = db.get(AgentFlowVersion, release.version_id)
+        definition = version.definition or {}
+        uid = user_id
+        if not uid and run.automation_id:
+            auto = db.get(AutomationDefinition, run.automation_id)
+            uid = (auto.created_by if auto else "") or ""
+        uid = uid or "dev"
+        # P0-08: 每 worker 执行签发新 run 级回调令牌（重跑使旧令牌自然失效）
+        run_token = _secrets.token_urlsafe(32)
+        run.run_token_hash = hashlib.sha256(run_token.encode()).hexdigest()
+        run.status = "running"
+        db.commit()
+        try:
+            body = _build_flow_body(db, uid, definition, run.input or {})
+        except Exception as exc:  # noqa: BLE001
+            run.status = "failed"
+            run.error = repr(exc)
+            run.ended_at = _now()
+            db.commit()
+            return
+        body["internal_token"] = run_token
+        body["agentflow_run_id"] = run.id
+        runtime_map = {n["id"]: n["agent_id"] for n in body["nodes"]}
+        node_defs = {n.get("id"): n for n in definition.get("nodes") or []}
+        attempts = {
+            r.node_id: r.attempt
+            for r in db.query(AgentFlowNodeRun).filter_by(run_id=run.id).all()
+        }
+        try:
+            for ev in rt.flow_run_stream(body):
+                _handle_flow_event(db, run, node_defs, runtime_map, attempts, uid, ev)
+            if run.ended_at is None:  # 流异常终止且无 flow:complete
+                run.status = "failed"
+                run.error = "runtime stream ended without flow:complete"
+                run.ended_at = _now()
+                db.commit()
+        except Exception as exc:  # noqa: BLE001
+            run.status = "failed"
+            run.error = repr(exc)
+            run.ended_at = _now()
+            db.commit()
+    finally:
+        db.close()
 
 
 def rerun_node(db: Session, user_id: str, run_id: str, node_id: str) -> AgentFlowNodeRun:

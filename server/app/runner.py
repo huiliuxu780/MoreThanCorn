@@ -1623,6 +1623,9 @@ def _dispatch_job(jtype: str, payload: dict) -> None:
     elif jtype == "result-delivery":  # SDD 13 §7.2：目标表投递 Outbox worker
         from .delivery import process_result_delivery
         process_result_delivery(payload)
+    elif jtype == "agentflow-execution":  # F0：AgentFlow 异步执行（消费运行时 SSE 增量落库）
+        from .agentflow_executor import execute_agentflow_run
+        execute_agentflow_run(payload["run_id"], payload.get("user_id"))
     elif jtype == "chat-turn":
         # AgentScope 换底：自建对话执行退出主链（对话走 /api/v2 代理运行时）。
         from .legacy_agent_archive import fail_stale_agent_execution

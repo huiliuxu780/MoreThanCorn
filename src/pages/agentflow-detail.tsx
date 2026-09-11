@@ -154,6 +154,14 @@ export default function AgentFlowDetailPage() {
   React.useEffect(() => {
     if (view === "runs" && !selectedRun && runRows.length) setSelectedRun(runRows[0].id)
   }, [view, selectedRun, runRows])
+  // F0：flow 已异步化（queued→running→终态，节点增量落库）——存在活跃 run 时
+  // 轮询刷新，让节点状态逐步出现而非结束后一次性出现
+  const hasActiveRun = runRows.some((r) => r.status === "queued" || r.status === "running")
+  React.useEffect(() => {
+    if (view !== "runs" || !hasActiveRun) return
+    const timer = window.setInterval(() => runs.retry(), 2500)
+    return () => window.clearInterval(timer)
+  }, [view, hasActiveRun, runs.retry])
   const current = runRows.find((r) => r.id === selectedRun) ?? runRows[0]
   const runIndex = (r: RunRow) => runRows.length - runRows.indexOf(r)
   const nodeRunOf = (nodeId: string) => current?.nodes.find((n) => n.node_id === nodeId)

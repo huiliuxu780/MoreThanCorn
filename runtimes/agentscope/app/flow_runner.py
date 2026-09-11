@@ -255,6 +255,12 @@ class AgentFlowPipeline:
                 g.verifier_agent_id, g.chat_model_config, ver_session
             )
             gp = GoalPipeline(executor=executor, verifier=verifier)
+            # F0: start 事件在 Session 建好后才发，携带 session_id —— 平台在节点
+            # 真正执行前就能登记 NodeRun/SessionIndex（AC-002 首个工具回调前可鉴权）。
+            yield CustomEvent(
+                name="stage:goal",
+                metadata={"phase": "start", "session_id": exec_session.id},
+            )
             final = None
             async for ev in gp.reply_stream(
                 Msg(
@@ -288,8 +294,13 @@ class AgentFlowPipeline:
 
         for nid in self.order:
             node = self.nodes[nid]
-            yield CustomEvent(name=f"stage:{nid}", metadata={"phase": "start"})
+            # F0: session 先建、start 事件携带 session_id —— 平台据此在节点执行前
+            # 登记 NodeRun(running)+SessionIndex（增量观测 + 回调鉴权前置）。
             session = await self._new_session(node)
+            yield CustomEvent(
+                name=f"stage:{nid}",
+                metadata={"phase": "start", "session_id": session.id},
+            )
             rendered = _render(node.prompt_template, {**self.flow_input, **self.outputs})
             error, status = "", "succeeded"
             try:

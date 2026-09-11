@@ -7,8 +7,9 @@ truth (docs/v2-design/13 §3).
 """
 from __future__ import annotations
 
+import json
 import os
-from typing import Any
+from typing import Any, Iterator
 
 import httpx
 
@@ -214,6 +215,26 @@ def flow_run(body: dict, timeout: float = 600.0) -> dict:
     """运行时官方 Pipeline 执行（/mtc/flow-run）。"""
     with _client(user_id="system", timeout=timeout) as c:
         return _raise(c.post("/mtc/flow-run", json=body)).json()
+
+
+def flow_run_stream(body: dict, timeout: float = 900.0) -> Iterator[dict]:
+    """运行时 SSE Pipeline 执行（/mtc/flows/run/stream, F0）。
+
+    逐个产出解析后的 ``{"event": "stage:{nid}"|"flow:complete", "data": {...}}``
+    事件，供平台在节点真正执行时增量落 NodeRun/SessionIndex（不再结束后一次性
+    补写）。连接失败/非 2xx 抛 RuntimeError_。"""
+    read_timeout = httpx.Timeout(timeout, read=timeout)
+    with _client(user_id="system", timeout=read_timeout) as c:
+        with c.stream("POST", "/mtc/flows/run/stream", json=body) as r:
+            if r.status_code >= 400:
+                _raise(r)
+            for line in r.iter_lines():
+                if not line.startswith("data: "):
+                    continue
+                try:
+                    yield json.loads(line[len("data: "):])
+                except json.JSONDecodeError:
+                    continue
 
 
 def session_messages(user_id: str, agent_id: str, session_id: str) -> dict:

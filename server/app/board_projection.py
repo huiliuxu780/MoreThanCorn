@@ -64,6 +64,7 @@ def map_workflow_lane(run_status: str) -> str:
 
 def map_agentflow_lane(run_status: str) -> str:
     return {
+        "queued": "pending",
         "running": "running",
         "succeeded": "done",
         "failed": "failed",

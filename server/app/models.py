@@ -1319,8 +1319,8 @@ class AgentFlowRun(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     release_id: Mapped[str] = mapped_column(String(32), index=True)
     trigger_kind: Mapped[str] = mapped_column(String(16), default="manual")
-    status: Mapped[str] = mapped_column(String(16), default="running")
-    # running|succeeded|failed|cancelled
+    status: Mapped[str] = mapped_column(String(16), default="queued")
+    # queued|running|succeeded|failed|cancelled
     input: Mapped[dict] = mapped_column(JSONB, default=dict)
     output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     error: Mapped[str] = mapped_column(Text, default="")

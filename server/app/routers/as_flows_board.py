@@ -277,8 +277,86 @@ def run_flow(body: FlowRunBody, db: Session = Depends(get_db), user: dict = Depe
         )
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
-    run = start_run(db, user.get("username", "dev"), release, body.input, trigger_kind="manual")
+    try:
+        # F0：start_run 只落 queued 行并入队即返回，不阻塞 HTTP（AC-004）
+        run = start_run(db, user.get("username", "dev"), release, body.input, trigger_kind="manual")
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     return {"run_id": run.id, "status": run.status, "output": run.output, "error": run.error}
+
+
+@flows_router.get("/runs/{rid}/events")
+async def flow_run_events(rid: str, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+    """F0 ⑦：Flow SSE 代理——只读平台 NodeRun/Run 增量事实（§8.2），
+    不透传运行时、不新造第二套状态。终态后发送 flow:done 并收流。"""
+    import asyncio
+
+    from fastapi.responses import StreamingResponse
+
+    async def event_generator():
+        last_sig: str | None = None
+        while True:
+            db.expire_all()
+            run = db.get(AgentFlowRun, rid)
+            if run is None:
+                yield f"data: {json.dumps({'event': 'flow:not_found'})}\n\n"
+                return
+            nodes = (
+                db.query(AgentFlowNodeRun)
+                .filter_by(run_id=rid)
+                .order_by(AgentFlowNodeRun.started_at, AgentFlowNodeRun.attempt)
+                .all()
+            )
+            snapshot = {
+                "run": {
+                    "id": run.id,
+                    "status": run.status,
+                    "output": run.output,
+                    "error": run.error,
+                    "started_at": run.started_at.isoformat() if run.started_at else None,
+                    "ended_at": run.ended_at.isoformat() if run.ended_at else None,
+                },
+                "nodes": [
+                    {
+                        "id": n.id,
+                        "node_id": n.node_id,
+                        "attempt": n.attempt,
+                        "session_id": n.session_id,
+                        "status": n.status,
+                        "output": n.output,
+                        "error": n.error,
+                        "started_at": n.started_at.isoformat() if n.started_at else None,
+                        "ended_at": n.ended_at.isoformat() if n.ended_at else None,
+                    }
+                    for n in nodes
+                ],
+            }
+            sig = json.dumps(snapshot, sort_keys=True, default=str)
+            if sig != last_sig:
+                last_sig = sig
+                yield (
+                    "data: "
+                    + json.dumps(
+                        {"event": "flow:snapshot", "data": snapshot},
+                        ensure_ascii=False,
+                        default=str,
+                    )
+                    + "\n\n"
+                )
+            if run.ended_at is not None:
+                yield f"data: {json.dumps({'event': 'flow:done'})}\n\n"
+                return
+            await asyncio.sleep(1.0)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @flows_router.get("/runs/{rid}")
@@ -533,37 +611,87 @@ def _check_internal(token: str) -> None:
         raise HTTPException(401, "invalid internal token")
 
 
-def _authorized_session(db: Session, session_id: str, session_token: str):
-    """P0-08: 共享传输 Token 之上叠加会话级绑定。
+class _UnindexedFlowSession:
+    """运行时自建 flow 节点 Session（无平台索引行）的占位主体（F0 修复）。
 
-    校验链：session_id 必须有平台索引行；X-MTC-Session-Token 的 sha256 必须
-    等于该索引行的 session_token_hash（或其 flow-run 的 run_token_hash）。
-    因此：A 用户的令牌打不开 B 用户的 Session（令牌逐 Session 签发）；外部
-    请求即使拿到共享 Token 也无法伪装（没有会话令牌）；令牌不绑定 Release
-    之外的资源（清单强制见各端点）。返回索引行。
-    """
+    release_id 为空 → 工具/资源白名单为空集 → run-platform-tool/run-workflow
+    等一律 403；flow 节点的平台工具清单本就为空（工具装配走各节点 Agent 的
+    Release），此占位只保证鉴权链走通到白名单判定，不放大权限。"""
+
+    release_id = None
+    user_id = ""
+    agent_id = ""
+    session_id = ""
+
+
+def _ensure_execution_active(db: Session, idx) -> None:
+    """F0/AC-003：所属执行链已终态的 Session，回调令牌失效。
+
+    只在能从平台事实正向判定终态时拒绝；手工/对话 Session（无 automation/
+    flow/workflow 关联）不设终态，令牌长期有效。schedule 复用 Session 由
+    「存在 active 触发日志」判断，两次 fire 之间本不应有工具回调。"""
+    if idx.agentflow_run_id:
+        fr = db.get(AgentFlowRun, idx.agentflow_run_id)
+        if fr is not None and fr.status != "running":
+            raise HTTPException(401, "session execution terminal")
+        return
+    if idx.workflow_run_id:
+        run = db.get(Run, idx.workflow_run_id)
+        if run is not None and run.status in ("succeeded", "failed", "cancelled"):
+            raise HTTPException(401, "session execution terminal")
+        return
+    if idx.automation_id or idx.trigger_log_id:
+        from ..models import AutomationTriggerLog
+
+        active = (
+            db.query(AutomationTriggerLog)
+            .filter(
+                AutomationTriggerLog.session_id == idx.session_id,
+                AutomationTriggerLog.status.in_(("received", "accepted", "running")),
+            )
+            .first()
+        )
+        if active is None:
+            raise HTTPException(401, "session execution terminal")
+
+
+def _authorized_session(db: Session, session_id: str, session_token: str):
+    """P0-08: 共享传输 Token 之上叠加会话级绑定（F0 修订）。
+
+    校验链：X-MTC-Session-Token 的 sha256 必须等于索引行 session_token_hash
+    （或其 flow-run 的 run_token_hash，仅运行中）。A 用户的令牌打不开 B 用户的
+    Session；终态执行链的令牌失效（AC-003）。运行时自建的 flow 节点 Session
+    在索引行产生前按运行中 flow-run 令牌放行——旧实现此处提前 401，节点执行
+    期间的回调全部失败。返回索引行（或无索引占位主体）。"""
     import hashlib
 
     from ..models import AgentFlowRun, AgentSessionIndex
 
     if not session_id:
         raise HTTPException(401, "session binding required")
-    idx = db.query(AgentSessionIndex).filter_by(session_id=session_id).first()
-    if idx is None:
-        raise HTTPException(401, "session not indexed")
     if not session_token:
         raise HTTPException(401, "session token required")
     digest = hashlib.sha256(session_token.encode()).hexdigest()
+    idx = db.query(AgentSessionIndex).filter_by(session_id=session_id).first()
+    if idx is None:
+        _check_flow_run_token(db, session_token)
+        return _UnindexedFlowSession()
     if idx.session_token_hash and hmac.compare_digest(digest, idx.session_token_hash):
+        _ensure_execution_active(db, idx)
         return idx
-    # flow 节点 Session：运行时创建、无平台索引行时按 agentflow_run 绑定校验
+    # flow 节点 Session：按其 agentflow_run 的 run 令牌校验（仅运行中有效）
     if idx.agentflow_run_id:
         flow_run = db.get(AgentFlowRun, idx.agentflow_run_id)
-        if flow_run and flow_run.run_token_hash and hmac.compare_digest(
-            digest, flow_run.run_token_hash
+        if (
+            flow_run
+            and flow_run.status == "running"
+            and flow_run.run_token_hash
+            and hmac.compare_digest(digest, flow_run.run_token_hash)
         ):
             return idx
-    # 无索引行的 flow 节点 Session：在所有 running flow run 中查令牌
+    # 兜底：在运行中 flow run 里查令牌，且仅认「该 run 的节点 Session」——
+    # 修复：NodeRun 反链字段是 run_id，旧代码引用不存在的 agentflow_run_id 列，
+    # 此分支一旦触发即 500。
     running = (
         db.query(AgentFlowRun)
         .filter(AgentFlowRun.status == "running",
@@ -573,12 +701,10 @@ def _authorized_session(db: Session, session_id: str, session_token: str):
     for fr in running:
         if not hmac.compare_digest(digest, fr.run_token_hash or ""):
             continue
-        # 09-11 审计 P0：兜底仅认「该 flow run 的节点 Session」，否则任一 running
-        # run 令牌可冒充任意已索引 session（横向越权）。
         from ..models import AgentFlowNodeRun
         owns = (
             db.query(AgentFlowNodeRun)
-            .filter_by(session_id=session_id, agentflow_run_id=fr.id)
+            .filter_by(session_id=session_id, run_id=fr.id)
             .first()
         )
         if owns is not None:
