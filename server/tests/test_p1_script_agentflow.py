@@ -23,7 +23,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import agentscope_client as rt
-from app.agentflow_executor import build_script_body, scan_script_wakers
+from app.agentflow_executor import build_script_body, scan_script_wakers, script_projection
 from app.db import SessionLocal
 from app.main import app
 from app.models import (
@@ -382,6 +382,38 @@ async def run(ctx):
     r = await worker("do", waker="{aid}", label="w1", schema={{"type": "object"}})
     return {{"r": r}}
 """
+
+
+def test_script_projection_and_callsites():
+    """P3：投影=phase 分组+parallel 嵌套+askUser 卡；callSites 供跳行。"""
+    aid = _make_agent()
+    script = f'''
+META = {{"scope_agent_id": "{aid}"}}
+
+async def run(ctx):
+    phase, log, worker, askUser, parallel = ctx.primitives
+    await phase("生成")
+    await log("开始")
+    a = await worker("a", waker="{aid}", label="w1")
+    await phase("清单")
+    rs = await parallel([
+        lambda: worker("h", waker="{aid}", label="host"),
+        lambda: worker("m", waker="{aid}", label="member"),
+    ])
+    ok = await askUser("确认?", options=["采纳"], label="确认卡")
+    return {{"a": a}}
+'''
+    projection, call_sites = script_projection(script)
+    assert [p["title"] for p in projection] == ["生成", "清单"]
+    p1 = projection[0]["items"]
+    assert [i["type"] for i in p1] == ["log", "worker"]
+    assert p1[1]["label"] == "w1"
+    p2 = projection[1]["items"]
+    assert p2[0]["type"] == "parallel"
+    assert [w["label"] for w in p2[0]["items"]] == ["host", "member"]
+    assert p2[1]["type"] == "ask_user" and p2[1]["label"] == "确认卡"
+    assert any(c["primitive"] == "parallel" for c in call_sites)
+    assert all({"primitive", "label", "line", "column"} <= set(c) for c in call_sites)
 
 
 def test_scan_and_build_script_body():

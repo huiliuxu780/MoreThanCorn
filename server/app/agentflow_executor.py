@@ -75,6 +75,88 @@ def resolve_agentflow_release(
     return release
 
 
+def script_projection(script: str) -> tuple[list[dict], list[dict]]:
+    """ast 解析 run() 体生成画布投影与调用点（16号稿 §9，保存时固化）。
+
+    返回 (projection, callSites)：
+    - projection: [{type:"phase", title, line, items:[{type:"worker"|"ask_user"|"log",
+      label, line} | {type:"parallel", label, line, items:[worker...]}]}]
+    - callSites: [{primitive, label, line, column}]（点击卡片跳行用）。"""
+    import ast as _ast
+
+    tree = _ast.parse(script)
+    run_fn = next(
+        (n for n in tree.body if isinstance(n, _ast_mod.AsyncFunctionDef) and n.name == "run"),
+        None,
+    )
+    if run_fn is None:
+        raise ValueError("script must define `async def run(ctx)`")
+
+    def _name(call: _ast_mod.Call) -> str | None:
+        return getattr(call.func, "id", None) or getattr(call.func, "attr", None)
+
+    calls = [n for n in _ast_mod.walk(run_fn)
+             if isinstance(n, _ast_mod.Call) and _name(n) in ("phase", "log", "worker", "askUser", "parallel")]
+    parallel_spans = [(c.lineno, (c.end_lineno or c.lineno)) for c in calls if _name(c) == "parallel"]
+
+    def _in_parallel(call: _ast_mod.Call) -> bool:
+        return any(a <= call.lineno <= b for a, b in parallel_spans)
+
+    def _label_kw(call: _ast_mod.Call) -> str | None:
+        for kw in call.keywords:
+            if kw.arg == "label" and isinstance(kw.value, _ast_mod.Constant) and isinstance(kw.value.value, str):
+                return kw.value.value
+        return None
+
+    phases: list[dict] = []
+    call_sites: list[dict] = []
+    current: dict | None = None
+    open_parallel: dict | None = None
+    seq = 0
+    for call in sorted(calls, key=lambda c: (c.lineno, c.col_offset)):
+        name = _name(call)
+        if name == "phase":
+            title = None
+            if call.args and isinstance(call.args[0], _ast_mod.Constant) and isinstance(call.args[0].value, str):
+                title = call.args[0].value
+            current = {"type": "phase", "title": title or f"阶段{len(phases) + 1}",
+                       "line": call.lineno, "items": []}
+            phases.append(current)
+            open_parallel = None
+            call_sites.append({"primitive": "phase", "label": current["title"],
+                               "line": call.lineno, "column": call.col_offset})
+            continue
+        if current is None:
+            current = {"type": "phase", "title": "开始", "line": call.lineno, "items": []}
+            phases.append(current)
+        seq += 1
+        if name == "parallel":
+            open_parallel = {"type": "parallel", "label": f"并行组 {seq}", "line": call.lineno, "items": []}
+            current["items"].append(open_parallel)
+            call_sites.append({"primitive": "parallel", "label": open_parallel["label"],
+                               "line": call.lineno, "column": call.col_offset})
+            continue
+        if _in_parallel(call) and open_parallel is not None:
+            container: dict = open_parallel
+        else:
+            container = current
+            if name != "worker":
+                open_parallel = None
+        if name == "worker":
+            label = _label_kw(call) or f"w{seq}"
+        elif name == "askUser":
+            label = _label_kw(call) or f"确认 {seq}"
+        elif name == "log":
+            label = "log"
+        else:  # pragma: no cover
+            continue
+        container["items"].append({"type": name if name != "askUser" else "ask_user",
+                                   "label": label, "line": call.lineno})
+        call_sites.append({"primitive": name, "label": label,
+                           "line": call.lineno, "column": call.col_offset})
+    return phases, call_sites
+
+
 def scan_script_wakers(script: str) -> list[str]:
     """ast 静态扫描脚本中 worker(waker="...") 的常量实参（16号稿 §4，保存/运行前置）。"""
     import ast as _ast

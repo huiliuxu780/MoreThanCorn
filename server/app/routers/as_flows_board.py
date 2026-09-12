@@ -158,6 +158,16 @@ def create_version(fid: str, body: FlowVersionBody, db: Session = Depends(get_db
             validate_script_definition(db, body.definition)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+        # P3：投影与调用点随版本固化（画布数据源，服务端单一计算）
+        try:
+            from ..agentflow_executor import script_projection
+
+            projection, call_sites = script_projection(body.definition["script"])
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        meta = body.definition.setdefault("meta", {})
+        meta["callSites"] = call_sites
+        meta["projection"] = projection
     else:
         nodes = body.definition.get("nodes") or []
         if not nodes:

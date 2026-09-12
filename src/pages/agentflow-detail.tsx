@@ -15,6 +15,8 @@ import * as React from "react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import CodeMirror from "@uiw/react-codemirror"
 import { json } from "@codemirror/lang-json"
+import { python } from "@codemirror/lang-python"
+import { ScriptProjection, type ProjectionPhase } from "../features/agentflow/script-projection"
 import {
   ArrowLeft, Clock, FileText, History, Pencil, Play, Plus,
   RefreshCw, RotateCw, Trash2, ZoomIn, ZoomOut, Maximize2,
@@ -149,6 +151,46 @@ export default function AgentFlowDetailPage() {
   const versionRows = React.useMemo(() => (versions.data?.items ?? []) as unknown as VersionRow[], [versions.data])
   const latest = versionRows[0]
   const nodes: NodeSpec[] = latest?.definition?.nodes ?? []
+  // P3：脚本编排形态（16号稿）——脚本为事实源，画布=服务端 ast 投影
+  const scriptDef = latest?.definition as
+    | { kind?: string; script?: string; meta?: { projection?: ProjectionPhase[] } }
+    | undefined
+  const isScriptFlow = scriptDef?.kind === "script"
+  const [scriptDraft, setScriptDraft] = React.useState("")
+  const [jumpLine, setJumpLine] = React.useState<number | null>(null)
+  const editorRef = React.useRef<{
+    dispatch: (spec: { selection: { anchor: number }; scrollIntoView?: boolean }) => void
+    state: { doc: { lines: number; line: (n: number) => { from: number } } }
+  } | null>(null)
+  React.useEffect(() => {
+    if (isScriptFlow) setScriptDraft(scriptDef?.script ?? "")
+  }, [isScriptFlow, scriptDef?.script])
+  const scriptDirty = isScriptFlow && scriptDraft !== (scriptDef?.script ?? "")
+  const jumpToScriptLine = (line: number) => {
+    setParams({ mode: "script" })
+    setJumpLine(line)
+  }
+  React.useEffect(() => {
+    const ed = editorRef.current
+    if (!ed || jumpLine == null) return
+    const ln = Math.min(Math.max(1, jumpLine), ed.state.doc.lines)
+    const pos = ed.state.doc.line(ln).from
+    ed.dispatch({ selection: { anchor: pos }, scrollIntoView: true })
+    setJumpLine(null)
+  }, [jumpLine, scriptDraft])
+  const saveScriptVersion = async () => {
+    if (!isScriptFlow) return
+    try {
+      const meta = { ...((scriptDef?.meta ?? {}) as Record<string, unknown>) }
+      delete meta.callSites
+      delete meta.projection
+      await asApi.createFlowVersion(fid, { kind: "script", script: scriptDraft, meta })
+      toast.success("已保存为新版本（画布投影已重算）")
+      versions.retry()
+    } catch (e) {
+      toast.error(`保存失败：${(e as Error).message}`)
+    }
+  }
   const agentName = (id: string) => agents.find((a) => a.id === id)?.name ?? (id ? id.slice(0, 8) : "未指定")
 
   const runRows = React.useMemo(() => (runs.data?.items ?? []) as unknown as RunRow[], [runs.data])
@@ -166,6 +208,8 @@ export default function AgentFlowDetailPage() {
   const current = runRows.find((r) => r.id === selectedRun) ?? runRows[0]
   const runIndex = (r: RunRow) => runRows.length - runRows.indexOf(r)
   const nodeRunOf = (nodeId: string) => current?.nodes.find((n) => n.node_id === nodeId)
+  const statusOfLabel = (label: string) =>
+    current?.nodes.find((n) => n.node_id === label)?.status
 
   const saveVersion = async () => {
     if (!nodes.length) {
@@ -383,6 +427,12 @@ export default function AgentFlowDetailPage() {
 
       {view === "flow" ? (
         mode === "canvas" ? (
+          isScriptFlow ? (
+            <ScriptProjection
+              projection={scriptDef?.meta?.projection ?? []}
+              onJump={jumpToScriptLine}
+            />
+          ) : (
           <div className="relative flex min-h-0 flex-1 flex-col" style={{ background: "var(--surface-muted)" }}>
             <div className="min-h-0 flex-1 overflow-auto p-4">
               {nodes.length === 0 ? (
@@ -469,6 +519,32 @@ export default function AgentFlowDetailPage() {
               </div>
             </div>
           </div>
+          )
+        ) : isScriptFlow ? (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex items-center gap-2 border-b bg-background px-4 py-2">
+              <span className="text-xs text-muted-foreground">
+                脚本是唯一事实源；保存即生成新版本并重算画布投影
+              </span>
+              <span className="ml-auto" />
+              {scriptDirty && (
+                <Button size="sm" onClick={() => void saveScriptVersion()}>
+                  保存为新版本
+                </Button>
+              )}
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto">
+              <CodeMirror
+                value={scriptDraft}
+                height="100%"
+                extensions={[python()]}
+                onChange={(v) => setScriptDraft(v)}
+                onCreateEditor={(ed) => {
+                  editorRef.current = ed as never
+                }}
+              />
+            </div>
+          </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-auto">
             <CodeMirror
@@ -541,6 +617,15 @@ export default function AgentFlowDetailPage() {
                       </div>
                     )
                   })}
+                {isScriptFlow ? (
+                  <div className="p-4 pt-0">
+                    <ScriptProjection
+                      projection={scriptDef?.meta?.projection ?? []}
+                      statusOf={statusOfLabel}
+                      onJump={jumpToScriptLine}
+                    />
+                  </div>
+                ) : (
                 <div className="flex items-start gap-3 p-4">
                   {nodes.map((n, i) => {
                     const nr = nodeRunOf(n.id)
@@ -614,6 +699,7 @@ export default function AgentFlowDetailPage() {
                     )
                   })}
                 </div>
+                )}
               </>
             )}
             {zoomGroup}
