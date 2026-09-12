@@ -210,6 +210,11 @@ export default function AgentFlowDetailPage() {
   const nodeRunOf = (nodeId: string) => current?.nodes.find((n) => n.node_id === nodeId)
   const statusOfLabel = (label: string) =>
     current?.nodes.find((n) => n.node_id === label)?.status
+  // wake 台账对齐：worker 卡渲染指派 Agent 的头像+名字
+  const resolveAgent = (wakerId: string) => {
+    const a = agents.find((x) => x.id === wakerId)
+    return { name: a?.name ?? wakerId.slice(0, 8), avatar: avatarFor(wakerId) }
+  }
 
   const saveVersion = async () => {
     if (!nodes.length) {
@@ -473,6 +478,7 @@ export default function AgentFlowDetailPage() {
             <ScriptProjection
               projection={scriptDef?.meta?.projection ?? []}
               onJump={jumpToScriptLine}
+              resolveAgent={resolveAgent}
             />
           ) : (
           <div className="relative flex min-h-0 flex-1 flex-col" style={{ background: "var(--surface-muted)" }}>
@@ -668,6 +674,7 @@ export default function AgentFlowDetailPage() {
                       projection={scriptDef?.meta?.projection ?? []}
                       statusOf={statusOfLabel}
                       onJump={jumpToScriptLine}
+                      resolveAgent={resolveAgent}
                     />
                   </div>
                 ) : (

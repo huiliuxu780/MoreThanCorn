@@ -17,7 +17,11 @@ META = {{
             "recommendation": {{"type": "string", "description": "完整旅行推荐（Markdown）"}},
         }},
     }},
-    "phases": ["意图拆分与目标设定", "并行调研", "汇总推荐"],
+    "phases": [
+        {"title": "意图拆分与目标设定", "detail": "协调者A解析消费者提问，拆出天气与景点两个子目标并下达指令"},
+        {"title": "并行调研", "detail": "B 做若干天气查询，C 做网络搜索最热10个景点，两路同时执行"},
+        {"title": "汇总推荐", "detail": "结果汇报给A，交叉整合出首选/备选与行前清单的完整推荐"},
+    ],
     "scope_agent_id": "{aid_a}",
 }}
 

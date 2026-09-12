@@ -75,12 +75,17 @@ def resolve_agentflow_release(
     return release
 
 
-def script_projection(script: str) -> tuple[list[dict], list[dict]]:
+def script_projection(script: str, meta: dict | None = None) -> tuple[list[dict], list[dict]]:
     """ast 解析 run() 体生成画布投影与调用点（16号稿 §9，保存时固化）。
 
+    视觉对齐 wake 原站（2026-09-12 实测台账）：
+    - phase 卡带 detail（取 META.phases 条目 {title, detail} 的 detail，缺失为空）；
+    - worker 项携带 waker（前端映射头像+名字）；
+    - 画布不渲染 log 项（原站画布无 log）；parallel 不分组框（worker 平铺）。
+
     返回 (projection, callSites)：
-    - projection: [{type:"phase", title, line, items:[{type:"worker"|"ask_user"|"log",
-      label, line} | {type:"parallel", label, line, items:[worker...]}]}]
+    - projection: [{type:"phase", title, detail, line, items:[{type:"worker"|"ask_user",
+      label, line, waker}]}]
     - callSites: [{primitive, label, line, column}]（点击卡片跳行用）。"""
     import ast as _ast
 
@@ -91,16 +96,19 @@ def script_projection(script: str) -> tuple[list[dict], list[dict]]:
     )
     if run_fn is None:
         raise ValueError("script must define `async def run(ctx)`")
+    meta = meta or {}
+    phase_details: dict[str, str] = {}
+    for entry in meta.get("phases") or []:
+        if isinstance(entry, dict) and entry.get("title"):
+            phase_details[str(entry["title"])] = str(entry.get("detail") or "")
+        elif isinstance(entry, str):
+            phase_details.setdefault(entry, "")
 
     def _name(call: _ast_mod.Call) -> str | None:
         return getattr(call.func, "id", None) or getattr(call.func, "attr", None)
 
     calls = [n for n in _ast_mod.walk(run_fn)
              if isinstance(n, _ast_mod.Call) and _name(n) in ("phase", "log", "worker", "askUser", "parallel")]
-    parallel_spans = [(c.lineno, (c.end_lineno or c.lineno)) for c in calls if _name(c) == "parallel"]
-
-    def _in_parallel(call: _ast_mod.Call) -> bool:
-        return any(a <= call.lineno <= b for a, b in parallel_spans)
 
     def _label_kw(call: _ast_mod.Call) -> str | None:
         for kw in call.keywords:
@@ -108,10 +116,15 @@ def script_projection(script: str) -> tuple[list[dict], list[dict]]:
                 return kw.value.value
         return None
 
+    def _const_kw(call: _ast_mod.Call, arg: str) -> str | None:
+        for kw in call.keywords:
+            if kw.arg == arg and isinstance(kw.value, _ast_mod.Constant) and isinstance(kw.value.value, str):
+                return kw.value.value
+        return None
+
     phases: list[dict] = []
     call_sites: list[dict] = []
     current: dict | None = None
-    open_parallel: dict | None = None
     seq = 0
     for call in sorted(calls, key=lambda c: (c.lineno, c.col_offset)):
         name = _name(call)
@@ -119,39 +132,40 @@ def script_projection(script: str) -> tuple[list[dict], list[dict]]:
             title = None
             if call.args and isinstance(call.args[0], _ast_mod.Constant) and isinstance(call.args[0].value, str):
                 title = call.args[0].value
-            current = {"type": "phase", "title": title or f"阶段{len(phases) + 1}",
+            title = title or f"阶段{len(phases) + 1}"
+            current = {"type": "phase", "title": title,
+                       "detail": phase_details.get(title, ""),
                        "line": call.lineno, "items": []}
             phases.append(current)
-            open_parallel = None
-            call_sites.append({"primitive": "phase", "label": current["title"],
+            call_sites.append({"primitive": "phase", "label": title,
                                "line": call.lineno, "column": call.col_offset})
             continue
         if current is None:
-            current = {"type": "phase", "title": "开始", "line": call.lineno, "items": []}
+            current = {"type": "phase", "title": "开始", "detail": "",
+                       "line": call.lineno, "items": []}
             phases.append(current)
         seq += 1
-        if name == "parallel":
-            open_parallel = {"type": "parallel", "label": f"并行组 {seq}", "line": call.lineno, "items": []}
-            current["items"].append(open_parallel)
-            call_sites.append({"primitive": "parallel", "label": open_parallel["label"],
+        if name == "log":
+            # 原站画布不渲染 log；保留 callSite 供跳行
+            call_sites.append({"primitive": "log", "label": "log",
                                "line": call.lineno, "column": call.col_offset})
             continue
-        if _in_parallel(call) and open_parallel is not None:
-            container: dict = open_parallel
-        else:
-            container = current
-            if name != "worker":
-                open_parallel = None
         if name == "worker":
             label = _label_kw(call) or f"w{seq}"
+            item = {"type": "worker", "label": label, "line": call.lineno,
+                    "waker": _const_kw(call, "waker")}
         elif name == "askUser":
             label = _label_kw(call) or f"确认 {seq}"
-        elif name == "log":
-            label = "log"
+            item = {"type": "ask_user", "label": label, "line": call.lineno}
+        elif name == "parallel":
+            # 原站画布对 parallel 无分组视觉；仅记录 callSite，子 worker 由后续
+            # 迭代按顺序平铺进当前 phase（span 判断不再需要分组容器）。
+            call_sites.append({"primitive": "parallel", "label": "并行",
+                               "line": call.lineno, "column": call.col_offset})
+            continue
         else:  # pragma: no cover
             continue
-        container["items"].append({"type": name if name != "askUser" else "ask_user",
-                                   "label": label, "line": call.lineno})
+        current["items"].append(item)
         call_sites.append({"primitive": name, "label": label,
                            "line": call.lineno, "column": call.col_offset})
     return phases, call_sites

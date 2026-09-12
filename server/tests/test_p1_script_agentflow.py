@@ -386,10 +386,16 @@ async def run(ctx):
 
 
 def test_script_projection_and_callsites():
-    """P3：投影=phase 分组+parallel 嵌套+askUser 卡；callSites 供跳行。"""
+    """P3+视觉对齐：phase 带 detail、worker 带 waker、log 不上画布、parallel 平铺；callSites 供跳行。"""
     aid = _make_agent()
     script = f'''
-META = {{"scope_agent_id": "{aid}"}}
+META = {{
+    "scope_agent_id": "{aid}",
+    "phases": [
+        {{"title": "生成", "detail": "先生成初稿"}},
+        {{"title": "清单", "detail": "并行生成三份清单"}},
+    ],
+}}
 
 async def run(ctx):
     phase, log, worker, askUser, parallel = ctx.primitives
@@ -404,16 +410,23 @@ async def run(ctx):
     ok = await askUser("确认?", options=["采纳"], label="确认卡")
     return {{"a": a}}
 '''
-    projection, call_sites = script_projection(script)
+    meta = {"phases": [{"title": "生成", "detail": "先生成初稿"},
+                       {"title": "清单", "detail": "并行生成三份清单"}]}
+    projection, call_sites = script_projection(script, meta)
     assert [p["title"] for p in projection] == ["生成", "清单"]
+    assert projection[0]["detail"] == "先生成初稿"
+    assert projection[1]["detail"] == "并行生成三份清单"
     p1 = projection[0]["items"]
-    assert [i["type"] for i in p1] == ["log", "worker"]
-    assert p1[1]["label"] == "w1"
+    # wake 台账：画布不渲染 log；worker 平铺并携带 waker
+    assert [i["type"] for i in p1] == ["worker"]
+    assert p1[0] == {"type": "worker", "label": "w1", "line": p1[0]["line"], "waker": aid}
     p2 = projection[1]["items"]
-    assert p2[0]["type"] == "parallel"
-    assert [w["label"] for w in p2[0]["items"]] == ["host", "member"]
-    assert p2[1]["type"] == "ask_user" and p2[1]["label"] == "确认卡"
+    # parallel 不分组框，worker 平铺进 phase
+    assert [i["label"] for i in p2] == ["host", "member", "确认卡"]
+    assert p2[0]["waker"] == aid and p2[2]["type"] == "ask_user"
+    # log/parallel 仍留 callSite 供跳行
     assert any(c["primitive"] == "parallel" for c in call_sites)
+    assert any(c["primitive"] == "log" for c in call_sites)
     assert all({"primitive", "label", "line", "column"} <= set(c) for c in call_sites)
 
 

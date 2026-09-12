@@ -164,7 +164,8 @@ def create_version(fid: str, body: FlowVersionBody, db: Session = Depends(get_db
         try:
             from ..agentflow_executor import script_projection
 
-            projection, call_sites = script_projection(body.definition["script"])
+            projection, call_sites = script_projection(
+                body.definition["script"], body.definition.get("meta") or {})
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         meta = body.definition.setdefault("meta", {})
@@ -492,8 +493,10 @@ def generate_script(body: GenerateScriptBody, db: Session = Depends(get_db), use
     base_prompt = (
         "你是 WakerFlow 脚本生成器。把用户需求写成一个可直接运行的 Python 脚本。\n\n"
         "硬性契约（违反即作废）：\n"
-        "1. 顶层定义 META = {\"inputSchema\": {...}, \"outputSchema\": {...}, \"phases\": [...]}，"
-        "均为 JSON Schema，属性带中文 description，phases 是阶段标题列表；\n"
+        "1. 顶层定义 META = {\"inputSchema\": {...}, \"outputSchema\": {...}, "
+        "\"phases\": [{\"title\": ..., \"detail\": ...}]}，"
+        "schema 均为 JSON Schema 且属性带中文 description；phases 条目带 title 与一句话 detail"
+        "（detail 会显示在画布阶段卡上）；\n"
         "2. 必须定义 async def run(ctx)，函数体第一行 "
         "`phase, log, worker, askUser, parallel = ctx.primitives`；\n"
         "3. 每个工作项写成 `await worker(<中文提示词>, waker=<waker id>, "
