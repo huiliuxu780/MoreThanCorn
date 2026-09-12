@@ -507,6 +507,19 @@ export const agentApi = {
     return req<{ items: { id: string; name: string; type: string; status: string; archived?: boolean; executable?: boolean }[]; total: number }>(`/api/agents?${q}`)
   },
   get: (id: string) => req<AgentInfo>(`/api/agents/${id}`),
+  /** F-arch：封存/解封（archived 双向；走 agent 更新端点） */
+  setArchived: (id: string, archived: boolean) =>
+    req<{ id: string; archived: boolean }>(`/api/agents/${id}`, {
+      method: "PUT", body: JSON.stringify({ archived }),
+    }),
+  /** F-arch：封存前引用清单（分析任务/自动任务/脚本与 DAG flow 节点） */
+  references: (id: string) =>
+    req<{
+      analysisTasks: { count: number; samples: string[] }
+      automations: { count: number; samples: string[] }
+      agentflowNodes: { count: number; definitions: number }
+      scriptReferences: { count: number }
+    }>(`/api/agents/${id}/references`),
   // R4：Module Agent 创建与目录
   modules: () => req<{ items: { key: string; version: string; displayName: string; description: string; riskClass: string; providers: string[]; logicalTools: string[]; criteria: string[]; resultProjection?: string; producesQualityResult?: boolean; inputSchema?: { required?: string[]; properties?: Record<string, { type?: string }> }; outputSchema?: Record<string, unknown> }[] }>(`/api/agents/modules`),
   create: (body: { name: string; moduleKey?: string; type?: string; moduleVersion?: string; description?: string; avatar?: string; rolePrompt?: string; skills?: string[]; capabilities?: { name: string; description: string }[]; modelRef?: Record<string, unknown> }) =>

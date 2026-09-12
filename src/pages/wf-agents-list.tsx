@@ -3,13 +3,16 @@
  * 声明偏差：控件高度沿用我方 h-8 全局规格；segment 浅色用中性 token（原站浅色不可见=缺陷）。 */
 import { useCallback, useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { Contact, MessageCircleMore, Plus, Search, Settings2, Share2 } from "lucide-react"
+import { Archive, ArchiveRestore, Contact, MessageCircleMore, Plus, Search, Settings2, Share2 } from "lucide-react"
 import { toast } from "sonner"
 import { useListQuery } from "@/hooks/use-list-query"
 import { Pagination } from "@/components/app/pagination"
 import { agentApi, pagedApi } from "@/services/wf-api"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -60,12 +63,13 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 /** 卡片（台账 §1/§1b 修正版）：r6/pad16/gap8/统计行 h45；名称行纯居中，
  *  生命周期徽章占原站右上角空槽（absolute）；开卡按钮不嵌套交互元素。 */
-function AgentCard({ r, role, onOpen, onChat, onConfig }: {
+function AgentCard({ r, role, onOpen, onChat, onConfig, onToggleArchive }: {
   r: AgentRow; role: string; onOpen: () => void; onChat?: () => void; onConfig: () => void
+  onToggleArchive: () => void
 }) {
   const lc = lifecycleOf(r)
   return (
-    <div className="group relative flex min-h-[212px] flex-col rounded-lg border bg-surface px-4 pt-5 pb-0 text-center shadow-sm transition-[border-color,background-color,box-shadow] duration-200 hover:shadow-md">
+    <div className={`group relative flex min-h-[212px] flex-col rounded-lg border bg-surface px-4 pt-5 pb-0 text-center shadow-sm transition-[border-color,background-color,box-shadow] duration-200 hover:shadow-md ${r.archived ? "opacity-80" : ""}`}>
       <span className="absolute right-3 top-3 z-10">
         <Badge variant={lc.variant}>{lc.label}</Badge>
       </span>
@@ -110,6 +114,14 @@ function AgentCard({ r, role, onOpen, onChat, onConfig }: {
               <MessageCircleMore className="size-4" /> 对话
             </Button>
           ) : null}
+          <Button
+            variant="ghost" size="icon" className="size-8 shrink-0 border-0"
+            aria-label={r.archived ? "解封" : "封存"}
+            title={r.archived ? "解封（恢复到使用中）" : "封存（隐藏且不可再执行，可解封）"}
+            onClick={onToggleArchive}
+          >
+            {r.archived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
+          </Button>
         </div>
       </div>
     </div>
@@ -171,6 +183,10 @@ export default function WfAgentsListPage() {
   const [statusFilter, setStatusFilter] = useState<"active" | "archived">("active")
   const [modules, setModules] = useState<ModuleMeta[]>([])
   const [archivedTotal, setArchivedTotal] = useState(0)
+  // F-arch：封存/解封确认（引用清单在弹窗内拉取）
+  const [archTarget, setArchTarget] = useState<AgentRow | null>(null)
+  const [archRefs, setArchRefs] = useState<Awaited<ReturnType<typeof agentApi.references>> | null>(null)
+  const [archBusy, setArchBusy] = useState(false)
 
   useEffect(() => {
     agentApi.modules().then((r) => setModules(r.items)).catch(() => undefined)
@@ -187,6 +203,34 @@ export default function WfAgentsListPage() {
   useEffect(() => { load() }, [load])
 
   const roleOf = (r: AgentRow) => modules.find((m) => m.key === r.moduleKey)?.displayName ?? r.typeLabel
+
+  const openToggleArchive = (r: AgentRow) => {
+    setArchTarget(r)
+    setArchRefs(null)
+    agentApi.references(r.id).then(setArchRefs).catch(() => setArchRefs(null))
+  }
+  const applyArchive = async () => {
+    if (!archTarget) return
+    setArchBusy(true)
+    try {
+      await agentApi.setArchived(archTarget.id, !archTarget.archived)
+      toast.success(archTarget.archived ? "已解封，Agent 恢复到使用中" : "已封存，Agent 不再出现在使用中列表且不可再执行")
+      setArchTarget(null)
+      load()
+      pagedApi.agents({ page: 1, pageSize: 1, archived: "true" })
+        .then((r) => setArchivedTotal(r.total)).catch(() => undefined)
+    } catch (e) {
+      toast.error(`操作失败：${(e as Error).message}`)
+    } finally {
+      setArchBusy(false)
+    }
+  }
+  const refLine = (label: string, v: { count: number; samples?: string[] } | undefined) => (
+    <li key={label}>
+      {label}：<strong>{v?.count ?? 0}</strong> 个
+      {v?.samples?.length ? <span className="text-muted-foreground">（{v.samples.join("、")}）</span> : null}
+    </li>
+  )
 
   const filtered = rows
     .filter((r) => typeFilter === "all" || r.type === typeFilter)
@@ -264,7 +308,8 @@ export default function WfAgentsListPage() {
                 <AgentCard key={r.id} r={r} role={roleOf(r)}
                   onOpen={() => navigate(`/agents/${r.id}`)}
                   onConfig={() => navigate(`/agents/${r.id}/config`)}
-                  onChat={r.archived ? undefined : () => navigate(`/agents/${r.id}/chat`)} />
+                  onChat={r.archived ? undefined : () => navigate(`/agents/${r.id}/chat`)}
+                  onToggleArchive={() => openToggleArchive(r)} />
               ))}
             </div>
           )}
@@ -272,6 +317,49 @@ export default function WfAgentsListPage() {
       <Pagination page={params.page ?? 1} pageSize={params.pageSize ?? 12} total={total}
         onPageChange={(p: number) => update({ page: p }, true)}
         onPageSizeChange={(ps: number) => update({ pageSize: ps, page: 1 }, true)} />
+
+      {/* F-arch：封存/解封确认（含引用清单） */}
+      <Dialog open={!!archTarget} onOpenChange={(o) => { if (!o) setArchTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {archTarget?.archived ? `解封「${archTarget?.name}」？` : `封存「${archTarget?.name}」？`}
+            </DialogTitle>
+            <DialogDescription>
+              {archTarget?.archived
+                ? "解封后 Agent 恢复到使用中列表，可再次创建版本、发布与执行。"
+                : "封存后 Agent 从使用中列表隐藏，且不可再创建版本、发布或被执行（运行中的执行不受影响，历史全部保留）。随时可解封。"}
+            </DialogDescription>
+          </DialogHeader>
+          {!archTarget?.archived && (
+            <div className="rounded-md border bg-surface p-3 text-sm">
+              <p className="mb-1 font-medium">当前引用：</p>
+              <ul className="space-y-1 text-muted-foreground">
+                {archRefs
+                  ? [
+                      refLine("分析任务", archRefs.analysisTasks),
+                      refLine("自动任务", archRefs.automations),
+                      refLine("脚本/流程节点", { count: archRefs.agentflowNodes.count + archRefs.scriptReferences.count }),
+                    ]
+                  : <li>引用清单加载中…</li>}
+              </ul>
+              <p className="mt-2 text-xs text-muted-foreground">
+                封存不解除引用；引用它的任务下次执行会得到「AGENT_ARCHIVED」拒绝。默认不自动暂停相关自动任务。
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setArchTarget(null)}>取消</Button>
+            <Button
+              variant={archTarget?.archived ? "default" : "destructive"}
+              disabled={archBusy}
+              onClick={() => void applyArchive()}
+            >
+              {archBusy ? "处理中…" : archTarget?.archived ? "确认解封" : "确认封存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       </div>
     </PageContainer>
   )

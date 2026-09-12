@@ -176,8 +176,13 @@ def create_version(fid: str, body: FlowVersionBody, db: Session = Depends(get_db
         if not nodes:
             raise HTTPException(422, "flow needs at least one node")
         for n in nodes:
-            if n.get("kind") == "agent" and db.get(Agent, n.get("agent_id", "")) is None:
-                raise HTTPException(422, f"node {n.get('id')}: agent not found")
+            if n.get("kind") == "agent":
+                node_agent = db.get(Agent, n.get("agent_id", ""))
+                if node_agent is None:
+                    raise HTTPException(422, f"node {n.get('id')}: agent not found")
+                if node_agent.archived:
+                    raise HTTPException(422,
+                                        f"node {n.get('id')}: 已封存 Agent 不可引用（先解封）")
     last = (
         db.query(AgentFlowVersion)
         .filter_by(definition_id=fid)

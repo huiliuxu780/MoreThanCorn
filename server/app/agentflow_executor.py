@@ -221,8 +221,11 @@ def validate_script_definition(db: Session, definition: dict) -> None:
     if scope and scope not in waker_ids:
         waker_ids.append(scope)
     for wid in waker_ids:
-        if db.get(Agent, wid) is None:
+        agent = db.get(Agent, wid)
+        if agent is None:
             raise ValueError(f"script waker {wid} not found")
+        if agent.archived:
+            raise ValueError(f"script waker {wid} archived（已封存 Agent 不可引用；先解封）")
 
 
 def build_script_body(
@@ -242,8 +245,11 @@ def build_script_body(
     for wid in waker_ids:
         if not wid:
             continue
-        if db.get(Agent, wid) is None:
+        agent = db.get(Agent, wid)
+        if agent is None:
             raise ValueError(f"script waker {wid} not found")
+        if agent.archived:
+            raise ValueError(f"[AGENT_ARCHIVED] script waker {wid} archived")
         runtime_id, extra = _node_runtime_binding(db, uid, wid)
         wakers[wid] = {
             "runtime_agent_id": runtime_id,

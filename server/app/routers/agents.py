@@ -366,6 +366,9 @@ def create_agent_version(aid: str, payload: dict | None = None, db: Session = De
     if not a:
         raise HTTPException(404, "agent not found")
     assert_agent_executable(a)  # R-Archive：旧 Agent 不再创建版本
+    if a.archived:
+        raise HTTPException(409, detail={"code": "AGENT_ARCHIVED",
+                                         "message": "已封存 Agent 不可创建版本；先在列表解封"})
     try:
         definition = build_definition(db, a)
     except ValueError as e:
@@ -432,6 +435,9 @@ def create_release(aid: str, payload: dict, db: Session = Depends(get_db),
     if not a:
         raise HTTPException(404, "agent not found")
     assert_agent_executable(a)  # R-Archive：旧 Agent 不再部署/回滚
+    if a.archived:
+        raise HTTPException(409, detail={"code": "AGENT_ARCHIVED",
+                                         "message": "已封存 Agent 不可发布/回滚；先在列表解封"})
     env = (payload or {}).get("environment", "sandbox")
     if env not in ("sandbox", "prod"):
         raise HTTPException(422, detail={"code": "BAD_ENVIRONMENT", "message": "environment 必须是 sandbox|prod"})
@@ -840,3 +846,46 @@ def generate_prompt(payload: dict, db: Session = Depends(get_db),
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, detail={"code": "GENERATE_FAILED", "message": str(exc)})
     return {"prompt": (answer or "").strip()}
+
+
+@router.get("/{aid}/references")
+def agent_references(aid: str, db: Session = Depends(get_db),
+                     _user: dict = Depends(require_role())):
+    """封存前引用清单：分析任务 / 自动任务 / 脚本与 DAG flow 节点引用计数与样例。"""
+    agent = db.get(Agent, aid)
+    if agent is None:
+        raise HTTPException(404, "agent not found")
+    from ..models import (AgentFlowVersion, AnalysisTask,
+                          AnalysisTaskVersion, AutomationDefinition)
+
+    tasks = (db.query(AnalysisTask)
+             .join(AnalysisTaskVersion,
+                   AnalysisTask.current_version_id == AnalysisTaskVersion.id)
+             .filter(AnalysisTaskVersion.execution_target_type == "agent",
+                     AnalysisTaskVersion.agent_id == aid).all())
+    tasks += db.query(AnalysisTask).filter(
+        AnalysisTask.agent_id == aid,
+        AnalysisTask.id.notin_([t.id for t in tasks])).all()
+    autos = db.query(AutomationDefinition).filter(
+        AutomationDefinition.target_kind == "agent",
+        AutomationDefinition.agent_id == aid).all()
+    flow_uses: dict[str, int] = {}
+    for v in db.query(AgentFlowVersion).all():
+        nodes = ((v.definition or {}).get("nodes") or [])
+        hit = sum(1 for n in nodes if n.get("agent_id") == aid)
+        if hit:
+            flow_uses[v.definition_id] = flow_uses.get(v.definition_id, 0) + hit
+    script_uses = 0
+    for v in db.query(AgentFlowVersion).all():
+        d = v.definition or {}
+        if d.get("kind") == "script" and aid in (d.get("script") or ""):
+            script_uses += 1
+    return {
+        "analysisTasks": {"count": len(tasks),
+                          "samples": [t.name for t in tasks[:5]]},
+        "automations": {"count": len(autos),
+                        "samples": [a.name for a in autos[:5]]},
+        "agentflowNodes": {"count": sum(flow_uses.values()),
+                           "definitions": len(flow_uses)},
+        "scriptReferences": {"count": script_uses},
+    }

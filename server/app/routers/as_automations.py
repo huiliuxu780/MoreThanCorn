@@ -410,6 +410,12 @@ def dispatch(
             return dup  # DEDUPED
 
     # 2-3. 定义/触发器存在由调用方保证（_auto）；4. 幂等已过
+    # 5'. 目标有效性：封存 Agent 在消耗配额前拒绝（AGENT_ARCHIVED）
+    if auto.target_kind == "agent":
+        target_agent = db.get(Agent, auto.agent_id or "")
+        if target_agent is not None and target_agent.archived:
+            _reject(log, "AGENT_ARCHIVED", "agent archived")
+
     # 5-6. enabled/deadline/maxRuns（P0-5 原子门）
     gate = db.execute(
         text("""
@@ -663,7 +669,8 @@ def _http_status_for_dispatch_error(exc: ValueError) -> int:
     msg = str(exc)
     if msg.startswith("[IDEMPOTENCY_PAYLOAD_MISMATCH]"):
         return 409
-    if msg.startswith(("[AUTOMATION_DISABLED]", "[MAX_RUNS_REACHED]", "[DEADLINE_PASSED]")):
+    if msg.startswith(("[AUTOMATION_DISABLED]", "[MAX_RUNS_REACHED]", "[DEADLINE_PASSED]",
+                       "[AGENT_ARCHIVED]")):
         return 409
     return 422
 
