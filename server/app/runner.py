@@ -1534,8 +1534,10 @@ def _heartbeat(job_id: str, stop_evt: threading.Event) -> None:
     while not stop_evt.wait(HEARTBEAT_SECONDS):
         hb = SessionLocal()
         try:
-            hb.execute(text("UPDATE job_queue SET locked_at=now() "
-                            "WHERE id=:i AND status='processing'"), {"i": job_id})
+            hb.execute(text("UPDATE job_queue SET locked_at=now(), heartbeat_at=now(), "
+                            "lease_expires_at=now() + (:lease || ' seconds')::interval "
+                            "WHERE id=:i AND status='processing'"),
+                       {"i": job_id, "lease": LEASE_SECONDS_DEFAULT})
             hb.commit()
         except Exception:  # noqa: BLE001
             hb.rollback()
@@ -1549,10 +1551,14 @@ def claim_job(db: Session, include_future: bool = False):
     include_future=True 时忽略 run_at（供测试/补偿立即取回退避中的任务）。"""
     due = "" if include_future else " AND run_at <= now() "
     row = db.execute(text(
-        "UPDATE job_queue SET status='processing', locked_at=now(), locked_by=:w "
+        "UPDATE job_queue SET status='processing', locked_at=now(), locked_by=:w, "
+        "lease_expires_at=now() + (:lease || ' seconds')::interval, "
+        "heartbeat_at=now(), "
+        "owner_run_id=COALESCE(payload->>'task_run_id', owner_run_id) "
         f"WHERE id=(SELECT id FROM job_queue WHERE status='pending' {due} "
         "ORDER BY run_at LIMIT 1 FOR UPDATE SKIP LOCKED) "
-        "RETURNING id, type, payload, attempts, max_attempts"), {"w": WORKER_ID}).fetchone()
+        "RETURNING id, type, payload, attempts, max_attempts"),
+        {"w": WORKER_ID, "lease": LEASE_SECONDS_DEFAULT}).fetchone()
     db.commit()
     return row
 
@@ -1584,8 +1590,13 @@ def recover_stale_jobs(db: Session, lease_seconds: int = LEASE_SECONDS_DEFAULT) 
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=lease_seconds)
     stale = db.execute(select(JobQueue).where(
         JobQueue.status == "processing",
-        JobQueue.locked_at.isnot(None),
-        JobQueue.locked_at < cutoff)).scalars().all()
+        JobQueue.lease_expires_at.isnot(None),
+        JobQueue.lease_expires_at < datetime.now(timezone.utc))).scalars().all()
+    if not stale:  # 兼容旧行（无 lease 列值）：回退 locked_at 判定
+        stale = db.execute(select(JobQueue).where(
+            JobQueue.status == "processing",
+            JobQueue.locked_at.isnot(None),
+            JobQueue.locked_at < cutoff)).scalars().all()
     for j in stale:
         if (j.attempts or 0) >= (j.max_attempts or 3):
             j.status = "dead"

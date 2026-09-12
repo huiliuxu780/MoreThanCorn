@@ -70,9 +70,13 @@ def _mk_partial_batch():
 
 def _cleanup(ids):
     db = SessionLocal()
-    from app.models import JobQueue
-    db.query(Run).filter(Run.task_run_id == ids["task_run_id"]).delete()
-    db.query(TaskRun).filter_by(id=ids["task_run_id"]).delete()
+    from app.models import JobQueue, TaskRun as _TR
+    # F3：Recovery 批次的 Run/TaskRun 也要先删（FK 顺序）
+    rec_ids = [r[0] for r in db.query(_TR.id).filter(
+        _TR.retry_of_task_run_id == ids["task_run_id"]).all()]
+    for rid in rec_ids + [ids["task_run_id"]]:
+        db.query(Run).filter(Run.task_run_id == rid).delete()
+    db.query(_TR).filter(_TR.id.in_(rec_ids + [ids["task_run_id"]])).delete()
     db.query(DataSnapshot).filter(DataSnapshot.asset_id == "asset-p1p").delete()
     db.query(AnalysisTaskVersion).filter_by(task_id=ids["task_id"]).delete()
     db.query(AnalysisTask).filter_by(id=ids["task_id"]).delete()
@@ -106,25 +110,30 @@ def test_retry_failed_creates_new_attempt():
         body = r.json()
         assert body["retried"] == 1, "应只重试失败的那条交互"
         assert body["taskRunId"] == ids["task_run_id"]
-        # 重试异步入队，等待 attempt=2 的 Run 出现
+        # F3/AC-035A：Recovery TaskRun 承载 attempt=2，原批次保持终态
+        rec_id = body["recoveryTaskRunId"]
+        assert rec_id and rec_id != ids["task_run_id"]
         db = SessionLocal()
         try:
             deadline = time.time() + 20
             nr = None
             while time.time() < deadline:
                 nr = db.query(Run).filter(
-                    Run.task_run_id == ids["task_run_id"],
+                    Run.task_run_id == rec_id,
                     Run.interaction_ref == "P1P-BAD", Run.attempt == 2).first()
                 if nr:
                     break
                 db.expire_all()
                 time.sleep(0.3)
-            assert nr is not None, "重试应创建 attempt=2 的 Run"
+            assert nr is not None, "重试应创建 attempt=2 的 Run（Recovery 批次内）"
             assert nr.attempt == 2, "重试=新 attempt（INV-07 不覆盖原记录）"
             assert nr.origin_run_id == ids["bad_run_id"], "重试须指向原失败 Run（谱系）"
-            # 原失败 Run 保留且状态不变
             old = db.get(Run, ids["bad_run_id"])
             assert old.status == "failed" and old.attempt == 1
+            from app.models import TaskRun
+            rec = db.get(TaskRun, rec_id)
+            assert rec.retry_of_task_run_id == ids["task_run_id"]
+            assert rec.run_scope == "failed_items"
         finally:
             db.close()
     finally:

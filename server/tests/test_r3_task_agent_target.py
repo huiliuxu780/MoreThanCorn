@@ -149,16 +149,25 @@ def test_batch_retry_uses_frozen_snapshot(monkeypatch, fake_server_r3):
     assert len(bad) == 1
     r = client.post(f"/api/tasks/{bad[0].task_id}/runs/{tr_id}/retry-failed")
     assert r.status_code == 202, r.text
+    from app.models import TaskRun
     from app.task_runner import retry_failed_in_taskrun
-    retry_failed_in_taskrun(tr_id)
+    rec = retry_failed_in_taskrun(tr_id)
+    assert rec is not None and rec.retry_of_task_run_id == tr_id
     db = SessionLocal()
     try:
-        new_runs = db.query(Run).filter_by(task_run_id=tr_id,
+        # F3/AC-035A：新 attempt 落在 Recovery 批次；冻结快照从原批次复制（AC-035）
+        orig = db.get(TaskRun, tr_id)
+        assert rec.resolved_rule_version_id == orig.resolved_rule_version_id
+        assert rec.resolved_workflow_version_id == orig.resolved_workflow_version_id
+        new_runs = db.query(Run).filter_by(task_run_id=rec.id,
                                            interaction_ref=bad[0].interaction_ref).all()
         attempts = sorted(x.attempt for x in new_runs)
-        assert attempts == [1, 2]
-        retry = [x for x in new_runs if x.attempt == 2][0]
-        assert retry.origin_run_id == bad[0].id
+        assert attempts == [2]
+        assert new_runs[0].origin_run_id == bad[0].id
+        # 原批次 attempt 序列不变
+        old_runs = db.query(Run).filter_by(task_run_id=tr_id,
+                                           interaction_ref=bad[0].interaction_ref).all()
+        assert sorted(x.attempt for x in old_runs) == [1]
     finally:
         db.close()
 

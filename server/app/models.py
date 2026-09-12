@@ -232,6 +232,11 @@ class JobQueue(Base):
     idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     locked_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # F3（Spec §9.2.2）：真租约（locked_at 只是认领时间，租约到期才可回收）
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    owner_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -922,9 +927,39 @@ class TaskRun(Base):
     delivery_succeeded_count: Mapped[int] = mapped_column(Integer, default=0)
     delivery_failed_count: Mapped[int] = mapped_column(Integer, default=0)
     error_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # F3（Spec §9/§9.2.1）：增量计数与取消/超时/Recovery 血缘
+    processed_count: Mapped[int] = mapped_column(Integer, default=0)
+    total_state: Mapped[str] = mapped_column(String(16), default="estimating")
+    # estimating|exact（AC-030/031）
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    outcome_code: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    # F3（AC-038）：NO_ELIGIBLE_ITEMS 等业务终态说明（非系统失败）
+    retry_of_task_run_id: Mapped[str | None] = mapped_column(
+        ForeignKey("task_run.id", ondelete="RESTRICT"), nullable=True, index=True)
+    run_scope: Mapped[str] = mapped_column(String(16), default="all")  # all|failed_items|backfill
+    retry_round: Mapped[int] = mapped_column(Integer, default=0)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class TaskRunErrorAgg(Base):
+    """F3：批次错误聚合（summary topErrors 数据源，Spec §9.2.1）。"""
+    __tablename__ = "task_run_error_agg"
+    __table_args__ = (
+        UniqueConstraint("task_run_id", "category", "code",
+                         name="uq_tr_err_agg_run_cat_code"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    task_run_id: Mapped[str] = mapped_column(String(32), index=True)
+    category: Mapped[str] = mapped_column(String(32))
+    code: Mapped[str] = mapped_column(String(64))
+    count: Mapped[int] = mapped_column(Integer, default=0)
+    sample_refs: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ResultDelivery(Base):

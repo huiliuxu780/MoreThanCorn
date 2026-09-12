@@ -9,16 +9,17 @@
 from __future__ import annotations
 
 import hashlib
+import threading
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from .data_readers import ReaderError, get_reader
 from .models import (Agent, AnalysisTask, AnalysisTaskVersion, AgentVersion,
                      DataAsset, DataSnapshot, JobQueue, Release, Run, TaskRun, Workflow,
-                     WorkflowVersion)
+                     WorkflowVersion, TaskRunErrorAgg,)
 
 
 class TaskStartError(Exception):
@@ -321,6 +322,26 @@ def _dispatch_interaction_run(db: Session, run: Run, agent_version) -> None:
         db.expire(run)
 
 
+def _agg_error(db: Session, task_run_id: str, category: str, code: str,
+               ref: str | None = None) -> None:
+    """F3：批次错误聚合 upsert（summary topErrors 数据源）。"""
+    now = datetime.now(timezone.utc)
+    row = (db.query(TaskRunErrorAgg)
+           .filter_by(task_run_id=task_run_id, category=category, code=code)
+           .first())
+    if row is None:
+        db.add(TaskRunErrorAgg(task_run_id=task_run_id, category=category,
+                               code=code, count=1,
+                               sample_refs=[ref] if ref else [],
+                               first_seen_at=now, last_seen_at=now))
+    else:
+        row.count += 1
+        row.last_seen_at = now
+        if ref and ref not in (row.sample_refs or []):
+            row.sample_refs = (row.sample_refs or [])[:4] + [ref]
+    db.commit()
+
+
 def execute_task_run(task_run_id: str) -> None:
     """Worker 入口：分页读取 → 每 Interaction 一个 Run → 统计终态。"""
     from .db import SessionLocal
@@ -381,12 +402,13 @@ def execute_task_run(task_run_id: str) -> None:
             if ddv:
                 eligibility_conds = ddv.eligibility or []
 
-        ok = fail = skipped = read_n = 0
+        ok = fail = skipped = cancelled = read_n = 0
         errors: list[dict] = []
         seen_refs: set[str] = set()
         checksum = hashlib.sha256()
-        watermark: str | None = None  # 09 P1-04：增量水位（读取到的最大交互时间）
+        watermark: str | None = None
         cursor = None
+        work: list[dict] = []
         while True:
             try:
                 page = reader.read_page(locator, cursor, limit=50)
@@ -401,13 +423,11 @@ def execute_task_run(task_run_id: str) -> None:
                 db.commit()
                 return
             for row in page.rows:
-                # 窗口外 / 不满足 Eligibility 的行不属于本批次（不计入 total）
                 if not _window_hit(row, time_field, win_start, win_end):
                     continue
                 if not _eligibility_hit(row, eligibility_conds):
                     continue
                 read_n += 1
-                # 09 P1-04：增量水位——记录读取到的最大交互时间
                 ts = str(row.get(time_field) or row.get("interactionTime") or "")
                 if ts and (watermark is None or ts > watermark):
                     watermark = ts
@@ -418,8 +438,6 @@ def execute_task_run(task_run_id: str) -> None:
                     skipped += 1
                     continue
                 ref = str(row.get(id_field) or "").strip()
-                # 09 P0 修复轮（审计反例 3）：N 输入 = N Run——空 ID / 重复 ID 也创建
-                # 明确的 rejected/failed Run（不再只计数后 continue，保证逐条可追踪）。
                 rule_vid = tr.resolved_rule_version_id or tv.result_rule_version_id
                 if not ref:
                     placeholder = f"__missing_{read_n}__"
@@ -433,6 +451,7 @@ def execute_task_run(task_run_id: str) -> None:
                     fail += 1
                     errors.append({"row": read_n,
                                    "error": "EMPTY_INTERACTION_REF：缺少 " + id_field})
+                    _agg_error(db, tr.id, "input", "EMPTY_INTERACTION_REF", placeholder)
                     continue
                 if ref in seen_refs:
                     prior_attempt = db.execute(
@@ -448,47 +467,160 @@ def execute_task_run(task_run_id: str) -> None:
                     fail += 1
                     errors.append({"interactionRef": ref,
                                    "error": "DUPLICATE_INTERACTION_REF：重复输入"})
+                    _agg_error(db, tr.id, "input", "DUPLICATE_INTERACTION_REF", ref)
                     continue
                 seen_refs.add(ref)
                 checksum.update(ref.encode())
                 if random_percent > 0:
                     bucket = int(hashlib.sha256(ref.encode()).hexdigest()[:8], 16) % 10000
                     if bucket >= int(random_percent * 100):
-                        skipped += 1  # 未抽中（确定性抽样，非失败）
+                        skipped += 1
                         continue
                 input_payload = _apply_mapping(row, tv.input_mapping or {})
-                input_payload["__rawRow"] = row  # 输入快照：重放与证据（INV-12）
+                input_payload["__rawRow"] = row
                 if tv.output_schema_version_id:
                     input_payload["__outputSchemaVersionId"] = tv.output_schema_version_id
-                run = _interaction_run(tr, tv, wv, agent_version, release, status="queued",
-                                       input_payload=input_payload, ref=ref, attempt=1)
-                db.add(run)
-                db.commit()
-                _dispatch_interaction_run(db, run, agent_version)
-                # SDD 13 PR6：Task Core 不再普遍性假设 QualityResult——领域结果由领域
-                # 消费者/投影器负责（create-record 节点 / Module Mapper），核心只认 Run 终态。
-                if run.status == "succeeded":
-                    ok += 1
-                else:
-                    fail += 1
-                    errors.append({"interactionRef": ref,
-                                   "error": (run.error or {}).get("message", run.status)})
+                work.append({"ref": ref, "input": input_payload})
             if not page.next_cursor or (max_items and (ok + fail) >= max_items):
                 break
             cursor = page.next_cursor
 
+        # F3（AC-030）：total 尽早落库且 total_state=exact；processed 单调递增
         tr.total = read_n
+        tr.total_state = "exact"
+        tr.processed_count = 0
+        db.commit()
+
+        # F3 崩溃恢复入口（AC-036）：租约回收后重入时，把陈旧 running 项重置重跑
+        stale = (db.query(Run).filter(Run.task_run_id == tr.id, Run.status == "running")
+                 .filter(Run.started_at < datetime.now(timezone.utc) - timedelta(minutes=10))
+                 .all())
+        for sr in stale:
+            sr.status = "queued"
+            sr.attempt = (sr.attempt or 1) + 1
+        if stale:
+            db.commit()
+
+        # F3：Recovery 批次只执行预置的 queued Run（failed_items 作用域）
+        if tr.run_scope == "failed_items":
+            allowed = {r.interaction_ref for r in
+                       db.query(Run).filter(Run.task_run_id == tr.id,
+                                            Run.status == "queued").all()}
+            work = [w for w in work if w["ref"] in allowed]
+
+        concurrency = max(1, min(int((tv.sampling or {}).get("concurrency") or 4),
+                                 max(len(work), 1)))
+        item_timeout = float((tv.sampling or {}).get("item_timeout_seconds") or 600)
+        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import TimeoutError as FutTimeout
+        from concurrent.futures import as_completed
+
+        def _exec_one(item: dict):
+            sdb = SessionLocal()
+            try:
+                fresh = sdb.get(TaskRun, tr.id)
+                now = datetime.now(timezone.utc)
+                if fresh is not None and fresh.cancel_requested_at is not None:
+                    run = _interaction_run(fresh, tv, wv, agent_version, release,
+                                           status="cancelled",
+                                           input_payload=item["input"],
+                                           ref=item["ref"], attempt=1,
+                                           error={"message": "CANCELLED_BEFORE_DISPATCH"})
+                    sdb.add(run)
+                    sdb.commit()
+                    return "cancelled", item["ref"]
+                if fresh is not None and fresh.deadline_at and now > fresh.deadline_at:
+                    run = _interaction_run(fresh, tv, wv, agent_version, release,
+                                           status="cancelled",
+                                           input_payload=item["input"],
+                                           ref=item["ref"], attempt=1,
+                                           error={"message": "DEADLINE_PASSED"})
+                    sdb.add(run)
+                    sdb.commit()
+                    return "cancelled", item["ref"]
+                run = _interaction_run(fresh, tv, wv, agent_version, release,
+                                       status="queued", input_payload=item["input"],
+                                       ref=item["ref"], attempt=1)
+                sdb.add(run)
+                sdb.commit()
+                _dispatch_interaction_run(sdb, run, agent_version)
+                if item["abandoned"].is_set():
+                    # 项级超时后线程迟到：重放失败终态，覆盖迟到提交
+                    run.status = "failed"
+                    run.error = {"message": "ITEM_TIMEOUT"}
+                    run.ended_at = datetime.now(timezone.utc)
+                    sdb.commit()
+                    return ("fail", item["ref"], "ITEM_TIMEOUT")
+                if run.status == "succeeded":
+                    return "ok", item["ref"]
+                return ("fail", item["ref"],
+                        (run.error or {}).get("message", run.status))
+            finally:
+                sdb.close()
+
+        for it in work:
+            it["abandoned"] = threading.Event()
+        with ThreadPoolExecutor(max_workers=concurrency) as ex:
+            futs = [ex.submit(_exec_one, it) for it in work]
+            for fut in as_completed(futs):
+                try:
+                    res = fut.result(timeout=item_timeout)
+                except FutTimeout:
+                    work[futs.index(fut)]["abandoned"].set()
+                    tdb = SessionLocal()
+                    try:
+                        tr_f = tdb.get(TaskRun, tr.id)
+                        run = _interaction_run(tr_f, tv, wv, agent_version, release,
+                                               status="failed", input_payload={},
+                                               ref="__timeout__", attempt=1,
+                                               error={"message": "ITEM_TIMEOUT"})
+                        tdb.add(run)
+                        tdb.commit()
+                    finally:
+                        tdb.close()
+                    fail += 1
+                    errors.append({"error": "ITEM_TIMEOUT"})
+                    _agg_error(db, tr.id, "runtime", "ITEM_TIMEOUT", "__timeout__")
+                    db.execute(update(TaskRun).where(TaskRun.id == tr.id).values(
+                        processed_count=TaskRun.processed_count + 1))
+                    db.commit()
+                    continue
+                if res[0] == "ok":
+                    ok += 1
+                elif res[0] == "cancelled":
+                    cancelled += 1
+                    _agg_error(db, tr.id, "lifecycle", "CANCELLED", res[1])
+                else:
+                    fail += 1
+                    errors.append({"interactionRef": res[1], "error": res[2]})
+                    _agg_error(db, tr.id, "execution",
+                               str(res[2])[:64], res[1])
+                db.execute(update(TaskRun).where(TaskRun.id == tr.id).values(
+                    processed_count=TaskRun.processed_count + 1))
+                db.commit()
+
         tr.succeeded_count = ok
         tr.failed_count = fail
         tr.skipped_count = skipped
-        tr.error_summary = {"errors": errors[:20]} if errors else None
-        if ok > 0 and fail == 0:
+        tr.cancelled_count = cancelled
+        tr.processed_count = read_n
+        agg = (db.query(TaskRunErrorAgg).filter_by(task_run_id=tr.id)
+               .order_by(TaskRunErrorAgg.count.desc()).limit(10).all())
+        tr.error_summary = ({
+            "errors": errors[:20],
+            "topErrors": [{"category": a.category, "code": a.code, "count": a.count}
+                          for a in agg],
+        } if errors else None)
+        if tr.cancel_requested_at is not None and ok == 0 and fail == 0:
+            tr.status = "cancelled"
+        elif ok > 0 and fail == 0 and cancelled == 0:
             tr.status = "succeeded"
         elif ok > 0:
             tr.status = "partial"
         elif read_n == 0 or skipped == read_n:
-            tr.status = "failed"
-            tr.error_summary = {"errors": errors + [{"error": "NO_ELIGIBLE_ROWS"}]}
+            # F3（AC-038）：空数据集=成功结束+业务终态码，不显示系统失败
+            tr.status = "succeeded"
+            tr.outcome_code = "NO_ELIGIBLE_ITEMS"
         else:
             tr.status = "failed"
         tr.ended_at = datetime.now(timezone.utc)
@@ -496,7 +628,7 @@ def execute_task_run(task_run_id: str) -> None:
             snap.read_count = read_n
             snap.checksum = checksum.hexdigest()
             if watermark:
-                snap.checkpoint = watermark  # 09 P1-04：增量水位
+                snap.checkpoint = watermark
         db.commit()
     except Exception as exc:  # noqa: BLE001
         db.rollback()
@@ -542,60 +674,60 @@ def reaggregate_task_run(db: Session, tr: TaskRun) -> None:
         tr.ended_at = datetime.now(timezone.utc)
 
 
-def retry_failed_in_taskrun(task_run_id: str) -> None:
-    """09 P1-06：重跑批次内失败交互（新 attempt + origin 谱系），完成后重汇父批次。"""
+def retry_failed_in_taskrun(task_run_id: str) -> TaskRun | None:
+    """F3（AC-035A）：失败重试 = 新建 Recovery TaskRun，原批次保持终态。
+
+    冻结版本/快照从原批次复制（AC-035）；仅重试「最新 attempt 仍失败」的交互；
+    Recovery 批次 run_scope=failed_items、retry_round+1、retry_of_task_run_id 血缘。
+    """
     from .db import SessionLocal
-    from .runner import execute_run
     db = SessionLocal()
     try:
         tr = db.get(TaskRun, task_run_id)
         if not tr or tr.status not in ("partial", "failed"):
-            return
-        tr.status = "running"
-        db.commit()
-        failed = db.query(Run).filter(Run.task_run_id == task_run_id,
-                                      Run.status == "failed").all()
-        # 仅对"最新 attempt 仍失败"的交互重试，避免重复重试已成功项
+            return None
         latest: dict[str, Run] = {}
         for r in db.query(Run).filter(Run.task_run_id == task_run_id).all():
             cur = latest.get(r.interaction_ref)
             if cur is None or (r.attempt or 1) > (cur.attempt or 1):
                 latest[r.interaction_ref] = r
         to_retry = [r for r in latest.values() if r.status == "failed"]
-        tv = db.get(AnalysisTaskVersion, tr.task_version_id)
-        agent_target = bool(tv is not None and tv.execution_target_type == "agent")
-        agent_version = release = None
-        if agent_target:
-            agent_version = (db.get(AgentVersion, tr.resolved_agent_version_id)
-                             if tr.resolved_agent_version_id else None)
-            release = db.get(Release, tr.resolved_release_id) if tr.resolved_release_id else None
+        if not to_retry:
+            return None
+        rec = TaskRun(
+            task_id=tr.task_id, task_version_id=tr.task_version_id,
+            data_snapshot_id=tr.data_snapshot_id,
+            resolved_rule_version_id=tr.resolved_rule_version_id,
+            resolved_workflow_version_id=tr.resolved_workflow_version_id,
+            resolved_agent_version_id=tr.resolved_agent_version_id,
+            resolved_release_id=tr.resolved_release_id,
+            runtime_binding_snapshot=tr.runtime_binding_snapshot,
+            trigger=tr.trigger, status="queued",
+            total=len(to_retry), total_state="exact",
+            retry_of_task_run_id=tr.id, run_scope="failed_items",
+            retry_round=(tr.retry_round or 0) + 1)
+        db.add(rec)
+        db.flush()
         for fr in to_retry:
-            if agent_target:
-                nr = _interaction_run(tr, tv, None, agent_version, release,
-                                      status="queued", input_payload=fr.input,
-                                      ref=fr.interaction_ref, attempt=(fr.attempt or 1) + 1,
-                                      error=None)
-                nr.origin_run_id = fr.id
-            else:
-                nr = Run(workflow_id=fr.workflow_id, workflow_version_id=fr.workflow_version_id,
-                         trigger="batch", status="queued", input=fr.input,
-                         definition_source="version", task_run_id=task_run_id, task_id=tr.task_id,
-                         task_version_id=fr.task_version_id, interaction_ref=fr.interaction_ref,
-                         attempt=(fr.attempt or 1) + 1, origin_run_id=fr.id,
-                         definition_version_id=fr.definition_version_id,
-                         rule_version_id=fr.rule_version_id, data_snapshot_id=fr.data_snapshot_id)
+            nr = Run(workflow_id=fr.workflow_id,
+                     workflow_version_id=fr.workflow_version_id,
+                     trigger="batch", status="queued", input=fr.input,
+                     definition_source="version", task_run_id=rec.id,
+                     task_id=tr.task_id, task_version_id=fr.task_version_id,
+                     interaction_ref=fr.interaction_ref,
+                     attempt=(fr.attempt or 1) + 1, origin_run_id=fr.id,
+                     definition_version_id=fr.definition_version_id,
+                     rule_version_id=fr.rule_version_id,
+                     data_snapshot_id=fr.data_snapshot_id)
             db.add(nr)
-            db.commit()
-            _dispatch_interaction_run(db, nr, agent_version)
-            db.expire(nr)
-        reaggregate_task_run(db, tr)
+        db.add(JobQueue(type="task-run", payload={"task_run_id": rec.id},
+                        run_at=datetime.now(timezone.utc)))
         db.commit()
-    except Exception as exc:  # noqa: BLE001
+        db.refresh(rec)
+        return rec
+    except Exception:  # noqa: BLE001
         db.rollback()
-        tr = db.get(TaskRun, task_run_id)
-        if tr and tr.status == "running":
-            tr.status = "failed"
-            tr.error_summary = {"errors": [{"error": f"RETRY_ERROR: {exc}"}]}
-            db.commit()
+        return None
     finally:
+        db.close()
         db.close()

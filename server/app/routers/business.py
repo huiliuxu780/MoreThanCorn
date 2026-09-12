@@ -978,6 +978,15 @@ def _task_run_dto(tr) -> dict:
             "status": tr.status, "total": tr.total,
             "succeeded": tr.succeeded_count, "failed": tr.failed_count,
             "skipped": tr.skipped_count, "cancelled": tr.cancelled_count,
+            # F3：增量计数/业务终态码/取消意图
+            "processedCount": tr.processed_count,
+            "totalState": tr.total_state,
+            "outcomeCode": tr.outcome_code,
+            "cancelRequestedAt": (tr.cancel_requested_at.isoformat()
+                                  if tr.cancel_requested_at else None),
+            "retryOfTaskRunId": tr.retry_of_task_run_id,
+            "runScope": tr.run_scope,
+            "retryRound": tr.retry_round,
             "execution": {"status": tr.status, "total": tr.total,
                           "succeeded": tr.succeeded_count, "failed": tr.failed_count,
                           "skipped": tr.skipped_count, "cancelled": tr.cancelled_count},
@@ -1208,12 +1217,84 @@ def retry_failed_interactions(tid: str, trid: str, db: Session = Depends(get_db)
         raise HTTPException(409, f"仅 partial/failed 批次可重试（当前 {tr.status}）")
     n_failed = db.query(Run).filter(Run.task_run_id == trid, Run.status == "failed").count()
     if n_failed == 0:
-        return {"retried": 0, "taskRunId": trid}  # 幂等：无失败项不入队
-    # 09 P1-06（审计：父批次永久 partial）：入队统一重试任务，
-    # 重跑失败交互后重汇父批次终态
-    db.add(JobQueue(type="task-run-retry", payload={"task_run_id": trid}))
+        return {"retried": 0, "taskRunId": trid,
+                "recoveryTaskRunId": None}  # 幂等：无失败项不建 Recovery
+    # F3（AC-035A）：Recovery TaskRun——原批次保持终态
+    from ..task_runner import retry_failed_in_taskrun
+    rec = retry_failed_in_taskrun(trid)
+    if rec is None:
+        return {"retried": 0, "taskRunId": trid,
+                "recoveryTaskRunId": None}  # 无失败项：幂等空操作
+    return {"retried": rec.total, "taskRunId": trid,
+            "recoveryTaskRunId": rec.id,
+            "statusUrl": f"/api/task-runs/{rec.id}"}
+
+
+@router.post("/api/task-runs/{trid}/cancel", status_code=202)
+@router.post("/api/analysis-task-runs/{trid}/cancel", status_code=202)
+def cancel_task_run(trid: str, db: Session = Depends(get_db),
+                    _user: dict = Depends(require_operator)):
+    """F3（AC-033）：协作式取消——不再派发新项，活动项最终结算，批次进入 cancelled。"""
+    from ..models import TaskRun
+    tr = db.get(TaskRun, trid)
+    if tr is None:
+        raise HTTPException(404, "TaskRun 不存在")
+    if tr.status in ("succeeded", "failed", "cancelled", "partial"):
+        raise HTTPException(409, f"批次已终态（{tr.status}）")
+    tr.cancel_requested_at = datetime.now(timezone.utc)
     db.commit()
-    return {"retried": n_failed, "taskRunId": trid}
+    return {"id": trid, "status": tr.status, "cancelRequested": True}
+
+
+@router.get("/api/task-runs/{trid}/summary")
+@router.get("/api/analysis-task-runs/{trid}/summary")
+def task_run_summary(trid: str, db: Session = Depends(get_db),
+                     _user: dict = Depends(require_role())):
+    """F3（Spec §12.4）：批次 summary——计数/速率/ETA/topErrors/执行与投递状态分离。"""
+    from ..models import Run, TaskRun, TaskRunErrorAgg
+    tr = db.get(TaskRun, trid)
+    if tr is None:
+        raise HTTPException(404, "TaskRun 不存在")
+    counts = {"succeeded": 0, "failed": 0, "skipped": 0, "cancelled": 0}
+    for r in db.query(Run).filter(Run.task_run_id == trid).all():
+        if r.status == "succeeded":
+            counts["succeeded"] += 1
+        elif r.status == "failed":
+            counts["failed"] += 1
+        elif r.status == "cancelled":
+            counts["cancelled"] += 1
+    active = (db.query(Run).filter(Run.task_run_id == trid,
+                                   Run.status.in_(("queued", "running"))).count())
+    agg = (db.query(TaskRunErrorAgg).filter_by(task_run_id=trid)
+           .order_by(TaskRunErrorAgg.count.desc()).limit(10).all())
+    elapsed = None
+    if tr.started_at:
+        end = tr.ended_at or datetime.now(timezone.utc)
+        elapsed = max((end - tr.started_at).total_seconds(), 0.0)
+    rate = round((tr.processed_count or 0) / elapsed, 2) if elapsed else None
+    eta = None
+    if rate and active:
+        eta = int(active / rate)
+    return {
+        "id": tr.id,
+        "status": tr.status,
+        "totalState": tr.total_state,
+        "total": tr.total,
+        "processed": tr.processed_count,
+        "processedCount": tr.processed_count,
+        "totalState": tr.total_state,
+        "outcomeCode": tr.outcome_code,
+        "cancelRequestedAt": (tr.cancel_requested_at.isoformat()
+                              if tr.cancel_requested_at else None),
+        "active": active,
+        "counts": counts,
+        "ratePerSecond": rate,
+        "etaSeconds": eta,
+        "topErrors": [{"category": a.category, "code": a.code, "count": a.count}
+                      for a in agg],
+        "executionStatus": tr.status,
+        "deliveryStatus": tr.delivery_status,
+    }
 
 
 @router.post("/api/result-deliveries/{did}/retry", status_code=202)
