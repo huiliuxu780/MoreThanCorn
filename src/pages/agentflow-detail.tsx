@@ -266,6 +266,48 @@ export default function AgentFlowDetailPage() {
     }
   }
 
+  // P4：AI 生成 / 调整脚本（真实 LLM；产物需人工确认后保存为新版本）
+  const [genOpen, setGenOpen] = React.useState(false)
+  const [genBrief, setGenBrief] = React.useState("")
+  const [genResult, setGenResult] = React.useState<string | null>(null)
+  const [genBusy, setGenBusy] = React.useState(false)
+  const runGenerate = async () => {
+    if (!genBrief.trim()) {
+      toast.error("请先描述需求")
+      return
+    }
+    setGenBusy(true)
+    try {
+      const r = await asApi.generateScript({
+        brief: genBrief,
+        waker_ids: agents.map((a) => a.id),
+        waker_names: Object.fromEntries(agents.map((a) => [a.id, a.name])),
+        current_script: scriptDirty ? scriptDraft : (scriptDef?.script ?? undefined),
+      })
+      setGenResult(r.script)
+    } catch (e) {
+      toast.error(`生成失败：${(e as Error).message}`)
+    } finally {
+      setGenBusy(false)
+    }
+  }
+  const applyGenerated = async () => {
+    if (!genResult) return
+    try {
+      const meta = { ...((scriptDef?.meta ?? {}) as Record<string, unknown>) }
+      delete meta.callSites
+      delete meta.projection
+      await asApi.createFlowVersion(fid, { kind: "script", script: genResult, meta })
+      toast.success("已保存为新版本（画布投影已重算）")
+      setGenOpen(false)
+      setGenResult(null)
+      setGenBrief("")
+      versions.retry()
+    } catch (e) {
+      toast.error(`保存失败：${(e as Error).message}`)
+    }
+  }
+
   const applyNodeEdit = async () => {
     if (!editing) return
     const next = nodes.map((n) => (n.id === editing.id ? { ...n, prompt_template: editNote } : n))
@@ -527,6 +569,9 @@ export default function AgentFlowDetailPage() {
                 脚本是唯一事实源；保存即生成新版本并重算画布投影
               </span>
               <span className="ml-auto" />
+              <Button size="sm" variant="outline" onClick={() => { setGenOpen(true); setGenResult(null) }}>
+                AI 生成 / 调整
+              </Button>
               {scriptDirty && (
                 <Button size="sm" onClick={() => void saveScriptVersion()}>
                   保存为新版本
@@ -933,6 +978,44 @@ export default function AgentFlowDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)}>取消</Button>
             <Button onClick={() => void applyNodeEdit()}>保存为新版本</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* P4：AI 生成 / 调整脚本（真实 LLM，产物过契约校验后人工确认入库） */}
+      <Dialog open={genOpen} onOpenChange={(o) => { setGenOpen(o); if (!o) setGenResult(null) }}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>AI 生成 / 调整脚本</DialogTitle>
+            <DialogDescription>
+              用自然语言描述需求，模型按脚本契约生成完整 Python；生成结果需确认后才保存为新版本。
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            rows={4}
+            value={genBrief}
+            onChange={(e) => setGenBrief(e.target.value)}
+            placeholder="例：每周生成周会材料——先生成议程草稿，向我确认后再并行写主持人/参会者/记录三份清单，最后交叉校验整合成 Markdown。"
+          />
+          {genResult !== null && (
+            <div className="max-h-[360px] overflow-auto rounded border" style={{ borderColor: "var(--border)" }}>
+              <CodeMirror
+                value={genResult}
+                height="360px"
+                extensions={[python()]}
+                editable={false}
+              />
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setGenOpen(false); setGenResult(null) }}>取消</Button>
+            {genResult === null ? (
+              <Button disabled={genBusy || !genBrief.trim()} onClick={() => void runGenerate()}>
+                {genBusy ? "生成中…" : "生成脚本"}
+              </Button>
+            ) : (
+              <Button onClick={() => void applyGenerated()}>确认并保存为新版本</Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

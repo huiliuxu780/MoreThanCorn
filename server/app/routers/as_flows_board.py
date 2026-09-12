@@ -16,6 +16,8 @@ from .. import agentscope_client as rt
 from ..agentflow_executor import (
     rerun_node,
     resolve_agentflow_release,
+    scan_script_wakers,
+    script_projection,
     start_run,
     validate_script_definition,
 )
@@ -453,6 +455,86 @@ def answer_run_input(
         value=body.value, skipped=body.skipped,
     )
     return {"ok": True, "node_run_id": node.id}
+
+
+class GenerateScriptBody(BaseModel):
+    brief: str
+    waker_ids: list[str] = []
+    waker_names: dict[str, str] = {}
+    current_script: str | None = None
+
+
+def _strip_code_fences(text: str) -> str:
+    t = (text or "").strip()
+    if t.startswith("```"):
+        t = t.split("\n", 1)[1] if "\n" in t else t
+        if t.rstrip().endswith("```"):
+            t = t.rstrip()[:-3]
+    return t.strip() + "\n"
+
+
+@flows_router.post("/generate-script")
+def generate_script(body: GenerateScriptBody, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
+    """P4/AC-S6：NL → 脚本（真实 LLM，走平台 _call_model 通道）；产物过契约校验，
+    未过带错重试一次，仍未过 422 交人工编辑。"""
+    if not body.brief.strip():
+        raise HTTPException(422, "brief 不能为空")
+    if not body.waker_ids:
+        raise HTTPException(422, "至少提供一个可用 waker（Agent id）")
+    waker_list = "\n".join(
+        f'- waker="{wid}"（{body.waker_names.get(wid, wid)}）' for wid in body.waker_ids
+    )
+    current = (
+        f"\n\n当前脚本（在其基础上按需求调整，未提及的部分保持稳定）：\n{body.current_script}"
+        if body.current_script
+        else ""
+    )
+    base_prompt = (
+        "你是 WakerFlow 脚本生成器。把用户需求写成一个可直接运行的 Python 脚本。\n\n"
+        "硬性契约（违反即作废）：\n"
+        "1. 顶层定义 META = {\"inputSchema\": {...}, \"outputSchema\": {...}, \"phases\": [...]}，"
+        "均为 JSON Schema，属性带中文 description，phases 是阶段标题列表；\n"
+        "2. 必须定义 async def run(ctx)，函数体第一行 "
+        "`phase, log, worker, askUser, parallel = ctx.primitives`；\n"
+        "3. 每个工作项写成 `await worker(<中文提示词>, waker=<waker id>, "
+        "label=<唯一标识>, phase=<阶段标题>)`，需要结构化输出时加 schema=<JSON Schema>；\n"
+        "4. 人工确认/输入用 `await askUser(<中文问题>, options=[...], label=<唯一标识>, "
+        "default=<缺省选项>)`，返回 {\"value\", \"skipped\"}；\n"
+        "5. 并行用 `await parallel([lambda: worker(...), ...])`，失败子项为 None，"
+        "脚本需自行 filter 后使用；\n"
+        "6. 循环/条件直接用 for/if 等原生语法；run 返回一个 dict（对照 META.outputSchema）；\n"
+        "7. 只允许使用下方给定的 waker id，且每个 worker 调用必须带 waker= 常量参数。\n\n"
+        f"可用的 waker：\n{waker_list}{current}\n\n用户需求：\n{body.brief}\n\n"
+        "只输出 Python 源码本体，不要 markdown 围栏，不要任何解释。"
+    )
+    from ..runner import _call_model
+
+    last_error = ""
+    for attempt in range(2):
+        prompt = base_prompt
+        if attempt > 0:
+            prompt += (
+                f"\n\n上一次生成未通过校验，错误：{last_error}\n"
+                "请修正该问题后重新输出完整脚本（仍只输出源码本体）。"
+            )
+        try:
+            raw, _t = _call_model(db, "qwen-plus", prompt)
+        except Exception as exc:  # noqa: BLE001 —— LLM 通道失败直接 422，不静默
+            raise HTTPException(502, f"模型调用失败：{exc}") from exc
+        code = _strip_code_fences(raw)
+        try:
+            scan_script_wakers(code)
+            script_projection(code)
+            ids = scan_script_wakers(code)
+            unknown = [w for w in ids if w not in body.waker_ids]
+            if unknown:
+                raise ValueError(f"使用了未授权的 waker: {unknown}")
+            if not ids:
+                raise ValueError("没有任何 worker(waker=...) 调用")
+            return {"script": code, "attempts": attempt + 1}
+        except ValueError as exc:
+            last_error = str(exc)
+    raise HTTPException(422, f"生成脚本未通过契约校验：{last_error}")
 
 
 # ---------------------------------------------------------------------------

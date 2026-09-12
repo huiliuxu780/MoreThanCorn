@@ -528,6 +528,57 @@ def test_script_run_incremental_and_settled(monkeypatch):
     assert seen_mid.get("ok") is True
 
 
+def test_generate_script_validation_and_retry(monkeypatch):
+    """P4：产物过契约校验；坏→带错重试→好（attempts=2）；两次坏/未授权 waker→422。"""
+    from fastapi import HTTPException
+
+    from app.routers.as_flows_board import GenerateScriptBody, generate_script
+
+    aid = _make_agent()
+    good = _script(aid)
+    calls = {"n": 0}
+
+    def flaky_model(db, model_id, prompt):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return "def broken(:\n", {}
+        return good, {}
+
+    monkeypatch.setattr("app.runner._call_model", flaky_model)
+    r = generate_script(
+        body=GenerateScriptBody(brief="测试需求", waker_ids=[aid]),
+        db=SessionLocal(), user={"username": "dev"})
+    assert r["attempts"] == 2
+    assert "async def run(ctx)" in r["script"]
+
+    def bad_model(db, model_id, prompt):
+        return "x = 1\n", {}
+
+    monkeypatch.setattr("app.runner._call_model", bad_model)
+    with pytest.raises(HTTPException) as ei:
+        generate_script(
+            body=GenerateScriptBody(brief="测试需求", waker_ids=[aid]),
+            db=SessionLocal(), user={"username": "dev"})
+    assert ei.value.status_code == 422
+
+    def ghost_model(db, model_id, prompt):
+        return good.replace(aid, "ghost-agent"), {}
+
+    monkeypatch.setattr("app.runner._call_model", ghost_model)
+    with pytest.raises(HTTPException) as ei:
+        generate_script(
+            body=GenerateScriptBody(brief="测试需求", waker_ids=[aid]),
+            db=SessionLocal(), user={"username": "dev"})
+    assert ei.value.status_code == 422
+    assert "未授权" in str(ei.value.detail)
+
+    with pytest.raises(HTTPException) as ei:
+        generate_script(
+            body=GenerateScriptBody(brief="  ", waker_ids=[aid]),
+            db=SessionLocal(), user={"username": "dev"})
+    assert ei.value.status_code == 422
+
+
 def test_runtime_script_runner_syntax():
     """运行时 script_runner 与主接线至少语法成立（跨栈行为由 live 栈覆盖）。"""
     import ast

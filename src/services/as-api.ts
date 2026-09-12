@@ -216,6 +216,16 @@ export const asApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  generateScript: (body: {
+    brief: string
+    waker_ids: string[]
+    waker_names?: Record<string, string>
+    current_script?: string
+  }) =>
+    req<{ script: string; attempts: number }>("/api/v2/agentflows/generate-script", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   rerunNode: (rid: string, nodeId: string) =>
     req<Record<string, unknown>>(`/api/v2/agentflows/runs/${rid}/nodes/${nodeId}/rerun`, {
       method: "POST",
