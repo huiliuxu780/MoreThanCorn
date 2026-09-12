@@ -47,6 +47,26 @@ def u(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
+def _dequeue_run_jobs(run_id: str) -> None:
+    """摘除该 run 的待执行 job。
+
+    全量套件中先前测试文件模块级启动的常驻 worker 线程仍在轮询 job_queue；
+    门控类用例执行窗口长，若被其认领会与显式 _dispatch_job 双执行
+    （needs_input 处理两次 → 节点行重复）。显式驱动的用例必须先摘队。"""
+    from app.models import JobQueue
+
+    db = SessionLocal()
+    try:
+        db.query(JobQueue).filter(
+            JobQueue.type == "agentflow-execution",
+            JobQueue.status == "pending",
+            JobQueue.payload["run_id"].astext == run_id,
+        ).update({"status": "done"}, synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
+
 def _make_agent() -> str:
     from app.models import Model
 
@@ -485,3 +505,186 @@ def test_runtime_script_runner_syntax():
         ast.parse((root / name).read_text())
     source = (root / "main.py").read_text()
     assert "script_router" in source, "运行时 main 必须挂载 script_router"
+    assert "script-resume" in (root / "script_runner.py").read_text()
+
+
+# ---------------------------------------------------------------------------
+# P2：askUser 挂起/恢复（AC-S3 平台侧）
+# ---------------------------------------------------------------------------
+
+
+def _ask_script(aid: str) -> str:
+    return f"""
+META = {{"scope_agent_id": "{aid}"}}
+
+async def run(ctx):
+    askUser = ctx.askUser
+    check = await askUser("议程草案已生成，请选择：", options=["采纳当前议程", "需要调整"],
+                          label="议程确认")
+    if check["skipped"] or str(check["value"]).startswith("采纳"):
+        return {{"decision": "accepted"}}
+    return {{"decision": "revised"}}
+"""
+
+
+def test_ask_user_resume_roundtrip(monkeypatch):
+    """端到端：needs_input 落 waiting 节点 → 答复写回 runtime → 脚本继续 → 终态。"""
+    import threading
+
+    aid = _make_agent()
+    _, rel = _make_flow_release(aid, _ask_script(aid))
+    db = SessionLocal()
+    try:
+        release = db.get(AgentFlowRelease, rel)
+        from app.agentflow_executor import start_run
+
+        run = start_run(db, "dev", release, {})
+        run_id = run.id
+    finally:
+        db.close()
+    _dequeue_run_jobs(run_id)
+
+    gate = threading.Event()
+    captured: dict = {}
+
+    def fake_stream(body, timeout=900.0):
+        def gen():
+            yield {"event": "needs_input",
+                   "data": {"request_id": "inp-test-1", "label": "议程确认",
+                            "prompt": "议程草案已生成，请选择：",
+                            "options": ["采纳当前议程", "需要调整"]}}
+            assert gate.wait(timeout=15), "resume 未到达，执行流卡死"
+            value = captured.get("value")
+            yield {"event": "stage:议程确认",
+                   "data": {"phase": "end", "status": "succeeded",
+                            "output": {"value": value, "skipped": False}, "error": ""}}
+            yield {"event": "flow:complete",
+                   "data": {"status": "succeeded", "output": {"decision": "accepted"}}}
+
+        return gen()
+
+    def fake_resume(**kwargs):
+        captured.update(kwargs)
+        captured["value"] = "采纳当前议程"
+        gate.set()
+        return {"ok": True}
+
+    monkeypatch.setattr(rt, "script_run_stream", fake_stream)
+    monkeypatch.setattr(rt, "script_resume", fake_resume)
+
+    def resumer() -> None:
+        node = None
+        for _ in range(120):
+            s = SessionLocal()
+            try:
+                s.expire_all()
+                node = (
+                    s.query(AgentFlowNodeRun)
+                    .filter_by(run_id=run_id, status="waiting")
+                    .first()
+                )
+            finally:
+                s.close()
+            if node is not None:
+                break
+            time.sleep(0.1)
+        assert node is not None, "waiting 节点未落库"
+        assert node.input["request_id"] == "inp-test-1"
+        from app.routers.as_flows_board import RunInputBody, answer_run_input
+
+        answer_run_input(
+            rid=run_id, node_run_id=node.id,
+            body=RunInputBody(value="采纳当前议程"),
+            db=SessionLocal(), user={"username": "dev"},
+        )
+
+    t = threading.Thread(target=resumer)
+    t.start()
+    try:
+        _dispatch_job("agentflow-execution", {"run_id": run_id, "user_id": "dev"})
+    finally:
+        t.join(timeout=20)
+
+    assert captured.get("request_id") == "inp-test-1"
+    s = SessionLocal()
+    try:
+        s.expire_all()
+        run = s.get(AgentFlowRun, run_id)
+        assert run.status == "succeeded"
+        assert run.output == {"decision": "accepted"}
+        node = s.query(AgentFlowNodeRun).filter_by(run_id=run_id, node_id="议程确认").one()
+        assert node.status == "succeeded"
+        assert node.output == {"value": "采纳当前议程", "skipped": False}
+    finally:
+        s.close()
+
+
+def test_waiting_nodes_settled_when_run_terminal(monkeypatch):
+    """run 终态时仍未答复的 waiting 节点 → cancelled（kill/deadline 路径）。"""
+    aid = _make_agent()
+    _, rel = _make_flow_release(aid, _ask_script(aid))
+    db = SessionLocal()
+    try:
+        release = db.get(AgentFlowRelease, rel)
+        from app.agentflow_executor import start_run
+
+        run = start_run(db, "dev", release, {})
+        run_id = run.id
+    finally:
+        db.close()
+    _dequeue_run_jobs(run_id)
+
+    def fake_stream(body, timeout=900.0):
+        def gen():
+            yield {"event": "needs_input",
+                   "data": {"request_id": "inp-test-2", "label": "议程确认",
+                            "prompt": "?", "options": ["采纳"]}}
+            yield {"event": "flow:complete",
+                   "data": {"status": "failed", "output": {}, "error": "killed"}}
+
+        return gen()
+
+    monkeypatch.setattr(rt, "script_run_stream", fake_stream)
+    _dispatch_job("agentflow-execution", {"run_id": run_id, "user_id": "dev"})
+
+    s = SessionLocal()
+    try:
+        s.expire_all()
+        assert s.get(AgentFlowRun, run_id).status == "failed"
+        node = s.query(AgentFlowNodeRun).filter_by(run_id=run_id, node_id="议程确认").one()
+        assert node.status == "cancelled"
+    finally:
+        s.close()
+
+
+def test_answer_input_rejects_non_waiting_and_terminal():
+    """答复端点负向：非 waiting 节点 409；终态 run 409；未知节点 404。"""
+    from app.routers.as_flows_board import RunInputBody, answer_run_input
+
+    db = SessionLocal()
+    try:
+        run = AgentFlowRun(release_id="rel-p2", status="succeeded", trigger_kind="manual")
+        db.add(run)
+        db.flush()
+        node = AgentFlowNodeRun(run_id=run.id, node_id="n1", status="succeeded")
+        db.add(node)
+        db.commit()
+        with pytest.raises(Exception) as ei:
+            answer_run_input(rid=run.id, node_run_id=node.id,
+                             body=RunInputBody(value="x"), db=db, user={"username": "dev"})
+        assert getattr(ei.value, "status_code", None) == 409  # run 已终态
+        run.status = "running"
+        db.commit()
+        with pytest.raises(Exception) as ei:
+            answer_run_input(rid=run.id, node_run_id=node.id,
+                             body=RunInputBody(value="x"), db=db, user={"username": "dev"})
+        assert getattr(ei.value, "status_code", None) == 409  # 节点非 waiting
+        with pytest.raises(Exception) as ei:
+            answer_run_input(rid=run.id, node_run_id="nope",
+                             body=RunInputBody(value="x"), db=db, user={"username": "dev"})
+        assert getattr(ei.value, "status_code", None) == 404
+        db.delete(node)
+        db.delete(run)
+        db.commit()
+    finally:
+        db.close()

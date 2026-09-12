@@ -110,6 +110,23 @@ def _fake_stream(events: list):
     return fake
 
 
+def _dequeue_run_jobs(run_id: str) -> None:
+    """摘除该 run 的待执行 job——全量套件中先前测试的常驻 worker 线程可能认领，
+    与显式 _dispatch_job/execute 双执行（长窗口门控用例下必现，P2 轮教训）。"""
+    from app.models import JobQueue
+
+    db = SessionLocal()
+    try:
+        db.query(JobQueue).filter(
+            JobQueue.type == "agentflow-execution",
+            JobQueue.status == "pending",
+            JobQueue.payload["run_id"].astext == run_id,
+        ).update({"status": "done"}, synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------------
 # AC-004：run-now 不阻塞
 # ---------------------------------------------------------------------------
@@ -158,6 +175,7 @@ def test_execute_records_nodes_incrementally(monkeypatch):
         run_id = run.id
     finally:
         db.close()
+    _dequeue_run_jobs(run_id)
     sid = f"sess-{run_id[:12]}"
 
     seen_mid: dict = {}
@@ -221,6 +239,7 @@ def test_worker_dispatch_table_consumes_agentflow_job(monkeypatch):
         run_id = run.id
     finally:
         db.close()
+    _dequeue_run_jobs(run_id)
     sid = f"sess-{run_id[:12]}"
     events = [
         {"event": "stage:n1", "data": {"phase": "start", "session_id": sid}},
@@ -254,6 +273,7 @@ def test_worker_reexecute_increments_attempt(monkeypatch):
         db.commit()
     finally:
         db.close()
+    _dequeue_run_jobs(run_id)
     sid = f"sess-{run_id[:12]}"
     events = [
         {"event": "stage:n1", "data": {"phase": "start", "session_id": sid}},

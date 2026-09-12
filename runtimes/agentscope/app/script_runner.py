@@ -1,4 +1,4 @@
-"""脚本编排运行时端点（16号稿 P1）。
+"""脚本编排运行时端点（16号稿 P1/P2）。
 
 POST /mtc/script-run (SSE)：spawn 沙箱子进程（app/script_sandbox.py，stdlib-only），
 把五原语 RPC 分派到与 DAG 形态同源的节点执行件（Session/结构化输出/internal token
@@ -7,19 +7,21 @@ POST /mtc/script-run (SSE)：spawn 沙箱子进程（app/script_sandbox.py，std
 - ``stage:{label}`` start（携带 session_id/agent_id）/ end（status/output/error）
   —— 平台 F0 增量落库零改动消费；
 - ``phase`` / ``log`` —— 观测事件（平台透传）；
+- ``needs_input`` —— askUser 挂起（P2）：平台落 waiting 节点并弹确认卡，
+  经 POST /mtc/script-resume 恢复；
 - ``flow:complete`` —— 终态。
 
 沙箱加固见 16号稿 §8：最小 env、rlimits、一次性执行（无持久通道）、deadline SIGKILL。
-askUser 在 P2 接入（当前 RPC 返回错误，脚本会以失败结算——诚实行为）。
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import threading
+import uuid
 from typing import Any, AsyncGenerator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -43,6 +45,36 @@ from .script_sandbox import spawn_sandbox
 script_router = APIRouter(prefix="/mtc", tags=["mtc-script"])
 
 DEFAULT_DEADLINE_SECONDS = 600.0
+
+# P2：askUser 挂起表 (agentflow_run_id, request_id) → Future；进程内存活，
+# run 结束/崩溃时统一按 skipped 结算（waiting 不跨进程持久——16号稿 §7 已知边界）。
+_PENDING_INPUTS: dict[tuple[str, str], asyncio.Future] = {}
+
+
+class ScriptResumeBody(BaseModel):
+    agentflow_run_id: str
+    request_id: str
+    value: Any = None
+    skipped: bool = False
+
+
+@script_router.post("/script-resume")
+async def script_resume(body: ScriptResumeBody):
+    """平台把用户答复写回挂起的 askUser（P2/AC-S3）。"""
+    key = (body.agentflow_run_id, body.request_id)
+    fut = _PENDING_INPUTS.get(key)
+    if fut is None or fut.done():
+        raise HTTPException(404, "no pending input for this request")
+    fut.set_result({"value": body.value, "skipped": bool(body.skipped)})
+    return {"ok": True}
+
+
+def _settle_run_inputs(agentflow_run_id: str) -> None:
+    """run 结束/子进程死亡时，把该 run 全部挂起输入按 skipped 结算并清表。"""
+    for key in [k for k in _PENDING_INPUTS if k[0] == agentflow_run_id]:
+        fut = _PENDING_INPUTS.pop(key)
+        if not fut.done():
+            fut.set_result({"value": None, "skipped": True})
 
 
 class WakerBinding(BaseModel):
@@ -236,9 +268,35 @@ async def script_run(
                       "data": {"message": (msg.get("args") or {}).get("message", "")}})
                 proc_holder["proc"].stdin.write(_rpc_response(rid, True))
                 proc_holder["proc"].stdin.flush()
+            elif op == "askUser":
+                # P2/AC-S3：挂起等待人工答复；needs_input 事件让平台落 waiting 节点，
+                # 答复经 /mtc/script-resume 写回 Future 后脚本继续。
+                args = msg.get("args") or {}
+                request_id = f"inp-{uuid.uuid4().hex[:12]}"
+                label = str(args.get("label") or f"input-{rid}")
+                fut: asyncio.Future = loop.create_future()
+                _PENDING_INPUTS[(body.agentflow_run_id or "", request_id)] = fut
+                emit({
+                    "event": "needs_input",
+                    "data": {"request_id": request_id, "label": label,
+                             "prompt": str(args.get("prompt") or ""),
+                             "options": args.get("options") or [],
+                             "default": args.get("default"),
+                             "phase": args.get("phase")},
+                })
+                result = await fut
+                emit({
+                    "event": f"stage:{label}",
+                    "data": {"phase": "end", "status": "succeeded",
+                             "output": {"value": result.get("value"),
+                                        "skipped": bool(result.get("skipped"))},
+                             "error": ""},
+                })
+                proc_holder["proc"].stdin.write(_rpc_response(rid, result))
+                proc_holder["proc"].stdin.flush()
             else:
                 proc_holder["proc"].stdin.write(
-                    _rpc_error(rid, f"op {op} not supported (askUser lands in P2)"))
+                    _rpc_error(rid, f"op {op} not supported"))
                 proc_holder["proc"].stdin.flush()
 
         def _on_exit(code: int) -> None:
@@ -296,6 +354,7 @@ async def script_run(
                 )
         finally:
             watchdog.cancel()
+            _settle_run_inputs(body.agentflow_run_id or "")
             try:
                 if proc_holder["proc"].poll() is None:
                     proc_holder["proc"].kill()

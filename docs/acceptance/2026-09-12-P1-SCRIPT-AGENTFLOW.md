@@ -1,7 +1,7 @@
-# P1 脚本编排引擎 · 自验记录（2026-09-12）
+# P1+P2 脚本编排引擎 · 自验记录（2026-09-12）
 
 > 设计：`docs/v2-design/16-wakerflow-script-agentflow.md` v1.1（D1=子进程沙箱 / D2=DAG 冻结共存 / D3=NL 生成 P4 后置）
-> 状态：P1 完成，未提交待验收；真实运行时（8301）跨栈冒烟属 P5，须额度批准
+> 状态：P1+P2 完成，未提交待验收；真实运行时（8301）跨栈冒烟属 P5，须额度批准
 > 证据可复现：命令均在 `server/` 执行
 
 ## 1. 交付内容
@@ -35,9 +35,27 @@
 4. 真实运行时 `/mtc/script-run` 跨栈链路（含 structured_run_core 出结构化输出、internal token 工具回调）未在本轮验证——P5 live 冒烟项；
 5. callSites 投影/画布/执行记录 phase 聚合=P3 前端切片。
 
+## 2A. P2 交付（askUser 挂起/恢复，AC-S3）
+
+| 件 | 落点 | 说明 |
+|---|---|---|
+| 运行时挂起 | `script_runner.py` | `askUser` RPC → `needs_input` 事件（request_id/label/prompt/options）+ 进程内 Future 挂起；`POST /mtc/script-resume` 写回答复；run 结束/子进程死亡统一按 skipped 结算并清表（waiting 不跨进程持久=已登记边界）；Future 解析后补发 `stage:{label}` end 事件（output={value,skipped}） |
+| 平台事件 | `agentflow_executor.py` | `needs_input` → NodeRun(status=waiting, input 存 request_id/prompt/options)；run 终态时剩余 waiting 节点统一 cancelled 结算 |
+| 答复端点 | `as_flows_board.py` | `POST /api/v2/agentflows/runs/{rid}/inputs/{node_run_id}`（operator）：waiting 校验→`rt.script_resume` 透传；节点终态由执行流 stage:end 结算；负向 409/404 |
+| 前端确认卡 | `agentflow-detail.tsx` + `as-api.ts` | 运行详情头部对 waiting 节点渲染确认卡：选项按钮/自由意见/跳过；节点 DTO 补 `input` 字段 |
+| 测试 | `test_p1_script_agentflow.py` +3（累计 16） | 门控 fake 端到端（needs_input→他线程轮询到 waiting 节点→答复→恢复→脚本继续→终态，captured request_id 一致）；终态自动结算 waiting→cancelled；答复端点负向（终态 run 409/非 waiting 409/未知节点 404） |
+
+
+
 ## 4. 门禁
 
 ```
-定向: pytest tests/test_p1_script_agentflow.py tests/test_f0_execution_truthfulness.py → 22 passed
-全量: pytest tests/ → 517 passed（504 基线 + 13 新增）in 53.6s
+定向: pytest tests/test_p1_script_agentflow.py tests/test_f0_execution_truthfulness.py → 25 passed
+全量: pytest tests/ → 520 passed ×2 遍稳定（504 基线 + 13 P1 + 3 P2）
+前端: tsc 0 错 / vitest 全绿 / build ✓
 ```
+
+**全量轮抓出的竞态（已修）**：先前测试文件模块级启动的常驻 worker 线程会认领新测试入队的
+`agentflow-execution` job，与用例显式 `_dispatch_job` 双执行（门控长窗口下必现，
+表现为 needs_input 处理两次/节点行重复）。修复=显式驱动用例先 `_dequeue_run_jobs(run_id)`
+摘队（F0/P1 文件共 5 处），两遍全量验证稳定。

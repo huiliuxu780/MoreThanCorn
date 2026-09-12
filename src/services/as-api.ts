@@ -211,6 +211,11 @@ export const asApi = {
       body: JSON.stringify({ release_id: releaseId, input }),
     }),
   flowRun: (rid: string) => req<Record<string, unknown>>(`/api/v2/agentflows/runs/${rid}`),
+  answerFlowInput: (rid: string, nodeRunId: string, body: { value?: unknown; skipped?: boolean }) =>
+    req<{ ok: boolean }>(`/api/v2/agentflows/runs/${rid}/inputs/${nodeRunId}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   rerunNode: (rid: string, nodeId: string) =>
     req<Record<string, unknown>>(`/api/v2/agentflows/runs/${rid}/nodes/${nodeId}/rerun`, {
       method: "POST",

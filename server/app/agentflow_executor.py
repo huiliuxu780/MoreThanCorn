@@ -391,11 +391,41 @@ def _handle_flow_event(
     保证看板/SSE 逐步可见且 worker 崩溃后已落事实不丢。"""
     name = ev.get("event") or ""
     data = ev.get("data") or {}
+    if name == "needs_input":
+        # P2/AC-S3：askUser 挂起——落 waiting 节点，request_id 存 input 供答复端点定位
+        label = str(data.get("label") or f"input-{str(data.get('request_id', ''))[:8]}")
+        attempt = attempts.get(label, 0) + 1
+        attempts[label] = attempt
+        db.add(
+            AgentFlowNodeRun(
+                run_id=run.id,
+                node_id=label,
+                attempt=attempt,
+                status="waiting",
+                input={
+                    "request_id": data.get("request_id"),
+                    "prompt": data.get("prompt"),
+                    "options": data.get("options") or [],
+                    "default": data.get("default"),
+                },
+                started_at=_now(),
+            )
+        )
+        db.commit()
+        return
     if name == "flow:complete":
         run.output = data.get("output")
         run.status = data.get("status", "failed")
         run.error = "" if run.status == "succeeded" else "node failed"
         run.ended_at = _now()
+        # run 终态时仍挂起的 askUser 一并结算（kill/deadline/崩溃路径）
+        for w in (
+            db.query(AgentFlowNodeRun)
+            .filter_by(run_id=run.id, status="waiting")
+            .all()
+        ):
+            w.status = "cancelled"
+            w.ended_at = _now()
         db.commit()
         return
     if not name.startswith("stage:"):

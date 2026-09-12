@@ -269,6 +269,7 @@ def list_flow_runs(fid: str, db: Session = Depends(get_db), user: dict = Depends
                         "session_id": n.session_id,
                         "status": n.status,
                         "input_version": n.input_version,
+                        "input": n.input,
                         "output": n.output,
                         "error": n.error,
                     }
@@ -395,6 +396,7 @@ def get_run(rid: str, db: Session = Depends(get_db), user: dict = Depends(requir
                 "session_id": n.session_id,
                 "status": n.status,
                 "input_version": n.input_version,
+                "input": n.input,
                 "error": n.error,
             }
             for n in nodes
@@ -406,6 +408,41 @@ def get_run(rid: str, db: Session = Depends(get_db), user: dict = Depends(requir
 def rerun(rid: str, node_id: str, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     node = rerun_node(db, user.get("username", "dev"), rid, node_id)
     return {"node_run_id": node.id, "attempt": node.attempt, "status": node.status}
+
+
+class RunInputBody(BaseModel):
+    value: Any = None
+    skipped: bool = False
+
+
+@flows_router.post("/runs/{rid}/inputs/{node_run_id}")
+def answer_run_input(
+    rid: str,
+    node_run_id: str,
+    body: RunInputBody,
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_operator),
+):
+    """P2/AC-S3：答复脚本 askUser 挂起节点（waiting）——写回运行时 Future，
+    节点终态由执行流的 stage:end 事件结算。"""
+    run = db.get(AgentFlowRun, rid)
+    if run is None:
+        raise HTTPException(404, "run not found")
+    if run.status in ("succeeded", "failed", "cancelled"):
+        raise HTTPException(409, "run already terminal")
+    node = db.get(AgentFlowNodeRun, node_run_id)
+    if node is None or node.run_id != rid:
+        raise HTTPException(404, "node run not found")
+    if node.status != "waiting":
+        raise HTTPException(409, "node is not waiting for input")
+    request_id = (node.input or {}).get("request_id")
+    if not request_id:
+        raise HTTPException(409, "node has no pending input request")
+    rt.script_resume(
+        agentflow_run_id=rid, request_id=request_id,
+        value=body.value, skipped=body.skipped,
+    )
+    return {"ok": True, "node_run_id": node.id}
 
 
 # ---------------------------------------------------------------------------

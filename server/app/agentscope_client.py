@@ -241,7 +241,7 @@ def script_run_stream(body: dict, timeout: float = 900.0) -> Iterator[dict]:
     """脚本编排 SSE 执行（/mtc/script-run, 16号稿 P1）。
 
     事件形状与 flow_run_stream 一致（stage:{label} + flow:complete，另含
-    phase/log 观测事件），平台消费代码零分叉。"""
+    phase/log/needs_input 观测事件），平台消费代码零分叉。"""
     read_timeout = httpx.Timeout(timeout, read=timeout)
     with _client(user_id="system", timeout=read_timeout) as c:
         with c.stream("POST", "/mtc/script-run", json=body) as r:
@@ -254,6 +254,28 @@ def script_run_stream(body: dict, timeout: float = 900.0) -> Iterator[dict]:
                     yield json.loads(line[len("data: "):])
                 except json.JSONDecodeError:
                     continue
+
+
+def script_resume(
+    agentflow_run_id: str,
+    request_id: str,
+    value: Any = None,
+    skipped: bool = False,
+    timeout: float = 10.0,
+) -> dict:
+    """答复挂起的 askUser（/mtc/script-resume, 16号稿 P2）。"""
+    with _client(user_id="system", timeout=timeout) as c:
+        return _raise(
+            c.post(
+                "/mtc/script-resume",
+                json={
+                    "agentflow_run_id": agentflow_run_id,
+                    "request_id": request_id,
+                    "value": value,
+                    "skipped": bool(skipped),
+                },
+            )
+        ).json()
 
 
 def session_messages(user_id: str, agent_id: str, session_id: str) -> dict:

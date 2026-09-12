@@ -135,6 +135,7 @@ export default function AgentFlowDetailPage() {
   const [addOpen, setAddOpen] = React.useState(false)
   const [newNode, setNewNode] = React.useState({ id: "", agent_id: "", prompt_template: "" })
   const [delNode, setDelNode] = React.useState<NodeSpec | null>(null)
+  const [inputDraft, setInputDraft] = React.useState<Record<string, string>>({})
 
   React.useEffect(() => {
     fetch(`${import.meta.env.VITE_WF_API_BASE ?? "http://127.0.0.1:8120"}/api/agents?page=1&pageSize=100`, {
@@ -206,6 +207,18 @@ export default function AgentFlowDetailPage() {
       setParams({ view: "runs" })
     } catch (e) {
       toast.error(`运行失败：${(e as Error).message}`)
+    }
+  }
+
+  // P2/AC-S3：答复脚本 askUser 挂起节点；节点终态由轮询到的 stage:end 结算
+  const answerInput = async (nodeRunId: string, payload: { value?: unknown; skipped?: boolean }) => {
+    if (!current) return
+    try {
+      await asApi.answerFlowInput(current.id, nodeRunId, payload)
+      toast.success("已答复，流程继续")
+      runs.retry()
+    } catch (e) {
+      toast.error(`答复失败：${(e as Error).message}`)
     }
   }
 
@@ -482,6 +495,52 @@ export default function AgentFlowDetailPage() {
                     {TRIGGER_LABEL[current.trigger_kind] ?? current.trigger_kind} · {new Date(current.started_at).toLocaleString()}
                   </span>
                 </div>
+                {/* P2/AC-S3：askUser 挂起节点的人工确认卡（waiting） */}
+                {(current.nodes ?? [])
+                  .filter((n) => n.status === "waiting")
+                  .map((n) => {
+                    const req = (n as { input?: { prompt?: string; options?: string[] } }).input
+                    const options = req?.options ?? []
+                    return (
+                      <div key={n.id} className="border-b bg-background px-4 py-3">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <span
+                            className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium"
+                            style={{ background: "var(--status-running-soft)", color: "var(--status-running)" }}
+                          >
+                            待确认
+                          </span>
+                          {n.node_id}
+                        </div>
+                        {req?.prompt && (
+                          <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">{req.prompt}</p>
+                        )}
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          {options.map((opt) => (
+                            <Button key={opt} size="sm" variant="outline"
+                              onClick={() => void answerInput(n.id, { value: opt })}>
+                              {opt}
+                            </Button>
+                          ))}
+                          <input
+                            value={inputDraft[n.id] ?? ""}
+                            onChange={(e) => setInputDraft((m) => ({ ...m, [n.id]: e.target.value }))}
+                            placeholder="或输入意见…"
+                            className="h-8 w-56 rounded border bg-surface px-2 text-xs"
+                            aria-label={`输入 ${n.node_id} 的意见`}
+                          />
+                          <Button size="sm" disabled={!(inputDraft[n.id] ?? "").trim()}
+                            onClick={() => void answerInput(n.id, { value: inputDraft[n.id] })}>
+                            提交
+                          </Button>
+                          <Button size="sm" variant="ghost"
+                            onClick={() => void answerInput(n.id, { skipped: true })}>
+                            跳过
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
                 <div className="flex items-start gap-3 p-4">
                   {nodes.map((n, i) => {
                     const nr = nodeRunOf(n.id)
