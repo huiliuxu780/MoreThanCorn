@@ -237,6 +237,25 @@ def flow_run_stream(body: dict, timeout: float = 900.0) -> Iterator[dict]:
                     continue
 
 
+def script_run_stream(body: dict, timeout: float = 900.0) -> Iterator[dict]:
+    """脚本编排 SSE 执行（/mtc/script-run, 16号稿 P1）。
+
+    事件形状与 flow_run_stream 一致（stage:{label} + flow:complete，另含
+    phase/log 观测事件），平台消费代码零分叉。"""
+    read_timeout = httpx.Timeout(timeout, read=timeout)
+    with _client(user_id="system", timeout=read_timeout) as c:
+        with c.stream("POST", "/mtc/script-run", json=body) as r:
+            if r.status_code >= 400:
+                _raise(r)
+            for line in r.iter_lines():
+                if not line.startswith("data: "):
+                    continue
+                try:
+                    yield json.loads(line[len("data: "):])
+                except json.JSONDecodeError:
+                    continue
+
+
 def session_messages(user_id: str, agent_id: str, session_id: str) -> dict:
     with _client(user_id) as c:
         return _raise(

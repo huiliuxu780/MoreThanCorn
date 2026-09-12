@@ -242,6 +242,11 @@ def _hermetic_runtime(request, monkeypatch):
     monkeypatch.setattr(_rt, "sessions_status", lambda *a, **k: [])
     monkeypatch.setattr(_rt, "flow_run", lambda body, timeout=600.0: {
         "status": "succeeded", "output": {}, "nodes": [], "events": []})
+    monkeypatch.setattr(
+        _rt, "script_run_stream",
+        lambda body, timeout=900.0: iter([
+            {"event": "flow:complete",
+             "data": {"status": "succeeded", "output": {}, "nodes": []}}]))
 
 
 if not _REUSE:

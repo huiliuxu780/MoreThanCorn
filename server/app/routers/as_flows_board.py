@@ -13,7 +13,12 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .. import agentscope_client as rt
-from ..agentflow_executor import rerun_node, resolve_agentflow_release, start_run
+from ..agentflow_executor import (
+    rerun_node,
+    resolve_agentflow_release,
+    start_run,
+    validate_script_definition,
+)
 from ..auth import require_role, require_operator
 from ..board_projection import (
     ENDED,
@@ -147,12 +152,19 @@ def create_version(fid: str, body: FlowVersionBody, db: Session = Depends(get_db
     d = db.get(AgentFlowDefinition, fid)
     if d is None:
         raise HTTPException(404, "flow not found")
-    nodes = body.definition.get("nodes") or []
-    if not nodes:
-        raise HTTPException(422, "flow needs at least one node")
-    for n in nodes:
-        if n.get("kind") == "agent" and db.get(Agent, n.get("agent_id", "")) is None:
-            raise HTTPException(422, f"node {n.get('id')}: agent not found")
+    if (body.definition or {}).get("kind") == "script":
+        # 16号稿 P1：脚本形态版本——契约校验（可解析/run 入口/waker 可解析/64KB）
+        try:
+            validate_script_definition(db, body.definition)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+    else:
+        nodes = body.definition.get("nodes") or []
+        if not nodes:
+            raise HTTPException(422, "flow needs at least one node")
+        for n in nodes:
+            if n.get("kind") == "agent" and db.get(Agent, n.get("agent_id", "")) is None:
+                raise HTTPException(422, f"node {n.get('id')}: agent not found")
     last = (
         db.query(AgentFlowVersion)
         .filter_by(definition_id=fid)

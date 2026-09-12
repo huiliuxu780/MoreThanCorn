@@ -96,6 +96,9 @@ def build_app():
     from .flow_runner import flow_router
 
     app.include_router(flow_router)
+    from .script_runner import script_router
+
+    app.include_router(script_router)
     # 平台前端直连运行时 SSE（开发态本地源放行；生产由平台代理收口）
     app.add_middleware(
         CORSMiddleware,

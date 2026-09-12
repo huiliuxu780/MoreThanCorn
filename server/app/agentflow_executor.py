@@ -10,6 +10,7 @@ structured_run_core + GoalPipeline）。本模块只做：
 """
 from __future__ import annotations
 
+import ast as _ast_mod
 import hashlib
 import secrets as _secrets
 from datetime import datetime, timezone
@@ -72,6 +73,96 @@ def resolve_agentflow_release(
             + (f" in environment {environment}" if environment else "")
         )
     return release
+
+
+def scan_script_wakers(script: str) -> list[str]:
+    """ast 静态扫描脚本中 worker(waker="...") 的常量实参（16号稿 §4，保存/运行前置）。"""
+    import ast as _ast
+
+    try:
+        tree = _ast.parse(script)
+    except SyntaxError as exc:
+        raise ValueError(f"script syntax error: {exc}") from exc
+    ids: list[str] = []
+    for node in _ast.walk(tree):
+        if not isinstance(node, _ast.Call):
+            continue
+        name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+        if name != "worker":
+            continue
+        for kw in node.keywords:
+            if (
+                kw.arg == "waker"
+                and isinstance(kw.value, _ast.Constant)
+                and isinstance(kw.value.value, str)
+                and kw.value.value not in ids
+            ):
+                ids.append(kw.value.value)
+    return ids
+
+
+def validate_script_definition(db: Session, definition: dict) -> None:
+    """脚本形态版本保存校验（16号稿 §4 契约）：可解析/run 入口/waker 可解析/大小上限。"""
+    script = definition.get("script") or ""
+    if not script:
+        raise ValueError("script definition requires `script`")
+    if len(script) > 64 * 1024:
+        raise ValueError(f"script too large: {len(script)} > 65536")
+    waker_ids = scan_script_wakers(script)  # 语法错误在此抛 ValueError
+    has_run = any(
+        isinstance(n, _ast_mod.AsyncFunctionDef) and n.name == "run"
+        for n in _ast_mod.walk(_ast_mod.parse(script))
+    )
+    if not has_run:
+        raise ValueError("script must define `async def run(ctx)`")
+    meta = definition.get("meta") or {}
+    if not isinstance(meta, dict):
+        raise ValueError("script meta must be an object")
+    for key in ("inputSchema", "outputSchema"):
+        if key in meta and not isinstance(meta[key], dict):
+            raise ValueError(f"script meta.{key} must be an object")
+    scope = meta.get("scope_agent_id")
+    if scope and scope not in waker_ids:
+        waker_ids.append(scope)
+    for wid in waker_ids:
+        if db.get(Agent, wid) is None:
+            raise ValueError(f"script waker {wid} not found")
+
+
+def build_script_body(
+    db: Session,
+    uid: str,
+    definition: dict,
+    flow_input: dict,
+) -> dict:
+    """脚本形态 body（16号稿 §6）：每个 waker 预解析运行时绑定，缺绑定即失败。"""
+    script = definition.get("script") or ""
+    meta = definition.get("meta") or {}
+    waker_ids = scan_script_wakers(script)
+    scope = meta.get("scope_agent_id")
+    if scope and scope not in waker_ids:
+        waker_ids.append(scope)
+    wakers: dict[str, dict] = {}
+    for wid in waker_ids:
+        if not wid:
+            continue
+        if db.get(Agent, wid) is None:
+            raise ValueError(f"script waker {wid} not found")
+        runtime_id, extra = _node_runtime_binding(db, uid, wid)
+        wakers[wid] = {
+            "runtime_agent_id": runtime_id,
+            "chat_model_config": extra["chat_model_config"],
+            "knowledge_ids": extra["knowledge_ids"],
+        }
+    if not wakers:
+        raise ValueError("script declares no resolvable waker")
+    return {
+        "user_id": uid,
+        "script": script,
+        "wakers": wakers,
+        "flow_input": flow_input,
+        "deadline_seconds": float(meta.get("deadline_seconds") or 600),
+    }
 
 
 def _topo_order(node_ids: list[str], edges: list[dict]) -> list[str]:
@@ -249,7 +340,10 @@ def start_run(
     db.refresh(run)
     try:
         # 绑定校验前置：节点 agent 缺失等配置错误在提交时即失败，不留僵尸 queued 行
-        _build_flow_body(db, user_id, definition, flow_input)
+        if definition.get("kind") == "script":
+            build_script_body(db, user_id, definition, flow_input)
+        else:
+            _build_flow_body(db, user_id, definition, flow_input)
     except Exception as exc:  # noqa: BLE001
         run.status = "failed"
         run.error = repr(exc)
@@ -312,11 +406,12 @@ def _handle_flow_event(
         session_id = data.get("session_id")
         attempt = attempts.get(nid, 0) + 1
         attempts[nid] = attempt
+        agent_id = data.get("agent_id") or (node_defs.get(nid) or {}).get("agent_id")
         row = AgentFlowNodeRun(
             run_id=run.id,
             node_id=nid,
             attempt=attempt,
-            agent_id=(node_defs.get(nid) or {}).get("agent_id"),
+            agent_id=agent_id,
             session_id=session_id,
             status="running",
             input_version=attempt,
@@ -329,8 +424,8 @@ def _handle_flow_event(
                 AgentSessionIndex(
                     session_id=session_id,
                     user_id=uid,
-                    agent_id=(node_defs.get(nid) or {}).get("agent_id") or "",
-                    runtime_agent_id=runtime_map.get(nid),
+                    agent_id=agent_id or "",
+                    runtime_agent_id=data.get("runtime_agent_id") or runtime_map.get(nid),
                     trigger_kind="agentflow",
                     agentflow_run_id=run.id,
                     agentflow_node_run_id=row.id,
@@ -383,7 +478,10 @@ def execute_agentflow_run(run_id: str, user_id: str | None = None) -> None:
         run.status = "running"
         db.commit()
         try:
-            body = _build_flow_body(db, uid, definition, run.input or {})
+            if definition.get("kind") == "script":
+                body = build_script_body(db, uid, definition, run.input or {})
+            else:
+                body = _build_flow_body(db, uid, definition, run.input or {})
         except Exception as exc:  # noqa: BLE001
             run.status = "failed"
             run.error = repr(exc)
@@ -392,14 +490,21 @@ def execute_agentflow_run(run_id: str, user_id: str | None = None) -> None:
             return
         body["internal_token"] = run_token
         body["agentflow_run_id"] = run.id
-        runtime_map = {n["id"]: n["agent_id"] for n in body["nodes"]}
-        node_defs = {n.get("id"): n for n in definition.get("nodes") or []}
+        if definition.get("kind") == "script":
+            # 脚本形态：start 事件自带 agent_id/runtime_agent_id，无静态节点表
+            runtime_map: dict[str, str] = {}
+            node_defs: dict[str, dict] = {}
+            events = rt.script_run_stream(body)
+        else:
+            runtime_map = {n["id"]: n["agent_id"] for n in body["nodes"]}
+            node_defs = {n.get("id"): n for n in definition.get("nodes") or []}
+            events = rt.flow_run_stream(body)
         attempts = {
             r.node_id: r.attempt
             for r in db.query(AgentFlowNodeRun).filter_by(run_id=run.id).all()
         }
         try:
-            for ev in rt.flow_run_stream(body):
+            for ev in events:
                 _handle_flow_event(db, run, node_defs, runtime_map, attempts, uid, ev)
             if run.ended_at is None:  # 流异常终止且无 flow:complete
                 run.status = "failed"
