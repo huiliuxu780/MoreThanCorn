@@ -45,15 +45,16 @@ def _try_acquire_watcher_lock(db: Session) -> bool:
             text(f"SELECT pg_try_advisory_lock({WATCHER_LOCK_ID})")
         ).scalar()
         return bool(locked)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 —— 审计层1：吞错补日志
+        log.warning("watcher lock acquire failed: %s", exc)
         return False
 
 
 def _release_watcher_lock(db: Session) -> None:
     try:
         db.execute(text(f"SELECT pg_advisory_unlock({WATCHER_LOCK_ID})"))
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001 —— 审计层1：吞错补日志
+        log.warning("watcher lock release failed: %s", exc)
 
 
 def reconcile_once(db: Session) -> dict:

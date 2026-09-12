@@ -1230,6 +1230,50 @@ def retry_failed_interactions(tid: str, trid: str, db: Session = Depends(get_db)
             "statusUrl": f"/api/task-runs/{rec.id}"}
 
 
+@router.get("/api/analysis-task-runs/{trid}")
+def analysis_task_run_alias(trid: str, db: Session = Depends(get_db)):
+    """F-audit：Spec §12.4 canonical 别名（/api/task-runs 同实现）。"""
+    return get_task_run(trid, db=db)
+
+
+@router.get("/api/analysis-task-runs/{trid}/items")
+def analysis_task_run_items_alias(trid: str, page: int = 1, pageSize: int = 50,
+                                  status: str = "", deliveryStatus: str = "",
+                                  q: str = "", attempt: int | None = None,
+                                  sort: str = "createdAt",
+                                  db: Session = Depends(get_db)):
+    return list_task_run_runs(trid, page=page, pageSize=pageSize, status=status,
+                              deliveryStatus=deliveryStatus, q=q, attempt=attempt,
+                              sort=sort, db=db)
+
+
+@router.get("/api/analysis-task-runs/{trid}/events")
+def analysis_task_run_events(trid: str, db: Session = Depends(get_db)):
+    """F-audit：批次子 Run 的 RunEvent 增量事实（上限 200，倒序）。"""
+    from ..models import Run, RunEvent
+
+    run_ids = [r[0] for r in db.query(Run.id).filter(Run.task_run_id == trid).all()]
+    rows = (db.query(RunEvent)
+            .filter(RunEvent.run_id.in_(run_ids or ["-"]))
+            .order_by(RunEvent.created_at.desc()).limit(200).all())
+    return {"items": [{"runId": e.run_id, "type": e.type, "nodeId": e.node_id,
+                       "payload": e.payload,
+                       "createdAt": e.created_at.isoformat() if e.created_at else None}
+                      for e in rows]}
+
+
+@router.post("/api/analysis-task-runs/{trid}/retry-failed", status_code=202)
+def analysis_retry_alias(trid: str, db: Session = Depends(get_db),
+                         user: dict = Depends(require_operator)):
+    """F-audit：Spec §12.4 canonical 重试别名（Recovery TaskRun 语义同原端点）。"""
+    from ..models import TaskRun
+
+    tr = db.get(TaskRun, trid)
+    if tr is None:
+        raise HTTPException(404, "TaskRun 不存在")
+    return retry_failed_interactions(tr.task_id, trid, db=db, user=user)
+
+
 @router.post("/api/task-runs/{trid}/cancel", status_code=202)
 @router.post("/api/analysis-task-runs/{trid}/cancel", status_code=202)
 def cancel_task_run(trid: str, db: Session = Depends(get_db),

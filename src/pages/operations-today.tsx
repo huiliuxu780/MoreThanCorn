@@ -246,15 +246,32 @@ function WorkItemDrawer({ w, onClose }: { w: WorkItemDTO | null; onClose: () => 
                   </div>
                 </section>
               ) : null}
-              <section className="flex gap-2">
+              {/* 审计层3修复：导航按 kind 分流——分析卡走 /batch-tasks（原按钮把分析任务 id
+                  送进 v2 自动任务页=错路由）；新源卡走 links.detail 真实路由；空 id 不出按钮 */}
+              <section className="flex flex-wrap gap-2">
                 {w.taskRunId ? (
                   <Button variant="outline" size="sm" onClick={() => navigate(`/operations/task-runs/${w.taskRunId}`)}>
                     TaskRun 详情
                   </Button>
                 ) : null}
-                <Button variant="outline" size="sm" onClick={() => navigate(`/autonomous-tasks/${w.automationId}`)}>
-                  所属分析任务
-                </Button>
+                {(() => {
+                  // 收窄进闭包会丢失，先取 const（tsc -b 严格模式）
+                  const detailLink = "detail" in w.links ? w.links.detail : null
+                  return detailLink ? (
+                    <Button variant="outline" size="sm" onClick={() => navigate(detailLink)}>
+                      查看执行详情
+                    </Button>
+                  ) : null
+                })()}
+                {w.automationId ? (
+                  <Button variant="outline" size="sm" onClick={() => navigate(
+                    w.kind === "automation_invocation"
+                      ? `/autonomous-tasks/${w.automationId}`
+                      : `/batch-tasks/${w.automationId}`,
+                  )}>
+                    {w.kind === "automation_invocation" ? "所属自动任务" : "所属分析任务"}
+                  </Button>
+                ) : null}
               </section>
             </div>
           </>

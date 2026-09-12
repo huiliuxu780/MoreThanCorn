@@ -73,7 +73,11 @@ def _cleanup_f4_rows():
 
 
 def _today():
-    return NOW.date().isoformat()
+    # 审计层3修复（2026-09-13）：投影窗口按 Asia/Shanghai 业务日，原实现取
+    # UTC 日期——每天上海 00:00–08:00（UTC 16:00 后）种子行落在窗口外，
+    # 测试定时炸弹式假红。业务日必须与生产口径（work_items 路由默认时区）一致。
+    from zoneinfo import ZoneInfo
+    return NOW.astimezone(ZoneInfo("Asia/Shanghai")).date().isoformat()
 
 
 def _make_published_agent() -> str:
@@ -257,3 +261,100 @@ def test_kind_filter_and_alias():
     assert only_sessions and all(w["kind"] == "agent_session" for w in only_sessions)
     aliased = filter_work_items(items, kind="task_run")
     assert all(w["kind"] == "analysis_batch" for w in aliased)
+
+
+def test_exec_card_links_are_real_routes():
+    """审计层3（2026-09-13）：新源卡 detail 链必须是真实前端路由。
+
+    原缺陷：_exec_item 忽略各源传入的 detail_link，一律硬编码 /tasks/{wid}
+    （404），并伪造 /{kind}/{id} target 链接；AgentFlow 卡曾指向不存在的
+    /agentflows/runs/{id}（真实路由 /agentflows/{fid}?view=runs）；
+    Invocation 卡不带 automationId，前端无法导航到所属自动任务。
+    """
+    from app.models import (AgentFlowDefinition, AgentFlowRelease,
+                            AgentFlowVersion)
+    fresh = datetime.now(timezone.utc)  # 晚于清理夹具 baseline，确保被自动清理
+    aid = _make_published_agent()
+    db = SessionLocal()
+    try:
+        d = AgentFlowDefinition(name="f4-link-flow", created_by="dev")
+        db.add(d)
+        db.flush()
+        v = AgentFlowVersion(definition_id=d.id, version_no=1,
+                             definition={"nodes": [], "edges": []},
+                             content_digest="f4-link", created_by="dev")
+        db.add(v)
+        db.flush()
+        rel = AgentFlowRelease(version_id=v.id, definition_id=d.id,
+                               environment="sandbox", status="active")
+        db.add(rel)
+        db.flush()
+        fr = AgentFlowRun(release_id=rel.id, status="running", started_at=fresh)
+        db.add(fr)
+        # 孤儿 run：引用的 Release 不存在（血缘断裂，wf_dev 实有此类历史行）
+        orphan = AgentFlowRun(release_id="rel-f4-orphan-missing",
+                              status="succeeded", started_at=fresh,
+                              ended_at=fresh)
+        db.add(orphan)
+        db.add(AgentSessionIndex(session_id="sess-f4-link", user_id="dev",
+                                 agent_id=aid, trigger_kind="manual"))
+        wr = Run(agent_id=aid, trigger="manual", status="running", input={},
+                 definition_source="version", task_run_id=None,
+                 created_at=fresh, started_at=fresh)
+        db.add(wr)
+        auto = AutomationDefinition(name="f4-link-auto", target_kind="agent",
+                                    agent_id=aid, enabled=True, created_by="dev")
+        db.add(auto)
+        db.flush()
+        db.add(AutomationTriggerLog(automation_id=auto.id, source="api",
+                                    status="running",
+                                    target_kind="agent_session",
+                                    target_ref="sess-f4-link-target",
+                                    created_at=fresh, started_at=fresh))
+        db.commit()
+        flow_id, wf_id, def_id, auto_id = fr.id, wr.id, d.id, auto.id
+        orphan_id = orphan.id
+    finally:
+        db.close()
+    try:
+        items = {w["id"]: w for w in _items()}
+        flow_card = items[f"agentflow:{flow_id}"]
+        assert flow_card["links"]["detail"] == f"/agentflows/{def_id}?view=runs"
+        orphan_card = items[f"agentflow:{orphan_id}"]
+        assert orphan_card["links"]["detail"] == "/agentflows"
+        assert orphan_card["status"] == "needs_action"
+        assert orphan_card["attention"]["code"] == "RELEASE_MISSING"
+        sess_card = items["session:sess-f4-link"]
+        assert sess_card["links"]["detail"] == \
+            f"/agents/{aid}/chat?session=sess-f4-link"
+        wf_card = items[f"workflow:{wf_id}"]
+        assert wf_card["links"]["detail"] == f"/operations/runs/{wf_id}"
+        inv_cards = [w for w in items.values()
+                     if w["kind"] == "automation_invocation"
+                     and w["automationId"] == auto_id]
+        assert inv_cards, "Invocation 卡必须带 automationId 供前端导航"
+    finally:
+        # definition 链不在共享清理夹具范围内，按 marker 精确删除
+        db = SessionLocal()
+        try:
+            def_ids = [r[0] for r in db.query(AgentFlowDefinition.id).filter(
+                AgentFlowDefinition.name == "f4-link-flow").all()]
+            if def_ids:
+                rel_ids = [r[0] for r in db.query(AgentFlowRelease.id).filter(
+                    AgentFlowRelease.definition_id.in_(def_ids)).all()]
+                if rel_ids:
+                    db.query(AgentFlowRun).filter(
+                        AgentFlowRun.release_id.in_(rel_ids)).delete(
+                        synchronize_session=False)
+                    db.query(AgentFlowRelease).filter(
+                        AgentFlowRelease.id.in_(rel_ids)).delete(
+                        synchronize_session=False)
+                db.query(AgentFlowVersion).filter(
+                    AgentFlowVersion.definition_id.in_(def_ids)).delete(
+                    synchronize_session=False)
+                db.query(AgentFlowDefinition).filter(
+                    AgentFlowDefinition.id.in_(def_ids)).delete(
+                    synchronize_session=False)
+            db.commit()
+        finally:
+            db.close()

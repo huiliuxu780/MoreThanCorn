@@ -127,6 +127,38 @@ async def work_items_stream_iter(user: dict, d_from: str, d_to: str, tz_s: str,
         await asyncio.sleep(2)
 
 
+v2_router = APIRouter(prefix="/api/v2/work-items", tags=["work-items-v2"])
+
+
+@v2_router.get("")
+def list_work_items_v2(dateFrom: str = "", dateTo: str = "", timezone: str = _DEFAULT_TZ,
+                       status: str = "", automationId: str = "", agentId: str = "",
+                       q: str = "", origin: str = "", attentionOnly: str = "",
+                       kind: str = "", page: int = 1, pageSize: int = 50,
+                       db: Session = Depends(get_db),
+                       user: dict = Depends(require_role())):
+    """F-audit：Spec §12.5 canonical 前缀别名（实现同 /api/work-items）。"""
+    return list_work_items(dateFrom=dateFrom, dateTo=dateTo, timezone=timezone,
+                           status=status, automationId=automationId, agentId=agentId,
+                           q=q, origin=origin, attentionOnly=attentionOnly, kind=kind,
+                           page=page, pageSize=pageSize, db=db, user=user)
+
+
+@v2_router.get("/stream")
+async def work_items_stream_v2(request: Request, dateFrom: str = "", dateTo: str = "",
+                               timezone: str = _DEFAULT_TZ,
+                               user: dict = Depends(require_role())):
+    return await work_items_stream(request, dateFrom=dateFrom, dateTo=dateTo,
+                                   timezone=timezone, user=user)
+
+
+@v2_router.get("/{work_item_id}")
+def get_work_item_v2(work_item_id: str, timezone: str = _DEFAULT_TZ,
+                     db: Session = Depends(get_db),
+                     user: dict = Depends(require_role())):
+    return get_work_item(work_item_id, timezone=timezone, db=db, user=user)
+
+
 @router.get("/stream")
 async def work_items_stream(request: Request, dateFrom: str = "", dateTo: str = "",
                             timezone: str = _DEFAULT_TZ,

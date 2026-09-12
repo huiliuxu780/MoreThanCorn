@@ -770,7 +770,70 @@ def history(aid: str, db: Session = Depends(get_db), user: dict = Depends(requir
     return {"items": items, "auto_run_count": auto.auto_run_count, "last_auto_fire_at": auto.last_auto_fire_at.isoformat() if auto.last_auto_fire_at else None}
 
 
+@router.post("/{aid}/enable")
+def enable_alias(aid: str, db: Session = Depends(get_db),
+                 user: dict = Depends(require_operator)):
+    """F-audit：Spec §12.2 canonical 启停别名（实现同 PATCH /{aid}/enabled）。"""
+    return set_enabled(aid, True, db=db, user=user)
+
+
+@router.post("/{aid}/disable")
+def disable_alias(aid: str, db: Session = Depends(get_db),
+                  user: dict = Depends(require_operator)):
+    return set_enabled(aid, False, db=db, user=user)
+
+
 invocations_router = APIRouter(prefix="/api/v2/invocations", tags=["invocations"])
+
+
+@invocations_router.get("/{iid}/events")
+def invocation_events(iid: str, db: Session = Depends(get_db),
+                      user: dict = Depends(require_role())):
+    """F-audit：Spec §12.3 Invocation 事件流（目标执行事实的轻量摘要）。
+
+    workflow/flow 目标 → RunEvent/NodeRun 行；agent session 目标 → 运行时消息
+    摘要（单次批调用）；运行时不可达时返回空列表 + note，不伪装。
+    """
+    log = db.get(AutomationTriggerLog, iid)
+    if log is None:
+        raise HTTPException(404, "invocation not found")
+    items: list[dict] = []
+    note = None
+    if log.workflow_run_id:
+        from ..models import RunEvent
+        rows = (db.query(RunEvent).filter_by(run_id=log.workflow_run_id)
+                .order_by(RunEvent.created_at.desc()).limit(200).all())
+        items = [{"type": e.type, "nodeId": e.node_id, "payload": e.payload,
+                  "createdAt": e.created_at.isoformat() if e.created_at else None}
+                 for e in rows]
+    elif log.agentflow_run_id:
+        from ..models import AgentFlowNodeRun
+        rows = (db.query(AgentFlowNodeRun)
+                .filter_by(run_id=log.agentflow_run_id)
+                .order_by(AgentFlowNodeRun.started_at).all())
+        items = [{"type": f"node_{r.status}", "nodeId": r.node_id,
+                  "payload": {"session_id": r.session_id, "error": r.error or None},
+                  "createdAt": r.started_at.isoformat() if r.started_at else None}
+                 for r in rows]
+    elif log.session_id:
+        from ..work_item_projection import _runtime_agent_of
+
+        idx = db.query(AgentSessionIndex).filter_by(session_id=log.session_id).first()
+        runtime_id = idx.runtime_agent_id if idx else None
+        if idx and not runtime_id and idx.agent_id:
+            runtime_id = _runtime_agent_of(db, idx.agent_id)
+        if idx and runtime_id:
+            try:
+                msgs = rt.session_messages(idx.user_id, runtime_id, log.session_id)
+                items = [{"type": f"message_{m.get('role')}", "nodeId": None,
+                          "payload": {"finished": bool(m.get("finished_reason"))},
+                          "createdAt": m.get("created_at")}
+                         for m in (msgs.get("messages") or [])[-50:]]
+            except rt.RuntimeError_:
+                note = "runtime unreachable"
+        else:
+            note = "runtime binding missing"
+    return {"invocationId": iid, "items": items, "note": note}
 
 
 @invocations_router.get("/{iid}")

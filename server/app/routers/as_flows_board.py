@@ -260,14 +260,20 @@ def list_flow_runs(fid: str, db: Session = Depends(get_db), user: dict = Depends
         .limit(100)
         .all()
     )
-    out = []
-    for r in rows:
-        nodes = (
+    # 审计层3 N+1 修复：节点行一次 IN 批量取回再分组（原先每 run 一条 SELECT）
+    nodes_by_run: dict[str, list] = {}
+    if rows:
+        batch = (
             db.query(AgentFlowNodeRun)
-            .filter_by(run_id=r.id)
-            .order_by(AgentFlowNodeRun.started_at)
+            .filter(AgentFlowNodeRun.run_id.in_([r.id for r in rows]))
+            .order_by(AgentFlowNodeRun.run_id, AgentFlowNodeRun.started_at)
             .all()
         )
+        for n in batch:
+            nodes_by_run.setdefault(n.run_id, []).append(n)
+    out = []
+    for r in rows:
+        nodes = nodes_by_run.get(r.id, [])
         out.append(
             {
                 "id": r.id,

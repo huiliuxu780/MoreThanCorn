@@ -404,7 +404,7 @@ export interface WorkItemDTO {
   }
   links:
     | { primary: string; automation: string; taskRun: string | null }
-    | { detail: string; target: string | null }
+    | { detail: string | null; target: string | null }
 }
 
 export interface WorkItemListResponse {

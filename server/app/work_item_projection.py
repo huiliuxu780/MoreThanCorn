@@ -34,8 +34,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .auth import data_scope_members
-from .models import (Agent, AgentFlowNodeRun, AgentFlowRun, AgentSessionIndex,
-                     AnalysisTask,
+from .models import (Agent, AgentFlowNodeRun, AgentFlowRelease, AgentFlowRun,
+                     AgentSessionIndex, AnalysisTask,
                      AnalysisTaskVersion, AutomationDefinition,
                      AutomationTriggerLog, Release, Run,
                      ScheduleOccurrence, TaskRun, Workflow)
@@ -248,6 +248,8 @@ class ProjectionInputs:
     session_status: dict
     flow_node_counts: dict
     known_targets: set
+    # 审计层3修复：AgentFlowRun.release_id → definition_id（卡片详情链需要定义页路由）
+    flow_release_defs: dict
 
 
 def _load_projection_inputs(db: Session, user: dict, start: datetime, end: datetime,
@@ -406,6 +408,11 @@ def _load_projection_inputs(db: Session, user: dict, start: datetime, end: datet
         select(AgentFlowNodeRun.run_id, AgentFlowNodeRun.status, func.count(AgentFlowNodeRun.id))
         .where(AgentFlowNodeRun.run_id.in_({f.id for f in flow_runs} or {"-"}))
         .group_by(AgentFlowNodeRun.run_id, AgentFlowNodeRun.status)).all())
+    # 审计层3修复：release→definition 一次批量取回（卡片详情链 /agentflows/{fid}?view=runs）
+    flow_release_defs = dict(db.execute(
+        select(AgentFlowRelease.id, AgentFlowRelease.definition_id).where(
+            AgentFlowRelease.id.in_({f.release_id for f in flow_runs
+                                     if f.release_id} or {"-"}))).all())
 
     return ProjectionInputs(occs=occs, runs_by_id=runs_by_id, tasks=tasks, versions=versions,
                             active_counts=active_counts, child_totals=child_totals,
@@ -414,7 +421,8 @@ def _load_projection_inputs(db: Session, user: dict, start: datetime, end: datet
                             flow_runs=flow_runs, workflow_runs=workflow_runs,
                             auto_names=auto_names, session_status=session_status,
                             flow_node_counts=flow_node_counts,
-                            known_targets=known_targets)
+                            known_targets=known_targets,
+                            flow_release_defs=flow_release_defs)
 
 
 def _build_item(tr: TaskRun | None, occ: ScheduleOccurrence | None,
@@ -525,9 +533,10 @@ def _target_of_inv(log) -> tuple[str | None, str | None]:
 
 
 def _exec_item(kind: str, wid: str, title: str, raw_status: str, origin: str,
-               started, ended, target, detail_link: str, extra_bad: bool = False,
+               started, ended, target, detail_link: str | None,
+               extra_bad: bool = False,
                progress=None, counts=None, attention=None, phase=None,
-               diagnostics=None) -> dict:
+               diagnostics=None, automation_id: str = "") -> dict:
     return {
         "id": wid,
         "kind": kind,
@@ -546,9 +555,11 @@ def _exec_item(kind: str, wid: str, title: str, raw_status: str, origin: str,
         "attention": attention or {"required": bool(extra_bad), "severity": "info",
                                    "code": None, "message": None},
         "diagnostics": diagnostics,
-        "links": {"detail": f"/tasks/{wid}",
-                  "target": f"/{target[0]}/{target[1]}" if target and target[0] else None},
-        "automationId": "", "taskRunId": None, "scheduleOccurrenceId": None,
+        # 审计层3修复：detail 必须是真实前端路由（原硬编码 /tasks/{wid} 全部 404，
+        # 且伪造 /{kind}/{id} target 链接）；无有效路由时诚实置 None
+        "links": {"detail": detail_link, "target": None},
+        "automationId": automation_id,
+        "taskRunId": None, "scheduleOccurrenceId": None,
         "assignee": None, "scheduledAt": None, "createdAt":
         started.isoformat() if started else None,
     }
@@ -609,8 +620,9 @@ def _items_from_inputs(inp: ProjectionInputs) -> list[dict]:
             log.status or "received", log.source or "manual",
             log.started_at or log.created_at, log.ended_at,
             (tk, ref) if tk else None,
-            f"/tasks/invocation:{log.id}",
-            extra_bad=extra_bad, attention=att))
+            None,  # Invocation 无独立详情页：导航走 automationId → /autonomous-tasks/{aid}
+            extra_bad=extra_bad, attention=att,
+            automation_id=log.automation_id or ""))
     for s in inp.sessions:
         if ("agent_session", s.session_id) in referenced:
             continue
@@ -623,7 +635,8 @@ def _items_from_inputs(inp: ProjectionInputs) -> list[dict]:
             "agent_session", f"session:{s.session_id}",
             f"会话 {s.session_id[:8]}", raw, s.trigger_kind or "manual",
             s.created_at, None, ("agent_session", s.session_id),
-            f"/agents/{s.agent_id}/chat?session={s.session_id}",
+            (f"/agents/{s.agent_id}/chat?session={s.session_id}"
+             if s.agent_id else None),
             attention=att, phase=raw))
     flow_nodes: dict[str, dict] = {}
     for run_id, status, cnt in inp.flow_node_counts:
@@ -635,11 +648,22 @@ def _items_from_inputs(inp: ProjectionInputs) -> list[dict]:
         if ("agentflow_run", f.id) in referenced:
             continue
         agg = flow_nodes.get(f.id, {"total": 0, "done": 0})
+        # 审计层3修复：详情链指向定义页 runs 视图（原 /agentflows/runs/{id} 非真实路由）；
+        # Release 血缘断裂（引用行已删）→ AC-043 同款 needs_action + 降级导航到列表页
+        flow_def_id = inp.flow_release_defs.get(f.release_id or "")
+        flow_att = None
+        flow_bad = False
+        if f.release_id and flow_def_id is None:
+            flow_bad = True
+            flow_att = _attention("RELEASE_MISSING",
+                                  "AgentFlowRun 引用的 Release 缺失（定义血缘断裂）",
+                                  "warning")
         items.append(_exec_item(
             "agentflow_run", f"agentflow:{f.id}", f"AgentFlow {f.id[:8]}",
             f.status or "queued", f.trigger_kind or "manual",
             f.started_at, f.ended_at, ("agentflow_run", f.id),
-            f"/agentflows/runs/{f.id}",
+            f"/agentflows/{flow_def_id}?view=runs" if flow_def_id else "/agentflows",
+            extra_bad=flow_bad, attention=flow_att,
             progress={"processed": agg["done"], "total": agg["total"],
                       "percent": int(agg["done"] * 100 / agg["total"])
                       if agg["total"] else None},

@@ -180,6 +180,7 @@ async def _legacy_route_deprecation(request, call_next):
     return response
 app.include_router(operations.router)  # SDD 13：运行中心（today/history/stream/detail）
 app.include_router(work_items.router)  # MTC-002B：WorkItemProjection 统一读模型（只读）
+app.include_router(work_items.v2_router)  # F-audit：/api/v2/work-items canonical 别名
 app.include_router(governance.router)
 app.include_router(resources.router)
 app.include_router(admin.router)
