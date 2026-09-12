@@ -1,7 +1,7 @@
-# P1+P2 脚本编排引擎 · 自验记录（2026-09-12）
+# P1+P2+P3+P4+P5 脚本编排 · 自验记录（2026-09-12）
 
 > 设计：`docs/v2-design/16-wakerflow-script-agentflow.md` v1.1（D1=子进程沙箱 / D2=DAG 冻结共存 / D3=NL 生成 P4 后置）
-> 状态：P1+P2 完成，未提交待验收；真实运行时（8301）跨栈冒烟属 P5，须额度批准
+> 状态：**P1–P5 全部完成**；P5 真实栈冒烟已执行（用户批准模型额度）
 > 证据可复现：命令均在 `server/` 执行
 
 ## 1. 交付内容
@@ -47,12 +47,48 @@
 
 
 
-## 4. 门禁
+## 3A. P3/P4 交付（投影画布/脚本编辑器/NL 生成）
+
+- **P3（ff717ff）**：`script_projection()` 服务端 ast 固化 projection+callSites 进版本 meta；前端
+  `src/features/agentflow/script-projection.tsx` 只读阶段卡组件（phase 分组/parallel 虚线组/ask_user 卡）；
+  agentflow-detail 三分支：画布=投影、脚本=CodeMirror(python) 可编辑+保存为新版本、运行态=投影+状态叠加，
+  全卡片点击跳脚本行；DAG 形态不变。
+- **P4（fc20bec）**：`POST /api/v2/agentflows/generate-script`（operator，走 `_call_model` 真实通道），
+  产物过契约校验+带错重试≤1+未授权 waker 拒绝；前端「AI 生成/调整」对话框（brief→只读预览→确认存新版本）。
+
+## 3B. P5 真实栈冒烟（2026-09-12 17:00–17:40，真实 LLM）
+
+环境：8301 运行时（新代码）+ 8120 平台 wf_dev（新代码）+ 5199 前端；Agent=module 型真实发布物化。
+
+| 项 | 结果 | 证据 |
+|---|---|---|
+| AC-S6 NL 生成 | ✅ 两次真实生成均 attempts=1（17.8s/2642B 与 17.4s/2861B），产物一次过契约校验 | 平台日志 `POST /api/v2/agentflows/generate-script 200` |
+| AC-S1/S2 真实执行 | ✅ 生成脚本 run：3 worker 全 succeeded（extract_highlights→并行双标题），真实产出 `titleZh=自动化调度、事件协同与执行真实性三大能力升级` 等 | run 66806a32；并行节点时间重叠=False——**worker 已被运行时串行化（见下），属登记内预期** |
+| AC-S3 HITL 真实闭环 | ✅ run→askUser→**waiting 节点+前端确认卡（截图04）→UI 点击「继续」→恢复→真实 worker→succeeded（截图05）**，`final=智编引擎·耀世启航` | run（flow 5be9015e/9e3193bd 两条链均验） |
+| AC-S4 看门狗（live） | ✅ 挂死 run 在 deadline 被 SIGKILL 并结算 failed(TimeoutError)，job done | run 3a6fe035 |
+| 视觉 | 截图 5 张（画布投影/脚本编辑器/执行记录/待确认卡/完成态） | `docs/acceptance/assets/2026-09-12-script-agentflow/` |
+
+### P5 冒烟抓出并修复的问题（全部已修+回归）
+
+1. **ctx.input 契约缺失**：NL 生成脚本天然以 `ctx.input` 读输入 → 补进沙箱契约与生成提示词（第9条）；
+2. **`_on_exit` UnboundLocalError**：`nonlocal finished` 缺失（同上轮 P0-1 类），终态兜底结算失效 → 修复；
+3. **flow:complete 错误详情被吞**：run.error 固化 "node failed" → 透传子进程真实错误；
+4. **并行并发 `_new_session` 在运行时内挂死**（两 worker 等锁、start 事件不产出）→ worker 执行
+   信号量串行化（parallel 聚合语义保留、时间重叠暂缓），16号稿 §17 登记待 AgentScope 存储并发验证；
+5. **3.11 运行时 + Popen stdio 全双工丢响应**（子→父正常、父→子写入子进程收不到；FIFO/-c/3.12 均正常，
+   根因未明已绕开）→ **RPC 响应通道改 127.0.0.1 一次性 TCP + 令牌**（`SandboxHandle.respond`），
+   3.11 下全链验证通过；
+6. 诊断设施：沙箱/运行时 stderr 痕迹（`[sandbox]`/`[script-run]` 前缀，nohup 日志可查）；
+7. 运维坑登记：`lsof -ti:8301` 会把保有 SSE 连接的 8120 一起列出来——重启运行时必须
+   `lsof -ti:8301 -sTCP:LISTEN` 精确杀监听者（本次误杀平台两次）。
+
+## 4. 门禁（最终）
 
 ```
-定向: pytest tests/test_p1_script_agentflow.py tests/test_f0_execution_truthfulness.py → 25 passed
-全量: pytest tests/ → 520 passed ×2 遍稳定（504 基线 + 13 P1 + 3 P2）
-前端: tsc 0 错 / vitest 全绿 / build ✓
+定向: pytest tests/test_p1_script_agentflow.py tests/test_f0_execution_truthfulness.py → 27 passed
+全量: pytest tests/ → 522 passed（504 基线 + 18 P 轮新增）
+前端: tsc 0 错 / vitest 65 全绿 / build ✓
+真实栈: 8301+8120 重启带新代码，live 冒烟五项全过（§3B）
 ```
 
 **全量轮抓出的竞态（已修）**：先前测试文件模块级启动的常驻 worker 线程会认领新测试入队的

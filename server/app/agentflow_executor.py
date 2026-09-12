@@ -498,7 +498,7 @@ def _handle_flow_event(
     if name == "flow:complete":
         run.output = data.get("output")
         run.status = data.get("status", "failed")
-        run.error = "" if run.status == "succeeded" else "node failed"
+        run.error = "" if run.status == "succeeded" else (data.get("error") or "node failed")
         run.ended_at = _now()
         # run 终态时仍挂起的 askUser 一并结算（kill/deadline/崩溃路径）
         for w in (

@@ -144,13 +144,13 @@ META = {"phases": ["A", "B"]}
 async def run(ctx):
     phase, log, worker, askUser, parallel = ctx.primitives
     await phase("A")
-    await log("start")
+    await log("start " + str(ctx.input.get("k")))
     a = await worker("step-1", waker="wa", label="s1")
     await phase("B")
     b = await worker("step-2", waker="wa", label="s2", schema={"type": "object"})
     return {"a": a, "b": b}
 """
-    out = asyncio.run(_run(script, T()))
+    out = asyncio.run(_run(script, T(), {"k": "v"}))
     assert out == {"a": {"ok": 1}, "b": {"ok": 1}}
     assert [c[0] for c in calls] == ["phase", "log", "worker", "phase", "worker"]
     assert calls[2][1]["label"] == "s1" and calls[4][1]["schema"] == {"type": "object"}
@@ -277,6 +277,8 @@ def test_real_subprocess_rpc_roundtrip():
     done: list = []
     lines: list = []
 
+    holder: dict = {}
+
     def on_line(line: str) -> None:
         lines.append(line)
         try:
@@ -286,9 +288,7 @@ def test_real_subprocess_rpc_roundtrip():
         if msg.get("op") == "worker":
             resp = json.dumps({"id": msg["id"], "ok": True,
                                "result": {"echo": msg["args"]["prompt"]}})
-            assert proc.stdin is not None
-            proc.stdin.write(resp + "\n")
-            proc.stdin.flush()
+            holder["handle"].respond(resp)
         elif msg.get("event") == "done":
             done.append(msg)
 
@@ -297,14 +297,15 @@ def test_real_subprocess_rpc_roundtrip():
         "    r = await ctx.worker('hello', waker='wa', label='w1')\n"
         "    return {'r': r}\n"
     )
-    proc = sb.spawn_sandbox({"script": script, "flow_input": {}},
-                            on_line=on_line, deadline_seconds=10)
+    handle = sb.spawn_sandbox({"script": script, "flow_input": {}},
+                              on_line=on_line, deadline_seconds=10)
+    holder["handle"] = handle
     try:
-        msg = _wait_done(done, proc)
+        msg = _wait_done(done, handle)
         assert msg["status"] == "succeeded"
         assert msg["output"] == {"r": {"echo": "hello"}}
     finally:
-        proc.kill()
+        handle.kill()
 
 
 def test_real_subprocess_sync_loop_needs_parent_kill():

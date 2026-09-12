@@ -29,6 +29,7 @@ import asyncio
 import inspect
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -48,10 +49,14 @@ class ScriptError(Exception):
 
 
 class _Ctx:
-    """脚本可见的执行上下文；primitives 顺序与 16号稿 §4 契约一致。"""
+    """脚本可见的执行上下文；primitives 顺序与 16号稿 §4 契约一致。
 
-    def __init__(self, transport: Any) -> None:
+    ``ctx.input`` = 本次运行的 flow_input（dict）；P5 冒烟实证：NL 生成脚本天然
+    会以 ctx.input 读输入，属正式契约。"""
+
+    def __init__(self, transport: Any, flow_input: dict | None = None) -> None:
         self._t = transport
+        self.input: dict = dict(flow_input or {})
 
     async def _call(self, op: str, **args: Any) -> Any:
         return await self._t.call(op, **args)
@@ -142,7 +147,7 @@ async def run_script(
     run_fn = ns.get("run")
     if run_fn is None or not inspect.iscoroutinefunction(run_fn):
         raise ScriptError("module must define `async def run(ctx)`")
-    ctx = _Ctx(transport)
+    ctx = _Ctx(transport, flow_input)
     out = await asyncio.wait_for(run_fn(ctx), timeout=float(deadline_seconds))
     if out is None:
         out = {}
@@ -156,35 +161,61 @@ async def run_script(
 # ---------------------------------------------------------------------------
 
 
-def _stdin_line_reader(loop: asyncio.AbstractEventLoop, sink: asyncio.Queue) -> None:
-    """后台线程：逐行读 stdin（RPC 响应），投递到事件循环队列。"""
+def _tcp_response_reader(
+    loop: asyncio.AbstractEventLoop,
+    sink: asyncio.Queue,
+    srv: "socket.socket",
+    expected_token: str,
+) -> None:
+    """后台线程：accept 父侧回连 → 校验一次性令牌 → 逐行读 RPC 响应入队。"""
+    import socket as _socket
 
-    def _pump() -> None:
-        try:
-            for line in sys.stdin:
-                line = line.strip()
-                if not line:
-                    continue
-                loop.call_soon_threadsafe(sink.put_nowait, line)
-        except Exception:  # noqa: BLE001 —— 父进程关闭管道等，静默收尾
-            pass
-
-    threading.Thread(target=_pump, daemon=True).start()
+    print("[sandbox] tcp reader waiting", file=sys.stderr, flush=True)
+    try:
+        conn, addr = srv.accept()
+        if addr[0] != "127.0.0.1":
+            conn.close()
+            return
+        first = conn.makefile("r", encoding="utf-8").readline().strip()
+        if first != expected_token:
+            print("[sandbox] tcp token mismatch", file=sys.stderr, flush=True)
+            conn.close()
+            return
+        print("[sandbox] tcp connected", file=sys.stderr, flush=True)
+        rfile = conn.makefile("r", encoding="utf-8")
+        for line in rfile:
+            line = line.strip()
+            if not line:
+                continue
+            print(f"[sandbox] rx: {line[:120]}", file=sys.stderr, flush=True)
+            loop.call_soon_threadsafe(sink.put_nowait, line)
+    except Exception as exc:  # noqa: BLE001 —— 父进程关闭连接等
+        print(f"[sandbox] tcp reader exit: {exc!r}", file=sys.stderr, flush=True)
 
 
 class _StdioTransport:
-    """把五原语请求写到 stdout，等待父进程在 stdin 上的响应行。"""
+    """五原语请求写 stdout；RPC 响应经 127.0.0.1 一次性 TCP 通道接收。
 
-    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+    P5 冒烟实证：3.11 runtime venv + Popen stdio 全双工组合下父→子响应会丢失
+    （FIFO/-c/3.12 均正常，根因未明），故响应通道改走 localhost TCP + 一次性令牌；
+    请求方向（子→父 stdout）实测可靠保留。"""
+
+    def __init__(self, loop: asyncio.AbstractEventLoop, srv, token: str) -> None:
         self._loop = loop
         self._pending: dict[int, asyncio.Future] = {}
         self._next_id = 0
         self._queue: asyncio.Queue = asyncio.Queue()
-        _stdin_line_reader(loop, self._queue)
+        print("[sandbox] reader starting", file=sys.stderr, flush=True)
+        threading.Thread(
+            target=_tcp_response_reader, args=(loop, self._queue, srv, token),
+            daemon=True,
+        ).start()
 
     def feed(self, line: str) -> None:
         msg = json.loads(line)
         fut = self._pending.pop(msg.get("id"), None)
+        print(f"[sandbox] feed id={msg.get('id')} pending_hit={fut is not None}",
+              file=sys.stderr, flush=True)
         if fut is not None and not fut.done():
             if msg.get("ok"):
                 fut.set_result(msg.get("result"))
@@ -196,10 +227,9 @@ class _StdioTransport:
         rid = self._next_id
         fut: asyncio.Future = self._loop.create_future()
         self._pending[rid] = fut
-        sys.stdout.write(
-            json.dumps({"id": rid, "op": op, "args": args}, ensure_ascii=False, default=str)
-            + "\n"
-        )
+        payload = json.dumps({"id": rid, "op": op, "args": args}, ensure_ascii=False, default=str)
+        print(f"[sandbox] sent id={rid} op={op}", file=sys.stderr, flush=True)
+        sys.stdout.write(payload + "\n")
         sys.stdout.flush()
         return await fut
 
@@ -214,7 +244,15 @@ def main() -> int:
         print(json.dumps({"event": "done", "status": "failed",
                           "output": {}, "error": "bad manifest line"}))
         return 2
-    transport = _StdioTransport(loop)
+    token = str(manifest.get("rpc_token") or "")
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    sys.stdout.write(
+        json.dumps({"event": "rpc_port", "port": srv.getsockname()[1]}) + "\n"
+    )
+    sys.stdout.flush()
+    transport = _StdioTransport(loop, srv, token)
 
     async def _drive() -> dict:
         # 消费响应行 → transport.feed（与 run_script 并发）
@@ -254,6 +292,34 @@ def main() -> int:
 # ---------------------------------------------------------------------------
 
 
+class SandboxHandle:
+    """spawn_sandbox 返回值：真实 Popen + RPC 响应通道（127.0.0.1 TCP）。
+
+    ``respond(line)`` 把一行 JSON 响应写回子进程（线程安全：独占 socket）；
+    ``poll/kill/wait`` 透传 Popen。"""
+
+    def __init__(self, proc: subprocess.Popen) -> None:
+        self.proc = proc
+        self._sock: socket.socket | None = None
+
+    def _bind(self, sock: socket.socket) -> None:
+        self._sock = sock
+
+    def respond(self, line: str) -> None:
+        if self._sock is None:
+            raise RuntimeError("rpc channel not connected yet")
+        self._sock.sendall((line.rstrip("\n") + "\n").encode("utf-8"))
+
+    def poll(self) -> int | None:
+        return self.proc.poll()
+
+    def kill(self) -> None:
+        self.proc.kill()
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.proc.wait(timeout=timeout)
+
+
 def spawn_sandbox(
     manifest: dict,
     *,
@@ -263,15 +329,20 @@ def spawn_sandbox(
     deadline_seconds: float = 600.0,
     memory_bytes: int = 2 * 1024 ** 3,
     cpu_seconds: int = 600,
-) -> subprocess.Popen:
+) -> SandboxHandle:
     """spawn 沙箱子进程（16号稿 §8 加固清单 1/2）。
 
     - 最小 env：不继承父进程任何变量（平台凭据/LLM key/DB URL 断言由测试覆盖）；
     - rlimits：CPU/AS/NOFILE；cwd=临时目录；脚本文件路径直接作为入口（无需包上下文）。
     stdout 每行回调 on_line；进程退出回调 on_exit(returncode)。stderr 由调用方合并读取。
     """
-    manifest = {**manifest, "deadline_seconds": deadline_seconds}
-    sandbox_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "script_sandbox.py")
+    manifest = {**manifest, "deadline_seconds": deadline_seconds,
+                "rpc_token": os.urandom(16).hex()}
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    boot = (
+        "import sys; sys.path.insert(0, %r); "
+        "from app.script_sandbox import main; sys.exit(main())" % os.path.dirname(app_dir)
+    )
 
     def _preexec() -> None:  # 子进程内执行：资源限额
         try:
@@ -284,17 +355,21 @@ def spawn_sandbox(
             pass
 
     env = {"LANG": "C.UTF-8", "HOME": tempfile.mkdtemp(prefix="mtc-sandbox-")}
+    stderr_target = (
+        None if os.environ.get("MTC_SANDBOX_STDERR_INHERIT") == "1" else subprocess.PIPE
+    )
     proc = subprocess.Popen(
-        [python or sys.executable, sandbox_file],
+        [python or sys.executable, "-c", boot],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=stderr_target,
         env=env,
         cwd=tempfile.mkdtemp(prefix="mtc-sandbox-cwd-"),
         preexec_fn=_preexec,
         text=True,
         bufsize=1,
     )
+    handle = SandboxHandle(proc)
     assert proc.stdin is not None and proc.stdout is not None
     proc.stdin.write(json.dumps(manifest, ensure_ascii=False, default=str) + "\n")
     proc.stdin.flush()
@@ -302,7 +377,19 @@ def spawn_sandbox(
     def _pump() -> None:
         try:
             for line in proc.stdout:  # type: ignore[union-attr]
-                on_line(line.rstrip("\n"))
+                line = line.rstrip("\n")
+                if not line:
+                    continue
+                if '"rpc_port"' in line:
+                    try:
+                        port = int(json.loads(line)["port"])
+                        sock = socket.create_connection(("127.0.0.1", port), timeout=5)
+                        sock.sendall((manifest["rpc_token"] + "\n").encode("utf-8"))
+                        handle._bind(sock)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    continue
+                on_line(line)
         except Exception:  # noqa: BLE001
             pass
         code = proc.wait()
@@ -310,7 +397,7 @@ def spawn_sandbox(
             on_exit(code)
 
     threading.Thread(target=_pump, daemon=True).start()
-    return proc
+    return handle
 
 
 if __name__ == "__main__":

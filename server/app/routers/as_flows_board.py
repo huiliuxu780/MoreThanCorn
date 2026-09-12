@@ -503,7 +503,10 @@ def generate_script(body: GenerateScriptBody, db: Session = Depends(get_db), use
         "5. 并行用 `await parallel([lambda: worker(...), ...])`，失败子项为 None，"
         "脚本需自行 filter 后使用；\n"
         "6. 循环/条件直接用 for/if 等原生语法；run 返回一个 dict（对照 META.outputSchema）；\n"
-        "7. 只允许使用下方给定的 waker id，且每个 worker 调用必须带 waker= 常量参数。\n\n"
+        "7. 只允许使用下方给定的 waker id，且每个 worker 调用必须带 waker= 常量参数；\n"
+        "8. 按 META.phases 的顺序在脚本体内调用 `await phase(<阶段标题>)` 分组，"
+        "每个 worker/askUser 都落在某个 phase 之后；\n"
+        "9. 运行输入通过 ctx.input（dict）读取，缺省时用合理默认值，不要因此询问用户。\n\n"
         f"可用的 waker：\n{waker_list}{current}\n\n用户需求：\n{body.brief}\n\n"
         "只输出 Python 源码本体，不要 markdown 围栏，不要任何解释。"
     )

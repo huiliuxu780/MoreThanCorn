@@ -1,5 +1,7 @@
 """脚本编排运行时端点（16号稿 P1/P2）。
 
+诊断日志走 stderr（uvicorn nohup 日志可见）：[script-run] 前缀。
+
 POST /mtc/script-run (SSE)：spawn 沙箱子进程（app/script_sandbox.py，stdlib-only），
 把五原语 RPC 分派到与 DAG 形态同源的节点执行件（Session/结构化输出/internal token
 注册全部复用），并按 DAG 形状向平台发事件：
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import threading
 import uuid
 from typing import Any, AsyncGenerator
@@ -49,6 +52,11 @@ DEFAULT_DEADLINE_SECONDS = 600.0
 # P2：askUser 挂起表 (agentflow_run_id, request_id) → Future；进程内存活，
 # run 结束/崩溃时统一按 skipped 结算（waiting 不跨进程持久——16号稿 §7 已知边界）。
 _PENDING_INPUTS: dict[tuple[str, str], asyncio.Future] = {}
+
+# P5 冒烟实证：并行 worker 并发 _new_session 会在 AgentScope app 内挂死（主线程空转等 IO，
+# start 事件永不产出；单 worker 正常）。worker 执行暂以信号量串行化——parallel 聚合语义
+# 不变，时间上暂不重叠；放开前须完成 AgentScope 存储并发验证（16号稿 §17 已登记）。
+_WORKER_GATE = asyncio.Semaphore(1)
 
 
 class ScriptResumeBody(BaseModel):
@@ -129,6 +137,7 @@ async def script_run(
             line = line.strip()
             if not line:
                 return
+            print(f"[script-run] child line: {line[:160]}", file=sys.stderr, flush=True)
             try:
                 msg = json.loads(line)
             except json.JSONDecodeError:
@@ -181,77 +190,84 @@ async def script_run(
             return session
 
         async def _exec_worker(msg: dict) -> None:
-            rid = msg["id"]
-            args = msg.get("args") or {}
-            waker_id = str(args.get("waker") or "")
-            binding = body.wakers.get(waker_id)
-            if binding is None:
-                proc_holder["proc"].stdin.write(
-                    _rpc_error(rid, f"waker {waker_id} not declared in bindings")
-                )
-                proc_holder["proc"].stdin.flush()
-                return
-            label = str(args.get("label") or f"w{rid}")
-            phase_name = args.get("phase")
-            prompt = str(args.get("prompt") or "")
-            schema = args.get("schema")
-            status, out, error = "succeeded", None, ""
-            try:
-                session = await _new_session(waker_id, binding)
+            print(f"[script-run] exec_worker enter id={msg.get('id')}", file=sys.stderr, flush=True)
+            async with _WORKER_GATE:
+                print(f"[script-run] gate acquired id={msg.get('id')}", file=sys.stderr, flush=True)
+                rid = msg["id"]
+                args = msg.get("args") or {}
+                waker_id = str(args.get("waker") or "")
+                binding = body.wakers.get(waker_id)
+                if binding is None:
+                    proc_holder["handle"].respond(
+                        _rpc_error(rid, f"waker {waker_id} not declared in bindings"))
+                    return
+                label = str(args.get("label") or f"w{rid}")
+                prompt = str(args.get("prompt") or "")
+                schema = args.get("schema")
+                status, out, error = "succeeded", None, ""
+                try:
+                    session = await _new_session(waker_id, binding)
+                    emit({
+                        "event": f"stage:{label}",
+                        "data": {"phase": "start", "session_id": session.id,
+                                 "agent_id": waker_id,
+                                 "runtime_agent_id": binding.runtime_agent_id},
+                    })
+                    agent_record = await storage.get_agent(body.user_id, binding.runtime_agent_id)
+                    if schema:
+                        schema_model = schema_to_model(f"{label}_output", schema)
+                        final = await structured_run_core(
+                            storage=storage,
+                            message_bus=chat_service._message_bus,
+                            workspace_manager=workspace_manager,
+                            kb_manager=kb_manager,
+                            access=access,
+                            scheduler_manager=scheduler_manager,
+                            background_task_manager=background_task_manager,
+                            user_id=body.user_id,
+                            agent_record=agent_record,
+                            session=session,
+                            text=prompt,
+                            schema=schema_model,
+                        )
+                        msgs, _ = await storage.list_messages(body.user_id, session.id)
+                        error, status, out = _detect_chat_error(msgs)
+                        if not out and final is not None:
+                            out = final.structured_output or {}
+                    else:
+                        from agentscope.message import Msg, TextBlock
+
+                        await chat_service.run(
+                            body.user_id,
+                            session.id,
+                            binding.runtime_agent_id,
+                            Msg(name="flow", role="user",
+                                content=[TextBlock(type="text", text=prompt)]),
+                        )
+                        msgs, _ = await storage.list_messages(body.user_id, session.id)
+                        error, status, out = _detect_chat_error(msgs)
+                except Exception as exc:  # noqa: BLE001 —— 节点失败结算为 end(failed)
+                    status, out, error = "failed", None, repr(exc)
                 emit({
                     "event": f"stage:{label}",
-                    "data": {"phase": "start", "session_id": session.id,
-                             "agent_id": waker_id,
-                             "runtime_agent_id": binding.runtime_agent_id},
+                    "data": {"phase": "end", "status": status,
+                             "output": out if isinstance(out, dict) else (
+                                 {"text": out} if out is not None else None),
+                             "error": error},
                 })
-                agent_record = await storage.get_agent(body.user_id, binding.runtime_agent_id)
-                if schema:
-                    schema_model = schema_to_model(f"{label}_output", schema)
-                    final = await structured_run_core(
-                        storage=storage,
-                        message_bus=chat_service._message_bus,
-                        workspace_manager=workspace_manager,
-                        kb_manager=kb_manager,
-                        access=access,
-                        scheduler_manager=scheduler_manager,
-                        background_task_manager=background_task_manager,
-                        user_id=body.user_id,
-                        agent_record=agent_record,
-                        session=session,
-                        text=prompt,
-                        schema=schema_model,
-                    )
-                    msgs, _ = await storage.list_messages(body.user_id, session.id)
-                    error, status, out = _detect_chat_error(msgs)
-                    if not out and final is not None:
-                        out = final.structured_output or {}
-                else:
-                    from agentscope.message import Msg, TextBlock
+                try:
+                    if status == "succeeded":
+                        resp = _rpc_response(rid, out)
+                    else:
+                        resp = _rpc_error(rid, error or f"worker {label} failed")
+                    print(f"[script-run] rpc response id={rid} len={len(resp)}",
+                          file=sys.stderr, flush=True)
+                    proc_holder["handle"].respond(resp)
+                except Exception:  # noqa: BLE001 —— 响应写失败必须留痕（否则子进程永久等待）
+                    import traceback
 
-                    await chat_service.run(
-                        body.user_id,
-                        session.id,
-                        binding.runtime_agent_id,
-                        Msg(name="flow", role="user",
-                            content=[TextBlock(type="text", text=prompt)]),
-                    )
-                    msgs, _ = await storage.list_messages(body.user_id, session.id)
-                    error, status, out = _detect_chat_error(msgs)
-            except Exception as exc:  # noqa: BLE001 —— 节点失败结算为 end(failed)
-                status, out, error = "failed", None, repr(exc)
-            emit({
-                "event": f"stage:{label}",
-                "data": {"phase": "end", "status": status,
-                         "output": out if isinstance(out, dict) else (
-                             {"text": out} if out is not None else None),
-                         "error": error},
-            })
-            if status == "succeeded":
-                proc_holder["proc"].stdin.write(_rpc_response(rid, out))
-            else:
-                proc_holder["proc"].stdin.write(
-                    _rpc_error(rid, error or f"worker {label} failed"))
-            proc_holder["proc"].stdin.flush()
+                    print(f"[script-run] rpc response FAILED id={rid}\n"
+                          + traceback.format_exc(), file=sys.stderr, flush=True)
 
         async def _dispatch(msg: dict) -> None:
             op = msg.get("op")
@@ -261,13 +277,11 @@ async def script_run(
             elif op == "phase":
                 emit({"event": "phase",
                       "data": {"name": (msg.get("args") or {}).get("name", "")}})
-                proc_holder["proc"].stdin.write(_rpc_response(rid, True))
-                proc_holder["proc"].stdin.flush()
+                proc_holder["handle"].respond(_rpc_response(rid, True))
             elif op == "log":
                 emit({"event": "log",
                       "data": {"message": (msg.get("args") or {}).get("message", "")}})
-                proc_holder["proc"].stdin.write(_rpc_response(rid, True))
-                proc_holder["proc"].stdin.flush()
+                proc_holder["handle"].respond(_rpc_response(rid, True))
             elif op == "askUser":
                 # P2/AC-S3：挂起等待人工答复；needs_input 事件让平台落 waiting 节点，
                 # 答复经 /mtc/script-resume 写回 Future 后脚本继续。
@@ -292,15 +306,14 @@ async def script_run(
                                         "skipped": bool(result.get("skipped"))},
                              "error": ""},
                 })
-                proc_holder["proc"].stdin.write(_rpc_response(rid, result))
-                proc_holder["proc"].stdin.flush()
+                proc_holder["handle"].respond(_rpc_response(rid, result))
             else:
-                proc_holder["proc"].stdin.write(
+                proc_holder["handle"].respond(
                     _rpc_error(rid, f"op {op} not supported"))
-                proc_holder["proc"].stdin.flush()
 
         def _on_exit(code: int) -> None:
             def _handle() -> None:
+                nonlocal finished
                 if not finished:
                     finished = True
                     emit({
@@ -313,7 +326,7 @@ async def script_run(
 
             loop.call_soon_threadsafe(_handle)
 
-        proc_holder["proc"] = spawn_sandbox(
+        proc_holder["handle"] = spawn_sandbox(
             {
                 "script": body.script,
                 "flow_input": body.flow_input,
@@ -325,9 +338,10 @@ async def script_run(
 
         def _drain_stderr() -> None:
             try:
-                for line in proc_holder["proc"].stderr:  # type: ignore[union-attr]
+                for line in proc_holder["handle"].proc.stderr:  # type: ignore[union-attr]
                     stderr_tail.append(line)
                     del stderr_tail[:-50]
+                    print(f"[sandbox-stderr] {line.rstrip()[:200]}", file=sys.stderr, flush=True)
             except Exception:  # noqa: BLE001
                 pass
 
@@ -337,7 +351,7 @@ async def script_run(
             await asyncio.sleep(body.deadline_seconds + 5.0)
             if not finished:
                 try:
-                    proc_holder["proc"].kill()
+                    proc_holder["handle"].kill()
                 except Exception:  # noqa: BLE001
                     pass
 
@@ -356,8 +370,8 @@ async def script_run(
             watchdog.cancel()
             _settle_run_inputs(body.agentflow_run_id or "")
             try:
-                if proc_holder["proc"].poll() is None:
-                    proc_holder["proc"].kill()
+                if proc_holder["handle"].poll() is None:
+                    proc_holder["handle"].kill()
             except Exception:  # noqa: BLE001
                 pass
 
