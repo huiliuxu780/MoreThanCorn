@@ -9,8 +9,8 @@ from .legacy_agent_archive import LegacyAgentArchivedError
 from .runner import start_worker
 from .routers import (admin, agent_caps, agents, alerts, analytics, as_agents,
                       as_automations, as_flows_board, auth_routes,
-                      automations, business, forms, governance, operations, registry,
-                      resources, runs, work_items, workflows)
+                      automations, business, event_routes, forms, governance,
+                      operations, registry, resources, runs, work_items, workflows)
 # P0-07：runtime_providers 路由已退役（不挂载、不 import）。模块保留在
 # server/app/runtime_providers/ 仅作历史参考，生产入口不得引用。
 
@@ -197,6 +197,7 @@ app.include_router(as_automations.router)
 app.include_router(as_automations.ext_router)
 app.include_router(as_automations.ingress_router)
 app.include_router(as_automations.webhook_router)
+app.include_router(event_routes.router)  # F5：/api/v2/event-routes + event-deliveries（Spec §12.6）
 app.include_router(as_flows_board.flows_router)
 app.include_router(as_flows_board.board_router)
 app.include_router(as_flows_board.internal_router)

@@ -909,8 +909,11 @@ class TaskRun(Base):
     resolved_agent_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     resolved_release_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     runtime_binding_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    trigger: Mapped[str] = mapped_column(String(16), default="manual")  # manual|schedule|backfill|api
+    trigger: Mapped[str] = mapped_column(String(16), default="manual")  # manual|schedule|backfill|api|event
     schedule_fire_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
+    # F5（Spec §10.1）：event 触发批次的可追踪引用（SourceEvent→Delivery→TaskRun 全链路）
+    source_event_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    event_delivery_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)  # queued|running|partial|succeeded|failed|cancelled
     total: Mapped[int] = mapped_column(Integer, default=0)
@@ -1301,22 +1304,26 @@ class AutomationTriggerLog(Base):
 
 
 class EventDelivery(Base):
-    """Per-trigger delivery record for an inbound event: independent retry/dead-letter.
+    """Per-route delivery record for an inbound event: independent retry/dead-letter.
 
     One DataSourceEvent fans out to N EventDelivery records (one per matched
-    AutomationTrigger).  Each delivery carries its own attempts counter,
-    retry schedule, and terminal status — so one failed target doesn't poison
-    the whole event.
+    EventRoute / legacy AutomationTrigger).  Each delivery carries its own
+    attempts counter, retry schedule, and terminal status — so one failed
+    target doesn't poison the whole event.
+
+    F5（Spec §10.2.1）：trigger_id/automation_id/trigger_log_id 为兼容列，
+    route 投递可空（目的地走 destination_kind/destination_id）。
     """
     __tablename__ = "event_delivery"
     __table_args__ = (
+        # NULL 不参与唯一冲突（PG 语义）：route 投递无 trigger_id，去重走 dedupe_scope
         UniqueConstraint("event_id", "trigger_id", name="uq_event_trigger"),
     )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     event_id: Mapped[str] = mapped_column(String(32), index=True)
-    trigger_id: Mapped[str] = mapped_column(String(32), index=True)
-    automation_id: Mapped[str] = mapped_column(String(32), index=True)
+    trigger_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    automation_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     source: Mapped[str] = mapped_column(String(16), default="event")
     status: Mapped[str] = mapped_column(String(16), default="pending")
     # pending | running | completed | failed | dead
@@ -1326,6 +1333,53 @@ class EventDelivery(Base):
     dead_reason: Mapped[str] = mapped_column(Text, default="")
     error: Mapped[str] = mapped_column(Text, default="")
     trigger_log_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # F5（Spec §10.2.1）：唯一目的地字段组。pending/running 阶段两个结果引用可空；
+    # completed 后满足 XOR：automation→invocation_id，analysis_task→task_run_id。
+    route_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    route_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    destination_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # automation|analysis_task；旧行经 trigger_id/automation_id 兼容读取
+    destination_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    invocation_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    task_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    completion_policy: Mapped[str] = mapped_column(String(16), default="accepted")
+    # accepted=派发受理即完成；terminal=目标执行终态才完成（Spec §10.2）
+    mapped_input: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # 创建时冻结的 mapping 产物：retry 不随 route 编辑漂移（Spec §10.0 版本规则）
+    dedupe_scope: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    # route 级去重：f"{route_id}:{dedupe.keyPath 提取值}"，窗口见 route.dedupe
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class EventRoute(Base):
+    """EventRoute（F5，Spec §10.0）：某类来源事件满足条件后送往哪里的唯一逻辑契约。
+
+    destination XOR：automation | analysis_task（一 route 一目的地，不双发）。
+    revision 随 PUT 递增；delivery 创建时冻结 route_id+route_revision+mapped_input；
+    DELETE = 归档语义（enabled=false + archived=true），历史 delivery 仍可追踪。
+    兼容期：automation_trigger(kind=event|polling) 仍是 destination=automation 的
+    AS-IS 存储，统一 DTO 视图由 /api/v2/event-routes 投影（origin 字段区分）。
+    """
+    __tablename__ = "event_route"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    source_id: Mapped[str] = mapped_column(String(32), index=True)  # DataSource.id（无FK，源可先删）
+    event_type: Mapped[str] = mapped_column(String(64), default="")  # 空=匹配该源全部事件
+    destination_kind: Mapped[str] = mapped_column(String(16))  # automation|analysis_task
+    destination_id: Mapped[str] = mapped_column(String(32), index=True)
+    filter: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # {version:1, expression:{field,op,value}}；expression 为空 = 不过滤
+    mapping: Mapped[dict] = mapped_column(JSONB, default=dict)  # {version:1, fields:{k: path}}
+    dedupe: Mapped[dict] = mapped_column(JSONB, default=dict)  # {keyPath, windowSeconds}
+    completion_policy: Mapped[str] = mapped_column(String(16), default="accepted")
+    # accepted|terminal（Spec §10.2）
+    retry_policy: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # {maxAttempts, backoff, maxDelaySeconds}；空 = 平台默认 3 次指数退避
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str] = mapped_column(String(64), default="dev")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -1442,5 +1496,9 @@ class DataSourceEvent(Base):
     dispatch_ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str] = mapped_column(Text, default="")
+    # F5（AC-023/024）：逐 route 流水证据 [{routeId, revision, result, deliveryId?}]，
+    # result ∈ delivered|filtered|deduped|failed|dead|route_disabled，filtered/deduped
+    # 不产生 delivery 行，证据只存在这里
+    route_outcomes: Mapped[list] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

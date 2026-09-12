@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel
-from sqlalchemy import text
+from sqlalchemy import and_, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -32,6 +32,7 @@ from ..models import (
     DataSource,
     DataSourceEvent,
     EventDelivery,
+    EventRoute,
     Release,
     Workflow,
 )
@@ -1086,6 +1087,98 @@ def _apply_mapping(cfg: dict, payload: dict) -> dict:
     return out or payload
 
 
+def _expr_of(cfg: dict | None) -> dict:
+    """EventRoute.filter 兼容两种形状：{version,expression:{…}} 或裸 {field,op,value}。"""
+    cfg = cfg or {}
+    if "expression" in cfg:
+        return cfg.get("expression") or {}
+    return {k: v for k, v in cfg.items() if k != "version"}
+
+
+def _fields_of(cfg: dict | None) -> dict:
+    """EventRoute.mapping 兼容 {version,fields:{k:path}} 或裸 {k:path}。"""
+    cfg = cfg or {}
+    if "fields" in cfg:
+        return cfg.get("fields") or {}
+    return {k: v for k, v in cfg.items() if k != "version"}
+
+
+def _extract_path(payload: dict, path: str):
+    cur: Any = payload
+    for part in (path or "").split("."):
+        if isinstance(cur, dict) and part in cur:
+            cur = cur[part]
+        else:
+            return None
+    return cur
+
+
+def _dispatch_automation(db: Session, destination_id: str,
+                         delivery: EventDelivery, mapped: dict) -> None:
+    """EventRoute(automation) → 至多 1 Invocation（Spec §10.1 XOR 左支）。
+
+    目标缺失/停用 = 不可重试错误（§13.1），直接 dead 并给出原因，不进退避循环。
+    """
+    auto = db.get(AutomationDefinition, destination_id)
+    if auto is None:
+        delivery.status = "dead"
+        delivery.dead_reason = "TARGET_NOT_FOUND"
+        return
+    if not auto.enabled:
+        delivery.status = "dead"
+        delivery.dead_reason = "AUTOMATION_DISABLED"
+        return
+    lg = dispatch(db, auto.created_by or "dev", auto, mapped, source="event")
+    delivery.trigger_log_id = lg.id
+    delivery.invocation_id = lg.id
+    if lg.status == "failed":
+        delivery.attempts += 1
+        delivery.status = "failed"
+        delivery.error = lg.error or "dispatch returned failed"
+        _schedule_retry(delivery)
+    else:
+        # accepted 策略：Invocation 受理即 completed；terminal：等 watcher 结算
+        delivery.status = ("running" if delivery.completion_policy == "terminal"
+                           else "completed")
+
+
+def _dispatch_analysis_task(db: Session, destination_id: str,
+                            delivery: EventDelivery,
+                            event: DataSourceEvent) -> None:
+    """EventRoute(analysis_task) → 至多 1 TaskRun（Spec §10.1 XOR 右支）。
+
+    trigger="event"；TaskRun 保存 source_event_id/event_delivery_id 全链路引用；
+    冻结 TaskVersion/DataSnapshot 等由 start_task_run 既有路径负责（含 SDD13 §18
+    生产触发 target_table 门槛）。不创建无业务价值的 Invocation 包裹。
+    """
+    from ..models import AnalysisTask
+    from ..task_runner import TaskStartError, start_task_run
+    task = db.get(AnalysisTask, destination_id)
+    if task is None:
+        delivery.status = "dead"
+        delivery.dead_reason = "TARGET_NOT_FOUND"
+        return
+    if task.status == "paused":
+        delivery.status = "dead"
+        delivery.dead_reason = "TASK_PAUSED（INV-10）"
+        return
+    try:
+        tr, _res = start_task_run(db, destination_id, trigger="event",
+                                  idempotency_key=f"event-delivery:{delivery.id}")
+    except TaskStartError as exc:
+        delivery.attempts += 1
+        delivery.status = "failed"
+        delivery.error = str(exc.args[0]) if exc.args else repr(exc)
+        _schedule_retry(delivery)
+        return
+    tr.source_event_id = event.id
+    tr.event_delivery_id = delivery.id
+    db.add(tr)
+    delivery.task_run_id = tr.id
+    delivery.status = ("running" if delivery.completion_policy == "terminal"
+                       else "completed")
+
+
 def ingest(
     db: Session,
     src: DataSource,
@@ -1154,6 +1247,11 @@ def ingest(
             automation_id=auto.id,
             source="event",
             status="pending",
+            # F5：legacy trigger 派发同样落 §10.2.1 字段组（统一 DTO/retry 依赖）
+            destination_kind="automation",
+            destination_id=auto.id,
+            completion_policy="accepted",
+            mapped_input=mapped,
         )
         db.add(delivery)
         db.commit()
@@ -1168,6 +1266,7 @@ def ingest(
                 trigger_id=trig.id,
             )
             delivery.trigger_log_id = lg.id
+            delivery.invocation_id = lg.id
             if lg.status == "failed":
                 delivery.attempts += 1
                 delivery.status = "failed"
@@ -1183,10 +1282,82 @@ def ingest(
         db.commit()
         deliveries.append(delivery)
 
+    # F5（Spec §10.0/§10.1）：EventRoute 一等路由匹配——与 legacy trigger 并存，
+    # 同一事件可命中多条显式 route（N delivery），一条 route 只有一个目的地（XOR）。
+    outcomes: list[dict] = list(event.route_outcomes or [])
+    p_type = str(payload.get("type") or payload.get("eventType") or "")
+    routes = (db.query(EventRoute)
+              .filter(EventRoute.source_id == src.id,
+                      EventRoute.archived.is_(False))
+              .all())
+    for rt in routes:
+        if rt.event_type and rt.event_type != p_type:
+            continue  # 事件类型不匹配 = route 不适用（非 filtered 证据）
+        if not rt.enabled:
+            outcomes.append({"routeId": rt.id, "revision": rt.revision,
+                             "result": "route_disabled"})
+            continue
+        if not _apply_filter({"filter": _expr_of(rt.filter)}, payload):
+            outcomes.append({"routeId": rt.id, "revision": rt.revision,
+                             "result": "filtered"})
+            continue
+        # route 级去重（dedupe.keyPath + windowSeconds，AC-024 证据）
+        ded = rt.dedupe or {}
+        scope = None
+        if ded.get("keyPath"):
+            key_val = _extract_path(payload, ded["keyPath"])
+            if key_val is not None:
+                scope = f"{rt.id}:{key_val}"[:160]
+                window = int(ded.get("windowSeconds") or 86400)
+                since = datetime.now(timezone.utc) - timedelta(seconds=window)
+                dup = (db.query(EventDelivery)
+                       .filter(EventDelivery.dedupe_scope == scope,
+                               EventDelivery.created_at >= since)
+                       .first())
+                if dup:
+                    outcomes.append({"routeId": rt.id, "revision": rt.revision,
+                                     "result": "deduped", "deliveryId": dup.id})
+                    continue
+        mapped = _apply_mapping({"mapping": _fields_of(rt.mapping)}, payload)
+        delivery = EventDelivery(
+            event_id=event.id, source="event", status="pending",
+            route_id=rt.id, route_revision=rt.revision,
+            destination_kind=rt.destination_kind,
+            destination_id=rt.destination_id,
+            completion_policy=rt.completion_policy or "accepted",
+            mapped_input=mapped, dedupe_scope=scope,
+            max_attempts=int((rt.retry_policy or {}).get("maxAttempts") or 3),
+        )
+        db.add(delivery)
+        db.commit()
+        db.refresh(delivery)
+        try:
+            if rt.destination_kind == "analysis_task":
+                _dispatch_analysis_task(db, rt.destination_id, delivery, event)
+            else:
+                _dispatch_automation(db, rt.destination_id, delivery, mapped)
+        except Exception as exc:  # noqa: BLE001
+            delivery.attempts += 1
+            delivery.status = "failed"
+            delivery.error = repr(exc)
+            _schedule_retry(delivery)
+        db.commit()
+        deliveries.append(delivery)
+        outcomes.append({
+            "routeId": rt.id, "revision": rt.revision, "deliveryId": delivery.id,
+            "result": {"completed": "delivered", "running": "delivered"}.get(
+                delivery.status, delivery.status)})
+
+    if outcomes:
+        event.route_outcomes = outcomes
+
     # aggregate event status from deliveries
     if not deliveries:
         event.status = "filtered"
-        event.error = "no matching triggers"
+        results = {o.get("result") for o in outcomes}
+        event.error = ("deduped" if results and results <= {"deduped", "filtered"}
+                       and "deduped" in results
+                       else "no matching triggers/routes")
     elif all(d.status == "dead" for d in deliveries):
         event.status = "dead"
         event.error = "all deliveries dead"
@@ -1222,19 +1393,73 @@ def _schedule_retry(delivery: EventDelivery) -> None:
 
 
 def _retry_dead_deliveries(db: Session) -> int:
-    """Retry failed deliveries whose next_retry_at has arrived (called by watcher)."""
+    """Retry failed deliveries whose next_retry_at has arrived (called by watcher).
+
+    F5：route 投递用创建时冻结的 mapped_input/destination 重发（XOR 分支，
+    不随 route 编辑漂移）；legacy trigger 投递保留按 trigger config 重算的原逻辑。
+    """
+    now = datetime.now(timezone.utc)
+    stale_cutoff = now - timedelta(minutes=10)
     due = (
         db.query(EventDelivery)
         .filter(
-            EventDelivery.status == "failed",
-            EventDelivery.next_retry_at.isnot(None),
-            EventDelivery.next_retry_at <= datetime.now(timezone.utc),
+            or_(
+                # 常规：failed 且退避到期
+                and_(EventDelivery.status == "failed",
+                     EventDelivery.next_retry_at.isnot(None),
+                     EventDelivery.next_retry_at <= now),
+                # F5：进程中断遗留的陈旧 pending（ingest 派发半途而废，
+                # 永不进入退避轨道）——同样纳入到期重发
+                and_(EventDelivery.status == "pending",
+                     EventDelivery.updated_at <= stale_cutoff),
+            ),
             EventDelivery.attempts < EventDelivery.max_attempts,
         )
         .all()
     )
+    # 陈旧 pending 且重试额度耗尽 → dead（不再无限滞留，层3 审计可证）
+    exhausted = (
+        db.query(EventDelivery)
+        .filter(EventDelivery.status == "pending",
+                EventDelivery.updated_at <= stale_cutoff,
+                EventDelivery.attempts >= EventDelivery.max_attempts)
+        .all()
+    )
+    for d in exhausted:
+        d.status = "dead"
+        d.dead_reason = "stale pending, attempts exhausted"
+    if exhausted:
+        db.commit()
     retried = 0
     for d in due:
+        if d.route_id:
+            try:
+                event = db.get(DataSourceEvent, d.event_id)
+                if event is None:
+                    d.status = "dead"
+                    d.dead_reason = "event deleted"
+                    db.commit()
+                    continue
+                if d.destination_kind == "analysis_task":
+                    _dispatch_analysis_task(db, d.destination_id or "", d, event)
+                else:
+                    mapped = (d.mapped_input if d.mapped_input is not None
+                              else event.payload or {})
+                    _dispatch_automation(db, d.destination_id or "", d, mapped)
+                # _dispatch_* 自管 attempts/failed 退避/dead；成功收尾清退避
+                if d.status != "failed":
+                    d.next_retry_at = None
+                    d.error = ""
+                db.commit()
+                retried += 1
+            except Exception as exc:  # noqa: BLE001
+                d.attempts += 1
+                d.status = "failed"
+                d.error = repr(exc)
+                _schedule_retry(d)
+                db.commit()
+                retried += 1  # 到期即计入"已重试"，结果以 delivery 状态为准
+            continue
         try:
             auto = db.get(AutomationDefinition, d.automation_id)
             if auto is None or not auto.enabled:

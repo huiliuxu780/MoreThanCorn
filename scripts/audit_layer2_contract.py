@@ -70,17 +70,10 @@ def norm(p: str) -> str:
     return re.sub(r"/[a-z]+_(xxx|[a-f0-9]{6,})", "/{}", p)
 
 
-#: 已排期缺口白名单（切片归属，审计不判 P0）
-SCHEDULED_GAPS = {
-    ("GET", "/api/v2/event-routes"): "F5 真实数据源切片",
-    ("POST", "/api/v2/event-routes"): "F5 真实数据源切片",
-    ("GET", "/api/v2/event-routes/{}"): "F5 真实数据源切片",
-    ("PUT", "/api/v2/event-routes/{}"): "F5 真实数据源切片",
-    ("DELETE", "/api/v2/event-routes/{}"): "F5 真实数据源切片",
-    ("GET", "/api/v2/event-deliveries"): "F5 真实数据源切片",
-    ("GET", "/api/v2/event-deliveries/{}"): "F5 真实数据源切片",
-    ("POST", "/api/v2/event-deliveries/{}/retry"): "F5 真实数据源切片",
-}
+#: 已排期缺口白名单（切片归属，审计不判 P0）。
+#: 2026-09-13 F5 切片落地：event-routes/event-deliveries ×8 已实施
+#: （server/app/routers/event_routes.py + tests/test_f5_event_routes.py），白名单清零。
+SCHEDULED_GAPS: dict[tuple[str, str], str] = {}
 
 
 have_norm = {(m, norm(p)) for m, p in have}

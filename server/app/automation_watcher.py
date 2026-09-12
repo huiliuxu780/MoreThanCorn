@@ -310,6 +310,18 @@ def _reconcile_impl(db: Session) -> dict:
             run.duration_ms = int((now - run.started_at).total_seconds() * 1000)
         stats["runs_settled"] += 1
     db.commit()
+    # 6: F5 EventDelivery 治理——
+    #    a) failed 到期重试：修复 _retry_dead_deliveries 自 P0-6 引入后从未被
+    #       接线的缺陷（next_retry_at 退避永不触发，失败投递永久卡死）；
+    #    b) completion_policy=terminal 的 running 投递按目标终态结算（Spec §10.2）。
+    from .routers.as_automations import _retry_dead_deliveries
+    from .routers.event_routes import reconcile_terminal_deliveries
+    try:
+        stats["deliveries_retried"] = _retry_dead_deliveries(db)
+        stats["deliveries_settled"] = reconcile_terminal_deliveries(db)
+    except Exception:  # noqa: BLE001
+        log.exception("event delivery governance tick failed")
+    db.commit()
     return stats
 
 

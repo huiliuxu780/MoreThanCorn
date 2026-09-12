@@ -43,6 +43,10 @@ INV_ENUM = {"RECEIVED", "ACCEPTED", "QUEUED", "RUNNING", "COMPLETED",
             "FAILED", "CANCELLED", "DEDUPED", "REJECTED"}
 INV_TERMINAL = {"COMPLETED", "FAILED", "CANCELLED", "DEDUPED", "REJECTED"}
 WI_ENUM = {"needs_action", "running", "completed", "queued", "failed_cancelled"}
+# F5（Spec §10.2）：PENDING→RUNNING→COMPLETED；FAILED→PENDING（可重试）；DEAD。
+# 终态仅 COMPLETED/DEAD（FAILED 可合法回到 PENDING，不算回退）。
+DELIVERY_ENUM = {"PENDING", "RUNNING", "COMPLETED", "FAILED", "DEAD"}
+DELIVERY_TERMINAL = {"COMPLETED", "DEAD"}
 
 # 禁止的逆向边（snapshot1 → snapshot2）
 BACKWARD = {
@@ -52,11 +56,14 @@ BACKWARD = {
     "invocation": {("RUNNING", "QUEUED"), ("RUNNING", "ACCEPTED"),
                    ("RUNNING", "RECEIVED"), ("QUEUED", "ACCEPTED"),
                    ("QUEUED", "RECEIVED"), ("ACCEPTED", "RECEIVED")},
+    "delivery": {("RUNNING", "PENDING")},
 }
 TERMINALS = {"run": RUN_TERMINAL, "taskrun": TASKRUN_TERMINAL,
-             "agentflow_run": FLOWRUN_TERMINAL, "invocation": INV_TERMINAL}
+             "agentflow_run": FLOWRUN_TERMINAL, "invocation": INV_TERMINAL,
+             "delivery": DELIVERY_TERMINAL}
 ENUMS = {"run": RUN_ENUM, "taskrun": TASKRUN_ENUM,
-         "agentflow_run": FLOWRUN_ENUM, "invocation": INV_ENUM}
+         "agentflow_run": FLOWRUN_ENUM, "invocation": INV_ENUM,
+         "delivery": DELIVERY_ENUM}
 
 
 class Audit:
@@ -77,7 +84,8 @@ class Audit:
 
     def snapshot(self) -> dict[str, dict[str, str]]:
         snap: dict[str, dict[str, str]] = {
-            "run": {}, "taskrun": {}, "agentflow_run": {}, "invocation": {}}
+            "run": {}, "taskrun": {}, "agentflow_run": {}, "invocation": {},
+            "delivery": {}}
         for r in self.get("/api/runs"):
             snap["run"][r["runId"]] = r["status"]
         wi = self._work_items()
@@ -91,6 +99,8 @@ class Audit:
             inv = self.get(f"/api/v2/automations/{a['id']}/invocations?pageSize=50")
             for it in inv["items"]:
                 snap["invocation"][it["id"]] = it["status"]
+        for it in self.get("/api/v2/event-deliveries?pageSize=200")["items"]:
+            snap["delivery"][it["id"]] = it["status"]
         return snap
 
     def _work_items(self) -> dict:
@@ -210,6 +220,31 @@ class Audit:
                              f"终态 {st} 但 endedAt 为空")
         self.coverage["invocation"] = rows
 
+    def check_deliveries(self):
+        """F5（Spec §10.2）：delivery 状态机 + XOR 反链 + 退避/积压诚实性。"""
+        items = self.get("/api/v2/event-deliveries?pageSize=200")["items"]
+        self.coverage["delivery"] = len(items)
+        now = datetime.now(timezone.utc)
+        for it in items:
+            st = it["status"]
+            if st not in DELIVERY_ENUM:
+                self.add("P0", "delivery", it["id"], f"status 越出枚举：{st!r}")
+            if st == "COMPLETED" and it.get("destinationKind") \
+                    and not (it.get("invocationId") or it.get("taskRunId")):
+                self.add("P1", "delivery", it["id"],
+                         "COMPLETED 但缺 invocationId/taskRunId 目标反链（XOR，§10.2.1）")
+            if st == "FAILED" and (it.get("attempts") or 0) < (it.get("maxAttempts") or 0) \
+                    and not it.get("nextRetryAt"):
+                self.add("P1", "delivery", it["id"],
+                         "FAILED 可重试但 nextRetryAt 为空（退避断链）")
+            if st in ("PENDING", "RUNNING"):
+                created = it.get("createdAt")
+                if created:
+                    age = (now - datetime.fromisoformat(created)).total_seconds()
+                    if age > 3600:
+                        self.add("P1", "delivery", it["id"],
+                                 f"{st} 积压超 1 小时（age={int(age)}s，无派发/结算跟进）")
+
     def check_work_items(self):
         """B6：统一状态枚举 + needs_action ⇒ attention.required。"""
         wi = self._work_items()
@@ -256,6 +291,7 @@ def main() -> int:
     a.check_taskruns(s2)
     a.check_agentflow_runs(s2)
     a.check_invocations(s2)
+    a.check_deliveries()
     a.check_work_items()
 
     p0 = [f for f in a.findings if f["sev"] == "P0"]
@@ -263,7 +299,7 @@ def main() -> int:
     print("\n=== 层3 覆盖率（采样行数） ===")
     for k, v in sorted(a.coverage.items()):
         print(f"  {k}: {v}")
-    for body in ("run", "taskrun", "agentflow_run", "invocation"):
+    for body in ("run", "taskrun", "agentflow_run", "invocation", "delivery"):
         print(f"  snapshot[{body}]: {len(s2.get(body, {}))}")
     print(f"\n=== 层3 发现项：P0={len(p0)} P1={len(p1)} ===")
     for f in a.findings[:60]:
