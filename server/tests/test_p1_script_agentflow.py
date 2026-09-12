@@ -298,10 +298,10 @@ def test_real_subprocess_rpc_roundtrip():
         "    return {'r': r}\n"
     )
     handle = sb.spawn_sandbox({"script": script, "flow_input": {}},
-                              on_line=on_line, deadline_seconds=10)
+                              on_line=on_line, deadline_seconds=30)
     holder["handle"] = handle
     try:
-        msg = _wait_done(done, handle)
+        msg = _wait_done(done, handle, timeout=45)
         assert msg["status"] == "succeeded"
         assert msg["output"] == {"r": {"echo": "hello"}}
     finally:

@@ -197,8 +197,8 @@ export default function TaskDetailPage() {
                 </span>
                 {w.taskRunId !== null ? (
                   <span className="flex flex-1 items-center gap-2">
-                    <Progress value={w.progress.percent ?? 0} className="h-1.5 flex-1" aria-label="执行进度" />
-                    <span className="tabular-nums">{w.progress.succeeded}/{w.progress.total}</span>
+                    <Progress value={w.progress?.percent ?? 0} className="h-1.5 flex-1" aria-label="执行进度" />
+                    <span className="tabular-nums">{w.progress?.succeeded}/{w.progress?.total}</span>
                   </span>
                 ) : <span className="flex-1 text-muted-foreground">等待调度</span>}
                 <Button variant="ghost" size="sm" onClick={() => w.taskRunId && navigate(`/operations/task-runs/${w.taskRunId}`)}>

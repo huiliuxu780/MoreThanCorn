@@ -354,7 +354,14 @@ export interface WorkItemAttention {
 
 export interface WorkItemDTO {
   id: string
-  kind: "task_run" | "schedule_occurrence"
+  kind:
+    | "task_run"
+    | "analysis_batch"
+    | "schedule_occurrence"
+    | "automation_invocation"
+    | "agent_session"
+    | "agentflow_run"
+    | "workflow_run"
   automationId: string
   taskRunId: string | null
   scheduleOccurrenceId: string | null
@@ -377,7 +384,10 @@ export interface WorkItemDTO {
     skipped: number
     cancelled: number
     percent: number | null
-  }
+  } | null
+  /** F4（Spec §11.3/11.4）：原始状态与真实执行体链接 */
+  rawStatus?: string | null
+  target?: { kind: string; id: string } | null
   attention: WorkItemAttention
   scheduledAt: string | null
   createdAt: string | null
@@ -392,7 +402,9 @@ export interface WorkItemDTO {
     occurrenceStatus: string | null
     conflictCodes: string[]
   }
-  links: { primary: string; automation: string; taskRun: string | null }
+  links:
+    | { primary: string; automation: string; taskRun: string | null }
+    | { detail: string; target: string | null }
 }
 
 export interface WorkItemListResponse {

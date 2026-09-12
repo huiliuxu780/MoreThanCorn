@@ -87,8 +87,31 @@ function assigneeLabel(w: WorkItemDTO): string {
 }
 
 /** R3 语义：等待调度仅限未触发 occurrence；已触发卡显示真实执行信息。 */
+const KIND_LABELS: Record<string, string> = {
+  analysis_batch: "分析批次",
+  schedule_occurrence: "计划",
+  automation_invocation: "自动任务调用",
+  agent_session: "Agent 会话",
+  agentflow_run: "AgentFlow 运行",
+  workflow_run: "Workflow 运行",
+}
+
 function CardBody({ w }: { w: WorkItemDTO }) {
   const hasExecution = w.taskRunId !== null
+  if (!hasExecution && w.kind !== "schedule_occurrence") {
+    const target = w.target ?? null
+    return (
+      <div className="space-y-1 text-muted-foreground">
+        <div>{KIND_LABELS[w.kind] ?? w.kind} · {w.rawStatus ?? w.phase ?? w.status}</div>
+        {target ? <div className="truncate">目标：{target.kind}/{target.id.slice(0, 8)}</div> : null}
+        {w.progress ? (
+          <div className="tabular-nums">
+            {w.progress?.completed ?? 0}/{w.progress?.total ?? 0}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
   if (!hasExecution) {
     return (
       <div className="text-muted-foreground">
@@ -103,9 +126,9 @@ function CardBody({ w }: { w: WorkItemDTO }) {
   return (
     <>
       <div className="flex items-center gap-2">
-        <Progress value={w.progress.percent ?? 0} className="h-1.5 flex-1" aria-label="执行进度" />
+        <Progress value={w.progress?.percent ?? 0} className="h-1.5 flex-1" aria-label="执行进度" />
         <span className="tabular-nums text-muted-foreground">
-          {w.progress.succeeded}/{w.progress.total}
+          {w.progress?.succeeded}/{w.progress?.total}
         </span>
       </div>
       <div className="flex items-center justify-between tabular-nums text-muted-foreground">
@@ -166,14 +189,14 @@ function WorkItemDrawer({ w, onClose }: { w: WorkItemDTO | null; onClose: () => 
                 <h3 className="text-sm font-medium">执行摘要</h3>
                 <div className="rounded-lg border bg-surface p-3 text-xs">
                   <div className="flex items-center gap-2">
-                    <Progress value={w.progress.percent ?? 0} className="h-1.5 flex-1" aria-label="执行进度" />
-                    <span className="tabular-nums">{w.progress.succeeded}/{w.progress.total}</span>
+                    <Progress value={w.progress?.percent ?? 0} className="h-1.5 flex-1" aria-label="执行进度" />
+                    <span className="tabular-nums">{w.progress?.succeeded}/{w.progress?.total}</span>
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-2 text-muted-foreground">
                     <span>开始：{w.startedAt ? formatCompactDateTime(w.startedAt) : "—"}</span>
                     <span>结束：{w.finishedAt ? formatCompactDateTime(w.finishedAt) : "—"}</span>
                     <span>耗时：{liveDuration(w)}</span>
-                    <span>失败：{w.progress.failed}</span>
+                    <span>失败：{w.progress?.failed}</span>
                   </div>
                 </div>
               </section>
@@ -253,6 +276,7 @@ export default function OperationsTodayPage() {
   const [attentionOnly, setAttentionOnly] = useState(false)
   const [page, setPage] = useState(1)
   const [listPageSize, setListPageSize] = useState(10)
+  const [kind, setKind] = useState("")
   const [resp, setResp] = useState<Awaited<ReturnType<typeof workItemsApi.list>> | null>(null)
   const [items, setItems] = useState<WorkItemDTO[]>([])
   const [total, setTotal] = useState(0)
@@ -280,8 +304,9 @@ export default function OperationsTodayPage() {
     status: status || undefined, attentionOnly: attentionOnly || undefined,
     agentId: assignee.startsWith("agent:") ? assignee.slice(6) : undefined,
     automationId: assignee.startsWith("workflow:") ? assignee.slice(9) : undefined,
+    kind: kind || undefined,
     pageSize: ps, page: pg,
-  }), [periodFrom, q, origin, status, attentionOnly, assignee])
+  }), [periodFrom, q, origin, status, attentionOnly, assignee, kind])
 
   const loadBoard = useCallback(async () => {
     try {
@@ -609,6 +634,18 @@ export default function OperationsTodayPage() {
               <SelectItem value="manual">手动</SelectItem>
               <SelectItem value="api">API</SelectItem>
               <SelectItem value="backfill">回填</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={kind || "all"} onValueChange={(v) => setKind(v === "all" ? "" : v)}>
+            <SelectTrigger className="h-8 w-36"><SelectValue placeholder="工作类型" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部类型</SelectItem>
+              <SelectItem value="analysis_batch">分析批次</SelectItem>
+              <SelectItem value="automation_invocation">自动任务调用</SelectItem>
+              <SelectItem value="agent_session">Agent 会话</SelectItem>
+              <SelectItem value="agentflow_run">AgentFlow 运行</SelectItem>
+              <SelectItem value="workflow_run">Workflow 运行</SelectItem>
+              <SelectItem value="schedule_occurrence">计划</SelectItem>
             </SelectContent>
           </Select>
           <Select value={status || "all"} onValueChange={(v) => setStatus(v === "all" ? "" : v)}>

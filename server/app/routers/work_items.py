@@ -52,6 +52,7 @@ def _business_date(tz_s: str) -> str:
 def list_work_items(dateFrom: str = "", dateTo: str = "", timezone: str = _DEFAULT_TZ,
                     status: str = "", automationId: str = "", agentId: str = "",
                     q: str = "", origin: str = "", attentionOnly: str = "",
+                    kind: str = "",
                     page: int = 1, pageSize: int = 50,
                     db: Session = Depends(get_db),
                     user: dict = Depends(require_role())):
@@ -69,7 +70,7 @@ def list_work_items(dateFrom: str = "", dateTo: str = "", timezone: str = _DEFAU
     items = build_work_items(db, user, date_from=date_from, date_to=date_to, tz_s=tz_s,
                              automation_id=automationId, origin=origin, agent_id=agentId)
     filtered = filter_work_items(items, status=status, q=q,
-                                 attention_only=attentionOnly == "only")
+                                 attention_only=attentionOnly == "only", kind=kind)
     counts = count_by_status(filtered)
     total = len(filtered)
     paged = filtered[(page - 1) * pageSize: page * pageSize]
@@ -116,6 +117,7 @@ async def work_items_stream_iter(user: dict, d_from: str, d_to: str, tz_s: str,
             seq += 1
             last_hash = digest
             data = json.dumps({"sequence": seq,
+                               "type": "work_items_refresh",
                                "serverTime": datetime.now(dt_timezone.utc).isoformat()},
                               ensure_ascii=False)
             yield f"id: {seq}\nevent: refresh\ndata: {data}\n\n"

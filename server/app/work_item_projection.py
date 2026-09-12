@@ -34,7 +34,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .auth import data_scope_members
-from .models import (Agent, AnalysisTask, AnalysisTaskVersion, Run,
+from .models import (Agent, AgentFlowNodeRun, AgentFlowRun, AgentSessionIndex,
+                     AnalysisTask,
+                     AnalysisTaskVersion, AutomationDefinition,
+                     AutomationTriggerLog, Release, Run,
                      ScheduleOccurrence, TaskRun, Workflow)
 
 #: 用户可见主状态（固定五组，顺序即看板泳道顺序）
@@ -53,6 +56,14 @@ _DELIVERY_BAD = ("failed", "partial", "dead_letter")
 #: occurrence 声称已触发/触发中但找不到 TaskRun = 调度断链
 _BROKEN_OCC_STATUS = ("started", "firing")
 ORIGINS = ("manual", "schedule", "api", "backfill", "unknown")
+
+
+def _runtime_agent_of(db: Session, agent_id: str | None) -> str | None:
+    if not agent_id:
+        return None
+    rel = (db.query(Release).filter_by(agent_id=agent_id, status="active")
+           .order_by(Release.created_at.desc()).first())
+    return (rel.runtime_binding_snapshot or {}).get("agentscope_agent_id") if rel else None
 
 
 def _attention(code: str, message: str, severity: str) -> dict:
@@ -228,6 +239,15 @@ class ProjectionInputs:
     child_totals: dict
     agent_names: dict
     workflow_names: dict
+    # F4（Spec §11.2）：新增来源（Invocation/手工 Session/手工 FlowRun/手工 WorkflowRun）
+    invocations: list
+    sessions: list
+    flow_runs: list
+    workflow_runs: list
+    auto_names: dict
+    session_status: dict
+    flow_node_counts: dict
+    known_targets: set
 
 
 def _load_projection_inputs(db: Session, user: dict, start: datetime, end: datetime,
@@ -310,9 +330,91 @@ def _load_projection_inputs(db: Session, user: dict, start: datetime, end: datet
     workflow_names = {w.id: w.name for w in db.execute(
         select(Workflow).where(Workflow.id.in_(wf_ids or {"-"}))).scalars().all()}
 
+    # F4：Invocation（全部来源）+ 无 Invocation 的手工执行三源
+    inv_q = select(AutomationTriggerLog).where(
+        AutomationTriggerLog.created_at >= start,
+        AutomationTriggerLog.created_at < end)
+    ses_q = select(AgentSessionIndex).where(
+        AgentSessionIndex.created_at >= start,
+        AgentSessionIndex.created_at < end,
+        AgentSessionIndex.trigger_log_id.is_(None),
+        AgentSessionIndex.trigger_kind.in_(("manual", "chat")))
+    flow_q = select(AgentFlowRun).where(
+        AgentFlowRun.started_at >= start, AgentFlowRun.started_at < end,
+        AgentFlowRun.automation_id.is_(None))
+    wfr_q = select(Run).where(
+        Run.created_at >= start, Run.created_at < end,
+        Run.task_run_id.is_(None), Run.trigger != "batch")
+    if members is not None:
+        scope_auto = select(AutomationDefinition.id).where(
+            AutomationDefinition.created_by.in_(members))
+        inv_q = inv_q.where(AutomationTriggerLog.automation_id.in_(scope_auto))
+        ses_q = ses_q.where(AgentSessionIndex.user_id.in_(members))
+    if automation_id:
+        inv_q = inv_q.where(AutomationTriggerLog.automation_id == automation_id)
+        # 手工三源不隶属任何自动任务：automationId 筛选下整体排除
+        ses_q = ses_q.where(AgentSessionIndex.id == "-")
+        flow_q = flow_q.where(AgentFlowRun.id == "-")
+        wfr_q = wfr_q.where(Run.id == "-")
+    if agent_id:
+        ses_q = ses_q.where(AgentSessionIndex.agent_id == agent_id)
+        flow_q = flow_q.where(AgentFlowRun.id == "-")
+        wfr_q = wfr_q.where(Run.id == "-")
+    if origin:
+        inv_q = inv_q.where(AutomationTriggerLog.source == origin)
+        ses_q = ses_q.where(AgentSessionIndex.trigger_kind == origin)
+    invocations = list(db.execute(inv_q).scalars().all())
+    sessions = list(db.execute(ses_q).scalars().all())
+    flow_runs = list(db.execute(flow_q).scalars().all())
+    workflow_runs = list(db.execute(wfr_q).scalars().all())
+
+    # AC-043：Invocation target 存在性（跨窗口批量查，禁止逐卡查询）
+    t_session_ids = {i.target_ref for i in invocations
+                     if i.target_kind == "agent_session" and i.target_ref}
+    t_session_ids |= {i.session_id for i in invocations if i.session_id}
+    t_flow_ids = {i.target_ref for i in invocations
+                  if i.target_kind == "agentflow_run" and i.target_ref}
+    t_flow_ids |= {i.agentflow_run_id for i in invocations if i.agentflow_run_id}
+    known_targets: set[tuple[str, str]] = set()
+    if t_session_ids:
+        known_targets |= {("agent_session", r[0]) for r in db.execute(
+            select(AgentSessionIndex.session_id).where(
+                AgentSessionIndex.session_id.in_(t_session_ids))).all()}
+    if t_flow_ids:
+        known_targets |= {("agentflow_run", r[0]) for r in db.execute(
+            select(AgentFlowRun.id).where(
+                AgentFlowRun.id.in_(t_flow_ids))).all()}
+
+    auto_ids = {i.automation_id for i in invocations if i.automation_id}
+    auto_names = {a.id: a.name for a in db.execute(
+        select(AutomationDefinition).where(
+            AutomationDefinition.id.in_(auto_ids or {"-"}))).scalars().all()}
+    # session 状态批量取（单次批调用，禁止逐卡查询，Spec §11.5）
+    session_status: dict[str, str] = {}
+    if sessions:
+        try:
+            from . import agentscope_client as _rt
+            triples = [{"user_id": s.user_id,
+                        "agent_id": s.runtime_agent_id or _runtime_agent_of(db, s.agent_id),
+                        "session_id": s.session_id} for s in sessions]
+            triples = [t for t in triples if t["agent_id"]]
+            for row in _rt.sessions_status(user.get("username", "dev"), triples):
+                session_status[row["session_id"]] = row.get("status") or "running"
+        except Exception:  # noqa: BLE001 —— 运行时不可达：卡片标 needs_action+info
+            session_status = {}
+    flow_node_counts = list(db.execute(
+        select(AgentFlowNodeRun.run_id, AgentFlowNodeRun.status, func.count(AgentFlowNodeRun.id))
+        .where(AgentFlowNodeRun.run_id.in_({f.id for f in flow_runs} or {"-"}))
+        .group_by(AgentFlowNodeRun.run_id, AgentFlowNodeRun.status)).all())
+
     return ProjectionInputs(occs=occs, runs_by_id=runs_by_id, tasks=tasks, versions=versions,
                             active_counts=active_counts, child_totals=child_totals,
-                            agent_names=agent_names, workflow_names=workflow_names)
+                            agent_names=agent_names, workflow_names=workflow_names,
+                            invocations=invocations, sessions=sessions,
+                            flow_runs=flow_runs, workflow_runs=workflow_runs,
+                            auto_names=auto_names, session_status=session_status,
+                            flow_node_counts=flow_node_counts,
+                            known_targets=known_targets)
 
 
 def _build_item(tr: TaskRun | None, occ: ScheduleOccurrence | None,
@@ -348,7 +450,7 @@ def _build_item(tr: TaskRun | None, occ: ScheduleOccurrence | None,
     task_id = (tr.task_id if tr is not None else (occ.task_id if occ is not None else None))
     return {
         "id": wid,
-        "kind": "schedule_occurrence" if occ is not None else "task_run",
+        "kind": "schedule_occurrence" if occ is not None else "analysis_batch",
         "automationId": task_id or "",
         "taskRunId": tr.id if tr is not None else None,
         "scheduleOccurrenceId": occ.id if occ is not None else None,
@@ -386,6 +488,72 @@ def _build_item(tr: TaskRun | None, occ: ScheduleOccurrence | None,
     }
 
 
+_UNIFIED_QUEUED = ("received", "accepted", "queued", "planned", "pending")
+_UNIFIED_RUNNING = ("running", "cancelling", "result_processing")
+_UNIFIED_DONE = ("succeeded", "completed", "done")
+_UNIFIED_BAD = ("failed", "cancelled", "timed_out", "dead", "timeout")
+
+
+def _unified_status(raw: str, extra_bad: bool = False) -> str:
+    """Spec §11.3：原始状态 → 产品一级状态；关系损坏/投递失败优先 needs_action。"""
+    if extra_bad:
+        return "needs_action"
+    r = (raw or "").lower()
+    if r in _UNIFIED_QUEUED:
+        return "queued"
+    if r in _UNIFIED_RUNNING:
+        return "running"
+    if r in _UNIFIED_DONE:
+        return "needs_action" if extra_bad else "completed"
+    if r == "partial" or extra_bad:
+        return "needs_action"
+    if r in _UNIFIED_BAD:
+        return "failed_cancelled"
+    return "queued"
+
+
+def _target_of_inv(log) -> tuple[str | None, str | None]:
+    if log.target_kind and log.target_ref:
+        return log.target_kind, log.target_ref
+    if log.session_id:
+        return "agent_session", log.session_id
+    if log.agentflow_run_id:
+        return "agentflow_run", log.agentflow_run_id
+    if log.workflow_run_id:
+        return "workflow_run", log.workflow_run_id
+    return None, None
+
+
+def _exec_item(kind: str, wid: str, title: str, raw_status: str, origin: str,
+               started, ended, target, detail_link: str, extra_bad: bool = False,
+               progress=None, counts=None, attention=None, phase=None,
+               diagnostics=None) -> dict:
+    return {
+        "id": wid,
+        "kind": kind,
+        "title": title,
+        "status": _unified_status(raw_status, extra_bad),
+        "phase": phase or (raw_status or ""),
+        "rawStatus": raw_status,
+        "origin": origin,
+        "startedAt": started.isoformat() if started else None,
+        "endedAt": ended.isoformat() if ended else None,
+        "durationMs": int(((ended - started).total_seconds()) * 1000)
+        if started and ended else None,
+        "target": {"kind": target[0], "id": target[1]} if target and target[0] else None,
+        "progress": progress,
+        "counts": counts,
+        "attention": attention or {"required": bool(extra_bad), "severity": "info",
+                                   "code": None, "message": None},
+        "diagnostics": diagnostics,
+        "links": {"detail": f"/tasks/{wid}",
+                  "target": f"/{target[0]}/{target[1]}" if target and target[0] else None},
+        "automationId": "", "taskRunId": None, "scheduleOccurrenceId": None,
+        "assignee": None, "scheduledAt": None, "createdAt":
+        started.isoformat() if started else None,
+    }
+
+
 def _items_from_inputs(inp: ProjectionInputs) -> list[dict]:
     items: list[dict] = []
     seen_run_ids: set[str] = set()
@@ -412,6 +580,78 @@ def _items_from_inputs(inp: ProjectionInputs) -> list[dict]:
                                  inp.active_counts.get(rid, 0), inp.child_totals.get(rid, 0),
                                  inp.agent_names, inp.workflow_names))
         seen_run_ids.add(rid)
+
+    # F4（Spec §11.2）：Invocation 卡片 + target 去重；手工三源直接投影
+    referenced: set[tuple[str, str]] = set()
+    for log in inp.invocations:
+        tk, ref = _target_of_inv(log)
+        if tk and ref:
+            referenced.add((tk, ref))
+    known_targets = set(inp.known_targets)
+    known_targets |= {("agent_session", s.session_id) for s in inp.sessions}
+    known_targets |= {("agentflow_run", f.id) for f in inp.flow_runs}
+    known_targets |= {("workflow_run", r.id) for r in inp.workflow_runs}
+    for log in inp.invocations:
+        if (log.status or "") == "deduped":
+            continue
+        tk, ref = _target_of_inv(log)
+        extra_bad = tk is None and log.status in ("running", "accepted", "queued")
+        # AC-043：关系缺失（target 引用指向不存在的执行体）→ needs_action
+        if tk and ref and (tk, ref) not in known_targets:
+            extra_bad = True
+        att = None
+        if extra_bad:
+            att = _attention("TARGET_EXECUTION_MISSING",
+                             "Invocation 目标执行体缺失或关系损坏", "warning")
+        items.append(_exec_item(
+            "automation_invocation", f"invocation:{log.id}",
+            inp.auto_names.get(log.automation_id or "", "(缺失自动任务)"),
+            log.status or "received", log.source or "manual",
+            log.started_at or log.created_at, log.ended_at,
+            (tk, ref) if tk else None,
+            f"/tasks/invocation:{log.id}",
+            extra_bad=extra_bad, attention=att))
+    for s in inp.sessions:
+        if ("agent_session", s.session_id) in referenced:
+            continue
+        raw = inp.session_status.get(s.session_id)
+        att = None
+        if raw is None:
+            raw, att = "running", _attention(
+                "RUNTIME_UNREACHABLE", "运行时不可达，Session 状态未知", "info")
+        items.append(_exec_item(
+            "agent_session", f"session:{s.session_id}",
+            f"会话 {s.session_id[:8]}", raw, s.trigger_kind or "manual",
+            s.created_at, None, ("agent_session", s.session_id),
+            f"/agents/{s.agent_id}/chat?session={s.session_id}",
+            attention=att, phase=raw))
+    flow_nodes: dict[str, dict] = {}
+    for run_id, status, cnt in inp.flow_node_counts:
+        agg = flow_nodes.setdefault(run_id, {"total": 0, "done": 0})
+        agg["total"] += cnt
+        if status in ("succeeded", "failed", "cancelled"):
+            agg["done"] += cnt
+    for f in inp.flow_runs:
+        if ("agentflow_run", f.id) in referenced:
+            continue
+        agg = flow_nodes.get(f.id, {"total": 0, "done": 0})
+        items.append(_exec_item(
+            "agentflow_run", f"agentflow:{f.id}", f"AgentFlow {f.id[:8]}",
+            f.status or "queued", f.trigger_kind or "manual",
+            f.started_at, f.ended_at, ("agentflow_run", f.id),
+            f"/agentflows/runs/{f.id}",
+            progress={"processed": agg["done"], "total": agg["total"],
+                      "percent": int(agg["done"] * 100 / agg["total"])
+                      if agg["total"] else None},
+            counts=agg, phase=f.status))
+    for r in inp.workflow_runs:
+        if ("workflow_run", r.id) in referenced:
+            continue
+        items.append(_exec_item(
+            "workflow_run", f"workflow:{r.id}", f"Workflow {r.id[:8]}",
+            r.status or "queued", r.trigger or "manual",
+            r.started_at or r.created_at, r.ended_at,
+            ("workflow_run", r.id), f"/operations/runs/{r.id}", phase=r.status))
     # 时间倒序（时间切片分页）：避免状态排序使后置泳道整页消失
     items.sort(key=lambda w: (
         datetime.fromisoformat(w["scheduledAt"] or w["startedAt"] or w["createdAt"]
@@ -505,9 +745,14 @@ def project_single(db: Session, tr: TaskRun | None, occ: ScheduleOccurrence | No
 
 
 def filter_work_items(items: list[dict], *, status: str = "", q: str = "",
-                      attention_only: bool = False) -> list[dict]:
-    """投影后计算筛选（status/attentionOnly/q）。automationId/origin/agentId/scope 已下推 SQL。"""
+                      attention_only: bool = False, kind: str = "") -> list[dict]:
+    """投影后计算筛选（status/kind/attentionOnly/q）。automationId/origin/agentId/scope 已下推 SQL。"""
     out = items
+    if kind:
+        kinds = set(kind.split(","))
+        if "task_run" in kinds:  # 旧 kind 别名
+            kinds.add("analysis_batch")
+        out = [w for w in out if w["kind"] in kinds]
     if status:
         allowed = STATUS_ALIASES.get(status, (status,))
         out = [w for w in out if w["status"] in allowed]
@@ -550,6 +795,20 @@ def _facts_digest(inp: ProjectionInputs) -> str:
                       json.dumps(o.error, sort_keys=True, default=str) if o.error else None))
     for t in inp.tasks.values():
         facts.append(("task", t.id, t.name, t.description, t.created_by, t.current_version_id))
+    for i in inp.invocations:
+        facts.append(("inv", i.id, i.status, i.target_kind, i.target_ref,
+                      i.created_at.isoformat() if i.created_at else None))
+    for s in inp.sessions:
+        facts.append(("ses", s.session_id, s.trigger_kind,
+                      inp.session_status.get(s.session_id),
+                      s.created_at.isoformat() if s.created_at else None))
+    for f in inp.flow_runs:
+        facts.append(("afr", f.id, f.status,
+                      f.started_at.isoformat() if f.started_at else None,
+                      f.ended_at.isoformat() if f.ended_at else None))
+    for r in inp.workflow_runs:
+        facts.append(("wfr", r.id, r.status,
+                      r.created_at.isoformat() if r.created_at else None))
     for v in inp.versions.values():
         facts.append(("ver", v.id, v.execution_target_type, v.agent_id, v.workflow_id))
     for k, v in inp.active_counts.items():
