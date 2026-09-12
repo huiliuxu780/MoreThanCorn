@@ -2,8 +2,10 @@ import type { StatusTone } from "@/domain/types"
 
 /**
  * 导航与业务对象的固定文案。
- * MTC-001：一级导航冻结为 任务 / 分析任务 / Agent / 能力与资源 / Workflow 五项，
+ * MTC-001：一级导航冻结为 任务 / 自动任务 / Agent / 能力与资源 / Workflow 五项，
  * 底部固定 主题 / 设置 / 账号。不允许新增一级入口。
+ * 2026-09-13 用户拍板：/autonomous-tasks（v2 通用自动任务）导航项 = 「自动任务」，
+ * 与页面 h1 一致；F1 误将其收敛为「分析任务」（那是 /batch-tasks AnalysisTask 域的词）。
  */
 export const UI_TERMS = {
   productName: "CORTEX",
@@ -11,7 +13,7 @@ export const UI_TERMS = {
   navigation: {
     /* ---- MTC-001 一级入口（冻结） ---- */
     tasksWorkbench: "任务",
-    autonomousTasks: "分析任务",
+    autonomousTasks: "自动任务",
     agents: "Agent",
     resourcesHub: "能力与资源",
     workflows: "Workflow",
