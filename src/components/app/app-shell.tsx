@@ -44,13 +44,13 @@ export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
       label: UI_TERMS.navigation.autonomousTasks,
       href: segments[1] ? "/autonomous-tasks" : undefined,
     })
-    if (segments[1] === "new") crumbs.push({ label: "新建自主任务" })
+    if (segments[1] === "new") crumbs.push({ label: "新建分析任务" })
     else if (segments[1]) {
       crumbs.push({
         label: segments[1],
         href: segments[2] ? `/autonomous-tasks/${segments[1]}` : undefined,
       })
-      if (segments[2] === "edit") crumbs.push({ label: "编辑自主任务" })
+      if (segments[2] === "edit") crumbs.push({ label: "编辑分析任务" })
       if (segments[2] === "runs" && segments[3]) crumbs.push({ label: `Run ${segments[3]}` })
       if (segments[2] === "batches" && segments[3]) crumbs.push({ label: `批次 ${segments[3]}` })
     }

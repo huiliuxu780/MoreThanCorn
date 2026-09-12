@@ -20,14 +20,14 @@ import {
 import { cn } from "@/lib/utils"
 import { buildTaskPayload, buildTaskSchedule, samplingLabelOf, windowLabelOf } from "@/domain/task-mapper"
 import { bizApi } from "@/services/wf-api"
-import type { AnalysisTaskDTO } from "@/services/api-types"
+import type { LegacyAnalysisTaskDTO } from "@/services/api-types"
 
-/** MTC-004：自主任务统一编辑器（新建/编辑共用，避免字段漂移）。四步：
+/** MTC-004：分析任务统一编辑器（新建/编辑共用，避免字段漂移）。四步：
  *  1 基本信息与执行目标；2 输入、数据范围、映射；3 调度与执行策略；4 检查并保存。 */
 const STEPS = ["基本信息与执行目标", "输入、数据范围、映射", "调度与执行策略", "检查并保存"] as const
 
 /** 编辑回填：从服务端 TaskVersion 快照构造表单（真实 DTO 往返保真）。 */
-export function formFromTask(task: AnalysisTaskDTO): TaskFormState {
+export function formFromTask(task: LegacyAnalysisTaskDTO): TaskFormState {
   const v = task.taskVersion
   const sampling = v?.sampling
   const window = v?.dataWindow
@@ -103,10 +103,10 @@ export function AutonomousTaskEditor({ mode, taskId = "", initialForm }: {
         const sch = buildTaskSchedule(form)
         if (sch) {
           await bizApi.taskSchedule(t.id, sch.cron, sch.timezone).catch((e) => {
-            toast.warning(`自主任务已创建，但调度创建失败：${(e as Error).message}`)
+            toast.warning(`分析任务已创建，但调度创建失败：${(e as Error).message}`)
           })
         }
-        toast.success(`自主任务已创建（配置版本 V${t.taskVersion.versionNo}）`)
+        toast.success(`分析任务已创建（配置版本 V${t.taskVersion.versionNo}）`)
         navigate(`/autonomous-tasks/${t.id}`)
       } else {
         const t = await bizApi.updateTask(taskId, payload)
@@ -123,7 +123,7 @@ export function AutonomousTaskEditor({ mode, taskId = "", initialForm }: {
   return (
     <div className="space-y-5">
       <PageHeader
-        title={mode === "create" ? "新建自主任务" : "编辑自主任务"}
+        title={mode === "create" ? "新建分析任务" : "编辑分析任务"}
         description="长期自动化工作定义：编辑只生成新配置版本，不改变历史 TaskRun 的冻结版本。"
       />
       <ol className="flex flex-wrap items-center gap-2">
@@ -160,7 +160,7 @@ export function AutonomousTaskEditor({ mode, taskId = "", initialForm }: {
         ) : null}
         {step === 3 ? (
           <div className="space-y-1 text-sm">
-            <p className="mb-3 text-muted-foreground">该自主任务将：</p>
+            <p className="mb-3 text-muted-foreground">该分析任务将：</p>
             <DefinitionRow label="执行目标">
               {form.targetType === "agent" ? "领域 Agent" : "工作流"} · {agentOf(form)?.name ?? "—"}
             </DefinitionRow>

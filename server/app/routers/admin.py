@@ -8,6 +8,7 @@ from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..auth import data_scope_members, require_admin, require_operator, require_role
+from .. import legacy_route_stats
 from ..auth_sandbox import run_auth_script
 from ..auth_signers import AuthSignError, build_auth_headers, normalize_kind
 from ..check_runs import (connection_current_fingerprint, connection_env_fingerprint,
@@ -1367,3 +1368,12 @@ def ops_slo(db: Session = Depends(get_db), _user: dict = Depends(require_role())
     """P2-09/§15.1：SLO 草稿目标 + 可测项测量对比；不可测项显式注记（不造假结论）。"""
     from ..slo import SLO_DRAFT_NOTE, SLO_TARGETS, measure
     return {"note": SLO_DRAFT_NOTE, "targets": SLO_TARGETS, "measured": measure(db)}
+
+
+@router.get("/api/admin/legacy-route-stats")
+def get_legacy_route_stats(_user: dict = Depends(require_admin)):
+    """F1（Spec §12.1）：分析任务域旧路由调用量观察（进程内计数，重启清零）。"""
+    return {"items": [
+        {"prefix": prefix, "calls": calls}
+        for prefix, calls in legacy_route_stats.snapshot().items()
+    ]}

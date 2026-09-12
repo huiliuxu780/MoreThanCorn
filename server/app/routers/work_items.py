@@ -1,7 +1,7 @@
 """MTC-002B-R：WorkItem canonical 只读 API。
 
 - GET /api/work-items                列表（筛选下推 SQL / 服务端分页 / truncated 标记）
-- GET /api/work-items/by-task-runs   按 taskRunId 批量取（自主任务详情用，避免 90 天全投影）
+- GET /api/work-items/by-task-runs   按 taskRunId 批量取（分析任务详情用，避免 90 天全投影）
 - GET /api/work-items/{id}           详情（taskrun:{id} / occurrence:{id}；404/403/200 三态区分）
 - GET /api/work-items/stream         SSE（fetch+Bearer 授权；digest 用当前用户数据范围）
 

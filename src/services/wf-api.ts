@@ -965,7 +965,7 @@ export async function realAgentAnalysis(): Promise<AgentAnalysisData> {
 
 /* ---------- 业务深化适配器（09 P0-B4：显式 DTO，去 agentId 承载语义） ---------- */
 import type {
-  AnalysisTaskDTO, AutomationDefinitionDTO, QualityResultDetailDTO, ResultRuleDetailDTO, ResultRuleSetDTO,
+  AnalysisTaskDTO, LegacyAnalysisTaskDTO, QualityResultDetailDTO, ResultRuleDetailDTO, ResultRuleSetDTO,
   ResultRuleVersionDTO, TaskRunDTO, TaskRunResultDTO, TaskRunRunDTO, TaskVersionDTO,
   WorkItemDTO, WorkItemListResponse,
 } from "@/services/api-types"
@@ -1046,30 +1046,30 @@ export const bizApi = {
   asset: (id: string) => req<{ id: string; name: string; rows: unknown[]; revision: number }>(`/api/data-assets/${id}`),
   appendRows: (id: string, rows: unknown[]) =>
     req<{ id: string; rows: number; revision: number }>(`/api/data-assets/${id}/rows`, { method: "POST", body: JSON.stringify({ rows }) }),
-  /* ---------- MTC-002A：自主任务 canonical API（兼容层；与 /api/tasks 同表同数据） ---------- */
-  automations: {
+  /* ---------- F1：分析任务 canonical API（/api/analysis-tasks；与 /api/tasks 同表同数据） ---------- */
+  analysisTasks: {
     list: (page = 1, pageSize = 50) =>
-      req<{ items: AutomationDefinitionDTO[]; total: number; page: number; pageSize: number }>(
-        `/api/automations?page=${page}&pageSize=${pageSize}`),
-    get: (id: string) => req<AutomationDefinitionDTO>(`/api/automations/${id}`),
+      req<{ items: AnalysisTaskDTO[]; total: number; page: number; pageSize: number }>(
+        `/api/analysis-tasks?page=${page}&pageSize=${pageSize}`),
+    get: (id: string) => req<AnalysisTaskDTO>(`/api/analysis-tasks/${id}`),
     create: (body: CreateTaskPayload) =>
-      req<AutomationDefinitionDTO>("/api/automations", { method: "POST", body: JSON.stringify(body) }),
+      req<AnalysisTaskDTO>("/api/analysis-tasks", { method: "POST", body: JSON.stringify(body) }),
     update: (id: string, body: Partial<CreateTaskPayload> & { note?: string }) =>
-      req<AutomationDefinitionDTO>(`/api/automations/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+      req<AnalysisTaskDTO>(`/api/analysis-tasks/${id}`, { method: "PUT", body: JSON.stringify(body) }),
     startRun: (id: string, idempotencyKey?: string) =>
-      req<StartTaskRunResponse>(`/api/automations/${id}/runs`, {
+      req<StartTaskRunResponse>(`/api/analysis-tasks/${id}/runs`, {
         method: "POST", body: "{}",
         headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {},
       }),
-    runs: (id: string) => req<{ items: TaskRunDTO[] }>(`/api/automations/${id}/runs`).then((r) => r.items),
+    runs: (id: string) => req<{ items: TaskRunDTO[] }>(`/api/analysis-tasks/${id}/runs`).then((r) => r.items),
     schedules: (id: string) =>
       req<{ items: { id: string; name: string; cron: string; timezone: string; enabled: boolean; nextRunAt: string | null; lastRanAt: string | null; failedCount: number }[] }>(
-        `/api/automations/${id}/schedules`).then((r) => r.items),
+        `/api/analysis-tasks/${id}/schedules`).then((r) => r.items),
   },
   /* ---------- 任务：09 §10.1 创建即返回已解析 TaskVersion ---------- */
   /** @deprecated Use bizApi.automations（MTC-002A 兼容层；旧 API 保留，后续任务收敛） */
-  tasks: () => req<{ items: AnalysisTaskDTO[] }>("/api/tasks").then((r) => r.items),
-  task: (id: string) => req<AnalysisTaskDTO>(`/api/tasks/${id}`),
+  tasks: () => req<{ items: LegacyAnalysisTaskDTO[] }>("/api/tasks").then((r) => r.items),
+  task: (id: string) => req<LegacyAnalysisTaskDTO>(`/api/tasks/${id}`),
   taskVersions: (id: string) => req<{ items: TaskVersionDTO[] }>(`/api/tasks/${id}/versions`).then((r) => r.items),
   createTask: (body: CreateTaskPayload) =>
     req<{ id: string; name: string; workflowId: string; status: string; taskVersion: TaskVersionDTO }>(
@@ -1297,7 +1297,7 @@ export const workItemsApi = {
     return req<WorkItemListResponse>(`/api/work-items?${qs.toString()}`)
   },
   get: (workItemId: string) => req<WorkItemDTO>(`/api/work-items/${workItemId}`),
-  /** MTC-002B-R：按 taskRunId 批量取（自主任务详情最近批次用，避免长窗口全投影） */
+  /** MTC-002B-R：按 taskRunId 批量取（分析任务详情最近批次用，避免长窗口全投影） */
   byTaskRuns: (ids: string[]) =>
     req<{ items: WorkItemDTO[] }>(`/api/work-items/by-task-runs?ids=${ids.join(",")}`),
   /** @deprecated MTC-002B-R：原生 EventSource 无法携带 Bearer，改用 streamWorkItems() */

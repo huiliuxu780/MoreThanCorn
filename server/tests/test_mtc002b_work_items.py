@@ -221,7 +221,7 @@ def test_15_missing_target_needs_action():
     assert r.status_code == 200, r.text
     w = r.json()
     _assert_attention(w, "MISSING_EXECUTION_TARGET")
-    assert w["title"] == "(缺失自主任务)"
+    assert w["title"] == "(缺失分析任务)"
 
 
 # ---------- 对象关系 ----------

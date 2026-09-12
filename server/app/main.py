@@ -159,7 +159,24 @@ app.include_router(workflows.router)
 app.include_router(registry.router)
 app.include_router(runs.router)
 app.include_router(business.router)
-app.include_router(automations.router)  # MTC-002A：自主任务 canonical API（兼容层，同表同数据）
+app.include_router(automations.router)  # F1：分析任务 /api/analysis-tasks canonical + /api/automations 兼容层（同表同数据）
+
+
+@app.middleware("http")
+async def _legacy_route_deprecation(request, call_next):
+    """F1（Spec §12.1）：分析任务域旧路由打 Deprecation 头并计数，不影响现有客户端。"""
+    from . import legacy_route_stats
+
+    path = request.url.path
+    legacy = (path.startswith("/api/automations") or path.startswith("/api/tasks")) \
+        and not path.startswith("/api/analysis-tasks")
+    if legacy:
+        legacy_route_stats.inc(path)
+    response = await call_next(request)
+    if legacy:
+        response.headers["Deprecation"] = "true"
+        response.headers["Link"] = '</api/analysis-tasks>; rel="successor-version"'
+    return response
 app.include_router(operations.router)  # SDD 13：运行中心（today/history/stream/detail）
 app.include_router(work_items.router)  # MTC-002B：WorkItemProjection 统一读模型（只读）
 app.include_router(governance.router)

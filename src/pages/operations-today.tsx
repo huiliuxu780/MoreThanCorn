@@ -230,7 +230,7 @@ function WorkItemDrawer({ w, onClose }: { w: WorkItemDTO | null; onClose: () => 
                   </Button>
                 ) : null}
                 <Button variant="outline" size="sm" onClick={() => navigate(`/autonomous-tasks/${w.automationId}`)}>
-                  所属自主任务
+                  所属分析任务
                 </Button>
               </section>
             </div>
@@ -599,7 +599,7 @@ export default function OperationsTodayPage() {
       <section aria-labelledby="all-items-title" className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <h2 id="all-items-title" className="text-sm font-semibold">全部工作</h2>
-          <Input placeholder="搜索自主任务 / 批次" aria-label="搜索自主任务或批次"
+          <Input placeholder="搜索分析任务 / 批次" aria-label="搜索分析任务或批次"
             className="h-8 w-48" value={q} onChange={(e) => setQ(e.target.value)} />
           <Select value={origin || "all"} onValueChange={(v) => setOrigin(v === "all" ? "" : v)}>
             <SelectTrigger className="h-8 w-32"><SelectValue placeholder="触发方式" /></SelectTrigger>

@@ -1,6 +1,6 @@
-"""MTC-002A：AutomationDefinition（自主任务）领域 DTO 映射层。
+"""MTC-002A：AnalysisTask（分析任务）领域 DTO 映射层。
 
-产品名收敛为「自主任务」，领域名 AutomationDefinition；持久层继续使用
+产品名收敛为「分析任务」（F1 拆名，原称「自主任务」）；持久层继续使用
 AnalysisTask / analysis_task（本轮不改表名、不改外键、不做迁移）。
 
 DTO 字段全部来自既有列；缺失语义保持 None / 可选，不编造：
@@ -29,8 +29,8 @@ def _execution_target(v: AnalysisTaskVersion | None, task: AnalysisTask) -> dict
             "versionPolicy": task.version_policy, "pinnedWorkflowVersionId": None}
 
 
-def automation_definition_dto(db: Session, task: AnalysisTask) -> dict:
-    """自主任务定义读模型（/api/automations canonical 形状）。"""
+def analysis_task_dto(db: Session, task: AnalysisTask) -> dict:
+    """分析任务定义读模型（/api/analysis-tasks canonical 形状；/api/automations 兼容同形状）。"""
     v = db.get(AnalysisTaskVersion, task.current_version_id) if task.current_version_id else None
     target = _execution_target(v, task)
     schedule = (db.query(Schedule).filter_by(task_id=task.id)
@@ -76,8 +76,9 @@ def automation_definition_dto(db: Session, task: AnalysisTask) -> dict:
     }
 
 
-def automation_definition_version_dto(v: AnalysisTaskVersion) -> dict:
-    """自主任务配置版本读模型（TaskVersion 不可变语义不变）。"""
+def analysis_task_version_dto(v: AnalysisTaskVersion) -> dict:
+    """分析任务配置版本读模型（TaskVersion 不可变语义不变）。"""
+
     return {
         "id": v.id,
         "versionNo": v.version_no,
@@ -107,3 +108,8 @@ def automation_definition_version_dto(v: AnalysisTaskVersion) -> dict:
         "createdBy": v.created_by,
         "createdAt": v.created_at.isoformat() if v.created_at else None,
     }
+
+
+# F1 弃用别名：外部引用逐步迁移到 analysis_task_*；本别名保留一个兼容周期。
+automation_definition_dto = analysis_task_dto
+automation_definition_version_dto = analysis_task_version_dto

@@ -7,7 +7,7 @@ import {
 import { useAsyncData } from "@/hooks/use-async-data"
 import { bizApi } from "@/services/wf-api"
 
-/** MTC-004：编辑自主任务 = 统一编辑器 edit 模式（服务端快照回填）。 */
+/** MTC-004：编辑分析任务 = 统一编辑器 edit 模式（服务端快照回填）。 */
 export default function TaskEditPage() {
   const { taskId = "" } = useParams()
   const { data: task, loading } = useAsyncData(() => bizApi.task(taskId), [taskId])

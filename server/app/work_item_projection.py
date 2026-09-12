@@ -2,7 +2,7 @@
 
 对象关系：
 
-    AutomationDefinition（analysis_task，自主任务定义）
+    AnalysisTask（analysis_task，分析任务定义；F1 前旧称「自主任务」）
               │  手动 / Schedule / API / Backfill
               ▼
     WorkItem（读模型，无表）←── TaskRun（一次批次） 或 未触发 ScheduleOccurrence（一次计划）
@@ -72,7 +72,7 @@ def project_work_item_status(tr: TaskRun | None, occ: ScheduleOccurrence | None,
     if not has_target:
         return {"status": "needs_action", "phase": "attention",
                 "attention": _attention("MISSING_EXECUTION_TARGET",
-                                        "缺少自主任务或配置版本/执行目标，无法执行", "critical"),
+                                        "缺少分析任务或配置版本/执行目标，无法执行", "critical"),
                 "conflict_codes": ["MISSING_EXECUTION_TARGET"]}
 
     if tr is None:
@@ -352,7 +352,7 @@ def _build_item(tr: TaskRun | None, occ: ScheduleOccurrence | None,
         "automationId": task_id or "",
         "taskRunId": tr.id if tr is not None else None,
         "scheduleOccurrenceId": occ.id if occ is not None else None,
-        "title": task.name if task else "(缺失自主任务)",
+        "title": task.name if task else "(缺失分析任务)",
         "description": (task.description or None) if task else None,
         "status": st["status"],
         "phase": st["phase"],

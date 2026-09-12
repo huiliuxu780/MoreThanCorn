@@ -87,7 +87,7 @@ export interface TaskVersionDTO {
   createdAt: string
 }
 
-/** MTC-002A：自主任务状态（产品名自主任务；持久层仍为 AnalysisTask）。 */
+/** MTC-002A：分析任务状态（产品名分析任务；持久层仍为 AnalysisTask）。 */
 export type AutomationDefinitionStatus = "draft" | "active" | "paused" | "archived"
 
 export interface AutomationInputConfigDTO {
@@ -119,12 +119,12 @@ export interface AutomationExecutionConfigDTO {
 }
 
 /**
- * MTC-002A-R：canonical DTO——只描述 /api/automations 的真实响应。
+ * MTC-002A-R/F1：分析任务 canonical DTO——描述 /api/analysis-tasks 的真实响应（旧 /api/automations 同形状）。
  * nullability 以后端 automation_dtos.automation_definition_dto 实际输出为准：
  * agent 型任务 workflowId=null；workflowVersionId 仅 pinned 策略有值；
  * 不含任何 legacy-only 字段（taskVersion/workflowVersionPolicy/dataAssetId/dataDefinitionId）。
  */
-export interface AutomationDefinitionDTO {
+export interface AnalysisTaskDTO {
   id: string
   name: string
   description: string
@@ -173,8 +173,8 @@ export interface LegacyAnalysisTaskDTO {
   updatedAt?: string | null
 }
 
-/** @deprecated Use AutomationDefinitionDTO for /api/automations；/api/tasks 用 LegacyAnalysisTaskDTO */
-export type AnalysisTaskDTO = LegacyAnalysisTaskDTO
+/** @deprecated F1：/api/tasks 旧形状别名，请直接用 LegacyAnalysisTaskDTO（canonical 见 AnalysisTaskDTO） */
+export type LegacyTaskDTO = LegacyAnalysisTaskDTO
 
 export interface TaskRunDTO {
   id: string
@@ -406,3 +406,6 @@ export interface WorkItemListResponse {
   /** MTC-002B-R2：服务端截断标记；前端据此显示“加载更多”，不自行猜测 */
   truncated: boolean
 }
+
+/** @deprecated F1 拆名：旧称 AutomationDefinitionDTO 实为分析任务，请改用 AnalysisTaskDTO */
+export type AutomationDefinitionDTO = AnalysisTaskDTO

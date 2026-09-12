@@ -2,7 +2,7 @@ import type { StatusTone } from "@/domain/types"
 
 /**
  * 导航与业务对象的固定文案。
- * MTC-001：一级导航冻结为 任务 / 自主任务 / Agent / 能力与资源 / Workflow 五项，
+ * MTC-001：一级导航冻结为 任务 / 分析任务 / Agent / 能力与资源 / Workflow 五项，
  * 底部固定 主题 / 设置 / 账号。不允许新增一级入口。
  */
 export const UI_TERMS = {
@@ -11,7 +11,7 @@ export const UI_TERMS = {
   navigation: {
     /* ---- MTC-001 一级入口（冻结） ---- */
     tasksWorkbench: "任务",
-    autonomousTasks: "自主任务",
+    autonomousTasks: "分析任务",
     agents: "Agent",
     resourcesHub: "能力与资源",
     workflows: "Workflow",

@@ -15,7 +15,7 @@ import { formatCompactDateTime } from "@/lib/time"
 import { WORK_ITEM_STATUS_LABELS } from "@/config/ui-terms"
 import { bizApi, workItemsApi, type WorkItemStatus } from "@/services/wf-api"
 
-/** MTC-004：自主任务详情 = 工作档案（非巨型表单）。最近运行复用 WorkItem 真值。 */
+/** MTC-004：分析任务详情 = 工作档案（非巨型表单）。最近运行复用 WorkItem 真值。 */
 export default function TaskDetailPage() {
   const { taskId = "" } = useParams()
   const navigate = useNavigate()
@@ -28,7 +28,7 @@ export default function TaskDetailPage() {
   )
   const { data: assets } = useAsyncData(() => bizApi.assets(), [])
 
-  if (error) return <PageContainer><ErrorState title="自主任务加载失败" onRetry={retry} /></PageContainer>
+  if (error) return <PageContainer><ErrorState title="分析任务加载失败" onRetry={retry} /></PageContainer>
   if (loading || !task) return <PageContainer><TableSkeleton rows={6} columns={4} /></PageContainer>
 
   const v = task.taskVersion
@@ -48,7 +48,7 @@ export default function TaskDetailPage() {
   const toggleStatus = async () => {
     try {
       const r = await bizApi.setTaskStatus(task.id, isActive ? "paused" : "active")
-      toast.success(r.status === "active" ? "自主任务已启用" : "自主任务已暂停")
+      toast.success(r.status === "active" ? "分析任务已启用" : "分析任务已暂停")
       retry()
     } catch (e) {
       toast.error(`操作失败：${(e as Error).message}`)
@@ -59,7 +59,7 @@ export default function TaskDetailPage() {
     <PageContainer wide className="space-y-6">
       <div>
         <Button variant="ghost" size="sm" className="gap-1 px-2" onClick={() => navigate("/autonomous-tasks")}>
-          <ArrowLeft className="size-4" /> 自主任务
+          <ArrowLeft className="size-4" /> 分析任务
         </Button>
       </div>
       <PageHeader
@@ -84,7 +84,7 @@ export default function TaskDetailPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(task.id); toast.success("已复制自主任务 ID") }}>
+                <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(task.id); toast.success("已复制分析任务 ID") }}>
                   复制 ID
                 </DropdownMenuItem>
               </DropdownMenuContent>

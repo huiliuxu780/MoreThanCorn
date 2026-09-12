@@ -34,7 +34,7 @@ export default function WfWorkflowsPage() {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
   const [delTarget, setDelTarget] = useState<WfRow | null>(null)
-  // MTC-007：真实节点数（并行 detail）与引用数（自主任务聚合），禁止假 0
+  // MTC-007：真实节点数（并行 detail）与引用数（分析任务聚合），禁止假 0
   const [nodeCounts, setNodeCounts] = useState<Record<string, number | undefined>>({})
   const [refs, setRefs] = useState<Record<string, number>>({})
 
