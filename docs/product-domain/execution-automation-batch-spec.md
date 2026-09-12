@@ -603,6 +603,19 @@ RECEIVED
 - 一个 FlowRun 有多个节点，不等于批次；
 - 只有 Flow 输入本身包含 N 个独立业务项，且产品明确提供逐项状态时，才可在 Flow 内部增加业务批量节点。
 
+#### 8.2.1 脚本形态（16号稿）
+
+AgentFlow 版本支持两种形态（`definition.kind` 判别，设计见
+`docs/v2-design/16-wakerflow-script-agentflow.md`，2026-09-12 拍板 D1=子进程沙箱/D2=DAG 冻结共存/D3=NL 生成后置）：
+
+- `dag`（现状）：节点/边表，拓扑顺序执行；
+- `script`：Python 脚本为唯一事实源，五原语 `phase/log/worker/parallel/askUser` 在沙箱子进程内执行（响应走 127.0.0.1 一次性 TCP+令牌通道）；Canvas 降为 ast 投影（只读+跳行）。
+
+脚本形态的执行事实模型与本节完全一致：仍产生 `AgentFlowRun`/`AgentFlowNodeRun`/SessionIndex，
+事件沿用 `stage:{label}`+`flow:complete` 形状（另含 `phase/log/needs_input` 观测事件）；
+`parallel` 是控制流并行，不是业务批次——不产生 TaskRun/AnalysisItemRun 语义。
+askUser 挂起落 NodeRun(waiting)，经 `/mtc/script-resume` 恢复；waiting 不跨进程持久（已知边界）。
+
 ### 8.3 Workflow Adapter
 
 执行顺序：
