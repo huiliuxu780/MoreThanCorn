@@ -1223,20 +1223,43 @@ class AutomationApiKey(Base):
 
 
 class AutomationTriggerLog(Base):
-    """触发与执行事实日志：区分已接收/已接受/执行中/完成；手动不计自动统计。"""
+    """AutomationInvocation 持久化（F2，Spec §7）：一次触发的权威业务事实。
+
+    表名沿用 automation_trigger_log（无损迁移留待后续）；DTO 只暴露 target 联合形状。
+    状态机：received→(deduped|rejected|accepted→queued→running→completed|failed|cancelled)。
+    """
     __tablename__ = "automation_trigger_log"
+    __table_args__ = (
+        Index("uq_triggerlog_idem", "automation_id", "idempotency_key",
+              unique=True, postgresql_where=text("idempotency_key IS NOT NULL")),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     automation_id: Mapped[str] = mapped_column(String(32), index=True)
     trigger_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    source: Mapped[str] = mapped_column(String(16))  # schedule|api|event|polling|manual|test
+    source: Mapped[str] = mapped_column(String(16))  # manual|schedule|api|event|test（polling 归一 event）
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    status: Mapped[str] = mapped_column(String(16), default="received")
-    # received|accepted|running|completed|failed|deduped|rejected
+    status: Mapped[str] = mapped_column(String(16), default="received", index=True)
+    # received|accepted|queued|running|completed|failed|cancelled|deduped|rejected
     session_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     workflow_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     agentflow_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     payload_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    conversation_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    budget_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    usage_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    target_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # agent_session|agentflow_run|workflow_run
+    target_ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    retry_of_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    error_detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    input: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     error: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

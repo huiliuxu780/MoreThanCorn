@@ -153,14 +153,16 @@ def _reconcile_impl(db: Session) -> dict:
                 except rt.RuntimeError_:
                     pass
             db.commit()
-        # 3: 触发日志终态对账（schedule/api/event + workflow/agentflow）
-        running = (
+        # 3: 触发日志对账（F2）——queued→running 翻转 + 终态结算（含 cancelled 映射）
+        active = (
             db.query(AutomationTriggerLog)
-            .filter_by(automation_id=auto.id, status="running")
+            .filter(AutomationTriggerLog.automation_id == auto.id,
+                    AutomationTriggerLog.status.in_(("queued", "running")))
             .all()
         )
-        for l in running:
-            terminal = None
+        now = datetime.now(timezone.utc)
+        for l in active:
+            target_status = None
             if l.session_id:
                 idx = (
                     db.query(AgentSessionIndex).filter_by(session_id=l.session_id).first()
@@ -181,24 +183,60 @@ def _reconcile_impl(db: Session) -> dict:
                 if runtime_id:
                     try:
                         st = rt.session_status(uid, runtime_id, l.session_id)
-                        if st.get("status") != "running":
-                            terminal = (
-                                "failed"
-                                if st.get("last_error")
-                                else "completed"
-                            )
+                        if st.get("status") == "running":
+                            target_status = "running"
+                        else:
+                            if l.cancel_requested_at is not None:
+                                target_status = "cancelled"
+                            elif st.get("last_error"):
+                                target_status = "failed"
+                            else:
+                                target_status = "completed"
                     except rt.RuntimeError_:
-                        terminal = None
+                        target_status = None
             elif l.workflow_run_id:
                 run = db.get(Run, l.workflow_run_id)
-                if run and run.status in ("succeeded", "failed", "cancelled"):
-                    terminal = "completed" if run.status == "succeeded" else "failed"
+                if run is None:
+                    # 对账找不到目标 → FAILED/TARGET_EXECUTION_MISSING（Spec §7.3）
+                    l.status = "failed"
+                    l.error_code = "TARGET_EXECUTION_MISSING"
+                    l.ended_at = now
+                    stats["logs"] += 1
+                    continue
+                if run.status == "running":
+                    target_status = "running"
+                elif run.status == "cancelled" or l.cancel_requested_at is not None:
+                    target_status = "cancelled"
+                elif run.status == "succeeded":
+                    target_status = "completed"
+                elif run.status == "failed":
+                    target_status = "failed"
             elif l.agentflow_run_id:
                 fr = db.get(AgentFlowRun, l.agentflow_run_id)
-                if fr and fr.status in ("succeeded", "failed", "cancelled"):
-                    terminal = "completed" if fr.status == "succeeded" else "failed"
-            if terminal:
-                l.status = terminal
+                if fr is None:
+                    l.status = "failed"
+                    l.error_code = "TARGET_EXECUTION_MISSING"
+                    l.ended_at = now
+                    stats["logs"] += 1
+                    continue
+                if fr.status in ("queued", "running"):
+                    target_status = "running" if fr.status == "running" else None
+                elif fr.status == "cancelled" or l.cancel_requested_at is not None:
+                    target_status = "cancelled"
+                elif fr.status == "succeeded":
+                    target_status = "completed"
+                elif fr.status == "failed":
+                    target_status = "failed"
+            if target_status == "running" and l.status == "queued":
+                # F2：QUEUED → RUNNING（真实目标已开始）
+                l.status = "running"
+                l.started_at = l.started_at or now
+                stats["logs"] += 1
+            elif target_status in ("completed", "failed", "cancelled"):
+                l.status = target_status
+                l.ended_at = now
+                if target_status == "failed" and not l.error_code:
+                    l.error_code = "TARGET_EXECUTION_FAILED"
                 stats["logs"] += 1
         db.commit()
     # 4: polling 源定时 tick

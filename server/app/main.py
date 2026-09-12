@@ -160,6 +160,7 @@ app.include_router(registry.router)
 app.include_router(runs.router)
 app.include_router(business.router)
 app.include_router(automations.router)  # F1：分析任务 /api/analysis-tasks canonical + /api/automations 兼容层（同表同数据）
+app.include_router(as_automations.invocations_router)  # F2：/api/v2/invocations（详情/取消/重试）
 
 
 @app.middleware("http")

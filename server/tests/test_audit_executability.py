@@ -79,11 +79,11 @@ def test_executable_agent_saves_and_runs_now():
     auto_id = r.json()["id"]
     try:
         rn = client.post(f"/api/v2/automations/{auto_id}/run-now")
-        assert rn.status_code == 200, rn.text
-        assert rn.json()["trigger_log_id"]
+        assert rn.status_code == 202, rn.text  # F2：202 + Invocation DTO
+        assert rn.json()["invocationId"]
         hist = client.get(f"/api/v2/automations/{auto_id}/history")
         assert hist.status_code == 200
-        assert any(h["id"] == rn.json()["trigger_log_id"] for h in hist.json()["items"])
+        assert any(h["id"] == rn.json()["invocationId"] for h in hist.json()["items"])
     finally:
         assert client.delete(f"/api/v2/automations/{auto_id}").status_code == 200
 

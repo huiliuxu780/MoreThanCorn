@@ -8,9 +8,10 @@ import secrets as pysecrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import agent_execution as ex
@@ -27,6 +28,7 @@ from ..models import (
     AutomationDefinition,
     AutomationTrigger,
     AutomationTriggerLog,
+    AgentSessionIndex,
     DataSource,
     DataSourceEvent,
     EventDelivery,
@@ -277,6 +279,58 @@ def _sync_schedule(db: Session, uid: str, auto: AutomationDefinition) -> None:
     db.commit()
 
 
+def _payload_sha(payload: dict) -> str:
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str).encode()
+    ).hexdigest()
+
+
+def _target_of(log: AutomationTriggerLog) -> tuple[str | None, str | None]:
+    """target 联合形状（Spec §7.2）：兼容期回退三列。"""
+    if log.target_kind and log.target_ref:
+        return log.target_kind, log.target_ref
+    if log.session_id:
+        return "agent_session", log.session_id
+    if log.agentflow_run_id:
+        return "agentflow_run", log.agentflow_run_id
+    if log.workflow_run_id:
+        return "workflow_run", log.workflow_run_id
+    return None, None
+
+
+def invocation_dto(log: AutomationTriggerLog) -> dict:
+    """AutomationInvocation DTO（Spec §7.2/§12.3）；状态以大写 canonical 暴露。"""
+    kind, ref = _target_of(log)
+    source = log.source
+    source_mode = None
+    if source == "polling":
+        source, source_mode = "event", "polling"
+    return {
+        "id": log.id,
+        "automationId": log.automation_id,
+        "triggerId": log.trigger_id,
+        "source": source,
+        "sourceMode": source_mode,
+        "idempotencyKey": log.idempotency_key,
+        "status": (log.status or "").upper(),
+        "attempt": log.attempt,
+        "retryOfId": log.retry_of_id,
+        "cancelRequested": log.cancel_requested_at is not None,
+        "target": {"kind": kind, "id": ref} if kind else None,
+        "conversationKey": log.conversation_key,
+        "queuedAt": log.queued_at.isoformat() if log.queued_at else None,
+        "startedAt": log.started_at.isoformat() if log.started_at else None,
+        "endedAt": log.ended_at.isoformat() if log.ended_at else None,
+        "createdAt": log.created_at.isoformat() if log.created_at else None,
+        "errorCode": log.error_code,
+        "errorDetail": log.error_detail,
+        "error": log.error or None,
+    }
+
+
+TERMINAL_LOG_STATUSES = ("completed", "failed", "cancelled")
+
+
 def dispatch(
     db: Session,
     uid: str,
@@ -286,9 +340,77 @@ def dispatch(
     source: str,
     idempotency_key: str | None = None,
     trigger_id: str | None = None,
+    retry_of: AutomationTriggerLog | None = None,
 ) -> AutomationTriggerLog:
-    # P0-5: atomic gate — check max_runs + deadline + enabled at the DB level
-    # so concurrent triggers cannot race past the limit.
+    """F2：按 Spec §7.4 准入顺序处理一次触发（错误码 per §13.1）。
+
+    原子幂等：partial unique index (automation_id, idempotency_key)——
+    同 key 同 payload 返回原 Invocation；同 key 异 payload 409（API 层翻译）。
+    """
+    now = datetime.now(timezone.utc)
+    attempt = (retry_of.attempt + 1) if retry_of is not None else 1
+    sha = _payload_sha(payload)
+
+    def _reject(log: AutomationTriggerLog | None, code: str, message: str) -> None:
+        if log is not None:
+            log.status = "rejected"
+            log.error_code = code
+            log.error = message
+            log.ended_at = datetime.now(timezone.utc)
+            # 释放幂等键：REJECTED 不占用 key，后续修正后的触发可重用
+            log.idempotency_key = None
+            db.commit()
+        raise ValueError(f"[{code}] {message}")
+
+    # 1. 建立接收事实（含幂等键；冲突由 partial unique index 兜底）
+    log = AutomationTriggerLog(
+        automation_id=auto.id,
+        trigger_id=trigger_id,
+        source=source,
+        idempotency_key=idempotency_key,
+        status="received",
+        payload_sha=sha,
+        input=payload if isinstance(payload, dict) else {"payload": payload},
+        attempt=attempt,
+        retry_of_id=retry_of.id if retry_of is not None else None,
+        created_at=now,
+    )
+    db.add(log)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        existing = (
+            db.query(AutomationTriggerLog)
+            .filter_by(automation_id=auto.id, idempotency_key=idempotency_key)
+            .first()
+        )
+        if existing is None:
+            raise
+        if existing.payload_sha and existing.payload_sha != sha:
+            raise ValueError(
+                "[IDEMPOTENCY_PAYLOAD_MISMATCH] 相同幂等键对应不同输入（409）")
+        return existing  # DEDUPED：返回原 Invocation 引用，不创建目标执行体
+
+    # 4'. 幂等预检（已有记录：同 sha 返回原引用，异 sha 409）
+    if idempotency_key:
+        dup = (
+            db.query(AutomationTriggerLog)
+            .filter(AutomationTriggerLog.id != log.id,
+                    AutomationTriggerLog.automation_id == auto.id,
+                    AutomationTriggerLog.idempotency_key == idempotency_key)
+            .first()
+        )
+        if dup is not None:
+            db.delete(log)
+            db.commit()
+            if dup.payload_sha and dup.payload_sha != sha:
+                raise ValueError(
+                    "[IDEMPOTENCY_PAYLOAD_MISMATCH] 相同幂等键对应不同输入（409）")
+            return dup  # DEDUPED
+
+    # 2-3. 定义/触发器存在由调用方保证（_auto）；4. 幂等已过
+    # 5-6. enabled/deadline/maxRuns（P0-5 原子门）
     gate = db.execute(
         text("""
             UPDATE automation_definition
@@ -303,50 +425,49 @@ def dispatch(
         {"aid": auto.id},
     ).first()
     if gate is None:
-        # refresh to get current state for the error message
         db.refresh(auto)
         if not auto.enabled:
-            raise ValueError("automation disabled")
+            _reject(log, "AUTOMATION_DISABLED", "automation disabled")
         if auto.max_runs is not None and auto.auto_run_count >= auto.max_runs:
-            raise ValueError(f"max_runs ({auto.max_runs}) reached")
+            _reject(log, "MAX_RUNS_REACHED", f"max_runs ({auto.max_runs}) reached")
         if auto.deadline and auto.deadline <= datetime.now(timezone.utc):
-            raise ValueError(f"deadline passed: {auto.deadline.isoformat()}")
-        raise ValueError("automation gating failed")
-    log = AutomationTriggerLog(
-        automation_id=auto.id,
-        trigger_id=trigger_id,
-        source=source,
-        idempotency_key=idempotency_key,
-        status="accepted",
-        payload_sha=hashlib.sha256(
-            json.dumps(payload, sort_keys=True).encode()
-        ).hexdigest(),
-    )
-    db.add(log)
+            _reject(log, "DEADLINE_PASSED", f"deadline passed: {auto.deadline.isoformat()}")
+        _reject(log, "AUTOMATION_GATE_FAILED", "automation gating failed")
+
+    # 9. 准入通过 → accepted/queued
+    log.status = "accepted"
     db.commit()
-    db.refresh(log)
+
+    # 10-11. 创建目标占位并派发（任何失败 → FAILED 带错误码，不留裸 repr）
     try:
         prompt_text = ex.render_prompt(auto.prompt_template, payload)
         if auto.target_kind == "agent":
             agent = db.get(Agent, auto.agent_id or "")
             if agent is None:
                 raise ValueError("agent missing")
-            policy = auto.session_policy
             index = ex.start_session(
                 db,
                 uid,
                 agent,
                 trigger_kind="schedule" if source == "schedule" else source,
-                policy=policy,
+                policy=auto.session_policy,
                 conversation_key=payload.get("conversation_key"),
                 automation_id=auto.id,
                 trigger_log_id=log.id,
             )
+            log.target_kind = "agent_session"
+            log.target_ref = index.session_id
+            log.session_id = index.session_id
+            log.status = "queued"
+            log.queued_at = datetime.now(timezone.utc)
+            db.commit()
             runtime_id = index.runtime_agent_id or ex.resolve_runtime_agent(
                 db, uid, agent, environment="prod"
             )[0]
             rt.chat_trigger(uid, runtime_id, index.session_id, prompt_text)
-            log.session_id = index.session_id
+            # chat_trigger 成功即真实派发（Spec §7.3 RUNNING=真实目标已开始）
+            log.status = "running"
+            log.started_at = datetime.now(timezone.utc)
         elif auto.target_kind == "workflow":
             run = create_workflow_run(
                 db,
@@ -355,30 +476,33 @@ def dispatch(
                 run_input=payload,
                 pinned_version_id=auto.workflow_version_id,
             )
+            log.target_kind = "workflow_run"
+            log.target_ref = run.id
             log.workflow_run_id = run.id
+            log.status = "queued"
+            log.queued_at = datetime.now(timezone.utc)
         else:
-            # P0-05: same shared resolver as manual runs and agent tools
-            try:
-                release = resolve_agentflow_release(
-                    db,
-                    release_id=auto.agentflow_release_id,
-                    definition_id=auto.agentflow_id,
-                )
-            except ValueError as exc:
-                raise ValueError(str(exc)) from exc
-            if release is None:
-                raise ValueError("agentflow release missing")
+            release = resolve_agentflow_release(
+                db,
+                release_id=auto.agentflow_release_id,
+                definition_id=auto.agentflow_id,
+            )
             flow_run = start_agentflow_run(
                 db, uid, release, payload, trigger_kind=source, automation_id=auto.id
             )
+            log.target_kind = "agentflow_run"
+            log.target_ref = flow_run.id
             log.agentflow_run_id = flow_run.id
-        log.status = "running"
+            log.status = "queued"
+            log.queued_at = datetime.now(timezone.utc)
     except Exception as exc:  # noqa: BLE001
         log.status = "failed"
+        log.error_code = "TARGET_EXECUTION_FAILED"
+        log.error_detail = {"repr": repr(exc)}
         log.error = repr(exc)
+        log.ended_at = datetime.now(timezone.utc)
     db.commit()
     return log
-
 
 _SORT_COLUMNS = {
     "created_at": AutomationDefinition.created_at,
@@ -535,14 +659,32 @@ def set_enabled(aid: str, enabled: bool, db: Session = Depends(get_db), user: di
     return _serialize(db, auto)
 
 
+def _http_status_for_dispatch_error(exc: ValueError) -> int:
+    msg = str(exc)
+    if msg.startswith("[IDEMPOTENCY_PAYLOAD_MISMATCH]"):
+        return 409
+    if msg.startswith(("[AUTOMATION_DISABLED]", "[MAX_RUNS_REACHED]", "[DEADLINE_PASSED]")):
+        return 409
+    return 422
+
+
 @router.post("/{aid}/run-now")
-def run_now(aid: str, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
-    """Manual debug run: real execution, excluded from auto statistics."""
+def run_now(aid: str, request: Request, response: Response,
+            idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+            db: Session = Depends(get_db), user: dict = Depends(require_operator)):
+    """F2：手动运行（AC-001）——202 + Invocation DTO + statusUrl；不计自动统计。"""
     auto = _auto(db, aid)
     uid = user.get("username", "dev")
     body = {}
-    log = dispatch(db, uid, auto, body, source="manual")
-    return {"trigger_log_id": log.id, "status": log.status, "session_id": log.session_id}
+    try:
+        log = dispatch(db, uid, auto, body, source="manual", idempotency_key=idempotency_key)
+    except ValueError as exc:
+        raise HTTPException(_http_status_for_dispatch_error(exc), str(exc)) from exc
+    dto = invocation_dto(log)
+    response.status_code = 202
+    response.headers["Location"] = f"/api/v2/invocations/{log.id}"
+    return {"invocationId": log.id, "status": dto["status"],
+            "statusUrl": f"/api/v2/invocations/{log.id}", "sessionId": log.session_id}
 
 
 @router.get("/{aid}/history")
@@ -621,6 +763,106 @@ def history(aid: str, db: Session = Depends(get_db), user: dict = Depends(requir
     return {"items": items, "auto_run_count": auto.auto_run_count, "last_auto_fire_at": auto.last_auto_fire_at.isoformat() if auto.last_auto_fire_at else None}
 
 
+invocations_router = APIRouter(prefix="/api/v2/invocations", tags=["invocations"])
+
+
+@invocations_router.get("/{iid}")
+def get_invocation(iid: str, db: Session = Depends(get_db),
+                   user: dict = Depends(require_role())):
+    """F2：Invocation 详情（Spec §12.3）。"""
+    log = db.get(AutomationTriggerLog, iid)
+    if log is None:
+        raise HTTPException(404, "invocation not found")
+    return invocation_dto(log)
+
+
+@invocations_router.post("/{iid}/cancel", status_code=202)
+def cancel_invocation(iid: str, db: Session = Depends(get_db),
+                      user: dict = Depends(require_operator)):
+    """F2：取消（Spec §12.3 矩阵）——agent 中断 Session；agentflow queued 直取/运行中
+    中断节点 Session；workflow queued 直取、运行中 409（runner 无运行中取消能力，登记）。"""
+    log = db.get(AutomationTriggerLog, iid)
+    if log is None:
+        raise HTTPException(404, "invocation not found")
+    if log.status in TERMINAL_LOG_STATUSES:
+        raise HTTPException(409, "invocation already terminal")
+    now = datetime.now(timezone.utc)
+    if log.cancel_requested_at is None:
+        log.cancel_requested_at = now
+        db.commit()
+
+    interrupted = 0
+    if log.target_kind in (None, "agent_session") and log.session_id:
+        idx = db.query(AgentSessionIndex).filter_by(session_id=log.session_id).first()
+        if idx is not None and idx.runtime_agent_id:
+            try:
+                rt.interrupt_session(idx.user_id, idx.runtime_agent_id, log.session_id)
+                interrupted += 1
+            except rt.RuntimeError_:
+                pass  # 尽力中断；watcher 按真实终态结算
+    elif log.target_kind == "agentflow_run" and log.agentflow_run_id:
+        fr = db.get(AgentFlowRun, log.agentflow_run_id)
+        if fr is not None and fr.status == "queued":
+            fr.status = "cancelled"
+            fr.ended_at = now
+            db.commit()
+        elif fr is not None and fr.status == "running":
+            for idx in db.query(AgentSessionIndex).filter_by(agentflow_run_id=fr.id).all():
+                try:
+                    rt.interrupt_session(idx.user_id, idx.runtime_agent_id, idx.session_id)
+                    interrupted += 1
+                except rt.RuntimeError_:
+                    pass
+    elif log.target_kind == "workflow_run" and log.workflow_run_id:
+        run = db.get(Run, log.workflow_run_id)
+        if run is not None and run.status in ("queued", "pending"):
+            run.status = "cancelled"
+            run.ended_at = now
+            db.commit()
+        elif run is not None and run.status not in ("succeeded", "failed", "cancelled"):
+            raise HTTPException(409, "workflow running cancel not supported yet")
+    return {"id": log.id, "status": log.status.upper(),
+            "cancelRequested": True, "interrupted": interrupted}
+
+
+@invocations_router.post("/{iid}/retry", status_code=202)
+def retry_invocation(iid: str, db: Session = Depends(get_db),
+                     user: dict = Depends(require_operator)):
+    """F2：重试 = 新 Invocation（retry_of_id 指向原记录，attempt+1，同冻结输入）。"""
+    log = db.get(AutomationTriggerLog, iid)
+    if log is None:
+        raise HTTPException(404, "invocation not found")
+    if log.status not in TERMINAL_LOG_STATUSES:
+        raise HTTPException(409, "invocation not terminal — cancel or wait")
+    auto = db.get(AutomationDefinition, log.automation_id)
+    if auto is None:
+        raise HTTPException(404, "automation definition missing")
+    try:
+        new_log = dispatch(db, auto.created_by or "dev", auto,
+                           log.input or {}, source=log.source,
+                           trigger_id=log.trigger_id, retry_of=log)
+    except ValueError as exc:
+        raise HTTPException(_http_status_for_dispatch_error(exc), str(exc)) from exc
+    return {"invocationId": new_log.id, "retryOfId": log.id,
+            "attempt": new_log.attempt, "status": invocation_dto(new_log)["status"],
+            "statusUrl": f"/api/v2/invocations/{new_log.id}"}
+
+
+@router.get("/{aid}/invocations")
+def list_invocations(aid: str, status: str = "", page: int = 1, pageSize: int = 50,
+                     db: Session = Depends(get_db),
+                     user: dict = Depends(require_role())):
+    """F2：自动任务运行历史 = Invocation DTO（Spec §12.2）。"""
+    q = db.query(AutomationTriggerLog).filter_by(automation_id=aid)
+    if status:
+        q = q.filter_by(status=status.lower())
+    total = q.count()
+    rows = (q.order_by(AutomationTriggerLog.created_at.desc())
+            .offset((page - 1) * pageSize).limit(pageSize).all())
+    return {"items": [invocation_dto(l) for l in rows],
+            "total": total, "page": page, "pageSize": pageSize}
+
+
 @router.post("/{aid}/api-keys")
 def create_api_key(aid: str, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     _auto(db, aid)
@@ -657,7 +899,7 @@ def delete_automation(aid: str, db: Session = Depends(get_db), user: dict = Depe
 ext_router = APIRouter(prefix="/api/v2/external", tags=["external"])
 
 
-@ext_router.post("/automations/{key_id}/invoke")
+@ext_router.post("/automations/{key_id}/invoke", status_code=202)
 def invoke(
     key_id: str,
     request: Request,
@@ -673,22 +915,17 @@ def invoke(
     if not hmac.compare_digest(hashlib.sha256(token.encode()).hexdigest(), key_row.key_hash):
         raise HTTPException(401, "invalid key")
     auto = db.get(AutomationDefinition, key_row.automation_id)
-    if auto is None or not auto.enabled:
-        raise HTTPException(409, "automation unavailable")
-    if auto.max_runs is not None and auto.auto_run_count >= auto.max_runs:
-        raise HTTPException(409, "max runs reached")
-    if auto.deadline and auto.deadline < datetime.now(timezone.utc):
-        raise HTTPException(409, "deadline passed")
-    if idempotency_key:
-        dup = (
-            db.query(AutomationTriggerLog)
-            .filter_by(automation_id=auto.id, idempotency_key=idempotency_key)
-            .first()
-        )
-        if dup:
-            return {"status": "deduped", "trigger_log_id": dup.id}
-    log = dispatch(db, auto.created_by or "dev", auto, payload, source="api", idempotency_key=idempotency_key or None, trigger_id=key_id)
-    return {"status": "accepted", "trigger_log_id": log.id, "session_id": log.session_id}
+    if auto is None:
+        raise HTTPException(404, "automation not found")
+    try:
+        # F2：幂等/门禁/错误码统一在 dispatch（Spec §7.4）
+        log = dispatch(db, auto.created_by or "dev", auto, payload, source="api",
+                       idempotency_key=idempotency_key or None, trigger_id=key_id)
+    except ValueError as exc:
+        raise HTTPException(_http_status_for_dispatch_error(exc), str(exc)) from exc
+    dto = invocation_dto(log)
+    return {"status": dto["status"], "invocationId": log.id,
+            "target": dto["target"], "statusUrl": f"/api/v2/invocations/{log.id}"}
 
 
 # ---------------------------------------------------------------------------

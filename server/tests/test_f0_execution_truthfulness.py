@@ -423,12 +423,12 @@ def test_run_now_agent_returns_invocation_and_settles_terminal():
         db.add(auto)
         db.commit()
         r = client.post(f"/api/v2/automations/{auto.id}/run-now")
-        assert r.status_code == 200, r.text
+        assert r.status_code == 202, r.text  # F2：202 + Invocation DTO
         body = r.json()
-        log_id = body["trigger_log_id"]
-        assert log_id
-        assert body["status"] in ("accepted", "running")
-        assert body["session_id"], "SessionIndex 必须在触发后立即可查（AC-002）"
+        log_id = body["invocationId"]
+        assert log_id and body["statusUrl"] == f"/api/v2/invocations/{log_id}"
+        assert body["status"] in ("ACCEPTED", "QUEUED", "RUNNING")
+        assert body.get("sessionId"), "SessionIndex 必须在触发后立即可查（AC-002）"
         # watcher 真实终态对账：hermetic session_status=idle → completed
         reconcile_once(db)
         log = db.get(AutomationTriggerLog, log_id)
