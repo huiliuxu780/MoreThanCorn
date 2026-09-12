@@ -33,6 +33,10 @@
 1. AgentScope 是唯一 Agent 运行时和 Agent 应用服务底座。
 2. 保留 MoreThanCorn 自有确定性 Workflow。
 3. 新增 AgentFlow 产品面，对齐 QoderWake WakerFlow 的已证体验；运行时只采用 AgentScope 2.0.8 正式能力，不把自建 runner 冒充官方能力。
+   **WakerFlow 结论修正（2026-09-12，活体实测）**：WakerFlow 的定义体是一段可执行 JS 脚本
+   （五原语 worker/phase/parallel/askUser/log），Canvas 只是 callSites 投影——
+   v4.1 决策点13「NL 生成但产物结构化（阶段序列+节点）」不准确，产物即代码。
+   我方对齐方案=脚本编排 AgentFlow（16号稿，已实施）；本条不改变「只用 AgentScope 正式能力」原则。
 4. 任务看板和自动任务产品体验高保真复刻 QoderWake，不再自由设计。
 5. Skill、MCP、Knowledge、Workspace、Schedule、Session、AgentState、消息和 AgentEvent 优先采用 AgentScope 原生对象。
 6. 外部数据连接、MQ/API/Webhook/数据库轮询和数据过滤是 AgentScope 当前未覆盖的产品缺口，独立补充。
