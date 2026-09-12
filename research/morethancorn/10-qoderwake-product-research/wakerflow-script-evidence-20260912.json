@@ -1,0 +1,265 @@
+{
+  "capturedAt": "2026-09-11T18:07:19.183Z",
+  "source": "http://127.0.0.1:19830/api/agents/a6943dfa45e1/workflows/e3a14b4c-7066-4b73-8e87-a4090d836d28 (只读 GET)",
+  "workflow": {
+    "createdAt": "2026-09-10T04:34:36.081Z",
+    "descriptionOrigin": "generated",
+    "digest": "0ffe06a4585eb5525b9c90cd4ca2dc5c838b48e28341a8c8d8b767f7a0bfca1a",
+    "generationSessionId": "c4896382-fa55-42b0-b553-eaab9ad43e86",
+    "id": "e3a14b4c-7066-4b73-8e87-a4090d836d28",
+    "meta": {
+      "callSites": [
+        {
+          "callSiteIndex": 0,
+          "label": "生成周会议程",
+          "position": {
+            "column": 1,
+            "line": 103
+          },
+          "primitive": "phase"
+        },
+        {
+          "callSiteIndex": 1,
+          "position": {
+            "column": 1,
+            "line": 104
+          },
+          "primitive": "log"
+        },
+        {
+          "callSiteIndex": 2,
+          "label": "设计通用周会议程草案",
+          "position": {
+            "column": 20,
+            "line": 106
+          },
+          "primitive": "worker"
+        },
+        {
+          "callSiteIndex": 3,
+          "label": "确认与修订",
+          "position": {
+            "column": 1,
+            "line": 132
+          },
+          "primitive": "phase"
+        },
+        {
+          "callSiteIndex": 4,
+          "label": "议程草案确认",
+          "position": {
+            "column": 23,
+            "line": 136
+          },
+          "primitive": "askUser"
+        },
+        {
+          "callSiteIndex": 5,
+          "position": {
+            "column": 5,
+            "line": 141
+          },
+          "primitive": "log"
+        },
+        {
+          "callSiteIndex": 6,
+          "position": {
+            "column": 3,
+            "line": 145
+          },
+          "primitive": "log"
+        },
+        {
+          "callSiteIndex": 7,
+          "label": "按用户意见修订议程",
+          "position": {
+            "column": 18,
+            "line": 146
+          },
+          "primitive": "worker"
+        },
+        {
+          "callSiteIndex": 8,
+          "position": {
+            "column": 3,
+            "line": 171
+          },
+          "primitive": "log"
+        },
+        {
+          "callSiteIndex": 9,
+          "label": "生成会前清单",
+          "position": {
+            "column": 1,
+            "line": 174
+          },
+          "primitive": "phase"
+        },
+        {
+          "callSiteIndex": 10,
+          "position": {
+            "column": 1,
+            "line": 175
+          },
+          "primitive": "log"
+        },
+        {
+          "callSiteIndex": 11,
+          "position": {
+            "column": 27,
+            "line": 179
+          },
+          "primitive": "parallel"
+        },
+        {
+          "callSiteIndex": 12,
+          "label": "生成主持人会前清单",
+          "position": {
+            "column": 9,
+            "line": 180
+          },
+          "primitive": "worker"
+        },
+        {
+          "callSiteIndex": 13,
+          "label": "生成参会者会前清单",
+          "position": {
+            "column": 9,
+            "line": 199
+          },
+          "primitive": "worker"
+        },
+        {
+          "callSiteIndex": 14,
+          "label": "生成记录与材料会前清单",
+          "position": {
+            "column": 9,
+            "line": 218
+          },
+          "primitive": "worker"
+        },
+        {
+          "callSiteIndex": 15,
+          "position": {
+            "column": 3,
+            "line": 240
+          },
+          "primitive": "log"
+        },
+        {
+          "callSiteIndex": 16,
+          "position": {
+            "column": 1,
+            "line": 242
+          },
+          "primitive": "log"
+        },
+        {
+          "callSiteIndex": 17,
+          "label": "整合与一致性校验",
+          "position": {
+            "column": 1,
+            "line": 244
+          },
+          "primitive": "phase"
+        },
+        {
+          "callSiteIndex": 18,
+          "label": "交叉校验并整合最终文档",
+          "position": {
+            "column": 27,
+            "line": 246
+          },
+          "primitive": "worker"
+        },
+        {
+          "callSiteIndex": 19,
+          "position": {
+            "column": 1,
+            "line": 284
+          },
+          "primitive": "log"
+        }
+      ],
+      "description": "生成一套通用周会议程和分角色会前准备清单，经人工确认与一致性校验后输出完整 Markdown 文档",
+      "inputSchema": {
+        "properties": {
+          "durationMinutes": {
+            "default": 60,
+            "description": "会议总时长（分钟），议程各环节时间分配将据此推算",
+            "type": "number"
+          },
+          "focusTopics": {
+            "default": [],
+            "description": "本周需要重点讨论的议题列表，可为空（生成纯通用议程）",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "meetingDate": {
+            "default": "",
+            "description": "会议日期（如 2026-09-14），留空则文档中使用占位符",
+            "type": "string"
+          },
+          "teamName": {
+            "default": "团队",
+            "description": "团队或部门名称，用于文档标题",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "weekly-meeting-prep",
+      "outputSchema": {
+        "properties": {
+          "agenda": {
+            "description": "最终确认的结构化周会议程",
+            "type": "object"
+          },
+          "checklists": {
+            "description": "分角色的会前准备清单（主持人/参会者/记录与材料）",
+            "type": "array"
+          },
+          "consistencyIssues": {
+            "description": "议程与清单交叉校验发现并已在文档中处理的问题说明",
+            "type": "array"
+          },
+          "document": {
+            "description": "整合后的完整 Markdown 文档（议程 + 清单 + 使用说明）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agenda",
+          "checklists",
+          "document"
+        ],
+        "type": "object"
+      },
+      "phases": [
+        "生成周会议程",
+        "确认与修订",
+        "生成会前清单",
+        "整合与一致性校验"
+      ],
+      "title": "weekly-meeting-prep",
+      "whenToUse": "需要为团队周会快速准备标准议程和会前清单时使用；支持自定义团队名称、会议日期、时长和重点议题"
+    },
+    "name": "weekly-meeting-prep",
+    "nameOrigin": "generated",
+    "scope": {
+      "agentId": "a6943dfa45e1",
+      "kind": "waker"
+    },
+    "script": "export const meta = {\n  name: 'weekly-meeting-prep',\n  description: '生成一套通用周会议程和分角色会前准备清单，经人工确认与一致性校验后输出完整 Markdown 文档',\n  whenToUse: '需要为团队周会快速准备标准议程和会前清单时使用；支持自定义团队名称、会议日期、时长和重点议题',\n  inputSchema: {\n    type: 'object',\n    properties: {\n      teamName: { type: 'string', description: '团队或部门名称，用于文档标题', default: '团队' },\n      meetingDate: { type: 'string', description: '会议日期（如 2026-09-14），留空则文档中使用占位符', default: '' },\n      durationMinutes: { type: 'number', description: '会议总时长（分钟），议程各环节时间分配将据此推算', default: 60 },\n      focusTopics: {\n        type: 'array',\n        items: { type: 'string' },\n        description: '本周需要重点讨论的议题列表，可为空（生成纯通用议程）',\n        default: []\n      }\n    }\n  },\n  outputSchema: {\n    type: 'object',\n    required: ['agenda', 'checklists', 'document'],\n    properties: {\n      agenda: { type: 'object', description: '最终确认的结构化周会议程' },\n      checklists: { type: 'array', description: '分角色的会前准备清单（主持人/参会者/记录与材料）' },\n      document: { type: 'string', description: '整合后的完整 Markdown 文档（议程 + 清单 + 使用说明）' },\n      consistencyIssues: { type: 'array', description: '议程与清单交叉校验发现并已在文档中处理的问题说明' }\n    }\n  },\n  phases: [\n    { title: '生成周会议程', detail: '根据团队名称、会议日期、时长和重点议题，生成一份通用结构化周会议程草案，包含会议目标、各环节（开场、进展同步、重点议题讨论、风险与阻塞、行动项确认等）的时间分配与所需材料。' },\n    { title: '确认与修订', detail: '向用户展示议程草案摘要并征求意见；用户可选择采纳或提出修改意见。若有修改意见则调用修订工作项按意见更新议程，最多进行 2 轮修订；用户跳过时默认采纳当前草案。' },\n    { title: '生成会前清单', detail: '议程定稿后，并行生成三份分角色会前准备清单：主持人清单（议程分发、时间控制、决策准备）、参会者清单（进展材料、议题提报）、记录与材料清单（纪要模板、数据报表、设备与会议室）。每项包含执行时间点与完成标准。' },\n    { title: '整合与一致性校验', detail: '交叉校验议程环节与三份清单是否一一对应（每个议程环节都有对应的会前准备项、清单时间点不晚于会议开始），指出缺口并整合为一份完整的 Markdown 周会准备文档作为最终交付物。' },\n  ],\n}\n\nconst AGENDA_SCHEMA = {\n  type: 'object',\n  required: ['meetingGoal', 'sections'],\n  properties: {\n    meetingGoal: { type: 'string', description: '本次周会的总体目标，一句话概括' },\n    sections: {\n      type: 'array',\n      description: '议程环节列表，按时间顺序排列，时长合计应等于会议总时长',\n      items: {\n        type: 'object',\n        required: ['title', 'durationMinutes', 'purpose'],\n        properties: {\n          title: { type: 'string', description: '环节名称，如\"上周行动项回顾\"' },\n          durationMinutes: { type: 'number', description: '该环节时长（分钟）' },\n          owner: { type: 'string', description: '环节负责人角色，如\"主持人\"、\"各成员\"' },\n          purpose: { type: 'string', description: '该环节要达成的目的' },\n          materialsNeeded: { type: 'string', description: '该环节需要提前准备的材料或信息，没有则填\"无\"' }\n        }\n      }\n    },\n    notes: { type: 'string', description: '议程使用说明或弹性调整建议' }\n  }\n}\n\nconst CHECKLIST_SCHEMA = {\n  type: 'object',\n  required: ['role', 'items'],\n  properties: {\n    role: { type: 'string', description: '清单对应的角色名称' },\n    items: {\n      type: 'array',\n      description: '会前准备事项列表，按执行时间先后排列',\n      items: {\n        type: 'object',\n        required: ['task', 'timing', 'doneCriteria'],\n        properties: {\n          task: { type: 'string', description: '具体准备事项' },\n          timing: { type: 'string', description: '执行时间点，如\"会前 1 天\"、\"会前 30 分钟\"' },\n          doneCriteria: { type: 'string', description: '完成标准，怎样算做完了' },\n          relatedSection: { type: 'string', description: '对应议程中的哪个环节，通用事项填\"全局\"' }\n        }\n      }\n    }\n  }\n}\n\nconst FINAL_SCHEMA = {\n  type: 'object',\n  required: ['document', 'consistencyIssues'],\n  properties: {\n    document: { type: 'string', description: '完整的 Markdown 周会准备文档，包含议程表格、三份角色清单和使用说明' },\n    consistencyIssues: {\n      type: 'array',\n      description: '交叉校验发现的问题及处理方式说明，无问题则为空数组',\n      items: { type: 'string' }\n    }\n  }\n}\n\nconst teamName = args?.teamName ?? '团队'\nconst meetingDate = args?.meetingDate ?? ''\nconst durationMinutes = args?.durationMinutes ?? 60\nconst focusTopics = Array.isArray(args?.focusTopics) ? args.focusTopics : []\nconst dateLabel = meetingDate ? meetingDate : '（日期待定）'\nconst topicsText = focusTopics.length > 0 ? focusTopics.map((t, i) => `${i + 1}. ${t}`).join('\\n') : '无特别指定，请生成纯通用议程'\n\nphase('生成周会议程')\nlog(`开始为「${teamName}」生成 ${durationMinutes} 分钟周会议程（${dateLabel}），重点议题 ${focusTopics.length} 项`)\n\nlet agenda = await worker(\n  `你是一名经验丰富的团队运作顾问。请为「${teamName}」设计一份通用的周会议程草案。\n\n会议基本信息：\n- 会议日期：${dateLabel}\n- 会议总时长：${durationMinutes} 分钟\n- 本周重点议题：\n${topicsText}\n\n要求：\n1. 议程应适用于常规团队周会场景，即使没有指定重点议题也能直接复用。\n2. 环节建议覆盖：开场与目标确认、上周行动项回顾、各成员/各模块进展同步、重点议题讨论（若有指定议题需为其单独设置环节并分配足够时间）、风险与阻塞升级、下周行动项确认与收尾。\n3. 每个环节必须给出时长（分钟），所有环节时长合计必须正好等于 ${durationMinutes} 分钟，返回前请自行加总核对。\n4. 每个环节写明负责角色、目的、以及需要提前准备的材料。\n5. 在 notes 中给出弹性调整建议（例如议题超时如何裁剪、进展同步如何异步化以节省会议时间）。\n6. 全部内容使用简体中文，表述具体可执行，避免空话。`,\n  {\n    label: '设计通用周会议程草案',\n    phase: '生成周会议程',\n    inputs: ['起始点'],\n    outputs: ['一份结构化周会议程草案，包含会议目标、各环节时长分配、负责角色和所需材料'],\n    schema: AGENDA_SCHEMA,\n    resolve: { kind: 'waker', wakerId: 'a6943dfa45e1' }\n  }\n)\n\nphase('确认与修订')\nlet revisedRounds = 0\nfor (let round = 0; round < 2; round++) {\n  const summaryLines = agenda.sections.map(s => `- ${s.title}（${s.durationMinutes} 分钟，${s.owner || '负责人待定'}）：${s.purpose}`).join('\\n')\n  const check = await askUser(\n    `议程草案已生成，共 ${agenda.sections.length} 个环节、合计 ${agenda.sections.reduce((sum, s) => sum + s.durationMinutes, 0)} 分钟：\\n\\n会议目标：${agenda.meetingGoal}\\n\\n${summaryLines}\\n\\n请选择：采纳该议程，或直接输入修改意见（如调整环节、时长、增删议题）。`,\n    { options: ['采纳当前议程', '需要调整'], defaultValue: '采纳当前议程', label: '议程草案确认', phase: '确认与修订' }\n  )\n  if (check.skipped || String(check.value).indexOf('采纳') === 0) {\n    log('用户已采纳当前议程草案')\n    break\n  }\n  const feedback = String(check.value).indexOf('需要调整') === 0 ? '用户认为议程需要调整但未给出具体意见，请自行审视并优化议程的通用性与时间分配合理性' : String(check.value)\n  log(`第 ${round + 1} 轮修订：按用户意见更新议程`)\n  agenda = await worker(\n    `你是一名经验丰富的团队运作顾问。以下是为「${teamName}」设计的周会议程草案（会议日期 ${dateLabel}，总时长 ${durationMinutes} 分钟）：\n\n${JSON.stringify(agenda, null, 2)}\n\n用户提出的修改意见：\n${feedback}\n\n要求：\n1. 严格按用户意见修订议程；意见未涉及的部分保持稳定，不要无关重写。\n2. 修订后所有环节时长合计仍必须正好等于 ${durationMinutes} 分钟，返回前请自行加总核对。\n3. 每个环节保留负责角色、目的和所需材料字段。\n4. 全部内容使用简体中文。`,\n    {\n      label: '按用户意见修订议程',\n      phase: '确认与修订',\n      inputs: ['上一版结构化议程草案', '用户提出的修改意见'],\n      outputs: ['修订后的结构化周会议程，环节时长合计仍与会议总时长一致'],\n      schema: AGENDA_SCHEMA,\n      resolve: { kind: 'waker', wakerId: 'a6943dfa45e1' }\n    }\n  )\n  revisedRounds++\n}\nif (revisedRounds >= 2) {\n  log('已达到最大修订轮数（2 轮），采用最新修订版议程继续')\n}\n\nphase('生成会前清单')\nlog('议程已定稿，开始并行生成三份分角色会前准备清单')\n\nconst agendaText = JSON.stringify(agenda, null, 2)\n\nconst checklists = (await parallel([\n  () => worker(\n    `你是一名会议运作专家。以下是「${teamName}」已定稿的周会议程（会议日期 ${dateLabel}，总时长 ${durationMinutes} 分钟）：\n\n${agendaText}\n\n请为【主持人】生成一份会前准备清单。要求：\n1. 覆盖会前 1 天至会议开始前 10 分钟的关键动作，例如：分发议程、确认重点议题的汇报人与材料到位、预设各环节时间盒与超时裁剪策略、准备需要当场拍板的决策点清单。\n2. 每项写明执行时间点（timing）、完成标准（doneCriteria），并通过 relatedSection 标注对应议程环节（通用事项填\"全局\"）。\n3. 议程中每个需要主持人提前协调的环节都应有对应准备项，不要遗漏。\n4. 全部内容使用简体中文，具体可执行，5-10 项为宜。`,\n    {\n      label: '生成主持人会前清单',\n      phase: '生成会前清单',\n      inputs: ['定稿后的结构化周会议程'],\n      outputs: ['主持人视角的会前准备清单，含时间点、完成标准和对应议程环节'],\n      schema: CHECKLIST_SCHEMA,\n      resolve: { kind: 'waker', wakerId: 'a6943dfa45e1' }\n    }\n  ),\n  () => worker(\n    `你是一名会议运作专家。以下是「${teamName}」已定稿的周会议程（会议日期 ${dateLabel}，总时长 ${durationMinutes} 分钟）：\n\n${agendaText}\n\n请为【参会者（各成员）】生成一份会前准备清单。要求：\n1. 覆盖参会者在会前需要完成的准备，例如：更新个人/模块进展摘要、回顾上周自己的行动项完成情况、提前提交需讨论的议题或风险、预读主持人分发的材料。\n2. 每项写明执行时间点（timing）、完成标准（doneCriteria），并通过 relatedSection 标注对应议程环节（通用事项填\"全局\"）。\n3. 清单应让参会者 10 分钟内可完成全部准备，避免过重负担。\n4. 全部内容使用简体中文，具体可执行，5-10 项为宜。`,\n    {\n      label: '生成参会者会前清单',\n      phase: '生成会前清单',\n      inputs: ['定稿后的结构化周会议程'],\n      outputs: ['参会者视角的会前准备清单，含时间点、完成标准和对应议程环节'],\n      schema: CHECKLIST_SCHEMA,\n      resolve: { kind: 'waker', wakerId: 'a6943dfa45e1' }\n    }\n  ),\n  () => worker(\n    `你是一名会议运作专家。以下是「${teamName}」已定稿的周会议程（会议���期 ${dateLabel}，总时长 ${durationMinutes} 分钟）：\n\n${agendaText}\n\n请为【记录与材料负责人】生成一份会前准备清单。要求：\n1. 覆盖会前需要落实的材料与后勤，例如：准备会议纪要模板（含行动项表格：事项/负责人/截止日期）、收集并汇总数据报表或看板截图、检查会议室或线上会议链接与投屏设备、归档上次周会纪要供回顾环节引用。\n2. 每项写明执行时间点（timing）、完成标准（doneCriteria），并通过 relatedSection 标注对应议程环节（通用事项填\"全局\"）。\n3. 议程中每个标注了 materialsNeeded 的环节都必须有对应的材料准备项。\n4. 全部内容使用简体中文，具体可执行，5-10 项为宜。`,\n    {\n      label: '生成记录与材料会前清单',\n      phase: '生成会前清单',\n      inputs: ['定稿后的结构化周会议程'],\n      outputs: ['记录与材料负责人视角的会前准备清单，含时间点、完成标准和对应议程环节'],\n      schema: CHECKLIST_SCHEMA,\n      resolve: { kind: 'waker', wakerId: 'a6943dfa45e1' }\n    }\n  )\n])).filter(Boolean)\n\nif (checklists.length < 3) {\n  log(`注意：${3 - checklists.length} 份角色清单生成失败，最终文档将只包含成功生成的 ${checklists.length} 份清单`)\n}\nlog(`清单生成完成：${checklists.map(c => `${c.role}（${c.items.length} 项）`).join('、')}`)\n\nphase('整合与一致性校验')\n\nconst finalResult = await worker(\n  `你是一名细致的文档整合与审校专家。请基于以下已定稿的材料，完成交叉校验并整合出一份完整的 Markdown 周会准备文档。\n\n【会议基本信息】\n- 团队：${teamName}\n- 日期：${dateLabel}\n- 时长：${durationMinutes} 分钟\n\n【定稿议程（JSON）】\n${agendaText}\n\n【分角色会前清单（JSON 数组）】\n${JSON.stringify(checklists, null, 2)}\n\n交叉校验要求（发现问题请在文档中直接修复，并记入 consistencyIssues）：\n1. 议程每个环节是否都有至少一条对应的会前准备项（relatedSection 匹配或\"全局\"覆盖）；缺失的请补写进相应清单。\n2. 所有环节时长合计是否等于 ${durationMinutes} 分钟；不一致请修正议程时长并在 consistencyIssues 中说明。\n3. 清单中所有 timing 时间点是否都早于会议开始；不合理的请修正。\n4. 议程中每个 materialsNeeded 是否被\"记录与材料负责人\"清单覆盖。\n\n文档结构要求（全部使用简体中文）：\n# ${teamName}周会准备文档（${dateLabel}）\n## 一、会议目标\n## 二、议程（Markdown 表格：时间盒 | 环节 | 负责人 | 目的 | 所需材料）\n## 三、会前准备清单（按角色分三个小节，每节用 Markdown 复选框列表：- [ ] 事项（时间点）— 完成标准）\n## 四、使用说明（议程弹性调整建议、清单复用方式、会后纪要与行动项跟进建议）\n\ndocument 字段返回完整 Markdown 文本；consistencyIssues 返回校验发现的问题及处理方式，无问题则为空数组。`,\n  {\n    label: '交叉校验并整合最终文档',\n    phase: '整合与一致性校验',\n    inputs: ['定稿后的结构化周会议程', '三份分角色会前准备清单'],\n    outputs: ['一份完整的 Markdown 周会准备文档，以及交叉校验发现并处理的问题清单'],\n    schema: FINAL_SCHEMA,\n    resolve: { kind: 'waker', wakerId: 'a6943dfa45e1' }\n  }\n)\n\nlog(`整合完成：文档 ${finalResult.document.length} 字符，一致性校验问题 ${finalResult.consistencyIssues.length} 项`)\n\nreturn {\n  agenda,\n  checklists,\n  document: finalResult.document,\n  consistencyIssues: finalResult.consistencyIssues\n}",
+    "updatedAt": "2026-09-10T04:36:03.280Z",
+    "version": 1
+  },
+  "runsSample": {
+    "page": 1,
+    "pageSize": 3,
+    "runs": [],
+    "total": 0
+  }
+}
