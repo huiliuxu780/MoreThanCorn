@@ -1032,7 +1032,7 @@ def list_sources(db: Session = Depends(get_db), user: dict = Depends(require_rol
 
 
 @ingress_router.post("")
-def create_source(body: SourceBody, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def create_source(body: SourceBody, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     src = DataSource(name=body.name, kind=body.kind, config=body.config)
     if body.kind == "webhook":
         token = pysecrets.token_urlsafe(18)
@@ -1068,7 +1068,9 @@ def _apply_filter(cfg: dict, payload: dict) -> bool:
         return cur > value
     if op == "lt":
         return cur < value
-    return True
+    # 09-13 审计修复：未知 op fail-closed（原 fail-open——拼写错误会把
+    # 本应过滤的事件全部放行）；保存侧同步校验 op 枚举（event_routes）
+    return False
 
 
 def _apply_mapping(cfg: dict, payload: dict) -> dict:
@@ -1381,9 +1383,9 @@ def _schedule_retry(delivery: EventDelivery) -> None:
     delays = {1: 30, 2: 120, 3: 600}
     delay = delays.get(delivery.attempts, 600) if delivery.attempts < delivery.max_attempts else 0
     if delay:
-        delivery.next_retry_at = datetime.now(timezone.utc).replace(
-            second=0, microsecond=0
-        ) + timedelta(seconds=delay)
+        # 09-13 审计修复：原实现先截到整分钟再加 delay——当前秒数 > delay 时
+        # next_retry_at 落在过去，首次重试立即到期（退避失真）
+        delivery.next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=delay)
     else:
         delivery.status = "dead"
         delivery.dead_reason = (
@@ -1513,10 +1515,14 @@ def tick_poll_source(db: Session, src) -> dict:
     url = cfg.get("url")
     if not url:
         raise HTTPException(422, "polling source 缺少 config.url")
+    # 09-13 审计修复（报告 P0-2 耦合项）：轮询出站必须过统一 Egress 闸
+    #（生产拦私网/元数据地址；原实现裸 httpx.get 绕过 SSRF 防线）
+    from ..egress import enforce_egress
+    enforce_egress(url)
     cursor_field = cfg.get("cursor_field", "id")
     cursor = (src.cursor or {}).get("last")
     params = {cfg.get("cursor_param", "after"): cursor} if cursor else {}
-    resp = httpx.get(url, params=params, timeout=30)
+    resp = httpx.get(url, params=params, timeout=30, follow_redirects=False)
     resp.raise_for_status()
     rows = resp.json()
     if not isinstance(rows, list):
@@ -1538,7 +1544,7 @@ def tick_poll_source(db: Session, src) -> dict:
 
 
 @ingress_router.post("/{sid}/poll")
-def poll_source(sid: str, db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def poll_source(sid: str, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     src = db.get(DataSource, sid)
     if src is None or src.kind != "polling":
         raise HTTPException(404, "polling source not found")
@@ -1553,7 +1559,7 @@ def poll_source(sid: str, db: Session = Depends(get_db), user: dict = Depends(re
 
 
 @ingress_router.post("/{sid}/test-event")
-def test_event(sid: str, payload: dict[str, Any], db: Session = Depends(get_db), user: dict = Depends(require_role())):
+def test_event(sid: str, payload: dict[str, Any], db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     src = db.get(DataSource, sid)
     if src is None:
         raise HTTPException(404, "source not found")

@@ -25,11 +25,14 @@ export function SearchField({
   onChange,
   placeholder = "搜索...",
   className,
+  ariaLabel,
 }: {
   value: string
   onChange: (value: string) => void
   placeholder?: string
   className?: string
+  /** 09-13 审计修复：显式可访问名称（placeholder 输入后消失，UI#10） */
+  ariaLabel?: string
 }) {
   return (
     <div className={cn("relative", className)}>
@@ -37,6 +40,7 @@ export function SearchField({
       <Input
         value={value}
         placeholder={placeholder}
+        aria-label={ariaLabel ?? placeholder}
         onChange={(event) => onChange(event.target.value)}
         className="h-9 w-64 pl-8"
       />

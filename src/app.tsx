@@ -1,7 +1,6 @@
-import { lazy, Suspense } from "react"
+import { lazy } from "react"
 import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom"
 import { AppShell } from "@/components/app/app-shell"
-import { TableSkeleton } from "@/components/app/list-state"
 
 const QualityOverviewPage = lazy(() => import("@/pages/quality-overview"))
 const QualityResultsPage = lazy(() => import("@/pages/quality-results"))
@@ -94,25 +93,18 @@ function PrefixRedirect({ from, to }: { from: string; to: string }) {
   return <Navigate to={`${to}${rest}${location.search}`} replace />
 }
 
-function RouteFallback() {
-  return (
-    <div className="mx-auto w-full max-w-[1400px] px-5 py-5">
-      <div className="overflow-hidden rounded-lg border bg-card">
-        <TableSkeleton rows={8} columns={6} />
-      </div>
-    </div>
-  )
-}
-
 /**
  * MTC-001 Route Map：
  * 一级路由 = /tasks /autonomous-tasks /agents /resources /workflows /settings。
  * 旧路由不删除： promoted 树走 replace redirect，其余页面原路径保留挂载。
  * Version / Revision History 使用 Sheet，不创建独立 route。
+ *
+ * 09-13 审计修复（eng#13/UI#22）：外层 Suspense 已下沉到 AppShell 内容区
+ * （懒加载时导航壳常驻），并在那里套 RouteErrorBoundary——此处不再包 Suspense。
  */
 export function App() {
   return (
-    <Suspense fallback={<RouteFallback />}>
+    <>
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<Navigate to="/tasks" replace />} />
@@ -213,6 +205,6 @@ export function App() {
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
-    </Suspense>
+    </>
   )
 }

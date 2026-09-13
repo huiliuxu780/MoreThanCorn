@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/select"
 import { avatarFor } from "@/lib/agent-avatar"
 import { asApi } from "@/services/as-api"
+import { pagedApi } from "@/services/wf-api"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { NodeRunPanel, type NodeRunPanelTarget } from "@/components/agentflow/node-run-panel"
 import { toast } from "sonner"
@@ -140,12 +141,14 @@ export default function AgentFlowDetailPage() {
   const [inputDraft, setInputDraft] = React.useState<Record<string, string>>({})
 
   React.useEffect(() => {
-    fetch(`${import.meta.env.VITE_WF_API_BASE ?? "http://127.0.0.1:8120"}/api/agents?page=1&pageSize=100`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem("wf_api_token") ?? ""}` },
-    })
-      .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then((d) => setAgents((d.items ?? []).map((a: { id: string; name: string }) => ({ id: a.id, name: a.name }))))
+    // 09-13 审计修复：原生 fetch 收口到服务层（统一基址/鉴权/超时/错误解析）
+    let alive = true
+    pagedApi.agents({ page: 1, pageSize: 100 })
+      .then((d) => {
+        if (alive) setAgents((d.items ?? []).map((a) => ({ id: a.id, name: a.name })))
+      })
       .catch(() => undefined)
+    return () => { alive = false }
   }, [])
 
   const versionRows = React.useMemo(() => (versions.data?.items ?? []) as unknown as VersionRow[], [versions.data])
@@ -200,11 +203,14 @@ export default function AgentFlowDetailPage() {
   // F0：flow 已异步化（queued→running→终态，节点增量落库）——存在活跃 run 时
   // 轮询刷新，让节点状态逐步出现而非结束后一次性出现
   const hasActiveRun = runRows.some((r) => r.status === "queued" || r.status === "running")
+  // 09-13 审计修复(eng#18)：retry 取稳定局部引用入依赖（runs 对象每渲染新建，
+  // retry 本身 useCallback 稳定）
+  const retryRuns = runs.retry
   React.useEffect(() => {
     if (view !== "runs" || !hasActiveRun) return
-    const timer = window.setInterval(() => runs.retry(), 2500)
+    const timer = window.setInterval(() => retryRuns(), 2500)
     return () => window.clearInterval(timer)
-  }, [view, hasActiveRun, runs.retry])
+  }, [view, hasActiveRun, retryRuns])
   const current = runRows.find((r) => r.id === selectedRun) ?? runRows[0]
   const runIndex = (r: RunRow) => runRows.length - runRows.indexOf(r)
   const nodeRunOf = (nodeId: string) => current?.nodes.find((n) => n.node_id === nodeId)

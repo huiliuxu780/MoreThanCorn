@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 
 import { FilterBar, SearchField } from "@/components/app/filters"
-import { CardGridSkeleton, EmptyState, FilteredEmptyState } from "@/components/app/list-state"
+import { CardGridSkeleton, EmptyState, ErrorState, FilteredEmptyState } from "@/components/app/list-state"
 import { Pagination } from "@/components/app/pagination"
 import { Button } from "@/components/ui/button"
 import {
@@ -50,6 +50,8 @@ export function ResCategoryList({ types, createTo }: { types: string[]; createTo
   const [data, setData] = useState<ResourceDTO[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  // 09-13 审计修复：失败不再吞成空列表（error 与 empty 必须可区分）
+  const [error, setError] = useState<string | null>(null)
 
   const [testTarget, setTestTarget] = useState<ResourceDTO | null>(null)
   const [delTarget, setDelTarget] = useState<ResourceDTO | null>(null)
@@ -57,10 +59,15 @@ export function ResCategoryList({ types, createTo }: { types: string[]; createTo
 
   const load = useCallback(() => {
     setLoading(true)
+    setError(null)
     const search = params.get("search") ?? ""
     resApi.list(tab, { page, pageSize: 12, search, status, health, type: tab === "datasource" ? dsType : "" })
       .then((r) => { setData(r.items); setTotal(r.total) })
-      .catch(() => setData([]))
+      .catch((e: unknown) => {
+        setData([])
+        setTotal(0)
+        setError(e instanceof Error ? e.message : "加载失败")
+      })
       .finally(() => setLoading(false))
   }, [tab, page, params, status, health, dsType])
 
@@ -185,6 +192,8 @@ export function ResCategoryList({ types, createTo }: { types: string[]; createTo
   function grid() {
     return loading ? (
       <CardGridSkeleton count={8} />
+    ) : error ? (
+      <ErrorState title="资源列表加载失败" description={error} onRetry={load} />
     ) : data.length === 0 ? (
       filtered ? <FilteredEmptyState onClear={() => { setSearchInput(""); setStatus(""); setHealth(""); setDsType("") }} />
         : <EmptyState title={`暂无${LABELS[tab] ?? ""}`} description={createTo ? "点击右上角「创建资源」开始" : "暂无资源"} />

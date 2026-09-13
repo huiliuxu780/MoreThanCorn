@@ -25,14 +25,17 @@ import {
 } from "@/components/ui/table"
 import { Waypoints, Workflow } from "lucide-react"
 import { avatarFor } from "@/lib/agent-avatar"
-import { asApi, type BoardTask } from "@/services/as-api"
+import { asApi, type BoardSummary, type BoardTask } from "@/services/as-api"
 import { useAsyncData } from "@/hooks/use-async-data"
 
+/** 泳道中文标签（09-13 审计修复：与后端 board_projection 语义对齐——
+ *  pending = queued/无消息（排队中）；waiting = 运行时 waiting/parked（需要操作）。
+ *  原映射两词写反，行徽章与「需要操作」计数互相矛盾。 */
 const LANE_LABEL: Record<string, string> = {
-  pending: "需要操作",
+  pending: "排队中",
   running: "执行中",
   done: "已完成",
-  waiting: "排队中",
+  waiting: "需要操作",
   failed: "失败",
   cancelled: "取消",
 }
@@ -130,9 +133,9 @@ export default function TaskBoardPage() {
     () => ({ period, keyword, source, lane, offset: String(offset), limit: String(limit) }),
     [period, keyword, source, lane, offset],
   )
-  const summary = useAsyncData(() => asApi.boardSummary(period), [period])
+  const summary = useAsyncData((o) => asApi.boardSummary(period, o?.signal), [period])
   const tasks = useAsyncData(
-    () =>
+    (o) =>
       asApi.boardTasks({
         period,
         offset: query.offset,
@@ -140,13 +143,13 @@ export default function TaskBoardPage() {
         keyword: keyword || "",
         lane: lane === "all" ? "" : lane,
         source: source === "all" ? "" : source,
-      }),
+      }, o?.signal),
     [period, offset, keyword, lane, source],
   )
-  const filters = useAsyncData(() => asApi.boardFilters(), [])
+  const filters = useAsyncData((o) => asApi.boardFilters(o?.signal), [])
 
-  const s = (summary.data ?? {}) as Record<string, number | Record<string, number>>
-  const lanes = (s.lanes ?? {}) as Record<string, number>
+  const s: BoardSummary | null = summary.data
+  const lanes = s?.lanes ?? {}
   const items = (tasks.data?.items ?? []) as BoardTask[]
 
   const openTask = (t: BoardTask) => {
@@ -162,7 +165,7 @@ export default function TaskBoardPage() {
       <header>
         <h1 className="text-xl font-semibold">任务看板</h1>
         <p className="text-sm text-muted-foreground">
-          从「事」出发：查看 Agent 做了什么，完成必要操作并查收结果。
+          从「事」出发：查看 Agent 做了什么，处理需要操作的任务，并查看执行结果。
         </p>
       </header>
 
@@ -186,37 +189,43 @@ export default function TaskBoardPage() {
             </SelectContent>
           </Select>
         </div>
-        <div className="grid grid-cols-2 gap-4 px-6 md:grid-cols-4">
-          {[
-            { label: "任务总数", value: s.total },
-            { label: "进行中任务", value: s.running },
-            { label: "需要操作", value: s.needs_action },
-            { label: "已结束任务", value: s.ended },
-          ].map((m) => (
-            <div
-              key={m.label}
-              className="flex flex-col gap-1 border bg-surface px-6 py-4 shadow-sm"
-              style={{ borderColor: "var(--border)", borderRadius: "6px" }}
-            >
-              <strong className="text-[26px] font-semibold leading-8">{String(m.value ?? 0)}</strong>
-              <span className="text-[13px] text-muted-foreground">{m.label}</span>
-            </div>
-          ))}
-        </div>
+        {/* 09-13 审计修复：摘要失败禁止伪装成业务 0——错误态显式渲染+重试 */}
+        {summary.error ? (
+          <div className="flex items-center gap-3 px-6 pb-2 text-sm" role="alert">
+            <span className="text-status-danger">工作记录摘要加载失败：{summary.error}</span>
+            <Button size="sm" variant="outline" onClick={() => summary.retry()}>重试</Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4 px-6 md:grid-cols-4">
+            {[
+              { label: "任务总数", value: s?.total },
+              { label: "进行中任务", value: s?.running },
+              { label: "需要操作", value: s?.needs_action },
+              { label: "已结束任务", value: s?.ended },
+            ].map((m) => (
+              <div
+                key={m.label}
+                className="flex flex-col gap-1 border bg-surface px-6 py-4 shadow-sm"
+                style={{ borderColor: "var(--border)", borderRadius: "6px" }}
+              >
+                <strong className="text-[26px] font-semibold leading-8">
+                  {summary.loading && m.value === undefined ? "…" : String(m.value ?? 0)}
+                </strong>
+                <span className="text-[13px] text-muted-foreground">{m.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
+      {/* 09-13 审计修复：移除暴露内部实施阶段的禁用页签（查收能力未做即不展示） */}
       <section aria-label="需要关注" className="rounded-md border">
-        <Tabs defaultValue="action">
-          <TabsList>
-            <TabsTrigger value="action">需要操作（{lanes.waiting ?? 0}）</TabsTrigger>
-            <TabsTrigger value="review" disabled>
-              查收结果（一期无真实查收状态，不伪造）
-            </TabsTrigger>
-          </TabsList>
-          <div className="p-4 text-sm text-muted-foreground">
-            需要你确认、回答或补充信息的任务会显示在这里（来源：运行时 waiting/parked 状态）。
-          </div>
-        </Tabs>
+        <div className="flex items-center gap-2 border-b px-4 py-2.5">
+          <h2 className="text-sm font-medium">需要操作（{lanes.waiting ?? 0}）</h2>
+        </div>
+        <div className="p-4 text-sm text-muted-foreground">
+          需要你确认、回答或补充信息的任务会显示在这里（来源：运行时 waiting/parked 状态）。
+        </div>
       </section>
 
       <section aria-label="全部任务" className="flex flex-col gap-3">
@@ -231,6 +240,7 @@ export default function TaskBoardPage() {
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <Input
               placeholder="搜索任务、Agent"
+              aria-label="搜索任务、Agent"
               value={keyword}
               onChange={(e) => { setKeyword(e.target.value); setOffset(0) }}
               className="w-48"
@@ -283,8 +293,17 @@ export default function TaskBoardPage() {
               {items.map((t) => (
                 <TableRow
                   key={t.id}
-                  className="cursor-pointer"
+                  className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  tabIndex={0}
+                  role="link"
+                  aria-label={`打开任务 ${t.title}`}
                   onClick={() => openTask(t)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      openTask(t)
+                    }
+                  }}
                 >
                   <TableCell className="font-medium">{t.title}</TableCell>
                   {/* 执行者（原站 qc-work-management-assignee 同构）：avatar 20px + 名称 */}

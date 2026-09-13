@@ -104,7 +104,9 @@ function TextSlot({
     const nextWidth = measureRef.current?.offsetWidth;
     if (!nextWidth) return;
     setWidth((current) => (current === nextWidth ? current : nextWidth));
-  });
+    // 09-13 审计修复(eng#18)：补依赖——label/children 变化才需重测宽度；
+    // setWidth 已带相等短路，不会形成更新链
+  }, [children, reduce]);
 
   return (
     <motion.span

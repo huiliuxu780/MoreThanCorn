@@ -24,6 +24,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom"
 import { useTheme } from "next-themes"
 import { UI_TERMS } from "@/config/ui-terms"
 import { currentUsername, rbac, ROLES, type Permission, type Role } from "@/services/rbac"
+import { pagedApi } from "@/services/wf-api"
 import { cn } from "@/lib/utils"
 import {
   DropdownMenu,
@@ -318,18 +319,17 @@ function AgentListSection({ collapsed }: { collapsed: boolean }) {
   >([])
   const [q, setQ] = React.useState("")
   React.useEffect(() => {
+    // 09-13 审计修复：原生 fetch 收口到服务层（统一基址/鉴权/超时/错误解析）
     let alive = true
-    fetch(`${import.meta.env.VITE_WF_API_BASE ?? "http://127.0.0.1:8120"}/api/agents?page=1&pageSize=50`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem("wf_api_token") ?? ""}` },
-    })
-      .then((r) => (r.ok ? r.json() : { items: [] }))
+    pagedApi.agents({ page: 1, pageSize: 50 })
       .then((d) => {
         if (alive)
           setAgents(
-            ((d.items ?? []) as {
-              id: string; name: string; description?: string;
-              avatar?: string | null; archived?: boolean
-            }[]).filter((a) => !a.archived),
+            (d.items ?? [])
+              .map((a) => a as typeof a & { description?: string })
+              .filter((a) => !a.archived)
+              .map((a) => ({ id: a.id, name: a.name, description: a.description,
+                             avatar: a.avatar, archived: a.archived })),
           )
       })
       .catch(() => undefined)

@@ -16,7 +16,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
-import { asApi, type BoardTask } from "@/services/as-api"
+import { asApi, type BoardSummary, type BoardTask } from "@/services/as-api"
 
 const SOURCE_LABEL: Record<string, string> = {
   chat: "对话触发", manual: "手动触发", schedule: "定时", api: "API",
@@ -31,7 +31,8 @@ export function AgentTaskBoardSection({ agentId }: { agentId: string }) {
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(10)
   const [data, setData] = React.useState<{ items: BoardTask[]; total: number }>({ items: [], total: 0 })
-  const [summary, setSummary] = React.useState<Record<string, number>>({})
+  const [summary, setSummary] = React.useState<BoardSummary | null>(null)
+  const [summaryError, setSummaryError] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
 
   const reload = React.useCallback(() => {
@@ -51,7 +52,13 @@ export function AgentTaskBoardSection({ agentId }: { agentId: string }) {
 
   React.useEffect(() => { reload() }, [reload])
   React.useEffect(() => {
-    asApi.boardSummary(period).then((s) => setSummary(s as Record<string, number>)).catch(() => undefined)
+    // 09-13 审计修复：摘要失败显式呈现，不再伪装成业务 0
+    asApi.boardSummary(period)
+      .then((s) => { setSummary(s); setSummaryError(null) })
+      .catch((e: unknown) => {
+        setSummary(null)
+        setSummaryError(e instanceof Error ? e.message : "加载失败")
+      })
   }, [period])
 
   const pages = Math.max(1, Math.ceil(data.total / pageSize))
@@ -60,22 +67,28 @@ export function AgentTaskBoardSection({ agentId }: { agentId: string }) {
     <div className="space-y-4">
       <div>
         <h2 className="text-[28px] font-semibold leading-[38px]">任务看板</h2>
-        <p className="mt-1 text-sm text-muted-foreground">从「事」出发：查看该 Agent 做了什么，完成必要操作并查收结果。</p>
+        <p className="mt-1 text-sm text-muted-foreground">从「事」出发：查看该 Agent 做了什么，处理需要操作的任务，并查看执行结果。</p>
       </div>
 
-      <section aria-label="指标" className="grid gap-3 md:grid-cols-4">
-        {[
-          { label: "任务总数", value: summary.total },
-          { label: "进行中任务", value: summary.running },
-          { label: "需要操作", value: summary.needs_action },
-          { label: "已结束任务", value: summary.ended },
-        ].map((m) => (
-          <div key={m.label} className="rounded-md border p-3">
-            <strong className="text-lg">{m.value ?? 0}</strong>
-            <div className="text-sm">{m.label}</div>
-          </div>
-        ))}
-      </section>
+      {summaryError ? (
+        <div className="rounded-md border border-status-danger/40 p-3 text-sm text-status-danger" role="alert">
+          指标加载失败：{summaryError}
+        </div>
+      ) : (
+        <section aria-label="指标" className="grid gap-3 md:grid-cols-4">
+          {[
+            { label: "任务总数", value: summary?.total },
+            { label: "进行中任务", value: summary?.running },
+            { label: "需要操作", value: summary?.needs_action },
+            { label: "已结束任务", value: summary?.ended },
+          ].map((m) => (
+            <div key={m.label} className="rounded-md border p-3">
+              <strong className="text-lg">{summary === null ? "…" : String(m.value ?? 0)}</strong>
+              <div className="text-sm">{m.label}</div>
+            </div>
+          ))}
+        </section>
+      )}
 
       <section aria-label="筛选" className="flex flex-wrap items-center gap-2">
         <Select value={period} onValueChange={(v) => { setPeriod(v); setPage(1) }}>

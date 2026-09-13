@@ -2,15 +2,16 @@
  * AgentScope 换底 v2 API 客户端（2026-09-09）。
  * 所有 Agent 运行事实来自运行时（8301 原生 AgentScope），平台只做控制面与索引。
  */
-import { ApiError } from "./wf-api";
-import { wfApiToken } from "./wf-api";
+import { ApiError, WF_BASE, combinedSignal, wfApiToken } from "./wf-api";
 
-const BASE = import.meta.env.VITE_WF_API_BASE ?? "http://127.0.0.1:8120";
+// 09-13 审计修复：基址单一事实源（原文件各自维护默认端口）
+const BASE = WF_BASE;
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const token = wfApiToken();
   const res = await fetch(`${BASE}${path}`, {
     ...init,
+    signal: combinedSignal(init?.signal),  // 统一 30s 超时 + 调用方取消
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -18,13 +19,16 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!res.ok) {
-    let detail = "";
+    // 09-13 审计修复：body 只消费一次（原实现 json() 失败后再 text() 必抛
+    // "body already read"，二次异常吞掉原始状态与响应内容）
+    const text = await res.text().catch(() => "");
+    let detail = text;
     try {
-      detail = JSON.stringify(await res.json());
+      detail = JSON.stringify(JSON.parse(text));
     } catch {
-      detail = await res.text();
+      /* 非 JSON 响应保留原文 */
     }
-    throw new ApiError(res.status, detail.slice(0, 400));
+    throw new ApiError(res.status, (detail || res.statusText).slice(0, 400));
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -64,6 +68,46 @@ export interface BoardTask {
   updated_at: string;
   session_id?: string | null;
   detail_route: string;
+}
+
+/** 看板摘要契约（/api/board/summary，09-13 审计修复：替代页面宽泛 Record 转换）。
+ *  lanes 语义（board_projection.py）：pending=排队中；waiting=运行时等待人工=需要操作。 */
+export interface BoardSummary {
+  period: string;
+  total: number;
+  running: number;
+  needs_action: number;
+  ended: number;
+  lanes: Record<string, number>;
+}
+
+/** 数据接入源（/api/v2/data-sources，09-13 审计修复：强类型契约）。 */
+export interface SourceRow {
+  id: string;
+  name: string;
+  kind: "webhook" | "polling" | "test_event";
+  status: "active" | "paused" | "error";
+  config: Record<string, unknown>;
+  last_poll_at: string | null;
+  created_at?: string;
+}
+
+export interface CreateSourceBody {
+  name: string;
+  kind: "webhook" | "polling" | "test_event";
+  config: {
+    /** polling：拉取地址（必填，后端 tick 强校验） */
+    url?: string;
+    /** polling：watcher 调度间隔秒 */
+    interval_seconds?: number;
+    /** polling：游标字段名（默认 id）与查询参数名（默认 after） */
+    cursor_field?: string;
+    cursor_param?: string;
+    /** 事件过滤 {field, op: eq|ne|contains|gt|lt, value} */
+    filter?: { field: string; op: string; value: unknown };
+    /** 字段映射：触发输入键 → payload 取值路径 */
+    mapping?: Record<string, string>;
+  };
 }
 
 export const asApi = {
@@ -134,13 +178,14 @@ export const asApi = {
     req<unknown[]>(`/api/v2/agents/${aid}/sessions/${sid}/mcp-library`),
 
   // 看板
-  boardSummary: (period = "30d") =>
-    req<Record<string, unknown>>(`/api/board/summary?period=${period}`),
-  boardTasks: (params: Record<string, string>) =>
+  boardSummary: (period = "30d", signal?: AbortSignal) =>
+    req<BoardSummary>(`/api/board/summary?period=${period}`, { signal }),
+  boardTasks: (params: Record<string, string>, signal?: AbortSignal) =>
     req<{ items: BoardTask[]; total: number }>(
-      `/api/board/tasks?${new URLSearchParams(params).toString()}`,
+      `/api/board/tasks?${new URLSearchParams(params).toString()}`, { signal },
     ),
-  boardFilters: () => req<Record<string, unknown>>("/api/board/filter-options"),
+  boardFilters: (signal?: AbortSignal) =>
+    req<Record<string, unknown>>("/api/board/filter-options", { signal }),
 
   // 自动任务（P0-G 09-10：列表支持筛选/排序/分页）
   automations: (params?: Record<string, string>) =>
@@ -231,18 +276,25 @@ export const asApi = {
       method: "POST",
     }),
 
-  // 数据接入
-  sources: () => req<{ items: Record<string, unknown>[] }>("/api/v2/data-sources"),
-  createSource: (body: Record<string, unknown>) =>
-    req<Record<string, unknown>>("/api/v2/data-sources", {
+  // 数据接入（09-13 审计修复：强类型契约替代 Record<string, unknown> 宽转换）
+  sources: (signal?: AbortSignal) =>
+    req<{ items: SourceRow[] }>("/api/v2/data-sources", { signal }),
+  kbConfigStatus: (signal?: AbortSignal) =>
+    req<Record<string, unknown>>("/api/v2/knowledge-bases/config-status", { signal }),
+  createSource: (body: CreateSourceBody) =>
+    req<{ id: string; webhook_token?: string }>("/api/v2/data-sources", {
       method: "POST",
       body: JSON.stringify(body),
     }),
   testEvent: (sid: string, payload: Record<string, unknown>) =>
-    req<Record<string, unknown>>(`/api/v2/data-sources/${sid}/test-event`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
+    req<{ event_id: string; status: string; dispatch_ref: string | null }>(
+      `/api/v2/data-sources/${sid}/test-event`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+  pollSource: (sid: string) =>
+    req<{ polled: number; dispatched: number; cursor: Record<string, unknown> }>(
+      `/api/v2/data-sources/${sid}/poll`, { method: "POST" }),
 
   // 知识库
   createKb: (name: string, modelId: string) =>

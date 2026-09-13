@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react"
+import { Suspense, useEffect, useRef, useState } from "react"
 import { Menu } from "lucide-react"
 import { Outlet, useLocation } from "react-router-dom"
 import { toast } from "sonner"
 import { UI_TERMS } from "@/config/ui-terms"
 import { Button } from "@/components/ui/button"
+import { RouteErrorBoundary } from "@/components/app/route-error-boundary"
+import { TableSkeleton } from "@/components/app/list-state"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Toaster } from "@/components/ui/sonner"
@@ -282,9 +284,23 @@ export function AppShell() {
           {!workspace && <Breadcrumbs items={breadcrumbs} />}
         </header>
         {/* P0-F 09-10：页级滚动收进 Shell 容器——document 不产生滚动条，
-            各页内部自管滚动；遗留页由本容器兜底滚动。 */}
+            各页内部自管滚动；遗留页由本容器兜底滚动。
+            09-13 审计修复（eng#13/UI#22）：Suspense 下沉到内容区——懒加载页面时
+            侧栏/顶栏保持常驻，不再整壳替换成骨架屏；eng#14：ErrorBoundary 局部兜底。 */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
-          <Outlet />
+          <RouteErrorBoundary>
+            <Suspense
+              fallback={
+                <div className="mx-auto w-full max-w-[1400px] px-5 py-5">
+                  <div className="overflow-hidden rounded-lg border bg-card">
+                    <TableSkeleton rows={8} columns={6} />
+                  </div>
+                </div>
+              }
+            >
+              <Outlet />
+            </Suspense>
+          </RouteErrorBoundary>
         </div>
         <Toaster position="bottom-right" richColors />
       </div>

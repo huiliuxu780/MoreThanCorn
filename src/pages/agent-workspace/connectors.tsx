@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { agentApi, pagedApi, type AgentInfo } from "@/services/wf-api"
+import { connApi } from "@/services/resource-api"
 
 interface Conn { id: string; name: string; kind: string; protocol: string; status: string }
 
@@ -47,22 +48,12 @@ export function AgentConnectorsSection({ agent, readOnly }: { agent: AgentInfo; 
     } catch (e) { toast.error((e as Error).message) }
   }
 
-  const createConnection = async (name: string, protocol: string, baseUrl: string) => {
-    const r = await fetch(`${import.meta.env.VITE_WF_API_BASE ?? "http://127.0.0.1:8120"}/api/connections`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("wf_api_token") ?? ""}`,
-      },
-      body: JSON.stringify({
-        name, kind: "api_key", protocol,
-        endpoint: baseUrl ? { base_url: baseUrl } : {},
-        environments: [], secret: null,
-      }),
+  // 09-13 审计修复：原生 fetch 收口到 connApi（统一基址/鉴权/超时/错误解析）
+  const createConnection = (name: string, protocol: string, baseUrl: string) =>
+    connApi.create({
+      name, kind: "api_key", protocol,
+      endpoint: baseUrl ? { base_url: baseUrl } : {},
     })
-    if (!r.ok) throw new Error((await r.text()).slice(0, 200))
-    return (await r.json()) as { id: string; name: string }
-  }
 
   const submitAdd = async () => {
     if (!form.name.trim()) { toast.error("请填写连接器名称"); return }

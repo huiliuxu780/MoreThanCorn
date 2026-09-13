@@ -1,7 +1,18 @@
 /** 真实后端客户端（P0）。VITE_WF_API=1 时启用。契约源：server/contracts。 */
 import { parseListFilters } from "@/lib/list-filters"
 
-export const WF_BASE = import.meta.env.VITE_WF_API_BASE ?? "http://127.0.0.1:8100"
+/** API 基址单一事实源（09-13 审计修复）：默认必须是 8120 验收栈——
+ *  原默认 8100 是残留旧服务端口，环境变量漏配时会静默打到死端口/旧代码。
+ *  as-api 与所有页面一律从这里取基址，禁止再写第二份默认值。 */
+export const WF_BASE: string = import.meta.env.VITE_WF_API_BASE ?? "http://127.0.0.1:8120"
+
+/** 统一请求超时（09-13 审计修复 eng#12）：30s；调用方 signal 与超时取并。 */
+export const API_TIMEOUT_MS = 30_000
+
+export function combinedSignal(caller?: AbortSignal | null): AbortSignal {
+  const timeout = AbortSignal.timeout(API_TIMEOUT_MS)
+  return caller ? AbortSignal.any([caller, timeout]) : timeout
+}
 
 export interface WfSummary {
   id: string
@@ -107,7 +118,8 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
   }
   if (init?.headers) Object.assign(headers, init.headers)
-  const res = await fetch(`${WF_BASE}${path}`, { ...init, headers })
+  const res = await fetch(`${WF_BASE}${path}`,
+                          { ...init, headers, signal: combinedSignal(init?.signal) })
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     throw new ApiError(res.status, `${res.status}: ${JSON.stringify(body?.detail ?? body)}`)

@@ -410,10 +410,13 @@ export function SelectItem({
   const selected = ctx.value === value;
   const label = typeof children === "string" ? children : value;
 
+  // 09-13 审计修复(eng#18)：解构稳定引用入依赖（成员表达式依赖会被
+  // exhaustive-deps 要求整个 ctx，导致每次渲染重注册）
+  const { register, unregister } = ctx;
   useLayoutEffect(() => {
-    ctx.register(value, label);
-    return () => ctx.unregister(value);
-  }, [ctx.register, ctx.unregister, value, label]);
+    register(value, label);
+    return () => unregister(value);
+  }, [register, unregister, value, label]);
 
   return (
     <motion.li variants={ctx.reduce ? undefined : ITEM_VARIANTS}>

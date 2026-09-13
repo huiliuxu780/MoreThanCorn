@@ -11,7 +11,7 @@ import { AKSK_TEMPLATE, ENV_PRESETS, KINDS, PROTOCOLS, isDb, isOss, kindLabel, p
 import { toast } from "sonner"
 
 import { FilterBar, SearchField } from "@/components/app/filters"
-import { CardGridSkeleton, EmptyState } from "@/components/app/list-state"
+import { CardGridSkeleton, EmptyState, ErrorState } from "@/components/app/list-state"
 import { PageContainer, PageHeader } from "@/components/app/page"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -102,7 +102,7 @@ function SecretFields({ kind, value, onChange }: {
     )
   }
   // api_key / bearer：单串
-  return <Input type="password" value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} placeholder="加密存储，不回显" />
+  return <Input aria-label="凭据密钥" type="password" value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} placeholder="加密存储，不回显" />
 }
 
 /** 端点字段（主表单与环境行共用） */
@@ -113,12 +113,12 @@ function EndpointFields({ protocol, v, onChange }: {
     return (
       <div className="space-y-2">
         <div className="grid grid-cols-[1fr_90px] gap-2">
-          <Input value={v.host} onChange={(e) => onChange({ host: e.target.value })} placeholder="db.internal" />
-          <Input value={v.port} onChange={(e) => onChange({ port: e.target.value })} placeholder={protocol === "mysql" ? "3306" : "5432"} />
+          <Input aria-label="主机地址" value={v.host} onChange={(e) => onChange({ host: e.target.value })} placeholder="db.internal" />
+          <Input aria-label="端口" inputMode="numeric" value={v.port} onChange={(e) => onChange({ port: e.target.value })} placeholder={protocol === "mysql" ? "3306" : "5432"} />
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Input value={v.user} onChange={(e) => onChange({ user: e.target.value })} placeholder="用户名" />
-          <Input value={v.database} onChange={(e) => onChange({ database: e.target.value })} placeholder="数据库" />
+          <Input aria-label="用户名" value={v.user} onChange={(e) => onChange({ user: e.target.value })} placeholder="用户名" />
+          <Input aria-label="数据库名" value={v.database} onChange={(e) => onChange({ database: e.target.value })} placeholder="数据库" />
         </div>
       </div>
     )
@@ -126,12 +126,12 @@ function EndpointFields({ protocol, v, onChange }: {
   if (isOss(protocol)) {
     return (
       <div className="grid grid-cols-2 gap-2">
-        <Input value={v.bucket} onChange={(e) => onChange({ bucket: e.target.value })} placeholder="Bucket" />
-        <Input value={v.region} onChange={(e) => onChange({ region: e.target.value })} placeholder="Region" />
+        <Input aria-label="Bucket" value={v.bucket} onChange={(e) => onChange({ bucket: e.target.value })} placeholder="Bucket" />
+        <Input aria-label="Region" value={v.region} onChange={(e) => onChange({ region: e.target.value })} placeholder="Region" />
       </div>
     )
   }
-  return <Input value={v.baseUrl} onChange={(e) => onChange({ baseUrl: e.target.value })} placeholder="https://网关域名" />
+  return <Input aria-label="接口基址" value={v.baseUrl} onChange={(e) => onChange({ baseUrl: e.target.value })} placeholder="https://网关域名" />
 }
 
 export default function WfConnectionsPage() {
@@ -142,7 +142,9 @@ export default function WfConnectionsPage() {
 export function WfConnectionsContent({ embedded = false }: { embedded?: boolean }) {
   const [rows, setRows] = useState<ConnectionDTO[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState("")
+  const [searchInput, setSearchInput] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [allRows, setAllRows] = useState<ConnectionDTO[]>([])
   const [open, setOpen] = useState(false)
   const [showSecret, setShowSecret] = useState(false)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
@@ -154,11 +156,31 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
   const [total, setTotal] = useState(0)
   const load = useCallback(() => {
     setLoading(true)
+    setError(null)
     pagedApi.connections({ page: params.page, pageSize: params.pageSize, search: params.search ?? "" }).then((r) => {
       setRows(r.items as unknown as ConnectionDTO[]); setTotal(r.total); setLoading(false)
-    }).catch(() => setLoading(false))
+    }).catch((e: unknown) => {
+      // 09-13 审计修复：失败不再静默结束 loading（与"确实没有数据"必须可区分）
+      setRows([]); setTotal(0); setLoading(false)
+      setError(e instanceof Error ? e.message : "加载失败")
+    })
+    // 09-13 审计修复：协议 tab 计数取搜索命中的全量（原只统计当前页，
+    // 后页协议会整体消失、计数≠系统总数）；凭据类实体量级有界，200 上限
+    pagedApi.connections({ page: 1, pageSize: 200, search: params.search ?? "" })
+      .then((r) => setAllRows(r.items as unknown as ConnectionDTO[]))
+      .catch(() => undefined)
   }, [params.page, params.pageSize, params.search])
   useEffect(() => { load() }, [load])
+
+  // 09-13 审计修复：搜索走服务端 params（原本地 state 只过滤当前页，
+  // 第二页匹配永远找不到）；300ms 防抖，变更回第一页
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const cur = params.search ?? ""
+      if (searchInput !== cur) update({ search: searchInput }, true)
+    }, 300)
+    return () => clearTimeout(t)
+  }, [searchInput, params.search, update])
 
   // SDD-12 修复轮：被显式移除的存量环境码（提交时发 remove:true；未提交环境服务端整体保留）
   const [removedEnvCodes, setRemovedEnvCodes] = useState<string[]>([])
@@ -304,21 +326,20 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
 
   // 按协议分 tab（用户建议）
   const [protoFilter, setProtoFilter] = useState("all")
-  const protoCounts = rows.reduce<Record<string, number>>((acc, c) => {
+  const protoCounts = allRows.reduce<Record<string, number>>((acc, c) => {
     const p = c.protocol || "http-api"
     acc[p] = (acc[p] ?? 0) + 1
     return acc
   }, {})
   const protoTabs = [{ value: "all", label: "全部" }, ...PROTOCOLS.filter((p) => protoCounts[p.value])]
   const filtered = rows
-    .filter((c) => !search || c.name.toLowerCase().includes(search.toLowerCase()))
     .filter((c) => protoFilter === "all" || (c.protocol || "http-api") === protoFilter)
 
   const setEnv = (i: number, patch: Partial<EnvForm>) =>
     set({ environments: form.environments.map((e, j) => (j === i ? { ...e, ...patch } : e)) })
 
   const createBtn = (
-    <Button className="bg-black text-white hover:bg-neutral-800" onClick={openCreate}>
+    <Button className="bg-foreground text-background hover:bg-foreground/85" onClick={openCreate}>
       <Plus className="size-4" /> 创建连接
     </Button>
   )
@@ -339,14 +360,14 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
         />
       )}
       <FilterBar>
-        <SearchField value={search} onChange={setSearch} placeholder="搜索 Connection..." />
+        <SearchField value={searchInput} onChange={setSearchInput} placeholder="搜索 Connection..." ariaLabel="搜索 Connection" />
       </FilterBar>
 
       {/* 按协议分 tab（用户建议：分区域/分 tab 展示） */}
-      <div className="flex flex-wrap items-center gap-1 border-b pb-2" style={{ borderColor: "#EDF0F4" }}>
+      <div className="flex flex-wrap items-center gap-1 border-b pb-2" style={{ borderColor: "var(--border)" }}>
         {protoTabs.map((t) => (
           <button key={t.value}
-            className={`rounded-md px-3 py-1 text-xs ${protoFilter === t.value ? "bg-[#1F2329] text-white" : "text-muted-foreground hover:bg-muted"}`}
+            className={`rounded-md px-3 py-1 text-xs ${protoFilter === t.value ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted"}`}
             onClick={() => setProtoFilter(t.value)}>
             {t.label}{t.value !== "all" && protoCounts[t.value] ? ` (${protoCounts[t.value]})` : ""}
           </button>
@@ -355,6 +376,8 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
 
       {loading ? (
         <CardGridSkeleton count={4} />
+      ) : error ? (
+        <ErrorState title="连接加载失败" description={error} onRetry={load} />
       ) : filtered.length === 0 ? (
         <EmptyState title="暂无连接" description="创建第一个连接，安全托管凭证" />
       ) : (
@@ -372,8 +395,8 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
             <div key={c.id} className="group flex min-h-32 flex-col rounded-lg border bg-card p-3.5 hover:border-muted-foreground/40">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#1F2329]">
-                    <KeyRound className="size-4 text-white" />
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-foreground">
+                    <KeyRound className="size-4 text-background" />
                   </span>
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium">{c.name}</div>
@@ -387,7 +410,11 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
                 {/* SDD-12 §11：生命周期与健康度分离展示（untested 不显示为 healthy） */}
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <Badge variant="secondary" className={`text-[10px] ${lifeCls}`}>{lifecycle}</Badge>
-                  <Badge variant="outline" className={`text-[10px] ${healthCls}`}>{healthLabel}</Badge>
+                  <Badge variant="outline" className={`text-[10px] ${healthCls}`}
+                     title={lifecycle === "active" && health === "untested"
+                       ? "迁移遗留数据：未经连接测试验证，生产使用前请先「测试」" : undefined}>
+                  {healthLabel}{lifecycle === "active" && health === "untested" ? "·待验证" : ""}
+                </Badge>
                 </div>
               </div>
               <div className="mt-1 text-[11px] text-muted-foreground">
@@ -401,19 +428,19 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
                   <span className="text-muted-foreground">已归档 · 只读</span>
                 ) : (
                   <>
-                    <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => openEdit(c)}>编辑</button>
-                    <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100 disabled:opacity-50" disabled={searching === c.id} onClick={() => test(c.id)}>{searching === c.id ? "测试中…" : "测试"}</button>
+                    <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100" onClick={() => openEdit(c)}>编辑</button>
+                    <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 disabled:opacity-50" disabled={searching === c.id} onClick={() => test(c.id)}>{searching === c.id ? "测试中…" : "测试"}</button>
                     {lifecycle === "draft" && (
-                      <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => enable(c)}>启用</button>
+                      <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100" onClick={() => enable(c)}>启用</button>
                     )}
                     {lifecycle === "active" && (
-                      <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => disable(c)}>停用</button>
+                      <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100" onClick={() => disable(c)}>停用</button>
                     )}
-                    <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => openRotate(c)}>轮换凭据</button>
+                    <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100" onClick={() => openRotate(c)}>轮换凭据</button>
                     {c.secretConfigured && (
-                      <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => openClear(c)}>清除凭据</button>
+                      <button className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100" onClick={() => openClear(c)}>清除凭据</button>
                     )}
-                    <button aria-label={`删除连接 ${c.name}`} className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100" onClick={() => del(c)}>
+                    <button aria-label={`删除连接 ${c.name}`} className="rounded border px-1.5 py-0.5 opacity-0 transition-opacity hover:bg-muted focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100" onClick={() => del(c)}>
                       <Trash2 className="size-3" />
                     </button>
                   </>
@@ -432,12 +459,12 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
         <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader><DialogTitle>{form.id ? "编辑连接" : "创建连接"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div><Label className="text-xs">名称</Label><Input value={form.name} onChange={(e) => set({ name: e.target.value })} /></div>
+            <div><Label className="text-xs" htmlFor="conn-name">名称</Label><Input id="conn-name" value={form.name} onChange={(e) => set({ name: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs">鉴权方式{form.kindLocked && "（已锁定）"}</Label>
+                <Label className="text-xs" id="conn-kind-label">鉴权方式{form.kindLocked && "（已锁定）"}</Label>
                 <Select value={form.kind} disabled={form.kindLocked} onValueChange={(v) => set({ kind: v, secret: "" })}>
-                  <SelectTrigger className="h-9 w-full text-sm"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-full text-sm" aria-labelledby="conn-kind-label"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {KINDS.map((k) => <SelectItem key={k.value} value={k.value}>{k.label}</SelectItem>)}
                   </SelectContent>
@@ -447,9 +474,14 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
                 )}
               </div>
               <div>
-                <Label className="text-xs">协议</Label>
-                <Select value={form.protocol} onValueChange={(v) => set({ protocol: v })}>
-                  <SelectTrigger className="h-9 w-full text-sm"><SelectValue /></SelectTrigger>
+                <Label className="text-xs" id="conn-protocol-label">协议</Label>
+                <Select value={form.protocol} onValueChange={(v) => set(
+                  // 09-13 审计修复：DB 协议下 api_key 不协调——默认联动 basic（可再手改）
+                  isDb(v) && form.kind === "api_key"
+                    ? { protocol: v, kind: "basic" }
+                    : { protocol: v },
+                )}>
+                  <SelectTrigger className="h-9 w-full text-sm" aria-labelledby="conn-protocol-label"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {PROTOCOLS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
                   </SelectContent>
@@ -463,7 +495,7 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
             </div>
 
             {/* 多环境域名（R4） */}
-            <div className="space-y-2 rounded-md border p-2.5" style={{ borderColor: "#EDF0F4" }}>
+            <div className="space-y-2 rounded-md border p-2.5" style={{ borderColor: "var(--border)" }}>
               <div className="flex items-center justify-between">
                 <Label className="text-xs">环境域名（可选；按环境覆盖端点/凭据）</Label>
                 <Button variant="outline" size="sm" type="button"

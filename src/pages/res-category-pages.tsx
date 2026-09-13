@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ConnectionPicker } from "@/components/resources/connection-picker"
 import { pagedApi, providerApi } from "@/services/wf-api"
+import { asApi } from "@/services/as-api"
 
 /** docs/v2-design/10 §4.3–4.5：壳内分类页（工具与 MCP / 知识库 / 数据资产）。 */
 export function ResToolsPage() {
@@ -25,12 +26,16 @@ export function ResKnowledgePage() {
     reasons: string[]
   } | null>(null)
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_WF_API_BASE ?? "http://127.0.0.1:8120"}/api/v2/knowledge-bases/config-status`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem("wf_api_token") ?? ""}` },
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => d && setKbStatus({ status: d.status, reasons: d.reasons ?? [] }))
+    // 09-13 审计修复：原生 fetch 收口到服务层
+    let alive = true
+    asApi.kbConfigStatus()
+      .then((d) => {
+        if (alive && d)
+          setKbStatus({ status: String(d.status ?? ""),
+                        reasons: (d.reasons as string[] | undefined) ?? [] })
+      })
       .catch(() => undefined)
+    return () => { alive = false }
   }, [])
   return (
     <div className="space-y-3">

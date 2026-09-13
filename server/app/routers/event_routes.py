@@ -170,6 +170,14 @@ def _validate_route_body(db: Session, body: dict, *, partial: dict | None = None
     if cp is not None and cp not in _COMPLETION_MEANING:
         raise HTTPException(422, {"code": "COMPLETION_POLICY_INVALID",
                                   "detail": "completionPolicy 只允许 accepted|terminal"})
+    # 09-13 审计修复：filter op 保存时校验枚举（运行时已 fail-closed，
+    # 这里把拼写错误挡在配置时刻而不是静默吞事件）
+    if body.get("filter") is not None:
+        expr = _filter_view(body.get("filter"))["expression"]
+        if expr and expr.get("op") not in ("eq", "ne", "contains", "gt", "lt"):
+            raise HTTPException(422, {
+                "code": "FILTER_OP_INVALID",
+                "detail": "filter.expression.op 只允许 eq|ne|contains|gt|lt"})
     return eff
 
 
