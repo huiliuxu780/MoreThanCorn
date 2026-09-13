@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>D1–D4 拍板原型 · 09-13 审计返工批3（真实主题 token 渲染）</title>
+<style>
+/* ═══════════════════════════════════════════════════════════
+   真实产品 token（src/index.css 同步拷贝，四主题）——
+   本原型的颜色/对比度即最终实施效果，非示意色。
+   ═══════════════════════════════════════════════════════════ */
+:root{
+  --background:#FFFFFF; --surface:#FFFFFF; --surface-muted:#F6F6F4; --surface-raised:#FFFFFF;
+  --border:#E7E7E3; --text-primary:#111211; --text-secondary:#686D69; --text-tertiary:#838280;
+  --fill-secondary:#EFEFEF; --fill-tertiary:#F9F9F9;
+  --brand-primary:#2F7D4B; --brand-hover:#25663D; --brand-soft:#EDF8F0; --brand-subtle:#DDF2E3;
+  --status-running:#42A9D6; --status-success:#42B883; --status-warning:#E6A53A; --status-danger:#E06363;
+  --status-running-soft:#EDF4F9; --status-success-soft:#ECF7F0; --status-warning-soft:#FAF3E5; --status-danger-soft:#FBEFEF;
+  /* ── D1 提案：文本角色 token（仅 light 系新增；图标/色点/图表继续用上方原站值） ── */
+  --status-success-text:#237A4E; --status-warning-text:#8F6410; --status-danger-text:#BE4343;
+  --text-tertiary-proposal:#737270;
+}
+[data-theme="dark"]{
+  --background:#080909; --surface:#101211; --surface-muted:#181B19; --surface-raised:#151816;
+  --border:#292D2A; --text-primary:#FAFAF8; --text-secondary:#A7ADA8; --text-tertiary:#7C7D7F;
+  --fill-secondary:#363636; --fill-tertiary:#1A1A1A;
+  --brand-primary:#76D596; --brand-hover:#96E3AF; --brand-soft:#183523; --brand-subtle:#21472E;
+  --status-running:#5ABCE4; --status-success:#62CD97; --status-warning:#F0BA58; --status-danger:#EC7777;
+  --status-running-soft:#14262F; --status-success-soft:#12291C; --status-warning-soft:#2E2515; --status-danger-soft:#2E1A1A;
+  /* dark 已全过 WCAG，-text 与原值相同（不动） */
+  --status-success-text:#62CD97; --status-warning-text:#F0BA58; --status-danger-text:#EC7777;
+  --text-tertiary-proposal:#7C7D7F;
+}
+[data-theme="light-parchment"]{
+  --background:#FDFCFA; --surface:#FAF9F6; --surface-muted:#F7F4EF; --surface-raised:#FFFEFC;
+  --border:#E5E1D9; --text-primary:#202116; --text-secondary:#4A463C; --text-tertiary:#6B665C;
+  --fill-secondary:#EDE8E0; --fill-tertiary:#F7F4EF;
+  --brand-primary:#2F7D4B; --brand-hover:#25663D; --brand-soft:#EDF8F0; --brand-subtle:#DDF2E3;
+  --status-running:#42A9D6; --status-success:#42B883; --status-warning:#E6A53A; --status-danger:#E06363;
+  --status-running-soft:#EDF4F9; --status-success-soft:#ECF7F0; --status-warning-soft:#FAF3E5; --status-danger-soft:#FBEFEF;
+  --status-success-text:#237A4E; --status-warning-text:#8F6410; --status-danger-text:#BE4343;
+  --text-tertiary-proposal:#737270;
+}
+[data-theme="dark-parchment"]{
+  --background:#1A1814; --surface:#1E1C18; --surface-muted:#252220; --surface-raised:#2C2824;
+  --border:#3D3930; --text-primary:#FAF9F6; --text-secondary:#C9C4B8; --text-tertiary:#A8A296;
+  --fill-secondary:#363228; --fill-tertiary:#252220;
+  --brand-primary:#76D596; --brand-hover:#96E3AF; --brand-soft:#183523; --brand-subtle:#21472E;
+  --status-running:#5ABCE4; --status-success:#62CD97; --status-warning:#F0BA58; --status-danger:#EC7777;
+  --status-running-soft:#14262F; --status-success-soft:#12291C; --status-warning-soft:#2E2515; --status-danger-soft:#2E1A1A;
+  --status-success-text:#62CD97; --status-warning-text:#F0BA58; --status-danger-text:#EC7777;
+  --text-tertiary-proposal:#A8A296;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif;
+  font-size:14px;color:var(--text-primary);background:var(--background);line-height:1.5;
+  transition:background .2s}
+.num{font-variant-numeric:tabular-nums}
+
+/* ── 原型框架 ── */
+.proto-bar{position:sticky;top:0;z-index:50;display:flex;gap:8px;align-items:center;
+  padding:10px 20px;background:var(--surface-raised);border-bottom:1px solid var(--border)}
+.proto-bar .tag{font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--text-secondary);
+  border:1px solid var(--border);border-radius:6px;padding:2px 8px}
+.theme-btn{font-size:12px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);
+  background:var(--surface);color:var(--text-secondary);cursor:pointer}
+.theme-btn[aria-pressed="true"]{background:var(--brand-primary);border-color:var(--brand-primary);color:#fff}
+section{max-width:1280px;margin:0 auto;padding:28px 20px 8px}
+h1{font-size:20px;font-weight:600}
+h2{font-size:16px;font-weight:600;margin-bottom:4px}
+.sub{font-size:12.5px;color:var(--text-secondary);margin-bottom:14px}
+.note{font-size:12px;color:var(--text-secondary);background:var(--surface-muted);
+  border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin:10px 0}
+.note b{color:var(--text-primary)}
+
+/* ── 通用组件近似（shadcn 同规格） ── */
+.btn{display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:6px 12px;
+  border-radius:8px;border:1px solid transparent;cursor:pointer}
+.btn-primary{background:var(--brand-primary);color:#fff}
+.btn-outline{background:var(--surface);border-color:var(--border);color:var(--text-primary)}
+.btn-danger{background:var(--surface);border-color:var(--status-danger);color:var(--status-danger-text)}
+.btn-sm{font-size:12px;padding:3px 8px;border-radius:6px}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;
+  padding:2px 8px;border-radius:6px;white-space:nowrap}
+.badge .dot{width:5px;height:5px;border-radius:50%}
+.b-success{background:var(--status-success-soft);color:var(--status-success-text)}
+.b-success .dot{background:var(--status-success)}          /* 色点保持原站值（D1 提案） */
+.b-warning{background:var(--status-warning-soft);color:var(--status-warning-text)}
+.b-warning .dot{background:var(--status-warning)}
+.b-danger{background:var(--status-danger-soft);color:var(--status-danger-text)}
+.b-danger .dot{background:var(--status-danger)}
+.b-running{background:var(--status-running-soft);color:var(--status-running)}
+.b-running .dot{background:var(--status-running)}
+.b-neutral{background:var(--fill-secondary);color:var(--text-secondary)}
+.b-neutral .dot{background:var(--text-tertiary)}
+.b-outline{background:transparent;border:1px solid var(--border);color:var(--text-secondary)}
+table{width:100%;border-collapse:collapse;background:var(--surface);
+  border:1px solid var(--border);border-radius:10px;overflow:hidden}
+th{font-size:11.5px;font-weight:500;color:var(--text-secondary);text-align:left;
+  padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface-muted)}
+td{font-size:13px;padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+.rowlink:hover{background:var(--fill-tertiary)}
+.actions{display:flex;gap:6px;justify-content:flex-end}
+.linkbtn{font-size:12px;color:var(--text-secondary);background:transparent;border:1px solid transparent;
+  padding:2px 6px;border-radius:5px;cursor:pointer}
+.linkbtn:hover{background:var(--fill-secondary);color:var(--text-primary)}
+.linkbtn.danger{color:var(--status-danger-text)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);padding-bottom:8px;margin:12px 0}
+.tab{font-size:12px;padding:4px 12px;border-radius:7px;border:none;cursor:pointer;
+  background:transparent;color:var(--text-secondary)}
+.tab[aria-selected="true"]{background:var(--text-primary);color:var(--background)}
+.input{font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;
+  background:var(--surface);color:var(--text-primary);width:100%}
+code{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+
+/* ── D3 抽屉 ── */
+.drawer-wrap{display:grid;grid-template-columns:1fr 480px;gap:16px;align-items:start}
+.drawer{background:var(--surface-raised);border:1px solid var(--border);border-radius:12px;
+  box-shadow:0 8px 30px rgba(0,0,0,.10);overflow:hidden}
+.drawer header{display:flex;align-items:center;gap:8px;padding:14px 16px;
+  border-bottom:1px solid var(--border)}
+.drawer h3{font-size:15px;font-weight:600}
+.drawer .sec{padding:12px 16px;border-bottom:1px solid var(--border)}
+.drawer .sec:last-child{border-bottom:none}
+.sec-title{font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--text-secondary);
+  text-transform:uppercase;margin-bottom:8px}
+.kv{display:grid;grid-template-columns:88px 1fr;gap:4px 10px;font-size:12.5px}
+.kv .k{color:var(--text-secondary)}
+.tokenbox{display:flex;gap:8px;align-items:center;background:var(--surface-muted);
+  border:1px solid var(--border);border-radius:8px;padding:8px 10px}
+.tokenbox code{flex:1;color:var(--text-secondary)}
+.alert-warn{font-size:12px;color:var(--status-warning-text);background:var(--status-warning-soft);
+  border-radius:7px;padding:6px 10px;margin-top:8px}
+.alert-danger{font-size:12px;color:var(--status-danger-text);background:var(--status-danger-soft);
+  border-radius:7px;padding:6px 10px;margin-top:8px}
+
+/* ── D1 对照 ── */
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.cmp .cell{border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--surface)}
+.cmp .cell h4{font-size:12px;color:var(--text-secondary);font-weight:500;margin-bottom:8px}
+.ratio{font-size:11px;font-variant-numeric:tabular-nums}
+.ratio.bad{color:var(--status-danger-text)}
+.ratio.good{color:var(--status-success-text)}
+.oldbadge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;
+  padding:2px 8px;border-radius:6px}
+.oldbadge .dot{width:5px;height:5px;border-radius:50%}
+/* 旧值徽章（修复前实貌） */
+.old-success{background:var(--status-success-soft);color:var(--status-success)}
+.old-warning{background:var(--status-warning-soft);color:var(--status-warning)}
+.old-danger{background:var(--status-danger-soft);color:var(--status-danger)}
+.smallrow{display:flex;justify-content:space-between;align-items:center;gap:8px;
+  padding:6px 0;border-bottom:1px dashed var(--border);font-size:13px}
+.smallrow:last-child{border-bottom:none}
+
+/* ── D4 ── */
+.banner{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--text-secondary);
+  background:var(--brand-soft);border:1px solid var(--brand-subtle);border-radius:8px;
+  padding:8px 12px;margin-bottom:12px}
+.banner a{color:var(--brand-primary);font-weight:500;text-decoration:none}
+.glossary td:first-child{font-weight:500;white-space:nowrap}
+</style>
+</head>
+<body>
+
+<div class="proto-bar">
+  <span class="tag">原型 · 拍板用 D1–D4</span>
+  <span class="tag">真实主题 token 渲染（非示意色）</span>
+  <span style="flex:1"></span>
+  <button class="theme-btn" data-t="light" aria-pressed="true">Light</button>
+  <button class="theme-btn" data-t="dark" aria-pressed="false">Dark</button>
+  <button class="theme-btn" data-t="light-parchment" aria-pressed="false">羊皮纸</button>
+  <button class="theme-btn" data-t="dark-parchment" aria-pressed="false">暗羊皮纸</button>
+</div>
+
+<!-- ═══════════ D2 · Connection 表格主视图 ═══════════ -->
+<section id="d2">
+  <h1>D2 · Connections 桌面表格主视图（推荐案）</h1>
+  <p class="sub">设置 → 连接。审计问题：四列卡片右半屏空白、名称/协议/状态截断、操作 hover 专属。
+     提案：桌面默认密集表格（全宽利用、信息不截断、操作常显）；卡片仅 &lt;lg 窄屏保留。</p>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+    <h2 style="margin:0">Connections</h2>
+    <span style="flex:1"></span>
+    <button class="btn btn-primary">＋ 创建连接</button>
+  </div>
+  <p class="sub" style="margin-bottom:8px">凭证与外部系统连接（加密存储，Secret 不回显；支持多环境域名与自定义鉴权脚本）</p>
+  <div class="tabs" role="tablist">
+    <button class="tab" aria-selected="true">全部 (14)</button>
+    <button class="tab">LLM (1)</button>
+    <button class="tab">MCP (3)</button>
+    <button class="tab">MySQL (1)</button>
+    <button class="tab">PostgreSQL (6)</button>
+    <button class="tab">HTTP API (3)</button>
+  </div>
+  <table>
+    <thead><tr>
+      <th style="width:22%">名称</th><th>协议</th><th>鉴权</th><th>环境</th>
+      <th>生命周期</th><th>健康</th><th>凭据</th><th>最近检查</th>
+      <th style="text-align:right">操作</th>
+    </tr></thead>
+    <tbody>
+      <tr class="rowlink">
+        <td><b>订单网关-生产</b><br><span style="font-size:11px;color:var(--text-tertiary-proposal)">gw.dev-corn.bshg.com.cn</span></td>
+        <td>HTTP API</td><td>AkSk 签名</td><td class="num">3 环境 · 默认 prod</td>
+        <td><span class="badge b-success"><span class="dot"></span>active</span></td>
+        <td><span class="badge b-success"><span class="dot"></span>健康 · 213ms</span></td>
+        <td style="font-size:12px;color:var(--text-secondary)">已配置 · v2 · 轮换于 09-10</td>
+        <td class="num" style="font-size:12px;color:var(--text-tertiary-proposal)">2026-09-13 22:41</td>
+        <td><div class="actions">
+          <button class="linkbtn">编辑</button><button class="linkbtn">测试</button>
+          <button class="linkbtn">轮换</button><button class="linkbtn">⋯</button>
+        </div></td>
+      </tr>
+      <tr class="rowlink">
+        <td><b>数仓 PostgreSQL（客户A）</b><br><span style="font-size:11px;color:var(--text-tertiary-proposal)">pg.customer-a.internal:5432/warehouse</span></td>
+        <td>PostgreSQL</td><td>Basic</td><td class="num">2 环境 · 默认 pre</td>
+        <td><span class="badge b-success"><span class="dot"></span>active</span></td>
+        <td><span class="badge b-warning" title="迁移遗留数据：未经连接测试验证，生产使用前请先「测试」"><span class="dot"></span>未测试·待验证</span></td>
+        <td style="font-size:12px;color:var(--text-secondary)">已配置 · v1</td>
+        <td class="num" style="font-size:12px;color:var(--text-tertiary-proposal)">—</td>
+        <td><div class="actions">
+          <button class="linkbtn">编辑</button><button class="linkbtn">测试</button>
+          <button class="linkbtn">轮换</button><button class="linkbtn">⋯</button>
+        </div></td>
+      </tr>
+      <tr class="rowlink">
+        <td><b>百炼 LLM 通道</b><br><span style="font-size:11px;color:var(--text-tertiary-proposal)">dashscope.aliyuncs.com</span></td>
+        <td>LLM</td><td>Bearer</td><td class="num">单环境</td>
+        <td><span class="badge b-neutral"><span class="dot"></span>draft</span></td>
+        <td><span class="badge b-success"><span class="dot"></span>健康 · 89ms</span></td>
+        <td style="font-size:12px;color:var(--text-secondary)">已配置 · v3</td>
+        <td class="num" style="font-size:12px;color:var(--text-tertiary-proposal)">2026-09-12 09:03</td>
+        <td><div class="actions">
+          <button class="linkbtn">编辑</button><button class="linkbtn">测试</button>
+          <button class="linkbtn" style="color:var(--brand-primary)">启用</button><button class="linkbtn">⋯</button>
+        </div></td>
+      </tr>
+      <tr class="rowlink" style="opacity:.65">
+        <td><b>旧质检网关（已下线）</b><br><span style="font-size:11px;color:var(--text-tertiary-proposal)">legacy-qc.internal</span></td>
+        <td>HTTP API</td><td>API Key</td><td class="num">单环境</td>
+        <td><span class="badge b-neutral"><span class="dot"></span>archived</span></td>
+        <td><span class="badge b-outline">只读</span></td>
+        <td style="font-size:12px;color:var(--text-secondary)">已清除</td>
+        <td class="num" style="font-size:12px;color:var(--text-tertiary-proposal)">2026-08-30 17:22</td>
+        <td><div class="actions"><span style="font-size:12px;color:var(--text-secondary)">已归档 · 只读</span></div></td>
+      </tr>
+      <tr class="rowlink">
+        <td><b>MCP · 知识库检索</b><br><span style="font-size:11px;color:var(--text-tertiary-proposal)">stdio://kb-mcp-server</span></td>
+        <td>MCP</td><td>无</td><td class="num">单环境</td>
+        <td><span class="badge b-success"><span class="dot"></span>active</span></td>
+        <td><span class="badge b-danger"><span class="dot"></span>失败 · 连接超时</span></td>
+        <td style="font-size:12px;color:var(--text-secondary)">未配置密钥</td>
+        <td class="num" style="font-size:12px;color:var(--text-tertiary-proposal)">2026-09-13 21:15</td>
+        <td><div class="actions">
+          <button class="linkbtn">编辑</button><button class="linkbtn">测试</button>
+          <button class="linkbtn">轮换</button><button class="linkbtn danger">删除</button>
+        </div></td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="note"><b>实施要点</b>：操作列常显（不再 hover 专属，键盘 Tab 可达）；名称两行制（主名+端点，title 全文）；
+    协议 tab 计数=全量；「未测试·待验证」= active+未测试的迁移遗留标记；归档行整行降透明度+只读。
+    窄屏（&lt;lg）回退现有卡片网格。行数分页沿用 12/24/48。</div>
+</section>
+
+<!-- ═══════════ D3 · 数据源治理抽屉 ═══════════ -->
+<section id="d3">
+  <h1>D3 · 数据源治理（推荐案：行内抽屉，不新增一级页面）</h1>
+  <p class="sub">数据接入 → 行「管理」打开右侧抽屉。审计问题：创建后无法编辑/暂停/删除/看流水死信。
+     事件流水与死信直接复用 F5 已落地的 /api/v2/event-deliveries（补 by-source 过滤），路由区复用 /api/v2/event-routes。</p>
+  <div class="drawer-wrap">
+    <div>
+      <table>
+        <thead><tr><th>名称</th><th>类型</th><th>状态</th><th>最近拉取</th><th style="text-align:right">操作</th></tr></thead>
+        <tbody>
+          <tr class="rowlink" style="background:var(--brand-soft)">
+            <td><b>工单系统 Webhook</b></td><td><span class="badge b-outline">Webhook</span></td>
+            <td><span class="badge b-success"><span class="dot"></span>活跃</span></td>
+            <td class="num" style="font-size:12px;color:var(--text-tertiary-proposal)">—</td>
+            <td><div class="actions"><button class="linkbtn">测试事件</button>
+              <button class="linkbtn" style="color:var(--brand-primary);font-weight:600">管理</button></div></td>
+          </tr>
+          <tr class="rowlink">
+            <td><b>告警平台轮询</b></td><td><span class="badge b-outline">轮询</span></td>
+            <td><span class="badge b-warning"><span class="dot"></span>异常</span></td>
+            <td class="num" style="font-size:12px;color:var(--text-tertiary-proposal)">09-13 23:45</td>
+            <td><div class="actions"><button class="linkbtn">测试事件</button>
+              <button class="linkbtn">立即拉取</button><button class="linkbtn">管理</button></div></td>
+          </tr>
+          <tr class="rowlink">
+            <td><b>CRM 事件订阅</b></td><td><span class="badge b-outline">Webhook</span></td>
+            <td><span class="badge b-neutral"><span class="dot"></span>已暂停</span></td>
+            <td class="num" style="font-size:12px;color:var(--text-tertiary-proposal)">—</td>
+            <td><div class="actions"><button class="linkbtn">测试事件</button>
+              <button class="linkbtn">管理</button></div></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="note"><b>新增后端端点（与抽屉同批交付）</b>：
+        <code>PATCH /api/v2/data-sources/{id}</code>（名称/config/状态暂停恢复）、
+        <code>DELETE /api/v2/data-sources/{id}</code>（有 route/事件引用时 409+清单，归档语义同 EventRoute）、
+        <code>POST /api/v2/data-sources/{id}/regenerate-token</code>（旧 token 即刻失效+一次性展示新 token）、
+        <code>GET /api/v2/event-deliveries?sourceId=</code> 过滤扩展。</div>
+    </div>
+
+    <div class="drawer">
+      <header>
+        <h3>工单系统 Webhook</h3>
+        <span class="badge b-outline">Webhook</span>
+        <span class="badge b-success"><span class="dot"></span>活跃</span>
+        <span style="flex:1"></span>
+        <button class="linkbtn" aria-label="关闭">✕</button>
+      </header>
+
+      <div class="sec">
+        <div class="sec-title">基本信息</div>
+        <div class="kv">
+          <span class="k">名称</span><span>工单系统 Webhook <button class="linkbtn">编辑</button></span>
+          <span class="k">接收地址</span><span><code>POST /api/v2/ingress/webhook/ds_9f3a…</code></span>
+          <span class="k">字段映射</span><span><code>{"value":"body.text"}</code> <button class="linkbtn">编辑</button></span>
+          <span class="k">过滤条件</span><span><code>{"field":"type","op":"eq","value":"ticket"}</code></span>
+          <span class="k">限速</span><span class="num">60 次/分钟 · 体积上限 256KB</span>
+          <span class="k">创建</span><span class="num" style="color:var(--text-secondary)">2026-09-13 by dev</span>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">操作</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm">⏸ 暂停接收</button>
+          <button class="btn btn-outline btn-sm">发送测试事件</button>
+          <button class="btn btn-danger btn-sm">删除数据源…</button>
+        </div>
+        <div class="alert-danger">删除为归档语义：被 2 条路由 / 137 条事件引用时将拒绝并列出引用清单。</div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">Webhook Token</div>
+        <div class="tokenbox"><code>whk_••••••••••••••••3f9a</code>
+          <button class="btn btn-outline btn-sm">重新生成</button></div>
+        <div class="alert-warn">重新生成后旧 token 即刻失效；新 token 仅显示一次，关闭后无法再查看。</div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">事件路由（2）</div>
+        <table style="border:none">
+          <tbody>
+            <tr><td style="border:none;padding:6px 0">
+              <b style="font-size:12.5px">新工单 → 工单处理 Agent</b><br>
+              <span style="font-size:11px;color:var(--text-secondary)">automation · rev 3 · dedupe id/24h · accepted</span></td>
+              <td style="border:none;text-align:right"><span class="badge b-success"><span class="dot"></span>启用</span></td></tr>
+            <tr><td style="border:none;padding:6px 0">
+              <b style="font-size:12.5px">工单关闭 → 日终分析批</b><br>
+              <span style="font-size:11px;color:var(--text-secondary)">analysis_task · rev 1 · 无 dedupe · terminal</span></td>
+              <td style="border:none;text-align:right"><span class="badge b-neutral"><span class="dot"></span>已归档</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">事件流水（最近 50 · 含证据）</div>
+        <table style="border:none;font-size:12px">
+          <thead><tr><th style="background:transparent">时间</th><th style="background:transparent">结果</th>
+            <th style="background:transparent">路由/证据</th><th style="background:transparent;text-align:right">操作</th></tr></thead>
+          <tbody>
+            <tr><td class="num" style="color:var(--text-tertiary-proposal)">23:58:12</td>
+              <td><span class="badge b-success"><span class="dot"></span>已投递</span></td>
+              <td style="color:var(--text-secondary)">新工单→工单处理 Agent · rev3 · INV a91c…</td>
+              <td style="text-align:right"><button class="linkbtn">详情</button></td></tr>
+            <tr><td class="num" style="color:var(--text-tertiary-proposal)">23:57:40</td>
+              <td><span class="badge b-neutral"><span class="dot"></span>已去重</span></td>
+              <td style="color:var(--text-secondary)">dedupe 命中 23:41 的投递（key=ticket-882）</td>
+              <td style="text-align:right"><button class="linkbtn">首投递</button></td></tr>
+            <tr><td class="num" style="color:var(--text-tertiary-proposal)">23:51:03</td>
+              <td><span class="badge b-outline">已过滤</span></td>
+              <td style="color:var(--text-secondary)">filter type=comment 不满足（证据存事件层）</td>
+              <td style="text-align:right"><button class="linkbtn">事件</button></td></tr>
+            <tr><td class="num" style="color:var(--text-tertiary-proposal)">23:44:18</td>
+              <td><span class="badge b-danger"><span class="dot"></span>死信</span></td>
+              <td style="color:var(--text-secondary)">TARGET_NOT_EXECUTABLE · 3 次退避耗尽</td>
+              <td style="text-align:right"><button class="linkbtn" style="color:var(--brand-primary);font-weight:600">重试</button></td></tr>
+            <tr><td class="num" style="color:var(--text-tertiary-proposal)">23:30:55</td>
+              <td><span class="badge b-warning"><span class="dot"></span>失败·退避中</span></td>
+              <td style="color:var(--text-secondary)">下次重试 00:00（2/3）· AUTOMATION_DISABLED</td>
+              <td style="text-align:right"><button class="linkbtn" style="color:var(--brand-primary);font-weight:600">重试</button></td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:11px;color:var(--text-secondary);margin-top:6px">
+          已过滤/已去重不产生投递行——证据来自事件层 route_outcomes（F5 AC-023/024），列表合并展示。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ D1 · 对比度前后对照 ═══════════ -->
+<section id="d1">
+  <h1>D1 · 浅色主题文本角色 token（推荐案，dark 系不动）</h1>
+  <p class="sub">原则：<b>图标/色点/图表保持原站冻结值；仅「文本与徽章字色」切换到加深的 -text token</b>。
+     左侧=现状（audit_contrast.py 实测值），右侧=提案（全部 ≥4.5:1）。切换顶部主题按钮可验证 dark 系无变化。</p>
+  <div class="cmp">
+    <div class="cell">
+      <h4>现状（light / 羊皮纸 均不达标）</h4>
+      <div class="smallrow"><span class="oldbadge old-success"><span class="dot" style="background:var(--status-success)"></span>已完成</span>
+        <span class="ratio bad">2.50:1 ✗（羊皮纸 2.37 ✗）</span></div>
+      <div class="smallrow"><span class="oldbadge old-warning"><span class="dot" style="background:var(--status-warning)"></span>需要操作</span>
+        <span class="ratio bad">2.14:1 ✗（羊皮纸 2.03 ✗）</span></div>
+      <div class="smallrow"><span class="oldbadge old-danger"><span class="dot" style="background:var(--status-danger)"></span>失败</span>
+        <span class="ratio bad">3.42:1 ✗（羊皮纸 3.25 ✗）</span></div>
+      <div class="smallrow"><span style="color:var(--status-success);font-size:13px">● 运行成功（纯文本用法）</span>
+        <span class="ratio bad">2.50:1 ✗</span></div>
+      <div class="smallrow"><span style="color:var(--text-tertiary);font-size:12px">2026-09-13 23:58 · 3 分钟前</span>
+        <span class="ratio bad">3.84:1 ✗（时间戳小字）</span></div>
+    </div>
+    <div class="cell">
+      <h4>提案（-text token；色点仍原站值）</h4>
+      <div class="smallrow"><span class="badge b-success"><span class="dot"></span>已完成</span>
+        <span class="ratio good">5.30:1 ✓（羊皮纸 5.03 ✓ / soft 底 4.82 ✓）</span></div>
+      <div class="smallrow"><span class="badge b-warning"><span class="dot"></span>需要操作</span>
+        <span class="ratio good">5.25:1 ✓（羊皮纸 4.99 ✓ / soft 底 4.76 ✓）</span></div>
+      <div class="smallrow"><span class="badge b-danger"><span class="dot"></span>失败</span>
+        <span class="ratio good">5.16:1 ✓（羊皮纸 4.90 ✓ / soft 底 4.59 ✓）</span></div>
+      <div class="smallrow"><span style="color:var(--status-success-text);font-size:13px">● 运行成功（纯文本用法）</span>
+        <span class="ratio good">5.30:1 ✓</span></div>
+      <div class="smallrow"><span style="color:var(--text-tertiary-proposal);font-size:12px">2026-09-13 23:58 · 3 分钟前</span>
+        <span class="ratio good">4.81:1 ✓（羊皮纸 4.56 ✓）</span></div>
+    </div>
+  </div>
+  <div class="note"><b>实施口径</b>：index.css 的 light 与 light-parchment 增加
+    <code>--status-success-text:#237A4E</code>、<code>--status-warning-text:#8F6410</code>、
+    <code>--status-danger-text:#BE4343</code>（两主题状态色同源，提案值对白底/羊皮纸底/soft 底全部 ≥4.5:1）；
+    <code>--text-tertiary</code> 仅 light 加深 <code>#838280→#737270</code>（3.84→4.81）——
+    羊皮纸现值 <code>#6B665C</code> 实测 5.57/5.42 已达标，<b>不动</b>。
+    dark/dark-parchment 的 -text 等于原值（零变化）。徽章/状态文本组件统一改读 -text；
+    audit_contrast.py 把 -text 配对纳入门禁（只减不增）。<b>品牌绿不动</b>（4.93:1 已过）。
+    14 处违规分布：light×8（tertiary×2+状态色 on surface×3+on soft×3）、light-parchment×6（状态色）。</div>
+</section>
+
+<!-- ═══════════ D4 · IA 边界说明 + 术语表 ═══════════ -->
+<section id="d4">
+  <h1>D4 · 双「数据源」边界说明 + 术语表（推荐案：不动导航）</h1>
+  <p class="sub">审计问题：「数据接入」与资源域「Datasources/Data Assets」概念易混、中英术语无统一原则。
+     提案：两页互设一句边界说明+跳转；ui-terms.ts 扩 glossary 作为文案单一事实源。</p>
+
+  <h2 style="margin-top:8px">① 数据接入页顶部说明条</h2>
+  <div class="banner">ℹ︎ 这里管理<b>事件入口</b>（Webhook/轮询：外部系统把事件推给平台，触发自动任务或分析批次）。
+    要找数据库/对象存储等<b>数据资产连接</b>？<a href="#">前往 能力与资源 → 数据资产 →</a></div>
+
+  <h2>② 资源页 · 数据资产 tab 说明条</h2>
+  <div class="banner">ℹ︎ 这里管理<b>数据资产</b>（PostgreSQL 等数据库连接与表，供分析任务读取/写回）。
+    Webhook/轮询等<b>事件入口</b>在<a href="#">数据接入 →</a>管理。</div>
+
+  <h2>③ glossary 术语表样张（进 ui-terms.ts，新文案一律从表取）</h2>
+  <table class="glossary">
+    <thead><tr><th>中文主名</th><th>英文/技术名</th><th>适用域</th><th>说明与边界</th></tr></thead>
+    <tbody>
+      <tr><td>数据源（事件）</td><td><code>DataSource</code></td><td>数据接入 /api/v2/data-sources</td>
+        <td>Webhook/轮询/测试事件入口；产出 SourceEvent，经 EventRoute 派发</td></tr>
+      <tr><td>数据资产</td><td><code>Datasource</code>+<code>DataAsset</code></td><td>能力与资源 → 数据资产</td>
+        <td>数据库连接与表/对象；分析任务的读取源与写回目标。<b>禁止</b>再译作「数据源」</td></tr>
+      <tr><td>连接（凭据）</td><td><code>Connection</code></td><td>设置 → 连接</td>
+        <td>协议端点+加密凭据+多环境；被数据资产与工具引用，Secret 永不回显</td></tr>
+      <tr><td>自动任务</td><td><code>AutomationDefinition</code></td><td>导航「自动任务」</td>
+        <td>一次触发→一次 Invocation→一个执行体；不套批次（用户 09-13 拍板词）</td></tr>
+      <tr><td>分析任务</td><td><code>AnalysisTask</code></td><td>任务域 /batch-tasks</td>
+        <td>数据集批量分析：TaskRun→N Run；与「自动任务」严格分词</td></tr>
+      <tr><td>工作项</td><td><code>WorkItem</code></td><td>导航「任务」看板</td>
+        <td>跨执行体统一投影卡（五态）；不是新执行实体</td></tr>
+      <tr><td>调用</td><td><code>AutomationInvocation</code></td><td>自动任务运行历史</td>
+        <td>一次触发的权威业务事实；目标 XOR（Session/Flow/Workflow Run）</td></tr>
+      <tr><td>事件路由 / 投递</td><td><code>EventRoute</code> / <code>EventDelivery</code></td><td>数据接入 · 治理抽屉</td>
+        <td>路由=契约（destination 二选一）；投递=每路由一条流水（重试/死信独立）</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section><p class="sub" style="margin-bottom:40px">原型文件：docs/v2-design/prototypes/audit-rework-d1-d4-v1.html ·
+  2026-09-14 · 拍板后按 D1→D4 顺序实施，每屏截图交签</p></section>
+
+<script>
+document.querySelectorAll(".theme-btn").forEach((b) =>
+  b.addEventListener("click", () => {
+    document.documentElement.setAttribute("data-theme", b.dataset.t);
+    document.querySelectorAll(".theme-btn").forEach((x) =>
+      x.setAttribute("aria-pressed", String(x === b)));
+  }));
+</script>
+</body>
+</html>
