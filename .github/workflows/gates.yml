@@ -1,0 +1,64 @@
+# 仓库门禁 CI（09-13 审计 eng#20）。
+# 状态：已写好、暂不依赖——本仓库提交长期本地未推且 GitHub 网络不稳，
+# 现行规约是交付前本机跑 scripts/gate.sh；推送常态化后此工作流自动生效。
+# 层3/层4（活体冒烟/浏览器审计）需要真实 8120+5199+浏览器栈，不入 CI，
+# 由本机 gate.sh --live 承担。
+name: gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit -p tsconfig.json
+      - run: npm run lint -- --max-warnings=0
+      - run: npx vitest run
+      - run: npm run build
+      - name: 层1 假控件扫荡（基线只减不增）
+        run: python3 scripts/audit_layer1_fake_controls.py
+
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 安装依赖
+        run: |
+          cd server
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: 迁移单 head
+        run: cd server && [ "$(alembic heads | wc -l | tr -d ' ')" = "1" ]
+      - name: 全量 pytest（conftest 自建 wf_pytest_* 临时库）
+        run: cd server && python -m pytest tests/ -q
+        env:
+          WF_TEST_PG_HOST: 127.0.0.1
+          WF_TEST_PG_USER: postgres
+      - name: secret 泄漏扫荡
+        run: node scripts/check-no-secret-leak.mjs
+      - name: npm audit（生产依赖 high+ 清零）
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci && npm audit --omit=dev --audit-level=high
