@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import secrets as pysecrets
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -1364,7 +1365,13 @@ def ingest(
         event.status = "dead"
         event.error = "all deliveries dead"
     elif any(d.status == "completed" for d in deliveries):
-        event.status = "dispatched"
+        # 09-13 审计修复（P2）：部分投递失败不再被 dispatched 掩盖——
+        # 明细仍在 delivery 层，列表级状态如实标 partial_failed
+        bad = [d for d in deliveries if d.status in ("failed", "dead")]
+        event.status = "partial_failed" if bad else "dispatched"
+        if bad:
+            event.error = next((d.error or d.dead_reason for d in bad
+                                if (d.error or d.dead_reason)), "partial deliveries failed")
         if deliveries:
             event.dispatch_ref = deliveries[0].id
     else:
@@ -1569,6 +1576,13 @@ def test_event(sid: str, payload: dict[str, Any], db: Session = Depends(get_db),
 
 webhook_router = APIRouter(prefix="/api/v2/ingress", tags=["ingress"])
 
+# 09-13 审计加固：请求体上限 + per-source 滑动窗口限速。
+# 诚实边界：content-length 预检拦不住 chunked 无长度请求——网关级兜底属部署项；
+# 限速为进程内存实现，多 worker/多实例须升级共享存储（归 EventBridge 切片）。
+WEBHOOK_MAX_BYTES = 256 * 1024
+WEBHOOK_RATE_WINDOW_S = 60.0
+_webhook_hits: dict[str, list[float]] = {}
+
 
 @webhook_router.post("/webhook/{sid}")
 def webhook(
@@ -1585,6 +1599,18 @@ def webhook(
         hashlib.sha256(x_source_token.encode()).hexdigest(), src.auth_token_hash
     ):
         raise HTTPException(401, "invalid source token")
+    clen = request.headers.get("content-length")
+    if clen and clen.isdigit() and int(clen) > WEBHOOK_MAX_BYTES:
+        raise HTTPException(413, f"payload 超过上限 {WEBHOOK_MAX_BYTES // 1024}KB")
+    limit = int((src.config or {}).get("rate_limit_per_min") or 60)
+    now = time.monotonic()
+    hits = [t for t in _webhook_hits.get(sid, [])
+            if now - t < WEBHOOK_RATE_WINDOW_S]
+    if len(hits) >= limit:
+        _webhook_hits[sid] = hits
+        raise HTTPException(429, f"source 限速 {limit} 次/分钟，请稍后重发")
+    hits.append(now)
+    _webhook_hits[sid] = hits
     dedupe = str(payload.get("id") or payload.get("eventId") or pysecrets.token_hex(8))
     event = ingest(db, src, payload, dedupe_key=dedupe)
     return {"status": "received", "event_id": event.id}

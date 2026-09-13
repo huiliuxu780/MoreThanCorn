@@ -1491,7 +1491,7 @@ class DataSourceEvent(Base):
     dedupe_key: Mapped[str] = mapped_column(String(128))
     payload: Mapped[dict] = mapped_column(JSONB, default=dict)
     status: Mapped[str] = mapped_column(String(16), default="received")
-    # received|filtered|dispatched|failed|dead
+    # received|filtered|dispatched|partial_failed|failed|dead
     automation_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     dispatch_ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)

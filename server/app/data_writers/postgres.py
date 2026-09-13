@@ -12,26 +12,28 @@ from .base import TargetColumn, TargetMetadata, TargetReference, WriterError, cl
 
 class PostgresWriter:
     def __init__(self, db, datasource):
+        from ..connection_runtime import resolve_db_target
         from ..models import Connection
         self.datasource_id = datasource.id if datasource else None
-        self.database = (datasource.location or "") if datasource else ""
         conn = (db.get(Connection, datasource.connection_id)
                 if datasource and datasource.connection_id else None)
-        ep = (conn.endpoint if conn else {}) or {}
-        self.host = ep.get("host", "127.0.0.1")
-        self.port = int(ep.get("port", 5432))
-        self.user = ep.get("user", "postgres")
-        self._secret_ref = conn.secret_ref if conn else ""
+        # 09-13 审计 P0-1 收口：与 Reader/连接测试同一解析实现
+        p = resolve_db_target(conn,
+                              database_default=(datasource.location or "")
+                              if datasource else "")
+        self.host = p["host"]
+        self.port = p["port"]
+        self.user = p["user"]
+        self.database = p["database"]
+        self._password = p["password"]
+        self.env_code = p["env_code"]
 
     def _connect(self):
         import psycopg
-        password = ""
-        if self._secret_ref:
-            from ..runner import _decrypt
-            password = _decrypt(self._secret_ref)
         try:
             return psycopg.connect(host=self.host, port=self.port, dbname=self.database,
-                                   user=self.user, password=password, connect_timeout=3)
+                                   user=self.user, password=self._password,
+                                   connect_timeout=3)
         except Exception as exc:  # noqa: BLE001
             code, retryable = classify_sqlstate(getattr(exc, "sqlstate", None))
             if getattr(exc, "sqlstate", None) is None:

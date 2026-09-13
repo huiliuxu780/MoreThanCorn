@@ -11,26 +11,27 @@ from .base import DataPage, ReaderError, safe_ident
 
 class PostgresReader:
     def __init__(self, db: Session, datasource):
+        from ..connection_runtime import resolve_db_target
         from ..models import Connection
         self.datasource_id = datasource.id
-        self.database = datasource.location or ""
         conn = (db.get(Connection, datasource.connection_id)
                 if datasource.connection_id else None)
-        ep = (conn.endpoint if conn else {}) or {}
-        self.host = ep.get("host", "127.0.0.1")
-        self.port = int(ep.get("port", 5432))
-        self.user = ep.get("user", "postgres")
-        self._secret_ref = conn.secret_ref if conn else ""
+        # 09-13 审计 P0-1 收口：与连接测试同一解析实现（环境合并+结构化凭据），
+        # 不再直读 endpoint/secret_ref（原实现把 JSON 凭据整串当密码）
+        p = resolve_db_target(conn, database_default=datasource.location or "")
+        self.host = p["host"]
+        self.port = p["port"]
+        self.user = p["user"]
+        self.database = p["database"]
+        self._password = p["password"]
+        self.env_code = p["env_code"]
 
     def _connect(self):
         import psycopg
-        password = ""
-        if self._secret_ref:
-            from ..runner import _decrypt
-            password = _decrypt(self._secret_ref)
         try:
             return psycopg.connect(host=self.host, port=self.port, dbname=self.database,
-                                   user=self.user, password=password, connect_timeout=3)
+                                   user=self.user, password=self._password,
+                                   connect_timeout=3)
         except Exception as exc:  # noqa: BLE001
             raise ReaderError(f"无法连接 {self.host}:{self.port}/{self.database}: {exc}") from exc
 

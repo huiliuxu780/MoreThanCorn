@@ -28,3 +28,34 @@ def resolve_for_request(conn, env_code: str | None = None) -> tuple[dict, dict |
     ref = (entry.get("secret_ref") if entry else None) or conn.secret_ref
     payload = decrypt_payload(ref) if ref else {}
     return endpoint, payload, code
+
+
+def resolve_db_target(conn, env_code: str | None = None,
+                      database_default: str = "",
+                      default_port: int = 5432) -> dict:
+    """DB 类连接参数唯一解析实现（09-13 审计 P0-1 收口）。
+
+    Reader/Writer/连接探测三方共用，终结"测试走 resolve_for_request、
+    运行时直读 endpoint+secret_ref"的双轨：
+    - 环境合并：endpoint/secret_ref 按 env（显式 → default_env → 首个）覆盖；
+    - 结构化 Basic 凭据：payload 为 dict 时取 password/username（username
+      优先于 endpoint.user——凭据与端点分置时以凭据侧为准）；
+    - 历史裸串 secret：整串即密码；
+    - database：调用方显式值（如 Datasource.location）优先，回落 endpoint.database。
+    """
+    ep, payload, code = resolve_for_request(conn, env_code) if conn is not None \
+        else ({}, {}, None)
+    if isinstance(payload, str):
+        password, secret_user = payload, None
+    else:
+        payload = payload or {}
+        password = str(payload.get("password", ""))
+        secret_user = payload.get("username") or payload.get("user")
+    return {
+        "host": ep.get("host") or "127.0.0.1",
+        "port": int(ep.get("port") or default_port),
+        "user": secret_user or ep.get("user") or "postgres",
+        "password": password,
+        "database": database_default or ep.get("database") or "",
+        "env_code": code,
+    }

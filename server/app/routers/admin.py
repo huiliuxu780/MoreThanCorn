@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
@@ -437,16 +437,19 @@ def _probe_connection(c, env: str | None = None) -> tuple[bool, str, dict]:
             mod = __import__(driver)
         except ImportError:
             return False, f"驱动 {driver} 未安装，无法真实探测", {"stage": "driver", "driver": driver}
-        password = payload if isinstance(payload, str) else str((payload or {}).get("password", ""))
+        # 09-13 审计 P0-1 收口：探测与 Reader/Writer 共用 resolve_db_target
+        #（结构化凭据 username 优先、裸串=密码、环境合并语义完全一致）
+        from ..connection_runtime import resolve_db_target
+        t = resolve_db_target(c, env, default_port=3306 if driver == "pymysql" else 5432)
         try:
             if driver == "pymysql":
-                conn = mod.connect(host=host, port=int(ep.get("port", 3306)),
-                                   user=ep.get("user", ""), password=password,
-                                   database=ep.get("database", ""), connect_timeout=5)
+                conn = mod.connect(host=t["host"], port=t["port"],
+                                   user=t["user"], password=t["password"],
+                                   database=t["database"], connect_timeout=5)
             else:
-                conn = mod.connect(host=host, port=int(ep.get("port", 5432)),
-                                   user=ep.get("user", ""), password=password,
-                                   dbname=ep.get("database", ""))
+                conn = mod.connect(host=t["host"], port=t["port"],
+                                   user=t["user"], password=t["password"],
+                                   dbname=t["database"], connect_timeout=5)
             conn.close()
             return True, "", {"stage": "connected", "driver": driver}
         except Exception as exc:  # noqa: BLE001
@@ -861,10 +864,25 @@ def export_run(run_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/metrics")
-def metrics(db: Session = Depends(get_db)):
+def metrics(request: Request, db: Session = Depends(get_db)):
+    """09-13 审计修复：① /metrics 不在 /api/* 鉴权门内——补内部令牌门
+    （配置了 MTC_INTERNAL_TOKEN 即强制校验；生产未配置 fail-closed，开发放行）；
+    ② wf_workflows_total 原统计的是 Tool.id（数错对象）。"""
+    import hmac
+    import os
+
+    from ..config import is_production
+    from ..models import Workflow
+    token = os.environ.get("MTC_INTERNAL_TOKEN", "")
+    if token:
+        got = request.headers.get("x-mtc-internal", "")
+        if not hmac.compare_digest(got, token):
+            raise HTTPException(401, "invalid internal token")
+    elif is_production():
+        raise HTTPException(501, "MTC_INTERNAL_TOKEN not configured — metrics blocked")
     counts = dict(db.execute(select(Run.status, func.count(Run.id)).group_by(Run.status)).all())
     lines = [f"wf_runs_total{{status=\"{k}\"}} {v}" for k, v in counts.items()]
-    lines.append(f"wf_workflows_total {db.query(func.count(Tool.id)).scalar()}")
+    lines.append(f"wf_workflows_total {db.query(func.count(Workflow.id)).scalar()}")
     return "\n".join(lines) + "\n"
 
 

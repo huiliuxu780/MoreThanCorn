@@ -643,3 +643,28 @@ def test_watcher_recovers_stale_pending():
         db.commit()
     finally:
         db.close()
+
+
+def test_webhook_size_and_rate_limits():
+    """09-13 审计加固：请求体上限 413 + per-source 滑动窗口限速 429。"""
+    src = _mk_source()
+    hdr = {"X-Source-Token": src["webhook_token"]}
+    big = {"id": uniq("evt"), "blob": "x" * (300 * 1024)}
+    r = client.post(f"/api/v2/ingress/webhook/{src['id']}", json=big, headers=hdr)
+    assert r.status_code == 413, r.text
+    db = SessionLocal()
+    try:
+        row = db.get(DataSource, src["id"])
+        row.config = {**(row.config or {}), "rate_limit_per_min": 2}
+        db.commit()
+    finally:
+        db.close()
+    ok = 0
+    last = None
+    for i in range(3):
+        last = client.post(f"/api/v2/ingress/webhook/{src['id']}",
+                           json={"id": uniq("evt"), "n": i}, headers=hdr)
+        if last.status_code == 200:
+            ok += 1
+    assert ok == 2, f"限速内应恰好放行 2 次，实际 {ok}"
+    assert last is not None and last.status_code == 429, last.text
