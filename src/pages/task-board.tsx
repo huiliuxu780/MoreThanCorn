@@ -98,22 +98,25 @@ function relTime(v: string | null | undefined): string {
 }
 
 /** 状态 chip（原站 qc-work-management-status 同构）：dot + label，软底+语义色。 */
-const LANE_CHIP: Record<string, { bg: string; fg: string }> = {
-  done: { bg: "var(--status-success-soft)", fg: "var(--status-success)" },
-  running: { bg: "var(--status-running-soft)", fg: "var(--status-running)" },
-  waiting: { bg: "var(--status-warning-soft)", fg: "var(--status-warning)" },
-  pending: { bg: "var(--status-warning-soft)", fg: "var(--status-warning)" },
-  failed: { bg: "var(--status-danger-soft)", fg: "var(--status-danger)" },
-  cancelled: { bg: "var(--status-danger-soft)", fg: "var(--status-danger)" },
+/* 09-14 D1 拍板：徽章字色读 -text 文本角色 token（过 WCAG 4.5:1）；
+   色点继续用原站值（StatusChip 内 dot 单独取原色，见下） */
+const LANE_CHIP: Record<string, { bg: string; fg: string; dot: string }> = {
+  done: { bg: "var(--status-success-soft)", fg: "var(--status-success-text)", dot: "var(--status-success)" },
+  running: { bg: "var(--status-running-soft)", fg: "var(--status-running)", dot: "var(--status-running)" },
+  waiting: { bg: "var(--status-warning-soft)", fg: "var(--status-warning-text)", dot: "var(--status-warning)" },
+  pending: { bg: "var(--status-warning-soft)", fg: "var(--status-warning-text)", dot: "var(--status-warning)" },
+  failed: { bg: "var(--status-danger-soft)", fg: "var(--status-danger-text)", dot: "var(--status-danger)" },
+  cancelled: { bg: "var(--status-danger-soft)", fg: "var(--status-danger-text)", dot: "var(--status-danger)" },
 }
 function StatusChip({ lane, label }: { lane: string; label: string }) {
-  const c = LANE_CHIP[lane] ?? { bg: "var(--fill-tertiary)", fg: "var(--text-tertiary)" }
+  const c = LANE_CHIP[lane] ?? { bg: "var(--fill-tertiary)", fg: "var(--text-tertiary)",
+                                 dot: "var(--text-tertiary)" }
   return (
     <span
       className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-0.5 text-xs font-medium"
       style={{ background: c.bg, color: c.fg }}
     >
-      <span aria-hidden className="size-[5px] rounded-full" style={{ background: c.fg }} />
+      <span aria-hidden className="size-[5px] rounded-full" style={{ background: c.dot }} />
       {label}
     </span>
   )

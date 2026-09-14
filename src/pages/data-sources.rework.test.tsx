@@ -7,6 +7,7 @@
 // 4) webhook token 一次性交付：复制按钮 + 丢失后果强提醒（审计 UI#12）。
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { MemoryRouter } from "react-router-dom"
 
 // Radix Select jsdom pointer capture shims（同 automations-v2 测试）
 if (typeof Element !== "undefined") {
@@ -66,7 +67,7 @@ describe("DataSources 审计返工锁定", () => {
   it("轮询表单补全 config 字段并按后端契约提交", async () => {
     sources.mockResolvedValue({ items: [] })
     createSource.mockResolvedValue({ id: "src-1" })
-    render(<DataSourcesPage />)
+    render(<MemoryRouter><DataSourcesPage /></MemoryRouter>)
     await openCreate()
     await pickKind("轮询")
     // P0：轮询专属字段必须出现
@@ -100,7 +101,7 @@ describe("DataSources 审计返工锁定", () => {
 
   it("列表失败显示错误态与重试，不再伪装暂无数据源", async () => {
     sources.mockRejectedValue(new Error("net-down"))
-    render(<DataSourcesPage />)
+    render(<MemoryRouter><DataSourcesPage /></MemoryRouter>)
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toContain("net-down"))
     expect(screen.getByRole("button", { name: /重试/ })).toBeTruthy()
@@ -110,7 +111,7 @@ describe("DataSources 审计返工锁定", () => {
   it("webhook token 一次性交付：复制按钮+丢失强提醒", async () => {
     sources.mockResolvedValue({ items: [] })
     createSource.mockResolvedValue({ id: "src-2", webhook_token: "tok_abc123" })
-    render(<DataSourcesPage />)
+    render(<MemoryRouter><DataSourcesPage /></MemoryRouter>)
     await openCreate()
     fireEvent.change(document.querySelector("#ds-name")!, { target: { value: "钩子源" } })
     fireEvent.click(screen.getByRole("button", { name: "保存" }))

@@ -243,6 +243,8 @@ def list_connections(page: int = 1, pageSize: int = 20, search: str = "", type: 
                        "providerHint": c.provider_hint,
                        "revision": c.revision,
                        "archivedAt": c.archived_at.isoformat() if c.archived_at else None,
+                       # 09-14 D2：表格「最近检查」列数据源（连接测试时间）
+                       "lastTestAt": c.last_test_at.isoformat() if c.last_test_at else None,
                        "updatedAt": c.created_at.isoformat()} for c in rows],
             "total": total, "page": page, "pageSize": pageSize}
 

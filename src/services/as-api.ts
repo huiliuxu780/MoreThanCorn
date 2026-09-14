@@ -70,6 +70,29 @@ export interface BoardTask {
   detail_route: string;
 }
 
+/** 09-14 D3：EventRoute / EventDelivery DTO（治理页）。 */
+export interface EventRouteDTO {
+  id: string; origin: "event_route" | "automation_trigger";
+  sourceId: string; eventType: string;
+  destination: { kind: "automation" | "analysis_task"; id: string };
+  filter: { version: number; expression: Record<string, unknown> };
+  mapping: { version: number; fields: Record<string, string> };
+  dedupe: { keyPath?: string; windowSeconds?: number };
+  completionPolicy: "accepted" | "terminal";
+  retryPolicy: Record<string, unknown>;
+  enabled: boolean; archived: boolean; revision: number;
+}
+export interface EventDeliveryDTO {
+  id: string; eventId: string; source: string; status: string;
+  routeId: string | null; routeRevision: number | null;
+  destinationKind: string | null; destinationId: string | null;
+  invocationId: string | null; taskRunId: string | null;
+  completionPolicy: string; completionMeaning: string;
+  attempts: number; maxAttempts: number;
+  nextRetryAt: string | null; deadReason: string | null; error: string | null;
+  createdAt: string | null; updatedAt: string | null;
+}
+
 /** 看板摘要契约（/api/board/summary，09-13 审计修复：替代页面宽泛 Record 转换）。
  *  lanes 语义（board_projection.py）：pending=排队中；waiting=运行时等待人工=需要操作。 */
 export interface BoardSummary {
@@ -295,6 +318,41 @@ export const asApi = {
   pollSource: (sid: string) =>
     req<{ polled: number; dispatched: number; cursor: Record<string, unknown> }>(
       `/api/v2/data-sources/${sid}/poll`, { method: "POST" }),
+  /* 09-14 D3：数据源治理页 */
+  sourceGet: (sid: string) =>
+    req<{ id: string; name: string; kind: string; config: Record<string, unknown>;
+          status: string; archived: boolean; cursor: Record<string, unknown>;
+          last_poll_at: string | null; has_token: boolean; created_at: string | null }>(
+      `/api/v2/data-sources/${sid}`),
+  sourcePatch: (sid: string, body: { name?: string; config?: Record<string, unknown>;
+                                     status?: "active" | "paused"; archived?: false }) =>
+    req<{ id: string; name: string; kind: string; config: Record<string, unknown>;
+          status: string; archived: boolean }>(`/api/v2/data-sources/${sid}`, {
+      method: "PATCH", body: JSON.stringify(body),
+    }),
+  sourceDelete: (sid: string) =>
+    req<{ id: string; archived: boolean } | { detail: { code: string; detail: string;
+      references: { kind: string; count: number }[] } }>(
+      `/api/v2/data-sources/${sid}`, { method: "DELETE" }),
+  sourceRegenerateToken: (sid: string) =>
+    req<{ id: string; webhook_token: string; note: string }>(
+      `/api/v2/data-sources/${sid}/regenerate-token`, { method: "POST" }),
+  eventRoutes: (params: { sourceId?: string; includeArchived?: string } = {}) => {
+    const q = new URLSearchParams()
+    if (params.sourceId) q.set("sourceId", params.sourceId)
+    if (params.includeArchived) q.set("includeArchived", params.includeArchived)
+    return req<{ items: EventRouteDTO[]; total: number }>(
+      `/api/v2/event-routes${q.toString() ? `?${q}` : ""}`)
+  },
+  eventDeliveries: (params: { sourceId?: string; sourceEventId?: string;
+                              status?: string; pageSize?: number } = {}) => {
+    const q = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) if (v) q.set(k, String(v))
+    return req<{ items: EventDeliveryDTO[]; total: number }>(
+      `/api/v2/event-deliveries${q.toString() ? `?${q}` : ""}`)
+  },
+  deliveryRetry: (did: string) =>
+    req<EventDeliveryDTO>(`/api/v2/event-deliveries/${did}/retry`, { method: "POST" }),
 
   // 知识库
   createKb: (name: string, modelId: string) =>

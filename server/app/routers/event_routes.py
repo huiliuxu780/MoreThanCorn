@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import require_operator, require_role
@@ -326,7 +327,8 @@ def delete_event_route(rid: str, db: Session = Depends(get_db),
 # ---------- EventDelivery 流水 ----------
 
 @router.get("/event-deliveries")
-def list_event_deliveries(sourceEventId: str = "", status: str = "",
+def list_event_deliveries(sourceEventId: str = "", sourceId: str = "",
+                          status: str = "",
                           destinationKind: str = "", dateFrom: str = "",
                           dateTo: str = "", page: int = 1, pageSize: int = 50,
                           db: Session = Depends(get_db),
@@ -334,6 +336,11 @@ def list_event_deliveries(sourceEventId: str = "", status: str = "",
     q = db.query(EventDelivery)
     if sourceEventId:
         q = q.filter(EventDelivery.event_id == sourceEventId)
+    if sourceId:
+        # 09-14 D3：数据源治理页事件流水（event → source 反查）
+        ev_ids = select(DataSourceEvent.id).where(
+            DataSourceEvent.source_id == sourceId)
+        q = q.filter(EventDelivery.event_id.in_(ev_ids))
     if status:
         q = q.filter(EventDelivery.status == status.lower())
     if destinationKind:

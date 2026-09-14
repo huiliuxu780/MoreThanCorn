@@ -44,6 +44,40 @@ export const UI_TERMS = {
   },
 } as const
 
+/** 09-14 D4 拍板：双「数据源」概念边界说明（文案单一事实源；不动导航不改名）。 */
+export const IA_BOUNDARY = {
+  ingress: {
+    text: "这里管理事件入口（Webhook/轮询：外部系统把事件推给平台，触发自动任务或分析批次）。",
+    linkText: "前往 能力与资源 → 数据资产 →",
+    to: "/resources/data",
+  },
+  assets: {
+    text: "这里管理数据资产（数据库连接与表/对象，供分析任务读取与写回）。",
+    linkText: "Webhook/轮询等事件入口在 数据接入 → 管理",
+    to: "/data-sources",
+  },
+} as const
+
+/** 09-14 D4 拍板：术语表样张落地（新文案一律从表取；含已拍板分词）。 */
+export const GLOSSARY: readonly { zh: string; en: string; scope: string; note: string }[] = [
+  { zh: "数据源（事件）", en: "DataSource", scope: "数据接入 /api/v2/data-sources",
+    note: "Webhook/轮询/测试事件入口；产出 SourceEvent，经 EventRoute 派发" },
+  { zh: "数据资产", en: "Datasource + DataAsset", scope: "能力与资源 → 数据资产",
+    note: "数据库连接与表/对象；禁止再译作「数据源」" },
+  { zh: "连接（凭据）", en: "Connection", scope: "设置 → 连接",
+    note: "协议端点+加密凭据+多环境；Secret 永不回显" },
+  { zh: "自动任务", en: "AutomationDefinition", scope: "导航「自动任务」",
+    note: "一次触发→一次 Invocation→一个执行体；不套批次" },
+  { zh: "分析任务", en: "AnalysisTask", scope: "任务域 /batch-tasks",
+    note: "数据集批量分析：TaskRun→N Run；与自动任务严格分词" },
+  { zh: "工作项", en: "WorkItem", scope: "导航「任务」看板",
+    note: "跨执行体统一投影卡（五态）；不是新执行实体" },
+  { zh: "调用", en: "AutomationInvocation", scope: "自动任务运行历史",
+    note: "一次触发的权威业务事实；目标 XOR（Session/Flow/Workflow Run）" },
+  { zh: "事件路由 / 投递", en: "EventRoute / EventDelivery", scope: "数据接入 · 治理页",
+    note: "路由=契约（destination 二选一）；投递=每路由一条流水（重试/死信独立）" },
+] as const
+
 /** MTC-002B：WorkItem 主状态中文映射（固定五组，顺序即泳道顺序）。 */
 export const WORK_ITEM_STATUS_LABELS: Record<string, string> = {
   needs_action: "需要操作",

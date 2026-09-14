@@ -16,7 +16,8 @@
  * 诚实边界：轮询拉取暂不支持鉴权头（后端匿名 GET），表单如实说明，不摆假字段。
  */
 import * as React from "react"
-import { Copy, Plus, RotateCw } from "lucide-react"
+import { useNavigate } from "react-router-dom"
+import { Copy, FlaskConical, Plus, RotateCw, Settings2, Timer, Webhook } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -45,6 +46,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Link } from "react-router-dom"
+import { IA_BOUNDARY } from "@/config/ui-terms"
 import { asApi, type CreateSourceBody, type SourceRow } from "@/services/as-api"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { toast } from "sonner"
@@ -54,6 +57,8 @@ const KIND_LABEL: Record<string, string> = {
   polling: "轮询",
   test_event: "测试事件",
 }
+/* 09-14 D3 拍板：类型 icon（lucide 同源，详情页同套） */
+const KIND_ICON = { webhook: Webhook, polling: Timer, test_event: FlaskConical } as const
 const STATUS_LABEL: Record<string, string> = {
   active: "活跃",
   paused: "已暂停",
@@ -84,6 +89,7 @@ const EMPTY_FORM: FormState = {
 }
 
 export default function DataSourcesPage() {
+  const navigate = useNavigate()
   const list = useAsyncData((o) => asApi.sources(o?.signal), [])
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<FormState>(EMPTY_FORM)
@@ -189,6 +195,14 @@ export default function DataSourcesPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4 md:p-6">
+      {/* 09-14 D4 拍板：双「数据源」边界说明条（文案取自 ui-terms 单一事实源） */}
+      <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-xs"
+           style={{ borderColor: "var(--brand-subtle)", background: "var(--brand-soft)",
+                    color: "var(--text-secondary)" }}>
+        <span>ℹ︎ {IA_BOUNDARY.ingress.text}</span>
+        <Link to={IA_BOUNDARY.ingress.to} className="font-medium"
+              style={{ color: "var(--brand-primary)" }}>{IA_BOUNDARY.ingress.linkText}</Link>
+      </div>
       <header className="flex items-center gap-3">
         <div>
           <h1 className="text-xl font-semibold">数据接入</h1>
@@ -338,7 +352,11 @@ export default function DataSourcesPage() {
               <TableRow key={s.id}>
                 <TableCell className="font-medium">{s.name}</TableCell>
                 <TableCell>
-                  <Badge variant="outline">{KIND_LABEL[s.kind] ?? s.kind}</Badge>
+                  <Badge variant="outline">
+                    {(() => { const I = KIND_ICON[s.kind as keyof typeof KIND_ICON] ?? Webhook
+                      return <I className="size-3" /> })()}
+                    {KIND_LABEL[s.kind] ?? s.kind}
+                  </Badge>
                 </TableCell>
                 <TableCell>{STATUS_LABEL[s.status] ?? s.status}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">
@@ -355,6 +373,11 @@ export default function DataSourcesPage() {
                         {polling === s.id ? "拉取中…" : "立即拉取"}
                       </Button>
                     )}
+                    {/* 09-14 D3 拍板：治理入口=独立详情页（非抽屉） */}
+                    <Button size="sm" variant="outline"
+                            onClick={() => navigate(`/data-sources/${s.id}`)}>
+                      <Settings2 className="size-3.5" /> 管理
+                    </Button>
                   </div>
                 </TableCell>
               </TableRow>

@@ -1,7 +1,7 @@
 /** Connections — 真 API + 卡片网格。路由 /settings/connections。
  * R4：鉴权双层（内置算法 none/api_key/bearer/basic/aksk + 自定义脚本沙箱）、
  * 多环境域名（预设四槽+自定义，按环境凭据覆盖）、空跑鉴权、按环境测试。 */
-import { Eye, EyeOff, KeyRound, Play, Plus, Trash2 } from "lucide-react"
+import { Database, Eye, EyeOff, Globe, KeyRound, Pencil, Play, Plug, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { useListQuery } from "@/hooks/use-list-query"
 import { Pagination } from "@/components/app/pagination"
@@ -139,6 +139,12 @@ export default function WfConnectionsPage() {
 }
 
 /** docs/v2-design/10 §4.6：embedded=true 时去页头供设置「连接」分区内嵌（安全注记替代 PageHeader）。 */
+/* 09-14 D2/D3 拍板：协议类型 icon（lucide 同源，与数据源详情页一致） */
+const PROTO_ICON: Record<string, typeof Globe> = {
+  "http-api": Globe, llm: Sparkles, mcp: Plug,
+  postgresql: Database, mysql: Database, oss: Database,
+}
+
 export function WfConnectionsContent({ embedded = false }: { embedded?: boolean }) {
   const [rows, setRows] = useState<ConnectionDTO[]>([])
   const [loading, setLoading] = useState(true)
@@ -381,15 +387,111 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
       ) : filtered.length === 0 ? (
         <EmptyState title="暂无连接" description="创建第一个连接，安全托管凭证" />
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <>
+        {/* 09-14 D2 拍板：桌面表格主视图（全宽利用/信息不截断/操作常显）；窄屏保留卡片 */}
+        <div className="hidden overflow-x-auto rounded-lg border lg:block" style={{ borderColor: "var(--border)" }}>
+          <table className="w-full border-collapse bg-card text-[13px]"
+                 style={{ tableLayout: "fixed" }}>
+            <thead>
+              <tr className="border-b text-left text-[11.5px] text-muted-foreground"
+                  style={{ borderColor: "var(--border)", background: "var(--surface-muted)" }}>
+                <th className="px-3 py-2 font-medium" style={{ width: "29%" }}>名称</th>
+                <th className="px-3 py-2 font-medium" style={{ width: "15%" }}>协议</th>
+                <th className="px-3 py-2 font-medium" style={{ width: "11%" }}>鉴权</th>
+                <th className="hidden px-3 py-2 font-medium whitespace-nowrap min-[1600px]:table-cell">环境</th>
+                <th className="px-3 py-2 font-medium" style={{ width: "12%" }}>生命周期</th>
+                <th className="px-3 py-2 font-medium" style={{ width: "15%" }}>健康</th>
+                <th className="hidden px-3 py-2 font-medium whitespace-nowrap min-[1600px]:table-cell">凭据</th>
+                <th className="hidden px-3 py-2 font-medium whitespace-nowrap min-[1600px]:table-cell">最近检查</th>
+                <th className="px-3 py-2 text-right font-medium" style={{ width: "16%" }}>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((c) => {
+                const lifecycle = (c.lifecycle ?? c.status) as string
+                const health = c.health ?? "untested"
+                const lifeCls = lifecycle === "active" ? "text-(--status-success-text)"
+                  : lifecycle === "archived" ? "text-(--text-tertiary)" : "text-(--status-warning-text)"
+                const healthCls = health === "healthy" ? "text-(--status-success-text)"
+                  : health === "untested" ? "text-(--text-tertiary)"
+                  : health === "stale" ? "text-(--status-warning-text)" : "text-(--status-danger-text)"
+                const healthLabel = { untested: "未测试", healthy: "健康", degraded: "降级", failed: "失败", stale: "已过时" }[health] ?? health
+                const ep = (c.endpoint ?? {}) as Record<string, unknown>
+                const epSummary = String(ep.base_url ?? (ep.host
+                  ? `${ep.host}:${ep.port ?? ""}/${ep.database ?? ""}` : ""))
+                const ProtoIcon = PROTO_ICON[c.protocol] ?? Globe
+                return (
+                  <tr key={c.id}
+                      className={`border-b hover:bg-muted/40 ${lifecycle === "archived" ? "opacity-60" : ""}`}
+                      style={{ borderColor: "var(--border)" }}>
+                    <td className="overflow-hidden px-3 py-2.5">
+                      <div className="truncate font-medium" title={c.name}>{c.name}</div>
+                      <div className="truncate text-[11px] text-(--text-tertiary)" title={epSummary}>{epSummary || "—"}</div>
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1.5">
+                        <ProtoIcon className="size-3.5 text-muted-foreground" />{protocolLabel(c.protocol)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">{kindLabel(c.kind)}</td>
+                    <td className="hidden px-3 py-2.5 text-[12px] text-muted-foreground whitespace-nowrap min-[1600px]:table-cell">
+                      {(c.environments?.length ?? 0) > 0
+                        ? `${c.environments!.length} 环境 · 默认 ${c.defaultEnv ?? c.environments![0]?.code}`
+                        : "单环境"}
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap"><Badge variant="secondary" className={`text-[10px] ${lifeCls}`}>{lifecycle}</Badge></td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <Badge variant="outline" className={`text-[10px] ${healthCls}`}
+                        title={lifecycle === "active" && health === "untested"
+                          ? "迁移遗留数据：未经连接测试验证，生产使用前请先「测试」" : undefined}>
+                        {healthLabel}{lifecycle === "active" && health === "untested" ? "·待验证" : ""}
+                      </Badge>
+                    </td>
+                    <td className="hidden px-3 py-2.5 text-[12px] text-muted-foreground whitespace-nowrap min-[1600px]:table-cell">
+                      {c.secretConfigured ? `已配置 · v${c.secretRevision?.versionNo ?? 1}` : "未配置"}
+                    </td>
+                    <td className="hidden px-3 py-2.5 text-[12px] text-(--text-tertiary) whitespace-nowrap min-[1600px]:table-cell">
+                      {c.lastTestAt ? new Date(c.lastTestAt).toLocaleString() : "—"}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {/* 09-14 D2：设置壳窄上下文 → 图标按钮+aria-label/title（常显且不被截断） */}
+                      <div className="flex justify-end gap-1">
+                        {lifecycle === "archived" ? (
+                          <span className="text-[11px] text-muted-foreground">已归档 · 只读</span>
+                        ) : (
+                          <>
+                            <button aria-label="编辑" title="编辑" className="rounded border p-1 hover:bg-muted" onClick={() => openEdit(c)}>
+                              <Pencil className="size-3.5" />
+                            </button>
+                            <button aria-label="测试" title="测试连接" className="rounded border p-1 hover:bg-muted" disabled={searching === c.id} onClick={() => test(c.id)}>
+                              <Play className="size-3.5" />
+                            </button>
+                            <button aria-label="轮换凭据" title="轮换凭据" className="rounded border p-1 hover:bg-muted" onClick={() => openRotate(c)}>
+                              <RefreshCw className="size-3.5" />
+                            </button>
+                            <button aria-label={`删除连接 ${c.name}`} title="删除" className="rounded border p-1 text-(--status-danger-text) hover:bg-muted" onClick={() => del(c)}>
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:hidden">
           {filtered.map((c) => {
             const lifecycle = (c.lifecycle ?? c.status) as string
             const health = c.health ?? "untested"
-            const lifeCls = lifecycle === "active" ? "text-emerald-600"
-              : lifecycle === "archived" ? "text-neutral-400" : "text-amber-600"
-            const healthCls = health === "healthy" ? "text-emerald-600"
-              : health === "untested" ? "text-neutral-500"
-              : health === "stale" ? "text-amber-600" : "text-red-500"
+            /* 09-14 D1：tailwind 硬色 → 主题文本角色 token（过 WCAG 且四主题自适应） */
+            const lifeCls = lifecycle === "active" ? "text-(--status-success-text)"
+              : lifecycle === "archived" ? "text-(--text-tertiary)" : "text-(--status-warning-text)"
+            const healthCls = health === "healthy" ? "text-(--status-success-text)"
+              : health === "untested" ? "text-(--text-tertiary)"
+              : health === "stale" ? "text-(--status-warning-text)" : "text-(--status-danger-text)"
             const healthLabel = { untested: "未测试", healthy: "健康", degraded: "降级", failed: "失败", stale: "已过时" }[health] ?? health
             return (
             <div key={c.id} className="group flex min-h-32 flex-col rounded-lg border bg-card p-3.5 hover:border-muted-foreground/40">
@@ -450,6 +552,7 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
             )
           })}
         </div>
+        </>
       )}
 
       <Pagination page={params.page ?? 1} pageSize={params.pageSize ?? 12} total={total}

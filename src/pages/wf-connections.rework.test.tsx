@@ -74,11 +74,14 @@ describe("Connections 审计返工锁定", () => {
       expect(screen.getByText(/PostgreSQL \(1\)/)).toBeTruthy())
   })
 
-  it("行内操作按钮带 focus-visible 可见性类", async () => {
+  it("桌面表格操作常显（不再 hover 专属），窄屏卡片保留 focus-visible", async () => {
     connections.mockResolvedValue({ items: [CONN()], total: 1 })
     renderPage()
-    const edit = await screen.findByRole("button", { name: "编辑" })
-    expect(edit.className).toContain("focus-visible:opacity-100")
-    expect(edit.className).toContain("group-focus-within:opacity-100")
+    const edits = await screen.findAllByRole("button", { name: "编辑" })
+    // D2 拍板后：表格行操作常显（无 opacity-0）；卡片（窄屏）保留 focus-visible 通道
+    const tableEdit = edits.find((e) => !e.className.includes("opacity-0"))
+    expect(tableEdit).toBeTruthy()
+    const cardEdit = edits.find((e) => e.className.includes("focus-visible:opacity-100"))
+    expect(cardEdit).toBeTruthy()
   })
 })

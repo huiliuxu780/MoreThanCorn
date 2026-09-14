@@ -27,7 +27,8 @@
   --text-primary: #111211;
   --text-secondary: #686D69;
   /* 09-07 台账 §4：三级文字色实测；segment 原站浅色不可见=缺陷，light 系用中性 token（声明偏差） */
-  --text-tertiary: #838280;
+  /* 09-14 D1 拍板：light 系三级文字加深过 WCAG 4.5:1（原 #838280=3.84 确凿违规） */
+  --text-tertiary: #737270;
   --segment-bg: var(--surface-muted);
   --segment-active: var(--surface-raised);
   /* 09-07 §12 原站 CSS 实测 */
@@ -55,6 +56,11 @@
   --status-success-soft: #ECF7F0;
   --status-warning-soft: #FAF3E5;
   --status-danger-soft: #FBEFEF;
+
+  /* ---- 09-14 D1 拍板：文本角色 token（徽章字色/状态文本）；图标·色点·图表继续用上方原站值 ---- */
+  --status-success-text: #237A4E;
+  --status-warning-text: #8F6410;
+  --status-danger-text: #BE4343;
 
   /* ---- Theme-R：Workflow 画布专用 token（designer 全表面 Light/Dark 驱动） ---- */
   --wf-canvas: #F4F5F2;
@@ -137,6 +143,11 @@
   --status-warning-soft: #2E2515;
   --status-danger-soft: #2E1A1A;
 
+  /* 09-14 D1：dark 已全过 WCAG，-text 与原值相同（零变化） */
+  --status-success-text: #62CD97;
+  --status-warning-text: #F0BA58;
+  --status-danger-text: #EC7777;
+
   --wf-canvas: #0B0C0B;
   --wf-canvas-dot: #262A27;
   --wf-edge: #4C544E;
@@ -215,6 +226,11 @@
   --status-warning-soft: #FAF3E5;
   --status-danger-soft: #FBEFEF;
 
+  /* 09-14 D1 拍板：与 light 同源的文本角色 token（羊皮纸底同样 ≥4.5:1）；tertiary 现值已达标不动 */
+  --status-success-text: #237A4E;
+  --status-warning-text: #8F6410;
+  --status-danger-text: #BE4343;
+
   --wf-canvas: #F4F1EA;
   --wf-canvas-dot: #DCD7CB;
   --wf-edge: #B0A998;
@@ -291,6 +307,11 @@
   --status-success-soft: #12291C;
   --status-warning-soft: #2E2515;
   --status-danger-soft: #2E1A1A;
+
+  /* 09-14 D1：dark-parchment 已全过 WCAG，-text 与原值相同（零变化） */
+  --status-success-text: #62CD97;
+  --status-warning-text: #F0BA58;
+  --status-danger-text: #EC7777;
 
   --wf-canvas: #1F1C17;
   --wf-canvas-dot: #322E26;

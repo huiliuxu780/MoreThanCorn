@@ -138,6 +138,8 @@ export interface ConnectionDTO {
   lifecycle?: "draft" | "active" | "disabled" | "archived"; health?: string;
   revision?: number; archivedAt?: string | null; secretRevision?: SecretRevisionInfo;
   providerHint?: string; environments?: ConnectionEnvDTO[]; defaultEnv?: string | null; authScript?: string;
+  /** 09-14 D2：最近连接测试时间（表格「最近检查」列） */
+  lastTestAt?: string | null;
 }
 export type ConnSecret = string | Record<string, string>
 /** 更新路径的环境条目=纯 patch（SDD-12 修复轮 B-03）：不接受任何 secret 字段，

@@ -1013,9 +1013,21 @@ class SourceBody(BaseModel):
     config: dict[str, Any] = {}
 
 
+class SourcePatchBody(BaseModel):
+    """09-14 D3：数据源治理页编辑体（archived 只允许 false——归档走 DELETE）。"""
+    name: str | None = None
+    config: dict[str, Any] | None = None
+    status: str | None = None
+    archived: bool | None = None
+
+
 @ingress_router.get("")
-def list_sources(db: Session = Depends(get_db), user: dict = Depends(require_role())):
-    rows = db.query(DataSource).order_by(DataSource.created_at.desc()).all()
+def list_sources(includeArchived: str = "", db: Session = Depends(get_db),
+                 user: dict = Depends(require_role())):
+    q = db.query(DataSource).order_by(DataSource.created_at.desc())
+    if includeArchived != "yes":
+        q = q.filter(DataSource.archived.is_(False))
+    rows = q.all()
     return {
         "items": [
             {
@@ -1024,6 +1036,7 @@ def list_sources(db: Session = Depends(get_db), user: dict = Depends(require_rol
                 "kind": s.kind,
                 "config": s.config,
                 "status": s.status,
+                "archived": bool(s.archived),
                 "cursor": s.cursor,
                 "last_poll_at": s.last_poll_at.isoformat() if s.last_poll_at else None,
             }
@@ -1046,6 +1059,107 @@ def create_source(body: SourceBody, db: Session = Depends(get_db), user: dict = 
     db.commit()
     db.refresh(src)
     return {"id": src.id}
+
+
+@ingress_router.get("/{sid}")
+def get_source(sid: str, db: Session = Depends(get_db),
+               user: dict = Depends(require_role())):
+    """09-14 D3：数据源治理页单源读取。"""
+    src = db.get(DataSource, sid)
+    if src is None:
+        raise HTTPException(404, "source not found")
+    return {"id": src.id, "name": src.name, "kind": src.kind,
+            "config": src.config, "status": src.status,
+            "archived": bool(src.archived), "cursor": src.cursor,
+            "last_poll_at": src.last_poll_at.isoformat() if src.last_poll_at else None,
+            "has_token": bool(src.auth_token_hash),
+            "created_at": src.created_at.isoformat() if src.created_at else None}
+
+
+@ingress_router.patch("/{sid}")
+def patch_source(sid: str, body: SourcePatchBody, db: Session = Depends(get_db),
+                 user: dict = Depends(require_operator)):
+    """09-14 D3：数据源治理页编辑（名称/config/暂停恢复/解除归档）。"""
+    src = db.get(DataSource, sid)
+    if src is None:
+        raise HTTPException(404, "source not found")
+    # 归档源只读，唯一例外：archived=false 解除归档
+    if src.archived and body.archived is not False:
+        raise HTTPException(404, "source 已归档（仅允许 archived=false 解除归档）")
+    if body.name is not None:
+        if not body.name.strip():
+            raise HTTPException(422, "名称不能为空")
+        src.name = body.name.strip()
+    if body.config is not None:
+        cfg = dict(src.config or {})
+        cfg.update(body.config)
+        if src.kind == "polling":
+            url = str(cfg.get("url") or "")
+            if not url.startswith(("http://", "https://")):
+                raise HTTPException(422, "polling 源 config.url 必须为 http(s) 地址")
+            from ..egress import enforce_egress
+            enforce_egress(url)  # 保存时即过 SSRF 闸，不留到拉取时才炸
+        src.config = cfg
+    if body.status is not None:
+        if body.status not in ("active", "paused"):
+            raise HTTPException(422, "status 只允许 active|paused")
+        src.status = body.status
+    if body.archived is not None:
+        if body.archived:
+            raise HTTPException(422, "归档请走 DELETE（归档语义），PATCH 仅可解除归档")
+        src.archived = False
+    db.commit()
+    db.refresh(src)
+    return {"id": src.id, "name": src.name, "kind": src.kind,
+            "config": src.config, "status": src.status,
+            "archived": bool(src.archived)}
+
+
+@ingress_router.delete("/{sid}")
+def delete_source(sid: str, db: Session = Depends(get_db),
+                  user: dict = Depends(require_operator)):
+    """09-14 D3：删除=归档语义（不物理删，事件/路由流水可追溯）。
+
+    被未归档路由 / legacy trigger / 历史事件引用时 409 并列引用清单。
+    """
+    src = db.get(DataSource, sid)
+    if src is None:
+        raise HTTPException(404, "source not found")
+    refs: list[dict] = []
+    n_routes = db.query(EventRoute).filter(
+        EventRoute.source_id == sid, EventRoute.archived.is_(False)).count()
+    if n_routes:
+        refs.append({"kind": "event_route", "count": n_routes})
+    n_trig = db.query(AutomationTrigger).filter(
+        AutomationTrigger.kind.in_(("event", "polling")),
+        AutomationTrigger.config["data_source_id"].as_string() == sid).count()
+    if n_trig:
+        refs.append({"kind": "automation_trigger", "count": n_trig})
+    n_ev = db.query(DataSourceEvent).filter(DataSourceEvent.source_id == sid).count()
+    if n_ev:
+        refs.append({"kind": "event", "count": n_ev})
+    if refs:
+        raise HTTPException(409, {"code": "SOURCE_REFERENCED",
+                                  "detail": "数据源被路由/触发器/事件引用，拒绝归档",
+                                  "references": refs})
+    src.archived = True
+    src.status = "paused"
+    db.commit()
+    return {"id": sid, "archived": True}
+
+
+@ingress_router.post("/{sid}/regenerate-token")
+def regenerate_source_token(sid: str, db: Session = Depends(get_db),
+                            user: dict = Depends(require_operator)):
+    """09-14 D3：重新生成 webhook token——旧 token 即刻失效，新 token 仅返回一次。"""
+    src = db.get(DataSource, sid)
+    if src is None or src.kind != "webhook" or src.archived:
+        raise HTTPException(404, "webhook source not found")
+    token = pysecrets.token_urlsafe(18)
+    src.auth_token_hash = hashlib.sha256(token.encode()).hexdigest()
+    db.commit()
+    return {"id": sid, "webhook_token": token,
+            "note": "旧 token 即刻失效；新 token 仅显示一次，关闭后无法再查看"}
 
 
 def _apply_filter(cfg: dict, payload: dict) -> bool:
