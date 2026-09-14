@@ -242,14 +242,18 @@ def ensure_oat_conn(db, apply: bool) -> tuple[str, list[str]]:
     else:
         log.append("⚠ 未提供 OAT_PASSWORD 环境变量：secret 暂存 {username,token}，"
                    "密码稍后经 设置→连接→轮换 补录")
+    # test 环境填本环境唯一实测网关 gw.dev-corn（09-14 用户要求填进去）；
+    # 文件一路由在其上暂 404（带 AKSK/JWT 亦同，疑似内网/VPN 域），环境 label 如实标注
     c = Connection(name=OAT_CONN_NAME, kind="script", protocol="http-api",
-                   endpoint={},  # base 待用户从 Apifox 环境提供；空=执行时诚实报错
+                   endpoint={"base_url": XSPACE_DEV_BASE},
                    environments=[
-                       {"code": "test", "label": "测试（域名待填）", "endpoint": {}},
+                       {"code": "test", "label": "测试·dev-corn 网关（文件一路由暂 404，真域待确认）",
+                        "endpoint": {"base_url": XSPACE_DEV_BASE}},
                        {"code": "prod", "label": "生产（域名待填）", "endpoint": {}},
                    ],
                    default_env="test", auth_script=OAT_AUTH_SCRIPT,
-                   provider_hint="", secret_ref="", lifecycle="draft", status="draft")
+                   provider_hint="BSH BP/OAT；三公网网关均404疑内网域；token待轮换",
+                   secret_ref="", lifecycle="draft", status="draft")
     if apply:
         db.add(c)
         db.flush()
