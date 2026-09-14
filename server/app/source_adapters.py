@@ -213,9 +213,12 @@ def fetch_maxcompute(config: dict, secret: Any,
     endpoint = str(config.get("endpoint") or "")
     project = str(config.get("project") or "")
     table = str(config.get("table") or "")
-    if not (endpoint and project and table):
+    sql = str(config.get("sql") or "").strip()
+    if sql and not sql.lower().startswith("select"):
+        raise SourceFetchError("config.sql 仅支持 SELECT（只读拉取）")
+    if not (endpoint and project and (table or sql)):
         raise SourceFetchError(
-            "MaxCompute 源需要 config.endpoint/project/table")
+            "MaxCompute 源需要 config.endpoint/project + (table 或 sql)")
     if not isinstance(secret, dict) or not secret.get("access_key_id"):
         raise SourceFetchError(
             "MaxCompute 源需要 secret={access_key_id, access_key_secret}")
@@ -231,6 +234,19 @@ def fetch_maxcompute(config: dict, secret: Any,
     try:
         o = ODPS(secret["access_key_id"], secret.get("access_key_secret", ""),
                  project, endpoint=endpoint)
+        if sql:
+            # SQL 查询拉取模式（QuickBI 数据集/函数背后的 SQL 可直接贴入）；
+            # offset 分页每页重跑查询（v1 成本可接受，文档注明）
+            import itertools
+            inst = o.execute_sql(sql)
+            with inst.open_reader() as reader:
+                total = reader.count
+                cols = list(reader.schema.names)
+                slice_ = list(itertools.islice(reader, offset, offset + page_size))
+                rows = [{c: _jsonable(rec[c]) for c in cols} for rec in slice_]
+            next_cursor = (str(offset + page_size)
+                           if offset + page_size < total else None)
+            return rows, next_cursor
         t = o.get_table(table)
         part = None
         if t.table_schema.partitions:

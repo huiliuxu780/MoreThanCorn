@@ -93,3 +93,13 @@ gate.sh --live → ALL GATES GREEN（pytest 584 / vitest 76 / build / lint0 / �
 - 凭据经对话明文传递 → **建议 e2e 完成后轮换两组 AKSK**；
 - 平台侧存储为 secret_ref 信封加密（WF_SECRET_KEY 包裹 data key），API 永不回显；
 - 全部真源操作仅只读（SELECT / GetLogs / list），无写入。
+
+### 7.4 MaxCompute SQL 查询拉取模式（config.sql，只读）
+- 用户确认 project=bshcn_consumer_corn_prod，但复核证据：`func_quickbi_corn` 在该 project
+  **以表/视图/函数/资源/xflow 任何形态均不存在**（exist_table/exist_function/exist_resource/
+  exist_xflow 全 False；list_functions=0、list_resources=0；project 非 schema-enabled）。
+- 为此给 maxcompute 适配器增加 **config.sql 拉取模式**（SELECT-only 守卫：保存即拒+拉取即拒；
+  offset 分页每页重跑查询，v1 成本可接受）：若 `func_quickbi_corn` 实为 QuickBI 侧对象
+  （数据集/自定义函数），把它背后的 SQL 贴入 config.sql 即可拉取。
+- SLS：用户选择「先给 RAM 加 ListProject 权限」；09-14 重试仍 denied（授权未生效），
+  生效后重跑发现即可（list_project → list_logstore → 配源真跑）。

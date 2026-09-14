@@ -1063,8 +1063,10 @@ def _validate_source_config(kind: str, config: dict) -> None:
             raise HTTPException(422, "飞书多维表格源需要 config.app_token 与 config.table_id")
     elif kind == "maxcompute":
         if not (config.get("endpoint") and config.get("project")
-                and config.get("table")):
-            raise HTTPException(422, "MaxCompute 源需要 config.endpoint/project/table")
+                and (config.get("table") or config.get("sql"))):
+            raise HTTPException(422, "MaxCompute 源需要 config.endpoint/project + (table 或 sql)")
+        if config.get("sql") and not str(config["sql"]).strip().lower().startswith("select"):
+            raise HTTPException(422, "config.sql 仅支持 SELECT（只读）")
     elif kind == "sls":
         if not (config.get("endpoint") and config.get("project")
                 and config.get("logstore")):

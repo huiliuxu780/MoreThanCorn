@@ -322,3 +322,13 @@ def test_sls_missing_secret_fail_closed():
     with pytest.raises(sa.SourceFetchError, match="access_key"):
         sa.fetch_page("sls", {"endpoint": "e", "project": "p", "logstore": "l"},
                       "", None)
+
+
+def test_maxcompute_sql_mode_guard():
+    """SQL 拉取模式只读守卫：非 SELECT 保存即拒/拉取即拒（不触网）。"""
+    import pytest as _pt
+    with _pt.raises(sa.SourceFetchError, match="SELECT"):
+        sa.fetch_page("maxcompute",
+                      {"endpoint": "https://odps.example.com", "project": "p",
+                       "sql": "drop table x"},
+                      _ref({"access_key_id": "ak", "access_key_secret": "sk"}), None)
