@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useListQuery } from "@/hooks/use-list-query"
 import { Pagination } from "@/components/app/pagination"
 import { pagedApi } from "@/services/wf-api"
-import { connApi, resApi, type ConnSecret, type ConnectionDTO, type ConnectionEnvPatch } from "@/services/resource-api"
+import { connApi, type ConnSecret, type ConnectionDTO, type ConnectionEnvPatch } from "@/services/resource-api"
 import { AKSK_TEMPLATE, ENV_PRESETS, KINDS, PROTOCOLS, isDb, isOss, kindLabel, protocolLabel } from "@/services/connection-auth"
 import { toast } from "sonner"
 
@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { DialogDescription,
+import {
   Dialog,
   DialogContent,
   DialogFooter,
@@ -162,11 +162,6 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
   const [loading, setLoading] = useState(true)
   const [searchInput, setSearchInput] = useState("")
   const [error, setError] = useState<string | null>(null)
-  // D5 目录浏览（一个 Connection 下多表/多日志库）
-  const [catalogFor, setCatalogFor] = useState<string | null>(null)
-  const [catalog, setCatalog] = useState<{ name: string; kind: string; schema?: string; partitioned?: boolean; comment?: string }[] | null>(null)
-  const [catalogErr, setCatalogErr] = useState<string | null>(null)
-  const [mounting, setMounting] = useState<string | null>(null)
   const [allRows, setAllRows] = useState<ConnectionDTO[]>([])
   const [open, setOpen] = useState(false)
   const [showSecret, setShowSecret] = useState(false)
@@ -361,45 +356,6 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
   const setEnv = (i: number, patch: Partial<EnvForm>) =>
     set({ environments: form.environments.map((e, j) => (j === i ? { ...e, ...patch } : e)) })
 
-  const openCatalog = async (cid: string) => {
-    setCatalogFor(cid); setCatalog(null); setCatalogErr(null)
-    try {
-      const r = await connApi.catalog(cid)
-      setCatalog(r.items)
-    } catch (e) {
-      setCatalogErr((e as Error).message)
-    }
-  }
-
-  const mountAsset = async (cid: string, item: { name: string; partitioned?: boolean; comment?: string; schema?: string }) => {
-    setMounting(item.name)
-    try {
-      const conn = (await connApi.list({})).items.find((c) => c.id === cid)
-      const ep = (conn?.endpoint ?? {}) as Record<string, unknown>
-      const loc = String(ep.project ?? ep.database ?? "")
-      const existing = (await resApi.list("datasource", { pageSize: 100 })).items
-        .find((d) => (d as unknown as { connection_id?: string }).connection_id === cid)
-      const dsId = existing ? existing.id
-        : (await resApi.create("datasource", {
-            name: `${conn?.protocol ?? ""}·${loc || (conn?.name ?? "")}`,
-            type: conn?.protocol ?? "postgresql",
-            connection_id: cid, location: loc,
-          })).id
-      await resApi.create("asset", {
-        name: item.name, source: "catalog", datasource_id: dsId,
-        location: item.name, record_meaning: "一行记录",
-        record_id_field: "id", time_field: "gmt_create",
-        config: { partitioned: !!item.partitioned, comment: item.comment ?? "",
-                  schema: item.schema ?? "" },
-      })
-      toast.success(`已挂为数据资产：${item.name}`)
-    } catch (e) {
-      toast.error(`挂载失败：${(e as Error).message}`)
-    } finally {
-      setMounting(null)
-    }
-  }
-
   const createBtn = (
     <Button className="bg-foreground text-background hover:bg-foreground/85" onClick={openCreate}>
       <Plus className="size-4" /> 创建连接
@@ -407,51 +363,6 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
   )
   const inner = (
     <>
-      {/* D5 目录浏览对话框（发现自 Connection 凭据；挂为数据资产） */}
-      <Dialog open={catalogFor !== null} onOpenChange={(v) => { if (!v) setCatalogFor(null) }}>
-        <DialogContent className="max-h-[80vh] max-w-2xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>目录（表 / 日志库）</DialogTitle>
-            <DialogDescription>发现自 Connection 凭据；挂为数据资产后可被分析任务与数据接入引用。</DialogDescription>
-          </DialogHeader>
-          {catalogErr ? (
-            <div className="rounded-md border px-3 py-2 text-sm" style={{ color: "var(--status-danger-text)" }}>
-              目录发现失败：{catalogErr}
-            </div>
-          ) : catalog === null ? (
-            <p className="text-sm text-muted-foreground">发现中…</p>
-          ) : (
-            <table className="w-full border-collapse text-[12.5px]">
-              <thead>
-                <tr className="border-b text-left text-[11px] text-muted-foreground">
-                  <th className="px-2 py-1.5 font-medium">名称</th>
-                  <th className="px-2 py-1.5 font-medium">类型</th>
-                  <th className="px-2 py-1.5 font-medium">schema</th>
-                  <th className="px-2 py-1.5 font-medium">分区</th>
-                  <th className="px-2 py-1.5 text-right font-medium">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {catalog.map((it) => (
-                  <tr key={`${it.schema ?? ""}.${it.name}`} className="border-b last:border-b-0">
-                    <td className="px-2 py-1.5" title={it.comment}>{it.name}</td>
-                    <td className="px-2 py-1.5">{it.kind}</td>
-                    <td className="px-2 py-1.5">{it.schema ?? "—"}</td>
-                    <td className="px-2 py-1.5">{it.partitioned ? "是" : "—"}</td>
-                    <td className="px-2 py-1.5 text-right">
-                      <button className="rounded border px-1.5 py-0.5 hover:bg-muted"
-                              disabled={mounting === it.name}
-                              onClick={() => catalogFor && void mountAsset(catalogFor, it)}>
-                        {mounting === it.name ? "挂载中…" : "挂为数据资产"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </DialogContent>
-      </Dialog>
       {embedded ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
@@ -561,11 +472,6 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
                           <span className="text-[11px] text-muted-foreground">已归档 · 只读</span>
                         ) : (
                           <>
-                            {["maxcompute", "sls", "postgresql", "mysql"].includes(c.protocol) && (
-                              <button aria-label="目录" title="浏览表/日志库目录" className="rounded border p-1 hover:bg-muted" onClick={() => void openCatalog(c.id)}>
-                                <Database className="size-3.5" />
-                              </button>
-                            )}
                             <button aria-label="编辑" title="编辑" className="rounded border p-1 hover:bg-muted" onClick={() => openEdit(c)}>
                               <Pencil className="size-3.5" />
                             </button>

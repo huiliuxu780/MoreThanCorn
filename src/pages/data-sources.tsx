@@ -50,7 +50,6 @@ import { Link } from "react-router-dom"
 import { IA_BOUNDARY } from "@/config/ui-terms"
 import { asApi, type CreateSourceBody, type SourceRow } from "@/services/as-api"
 import { connApi } from "@/services/resource-api"
-import { WfConnectionsContent } from "./wf-connections"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { toast } from "sonner"
@@ -309,12 +308,11 @@ export default function DataSourcesPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4 md:p-6">
-      {/* 09-14 用户拍板（冗余整合）：数据接入=单入口三 tab——数据源/连接与目录/事件流水；
-          Connections 自设置页并入此处，消除三处分散 */}
+      {/* 09-14 终版 IA：数据接入只管事件接入=数据源+事件流水；
+          连接凭据归 能力与资源→连接，数据资产(含目录挂载)归 能力与资源→数据资产 */}
       <Tabs value={tab} onValueChange={(v) => { setTab(v); setSearchParams((p) => { const n = new URLSearchParams(p); if (v === "sources") n.delete("tab"); else n.set("tab", v); return n }, { replace: true }) }}>
         <TabsList>
           <TabsTrigger value="sources">数据源</TabsTrigger>
-          <TabsTrigger value="connections">连接与目录</TabsTrigger>
           <TabsTrigger value="events">事件流水</TabsTrigger>
         </TabsList>
       <TabsContent value="sources" className="flex flex-col gap-4">
@@ -690,9 +688,6 @@ export default function DataSourcesPage() {
         </div>
       )}
           </TabsContent>
-      <TabsContent value="connections" className="flex flex-col gap-4">
-        <WfConnectionsContent embedded />
-      </TabsContent>
       <TabsContent value="events" className="flex flex-col gap-4">
         <EventsTab />
       </TabsContent>

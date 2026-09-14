@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { WfConnectionsContent } from "@/pages/wf-connections"
 import { Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -15,6 +16,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ConnectionPicker } from "@/components/resources/connection-picker"
 import { pagedApi, providerApi } from "@/services/wf-api"
+import { connApi, resApi } from "@/services/resource-api"
 import { asApi } from "@/services/as-api"
 
 /** docs/v2-design/10 §4.3–4.5：壳内分类页（工具与 MCP / 知识库 / 数据资产）。 */
@@ -64,7 +66,116 @@ export function ResKnowledgePage() {
   )
 }
 
+/** 09-14 终版 IA：连接唯一归属=能力与资源→连接（凭据/多环境/轮换/健康）。 */
+export function ResConnectionsPage() {
+  return <WfConnectionsContent embedded />
+}
+
+/** 09-14 终版 IA：目录挂载唯一入口=数据资产页（连接选→目录选→挂载）。 */
+function CatalogMountDialog({ open, onOpenChange, onMounted }: {
+  open: boolean; onOpenChange: (v: boolean) => void; onMounted: () => void
+}) {
+  const [conns, setConns] = useState<{ id: string; name: string; protocol: string }[]>([])
+  const [connId, setConnId] = useState("")
+  const [items, setItems] = useState<{ name: string; kind: string; partitioned?: boolean; comment?: string; schema?: string }[] | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [mounting, setMounting] = useState<string | null>(null)
+  useEffect(() => {
+    if (open) connApi.list({}).then((r) => setConns(r.items)).catch(() => setConns([]))
+  }, [open])
+  const loadCatalog = async (cid: string) => {
+    setItems(null); setErr(null)
+    try {
+      const r = await connApi.catalog(cid)
+      setItems(r.items)
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+  const mount = async (item: { name: string; partitioned?: boolean; comment?: string; schema?: string }) => {
+    setMounting(item.name)
+    try {
+      const conn = conns.find((c) => c.id === connId)
+      const cep = ((conn as unknown as { endpoint?: Record<string, unknown> })?.endpoint ?? {})
+      const loc = String(cep.project ?? cep.database ?? "")
+      const existing = (await resApi.list("datasource", { pageSize: 100 })).items
+        .find((d) => (d as unknown as { connection_id?: string }).connection_id === connId)
+      const dsId = existing ? existing.id
+        : (await resApi.create("datasource", {
+            name: `${conn?.protocol ?? ""}·${loc || (conn?.name ?? "")}`,
+            type: conn?.protocol ?? "postgresql", connection_id: connId, location: loc,
+          })).id
+      await resApi.create("asset", {
+        name: item.name, source: "catalog", datasource_id: dsId, location: item.name,
+        record_meaning: "一行记录", record_id_field: "id", time_field: "gmt_create",
+        config: { partitioned: !!item.partitioned, comment: item.comment ?? "", schema: item.schema ?? "" },
+      })
+      toast.success(`已挂载为数据资产：${item.name}`)
+      onMounted()
+    } catch (e) {
+      toast.error(`挂载失败：${(e as Error).message}`)
+    } finally {
+      setMounting(null)
+    }
+  }
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[80vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>从连接目录挂载表 / 日志库</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-1">
+          <Label id="mount-conn-label">Connection</Label>
+          <select className="h-9 rounded-md border bg-transparent px-2 text-sm"
+                  aria-labelledby="mount-conn-label"
+                  value={connId}
+                  onChange={(e) => { setConnId(e.target.value); void loadCatalog(e.target.value) }}>
+            <option value="">选择连接…</option>
+            {conns.map((c) => <option key={c.id} value={c.id}>{c.name}（{c.protocol}）</option>)}
+          </select>
+        </div>
+        {err ? (
+          <div className="rounded-md border px-3 py-2 text-sm" style={{ color: "var(--status-danger-text)" }}>
+            目录发现失败：{err}
+          </div>
+        ) : items === null ? (
+          <p className="text-sm text-muted-foreground">{connId ? "发现中…" : "选择连接后展示其表/日志库目录"}</p>
+        ) : (
+          <table className="w-full border-collapse text-[12.5px]">
+            <thead>
+              <tr className="border-b text-left text-[11px] text-muted-foreground">
+                <th className="px-2 py-1.5 font-medium">名称</th>
+                <th className="px-2 py-1.5 font-medium">类型</th>
+                <th className="px-2 py-1.5 font-medium">分区</th>
+                <th className="px-2 py-1.5 text-right font-medium">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((it) => (
+                <tr key={it.name} className="border-b last:border-b-0">
+                  <td className="px-2 py-1.5" title={it.comment}>{it.name}</td>
+                  <td className="px-2 py-1.5">{it.kind}</td>
+                  <td className="px-2 py-1.5">{it.partitioned ? "是" : "—"}</td>
+                  <td className="px-2 py-1.5 text-right">
+                    <button className="rounded border px-1.5 py-0.5 hover:bg-muted"
+                            disabled={mounting === it.name}
+                            onClick={() => void mount(it)}>
+                      {mounting === it.name ? "挂载中…" : "挂载"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function ResDataPage() {
+  const [mountOpen, setMountOpen] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
   return (
     <div className="flex flex-col gap-3">
       {/* 09-14 D4 拍板：双「数据源」边界说明条（文案取自 ui-terms 单一事实源） */}
@@ -74,8 +185,13 @@ export function ResDataPage() {
         <span>ℹ︎ {IA_BOUNDARY.assets.text}</span>
         <Link to={IA_BOUNDARY.assets.to} className="font-medium"
               style={{ color: "var(--brand-primary)" }}>{IA_BOUNDARY.assets.linkText}</Link>
+        <span className="ml-auto">
+          <Button size="sm" variant="outline" onClick={() => setMountOpen(true)}>从连接目录挂载</Button>
+        </span>
       </div>
-      <ResCategoryList types={["datasource", "asset"]} createTo="/resources/data/new" />
+      <ResCategoryList key={reloadKey} types={["datasource", "asset"]} createTo="/resources/data/new" />
+      <CatalogMountDialog open={mountOpen} onOpenChange={setMountOpen}
+                          onMounted={() => setReloadKey((k) => k + 1)} />
     </div>
   )
 }
