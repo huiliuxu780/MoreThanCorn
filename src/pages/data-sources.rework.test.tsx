@@ -69,7 +69,7 @@ describe("DataSources 审计返工锁定", () => {
     createSource.mockResolvedValue({ id: "src-1" })
     render(<MemoryRouter><DataSourcesPage /></MemoryRouter>)
     await openCreate()
-    await pickKind("轮询")
+    await pickKind("API（拉取）")
     // P0：轮询专属字段必须出现
     await waitFor(() => expect(document.querySelector("#ds-url")).toBeTruthy())
     expect(document.querySelector("#ds-interval")).toBeTruthy()
@@ -91,7 +91,7 @@ describe("DataSources 审计返工锁定", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存" }))
     await waitFor(() => expect(createSource).toHaveBeenCalledTimes(1))
     const body = createSource.mock.calls[0][0]
-    expect(body.kind).toBe("polling")
+    expect(body.kind).toBe("api_pull")
     expect(body.config.url).toBe("https://example.internal/api/tickets")
     expect(body.config.interval_seconds).toBe(120)
     expect(body.config.cursor_field).toBe("id")

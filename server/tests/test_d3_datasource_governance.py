@@ -23,8 +23,10 @@ client = TestClient(app)
 
 
 def _mk_source(kind: str = "webhook", name: str = "d3-gov-src") -> dict:
+    cfg = ({"url": "https://example.internal/items", "interval_seconds": 60}
+           if kind == "api_pull" else {})
     r = client.post("/api/v2/data-sources",
-                    json={"name": name, "kind": kind, "config": {}})
+                    json={"name": name, "kind": kind, "config": cfg})
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -62,7 +64,7 @@ def test_get_single_source():
 
 
 def test_patch_name_config_status():
-    src = _mk_source(kind="polling", name="d3-patch-src")
+    src = _mk_source(kind="api_pull", name="d3-patch-src")
     try:
         # polling url 校验 + 保存时 egress（私网地址在非生产放行、格式仍校验）
         r = client.patch(f"/api/v2/data-sources/{src['id']}",
@@ -145,7 +147,7 @@ def test_regenerate_token_invalidates_old():
                         headers={"X-Source-Token": new_token})
         assert r.status_code == 200, r.text
         # 非 webhook 源 404
-        p = _mk_source(kind="polling", name="d3-token-poll")
+        p = _mk_source(kind="api_pull", name="d3-token-poll")
         assert client.post(
             f"/api/v2/data-sources/{p['id']}/regenerate-token").status_code == 404
         _cleanup(p["id"])

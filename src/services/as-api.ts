@@ -117,20 +117,22 @@ export interface SourceRow {
 
 export interface CreateSourceBody {
   name: string;
-  kind: "webhook" | "polling" | "test_event";
+  kind: "webhook" | "api_pull" | "maxcompute" | "feishu_bitable" | "test_event";
   config: {
-    /** polling：拉取地址（必填，后端 tick 强校验） */
-    url?: string;
-    /** polling：watcher 调度间隔秒 */
-    interval_seconds?: number;
-    /** polling：游标字段名（默认 id）与查询参数名（默认 after） */
-    cursor_field?: string;
-    cursor_param?: string;
+    /** api_pull：拉取地址/间隔/游标/页大小 */
+    url?: string; interval_seconds?: number; cursor_field?: string;
+    cursor_param?: string; page_size?: number;
+    /** maxcompute：endpoint/project/table */
+    endpoint?: string; project?: string; table?: string;
+    /** feishu_bitable：app_token/table_id/view_id */
+    app_token?: string; table_id?: string; view_id?: string;
     /** 事件过滤 {field, op: eq|ne|contains|gt|lt, value} */
     filter?: { field: string; op: string; value: unknown };
     /** 字段映射：触发输入键 → payload 取值路径 */
     mapping?: Record<string, string>;
   };
+  /** 非 webhook 凭据（加密落库，永不回显） */
+  secret?: Record<string, unknown> | string;
 }
 
 export const asApi = {
@@ -322,7 +324,8 @@ export const asApi = {
   sourceGet: (sid: string) =>
     req<{ id: string; name: string; kind: string; config: Record<string, unknown>;
           status: string; archived: boolean; cursor: Record<string, unknown>;
-          last_poll_at: string | null; has_token: boolean; created_at: string | null }>(
+          last_poll_at: string | null; has_token: boolean; has_secret: boolean;
+          created_at: string | null }>(
       `/api/v2/data-sources/${sid}`),
   sourcePatch: (sid: string, body: { name?: string; config?: Record<string, unknown>;
                                      status?: "active" | "paused"; archived?: false }) =>
@@ -334,6 +337,10 @@ export const asApi = {
     req<{ id: string; archived: boolean } | { detail: { code: string; detail: string;
       references: { kind: string; count: number }[] } }>(
       `/api/v2/data-sources/${sid}`, { method: "DELETE" }),
+  sourceSetSecret: (sid: string, secret: Record<string, unknown> | { clear: true }) =>
+    req<{ id: string; has_secret: boolean }>(`/api/v2/data-sources/${sid}/secret`, {
+      method: "POST", body: JSON.stringify({ secret }),
+    }),
   sourceRegenerateToken: (sid: string) =>
     req<{ id: string; webhook_token: string; note: string }>(
       `/api/v2/data-sources/${sid}/regenerate-token`, { method: "POST" }),

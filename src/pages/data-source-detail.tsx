@@ -7,9 +7,9 @@
 import * as React from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import {
-  ArrowLeft, CircleCheck, CircleX, Clock, Copy, Filter, FlaskConical, History,
-  KeyRound, OctagonAlert, Pause, Play, Plus, Route as RouteIcon, Timer, Trash2,
-  Webhook,
+  ArrowLeft, CircleCheck, CircleX, Clock, CloudDownload, Copy, Database, Filter,
+  FlaskConical, History, KeyRound, OctagonAlert, Pause, Play, Plus,
+  Route as RouteIcon, Table as TableIcon, Trash2, Webhook,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,10 +26,15 @@ import { asApi, type EventDeliveryDTO, type EventRouteDTO } from "@/services/as-
 import { useAsyncData } from "@/hooks/use-async-data"
 import { toast } from "sonner"
 
-const KIND_ICON = { webhook: Webhook, polling: Timer, test_event: FlaskConical } as const
+const KIND_ICON = {
+  webhook: Webhook, api_pull: CloudDownload, maxcompute: Database,
+  feishu_bitable: TableIcon, test_event: FlaskConical,
+} as const
 const KIND_LABEL: Record<string, string> = {
-  webhook: "Webhook", polling: "轮询", test_event: "测试事件",
+  webhook: "Webhook", api_pull: "API（拉取）", maxcompute: "MaxCompute",
+  feishu_bitable: "飞书多维表格", test_event: "测试事件",
 }
+const PULL_KINDS = ["api_pull", "feishu_bitable", "maxcompute"]
 const STATUS_LABEL: Record<string, string> = {
   active: "活跃", paused: "已暂停", error: "异常",
 }
@@ -79,6 +84,10 @@ export default function DataSourceDetailPage() {
     { field: string; op: string; value: string } | null | undefined>(undefined)
   const [pollUrl, setPollUrl] = React.useState<string | null>(null)
   const [pollInterval, setPollInterval] = React.useState<string | null>(null)
+  const [mc, setMc] = React.useState<{ endpoint: string; project: string; table: string } | null>(null)
+  const [fs, setFs] = React.useState<{ app_token: string; table_id: string; view_id: string } | null>(null)
+  const [secretOpen, setSecretOpen] = React.useState(false)
+  const [secretJson, setSecretJson] = React.useState("")
   const [saving, setSaving] = React.useState(false)
   const [newToken, setNewToken] = React.useState<string | null>(null)
   const [delOpen, setDelOpen] = React.useState(false)
@@ -101,6 +110,12 @@ export default function DataSourceDetailPage() {
     }
     if (pollUrl === null) setPollUrl(String(cfg.url ?? ""))
     if (pollInterval === null) setPollInterval(String(cfg.interval_seconds ?? "300"))
+    if (mc === null) setMc({ endpoint: String(cfg.endpoint ?? ""),
+                            project: String(cfg.project ?? ""),
+                            table: String(cfg.table ?? "") })
+    if (fs === null) setFs({ app_token: String(cfg.app_token ?? ""),
+                            table_id: String(cfg.table_id ?? ""),
+                            view_id: String(cfg.view_id ?? "") })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src.data])
 
@@ -211,7 +226,7 @@ export default function DataSourceDetailPage() {
   }
 
   const KindIcon = KIND_ICON[src.data.kind as keyof typeof KIND_ICON] ?? Webhook
-  const isPolling = src.data.kind === "polling"
+  const isPull = PULL_KINDS.includes(src.data.kind)
 
   return (
     <div className="flex flex-col gap-4 p-4 md:p-6">
@@ -249,7 +264,7 @@ export default function DataSourceDetailPage() {
               : <><Play className="size-3.5" /> 恢复接收</>}
           </Button>
           <Button size="sm" variant="outline" onClick={() => setTestOpen(true)}>发送测试事件</Button>
-          {isPolling && (
+          {isPull && (
             <Button size="sm" variant="outline" onClick={async () => {
               try {
                 const r = await asApi.pollSource(sid)
@@ -340,8 +355,8 @@ export default function DataSourceDetailPage() {
             </div>
           </Card>
 
-          <Card icon={isPolling ? Timer : Webhook} title="接收配置">
-            {isPolling ? (
+          <Card icon={isPull ? CloudDownload : Webhook} title="接收配置">
+            {src.data.kind === "api_pull" ? (
               <div className="grid gap-2">
                 <div className="grid gap-1">
                   <Label htmlFor="ds-d-url">拉取 URL</Label>
@@ -361,6 +376,72 @@ export default function DataSourceDetailPage() {
                 </div>
                 <Button size="sm" variant="outline" className="w-fit" disabled={saving}
                         onClick={() => void savePolling()}>保存接收配置</Button>
+              </div>
+            ) : src.data.kind === "maxcompute" ? (
+              <div className="grid gap-2">
+                <div className="grid gap-1">
+                  <Label htmlFor="ds-d-endpoint">Endpoint</Label>
+                  <Input id="ds-d-endpoint" value={mc?.endpoint ?? ""}
+                         onChange={(e) => setMc({ ...(mc ?? { endpoint: "", project: "", table: "" }), endpoint: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-d-project">Project</Label>
+                    <Input id="ds-d-project" value={mc?.project ?? ""}
+                           onChange={(e) => setMc({ ...(mc ?? { endpoint: "", project: "", table: "" }), project: e.target.value })} />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-d-table">Table</Label>
+                    <Input id="ds-d-table" value={mc?.table ?? ""}
+                           onChange={(e) => setMc({ ...(mc ?? { endpoint: "", project: "", table: "" }), table: e.target.value })} />
+                  </div>
+                </div>
+                <Button size="sm" variant="outline" className="w-fit" disabled={saving}
+                        onClick={async () => {
+                          setSaving(true)
+                          try {
+                            await asApi.sourcePatch(sid, { config: { ...cfg, ...(mc ?? {}) } })
+                            toast.success("接收配置已保存")
+                            src.retry()
+                          } catch (e) {
+                            toast.error(`保存失败：${(e as Error).message}`)
+                          } finally {
+                            setSaving(false)
+                          }
+                        }}>保存接收配置</Button>
+              </div>
+            ) : src.data.kind === "feishu_bitable" ? (
+              <div className="grid gap-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-d-apptoken">app_token</Label>
+                    <Input id="ds-d-apptoken" value={fs?.app_token ?? ""}
+                           onChange={(e) => setFs({ ...(fs ?? { app_token: "", table_id: "", view_id: "" }), app_token: e.target.value })} />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-d-tableid">table_id</Label>
+                    <Input id="ds-d-tableid" value={fs?.table_id ?? ""}
+                           onChange={(e) => setFs({ ...(fs ?? { app_token: "", table_id: "", view_id: "" }), table_id: e.target.value })} />
+                  </div>
+                </div>
+                <div className="grid gap-1">
+                  <Label htmlFor="ds-d-viewid">view_id（可选）</Label>
+                  <Input id="ds-d-viewid" value={fs?.view_id ?? ""}
+                         onChange={(e) => setFs({ ...(fs ?? { app_token: "", table_id: "", view_id: "" }), view_id: e.target.value })} />
+                </div>
+                <Button size="sm" variant="outline" className="w-fit" disabled={saving}
+                        onClick={async () => {
+                          setSaving(true)
+                          try {
+                            await asApi.sourcePatch(sid, { config: { ...cfg, ...(fs ?? {}) } })
+                            toast.success("接收配置已保存")
+                            src.retry()
+                          } catch (e) {
+                            toast.error(`保存失败：${(e as Error).message}`)
+                          } finally {
+                            setSaving(false)
+                          }
+                        }}>保存接收配置</Button>
               </div>
             ) : (
               <div className="grid gap-1.5 text-[12.5px]">
@@ -402,6 +483,25 @@ export default function DataSourceDetailPage() {
               <p className="mt-2 rounded-md px-2.5 py-1.5 text-xs"
                  style={{ background: "var(--status-warning-soft)", color: "var(--status-warning-text)" }}>
                 重新生成后旧 token 即刻失效；新 token 仅显示一次，关闭后无法再查看。
+              </p>
+            </Card>
+          )}
+
+          {src.data.kind !== "webhook" && src.data.kind !== "test_event" && (
+            <Card icon={KeyRound} title="凭据">
+              <div className="flex items-center gap-2 rounded-lg border px-3 py-2"
+                   style={{ borderColor: "var(--border)", background: "var(--surface-muted)" }}>
+                <code className="flex-1 text-xs text-muted-foreground">
+                  {src.data.has_secret ? "••••••••（已加密存储）" : "未配置"}
+                </code>
+                <Button size="sm" variant="outline"
+                        onClick={() => { setSecretJson(""); setSecretOpen(true) }}>
+                  {src.data.has_secret ? "更新凭据" : "设置凭据"}
+                </Button>
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                飞书 {"{app_id, app_secret}"}；MaxCompute {"{access_key_id, access_key_secret}"}；
+                API 拉取 {"{type: bearer|api_key|basic, …}"}。服务端信封加密，永不回显。
               </p>
             </Card>
           )}
@@ -541,6 +641,38 @@ export default function DataSourceDetailPage() {
                 确认归档
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 凭据设置/更新 */}
+      <Dialog open={secretOpen} onOpenChange={setSecretOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{src.data.has_secret ? "更新凭据" : "设置凭据"}</DialogTitle>
+            <DialogDescription>JSON 形如飞书 {"{app_id, app_secret}"} / MaxCompute {"{access_key_id, access_key_secret}"} / API {"{type, …}"}。更新后旧凭据即刻失效。</DialogDescription>
+          </DialogHeader>
+          <Textarea rows={3} value={secretJson} onChange={(e) => setSecretJson(e.target.value)}
+                    aria-label="凭据 JSON" />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSecretOpen(false)}>取消</Button>
+            <Button onClick={async () => {
+              let secret: Record<string, unknown>
+              try {
+                secret = JSON.parse(secretJson) as Record<string, unknown>
+              } catch (e) {
+                toast.error(`凭据 JSON 不合法：${(e as Error).message}`)
+                return
+              }
+              try {
+                await asApi.sourceSetSecret(sid, secret)
+                toast.success("凭据已加密保存")
+                setSecretOpen(false)
+                src.retry()
+              } catch (e) {
+                toast.error(`${(e as Error).message}`)
+              }
+            }}>保存</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

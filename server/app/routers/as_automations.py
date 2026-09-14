@@ -1011,6 +1011,7 @@ class SourceBody(BaseModel):
     name: str
     kind: str
     config: dict[str, Any] = {}
+    secret: dict[str, Any] | str | None = None
 
 
 class SourcePatchBody(BaseModel):
@@ -1037,6 +1038,7 @@ def list_sources(includeArchived: str = "", db: Session = Depends(get_db),
                 "config": s.config,
                 "status": s.status,
                 "archived": bool(s.archived),
+                "has_secret": bool(s.secret_ref),
                 "cursor": s.cursor,
                 "last_poll_at": s.last_poll_at.isoformat() if s.last_poll_at else None,
             }
@@ -1045,9 +1047,33 @@ def list_sources(includeArchived: str = "", db: Session = Depends(get_db),
     }
 
 
+def _validate_source_config(kind: str, config: dict) -> None:
+    """09-14 类型体系：分类型必填校验（保存即拒，不留到拉取时才炸）。"""
+    from ..source_adapters import SOURCE_KINDS
+    if kind not in SOURCE_KINDS:
+        raise HTTPException(422, f"kind 只允许 {list(SOURCE_KINDS)}")
+    if kind == "api_pull":
+        url = str(config.get("url") or "")
+        if not url.startswith(("http://", "https://")):
+            raise HTTPException(422, "api_pull 源需要 config.url（http(s)）")
+        from ..egress import enforce_egress
+        enforce_egress(url)
+    elif kind == "feishu_bitable":
+        if not (config.get("app_token") and config.get("table_id")):
+            raise HTTPException(422, "飞书多维表格源需要 config.app_token 与 config.table_id")
+    elif kind == "maxcompute":
+        if not (config.get("endpoint") and config.get("project")
+                and config.get("table")):
+            raise HTTPException(422, "MaxCompute 源需要 config.endpoint/project/table")
+
+
 @ingress_router.post("")
 def create_source(body: SourceBody, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
+    _validate_source_config(body.kind, body.config)
     src = DataSource(name=body.name, kind=body.kind, config=body.config)
+    if body.secret is not None:
+        from ..secrets import encrypt_secret, serialize_secret
+        src.secret_ref = encrypt_secret(serialize_secret(body.secret))
     if body.kind == "webhook":
         token = pysecrets.token_urlsafe(18)
         src.auth_token_hash = hashlib.sha256(token.encode()).hexdigest()
@@ -1073,6 +1099,7 @@ def get_source(sid: str, db: Session = Depends(get_db),
             "archived": bool(src.archived), "cursor": src.cursor,
             "last_poll_at": src.last_poll_at.isoformat() if src.last_poll_at else None,
             "has_token": bool(src.auth_token_hash),
+            "has_secret": bool(src.secret_ref),
             "created_at": src.created_at.isoformat() if src.created_at else None}
 
 
@@ -1093,12 +1120,7 @@ def patch_source(sid: str, body: SourcePatchBody, db: Session = Depends(get_db),
     if body.config is not None:
         cfg = dict(src.config or {})
         cfg.update(body.config)
-        if src.kind == "polling":
-            url = str(cfg.get("url") or "")
-            if not url.startswith(("http://", "https://")):
-                raise HTTPException(422, "polling 源 config.url 必须为 http(s) 地址")
-            from ..egress import enforce_egress
-            enforce_egress(url)  # 保存时即过 SSRF 闸，不留到拉取时才炸
+        _validate_source_config(src.kind, cfg)  # 分类型必填+egress 保存即校验
         src.config = cfg
     if body.status is not None:
         if body.status not in ("active", "paused"):
@@ -1146,6 +1168,25 @@ def delete_source(sid: str, db: Session = Depends(get_db),
     src.status = "paused"
     db.commit()
     return {"id": sid, "archived": True}
+
+
+@ingress_router.post("/{sid}/secret")
+def set_source_secret(sid: str, body: dict[str, Any], db: Session = Depends(get_db),
+                      user: dict = Depends(require_operator)):
+    """09-14 类型体系：设置/更新非 webhook 类型凭据（加密存储，永不回显）。"""
+    from ..secrets import encrypt_secret, serialize_secret
+    src = db.get(DataSource, sid)
+    if src is None or src.archived:
+        raise HTTPException(404, "source not found")
+    secret = body.get("secret")
+    if isinstance(secret, dict) and secret.get("clear"):
+        src.secret_ref = None
+    elif secret in (None, ""):
+        raise HTTPException(422, "secret 不能为空（清除请传 {\"clear\": true}）")
+    else:
+        src.secret_ref = encrypt_secret(serialize_secret(secret))
+    db.commit()
+    return {"id": sid, "has_secret": bool(src.secret_ref)}
 
 
 @ingress_router.post("/{sid}/regenerate-token")
@@ -1628,49 +1669,58 @@ def _retry_dead_deliveries(db: Session) -> int:
     return retried
 
 
-def tick_poll_source(db: Session, src) -> dict:
-    """轮询源单 tick（watcher 与手动端点共用）：游标拉取→ingest 管线。"""
-    import httpx
+def tick_pull_source(db: Session, src) -> dict:
+    """拉取源单 tick（watcher 与手动端点共用）：分类型适配器分页拉取→ingest 管线。
 
+    09-14 类型体系：api_pull / feishu_bitable / maxcompute 走 source_adapters；
+    背压：单 tick 最多 5 页、页大小适配器内封顶 200；游标存 src.cursor。
+    """
+    from ..source_adapters import PULL_KINDS, SourceFetchError, fetch_page, row_dedupe_key
+
+    if src.kind not in PULL_KINDS:
+        raise HTTPException(409, f"类型 {src.kind} 为推送/测试型，不支持拉取")
     cfg = src.config or {}
-    url = cfg.get("url")
-    if not url:
-        raise HTTPException(422, "polling source 缺少 config.url")
-    # 09-13 审计修复（报告 P0-2 耦合项）：轮询出站必须过统一 Egress 闸
-    #（生产拦私网/元数据地址；原实现裸 httpx.get 绕过 SSRF 防线）
-    from ..egress import enforce_egress
-    enforce_egress(url)
-    cursor_field = cfg.get("cursor_field", "id")
     cursor = (src.cursor or {}).get("last")
-    params = {cfg.get("cursor_param", "after"): cursor} if cursor else {}
-    resp = httpx.get(url, params=params, timeout=30, follow_redirects=False)
-    resp.raise_for_status()
-    rows = resp.json()
-    if not isinstance(rows, list):
-        rows = [rows]
+    pages = 0
+    polled = 0
     dispatched = 0
-    for row in rows:
-        key = str(row.get(cursor_field, "")) or hashlib.sha256(
-            json.dumps(row, sort_keys=True).encode()
-        ).hexdigest()
-        ev = ingest(db, src, row, dedupe_key=key)
-        if ev.status == "dispatched":
-            dispatched += 1
-        if row.get(cursor_field):
-            src.cursor = {**(src.cursor or {}), "last": row[cursor_field]}
+    while pages < 5:
+        try:
+            rows, next_cursor = fetch_page(src.kind, cfg, src.secret_ref, cursor)
+        except SourceFetchError as exc:
+            src.status = "error"
+            db.commit()
+            raise HTTPException(502, f"拉取失败：{exc}") from exc
+        polled += len(rows)
+        for row in rows:
+            key = row_dedupe_key(row, cfg)
+            ev = ingest(db, src, row, dedupe_key=f"{src.id}:{key}")
+            if ev.status in ("dispatched", "partial_failed"):
+                dispatched += 1
+        pages += 1
+        if not next_cursor:
+            cursor = None
+            break
+        cursor = next_cursor
+    src.cursor = {**(src.cursor or {}), "last": cursor} if cursor else (src.cursor or {})
     src.status = "active"
     src.last_poll_at = datetime.now(timezone.utc)
     db.commit()
-    return {"polled": len(rows), "dispatched": dispatched, "cursor": src.cursor}
+    return {"polled": polled, "dispatched": dispatched, "pages": pages,
+            "cursor": cursor}
+
+
+# 兼容旧名（watcher/测试既有引用）
+tick_poll_source = tick_pull_source
 
 
 @ingress_router.post("/{sid}/poll")
 def poll_source(sid: str, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     src = db.get(DataSource, sid)
-    if src is None or src.kind != "polling":
-        raise HTTPException(404, "polling source not found")
+    if src is None or src.archived:
+        raise HTTPException(404, "source not found")
     try:
-        return tick_poll_source(db, src)
+        return tick_pull_source(db, src)
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001

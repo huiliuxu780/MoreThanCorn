@@ -1477,6 +1477,9 @@ class DataSource(Base):
     status: Mapped[str] = mapped_column(String(16), default="active")  # active|paused|error
     # 09-14 D3 拍板：删除=归档语义（事件/路由流水可追溯；被引用时 409 列清单）
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 09-14 类型体系：非 webhook 类型凭据加密存储（飞书 app_id/app_secret、
+    # MaxCompute AccessKey、API 拉取 bearer/apikey/basic）；config 只放非敏感参数
+    secret_ref: Mapped[str | None] = mapped_column(String(512), nullable=True)
     cursor: Mapped[dict] = mapped_column(JSONB, default=dict)
     last_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

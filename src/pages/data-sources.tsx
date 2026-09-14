@@ -17,7 +17,7 @@
  */
 import * as React from "react"
 import { useNavigate } from "react-router-dom"
-import { Copy, FlaskConical, Plus, RotateCw, Settings2, Timer, Webhook } from "lucide-react"
+import { CloudDownload, Copy, Database, FlaskConical, Plus, RotateCw, Settings2, Table as TableIcon, Webhook } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -52,13 +52,18 @@ import { asApi, type CreateSourceBody, type SourceRow } from "@/services/as-api"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { toast } from "sonner"
 
+/* 09-14 用户拍板类型体系：maxcompute / api 拉取 / webhook / 飞书多维表格（+测试事件工具） */
 const KIND_LABEL: Record<string, string> = {
   webhook: "Webhook",
-  polling: "轮询",
+  api_pull: "API（拉取）",
+  maxcompute: "MaxCompute",
+  feishu_bitable: "飞书多维表格",
   test_event: "测试事件",
 }
-/* 09-14 D3 拍板：类型 icon（lucide 同源，详情页同套） */
-const KIND_ICON = { webhook: Webhook, polling: Timer, test_event: FlaskConical } as const
+const KIND_ICON = {
+  webhook: Webhook, api_pull: CloudDownload, maxcompute: Database,
+  feishu_bitable: TableIcon, test_event: FlaskConical,
+} as const
 const STATUS_LABEL: Record<string, string> = {
   active: "活跃",
   paused: "已暂停",
@@ -68,11 +73,19 @@ const FILTER_OPS = ["eq", "ne", "contains", "gt", "lt"] as const
 
 interface FormState {
   name: string
-  kind: "webhook" | "polling" | "test_event"
+  kind: "webhook" | "api_pull" | "maxcompute" | "feishu_bitable" | "test_event"
   url: string
   interval: string
   cursorField: string
   cursorParam: string
+  endpoint: string
+  project: string
+  table: string
+  appToken: string
+  tableId: string
+  viewId: string
+  pageSize: string
+  secretJson: string
   mapping: string
   filter: string
 }
@@ -80,6 +93,14 @@ interface FormState {
 const EMPTY_FORM: FormState = {
   name: "",
   kind: "webhook",
+  endpoint: "",
+  project: "",
+  table: "",
+  appToken: "",
+  tableId: "",
+  viewId: "",
+  pageSize: "100",
+  secretJson: "",
   url: "",
   interval: "300",
   cursorField: "id",
@@ -145,25 +166,58 @@ export default function DataSourcesPage() {
     const config: CreateSourceBody["config"] = {}
     if (mapping && Object.keys(mapping).length) config.mapping = mapping
     if (filter) config.filter = filter
-    if (form.kind === "polling") {
+    if (form.kind === "api_pull") {
       const url = form.url.trim()
       if (!/^https?:\/\//.test(url)) {
-        toast.error("轮询源必须填写 http(s):// 拉取地址")
+        toast.error("API 拉取源必须填写 http(s):// 地址")
         return
       }
       const interval = Number(form.interval)
       if (!Number.isFinite(interval) || interval < 10) {
-        toast.error("轮询间隔须为 ≥10 秒的数字")
+        toast.error("拉取间隔须为 ≥10 秒的数字")
         return
       }
       config.url = url
       config.interval_seconds = interval
       config.cursor_field = form.cursorField.trim() || "id"
       config.cursor_param = form.cursorParam.trim() || "after"
+      config.page_size = Number(form.pageSize) || 100
+    }
+    if (form.kind === "maxcompute") {
+      if (!form.endpoint.trim() || !form.project.trim() || !form.table.trim()) {
+        toast.error("MaxCompute 源需要 endpoint / project / table")
+        return
+      }
+      config.endpoint = form.endpoint.trim()
+      config.project = form.project.trim()
+      config.table = form.table.trim()
+      config.page_size = Number(form.pageSize) || 100
+    }
+    if (form.kind === "feishu_bitable") {
+      if (!form.appToken.trim() || !form.tableId.trim()) {
+        toast.error("飞书多维表格源需要 app_token 与 table_id")
+        return
+      }
+      config.app_token = form.appToken.trim()
+      config.table_id = form.tableId.trim()
+      if (form.viewId.trim()) config.view_id = form.viewId.trim()
+      config.page_size = Number(form.pageSize) || 100
+    }
+    let secret: Record<string, unknown> | undefined
+    if (form.secretJson.trim()) {
+      try {
+        secret = JSON.parse(form.secretJson) as Record<string, unknown>
+      } catch (e) {
+        toast.error(`凭据 JSON 不合法：${(e as Error).message}`)
+        return
+      }
     }
     setCreating(true)
     try {
-      const r = await asApi.createSource({ name: form.name.trim(), kind: form.kind, config })
+      const r = await asApi.createSource({
+        name: form.name.trim(), kind: form.kind, config,
+        ...(secret ? { secret } : {}),
+      })
       setOpen(false)
       setForm(EMPTY_FORM)
       list.retry()
@@ -236,20 +290,22 @@ export default function DataSourcesPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="webhook">Webhook（外部推送）</SelectItem>
-                  <SelectItem value="polling">轮询（平台拉取）</SelectItem>
-                  <SelectItem value="test_event">测试事件</SelectItem>
+                  <SelectItem value="webhook"><Webhook className="size-3.5" /> Webhook（外部推送）</SelectItem>
+                  <SelectItem value="api_pull"><CloudDownload className="size-3.5" /> API（拉取）</SelectItem>
+                  <SelectItem value="maxcompute"><Database className="size-3.5" /> MaxCompute</SelectItem>
+                  <SelectItem value="feishu_bitable"><TableIcon className="size-3.5" /> 飞书多维表格</SelectItem>
+                  <SelectItem value="test_event"><FlaskConical className="size-3.5" /> 测试事件</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            {form.kind === "polling" && (
+            {form.kind === "api_pull" && (
               <>
                 <div className="grid gap-1">
-                  <Label htmlFor="ds-url">拉取 URL（返回 JSON 数组或单对象）</Label>
+                  <Label htmlFor="ds-url">拉取 URL（返回 JSON 数组或 {`{items:[…]}`}）</Label>
                   <Input id="ds-url" placeholder="https://example.internal/api/tickets"
                          value={form.url} onChange={(e) => set({ url: e.target.value })} />
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   <div className="grid gap-1">
                     <Label htmlFor="ds-interval">间隔（秒）</Label>
                     <Input id="ds-interval" inputMode="numeric" value={form.interval}
@@ -265,11 +321,82 @@ export default function DataSourcesPage() {
                     <Input id="ds-cursor-param" value={form.cursorParam}
                            onChange={(e) => set({ cursorParam: e.target.value })} />
                   </div>
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-pagesize">页大小</Label>
+                    <Input id="ds-pagesize" inputMode="numeric" value={form.pageSize}
+                           onChange={(e) => set({ pageSize: e.target.value })} />
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  轮询目标须为可匿名 GET 的接口；带鉴权拉取（复用 Connection 凭据与统一出网策略）属后续切片。
-                </p>
               </>
+            )}
+            {form.kind === "maxcompute" && (
+              <>
+                <div className="grid gap-1">
+                  <Label htmlFor="ds-endpoint">Endpoint</Label>
+                  <Input id="ds-endpoint" placeholder="https://service.cn-shanghai.maxcompute.aliyun.com/api"
+                         value={form.endpoint} onChange={(e) => set({ endpoint: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-project">Project</Label>
+                    <Input id="ds-project" value={form.project}
+                           onChange={(e) => set({ project: e.target.value })} />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-table">Table</Label>
+                    <Input id="ds-table" value={form.table}
+                           onChange={(e) => set({ table: e.target.value })} />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-pagesize">页大小</Label>
+                    <Input id="ds-pagesize" inputMode="numeric" value={form.pageSize}
+                           onChange={(e) => set({ pageSize: e.target.value })} />
+                  </div>
+                </div>
+              </>
+            )}
+            {form.kind === "feishu_bitable" && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-apptoken">app_token（多维表格 token）</Label>
+                    <Input id="ds-apptoken" value={form.appToken}
+                           onChange={(e) => set({ appToken: e.target.value })} />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-tableid">table_id（数据表）</Label>
+                    <Input id="ds-tableid" value={form.tableId}
+                           onChange={(e) => set({ tableId: e.target.value })} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-viewid">view_id（可选）</Label>
+                    <Input id="ds-viewid" value={form.viewId}
+                           onChange={(e) => set({ viewId: e.target.value })} />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-pagesize">页大小</Label>
+                    <Input id="ds-pagesize" inputMode="numeric" value={form.pageSize}
+                           onChange={(e) => set({ pageSize: e.target.value })} />
+                  </div>
+                </div>
+              </>
+            )}
+            {form.kind !== "webhook" && form.kind !== "test_event" && (
+              <div className="grid gap-1">
+                <Label htmlFor="ds-secret">凭据 JSON（加密存储，永不回显）</Label>
+                <Textarea id="ds-secret" rows={2} placeholder={
+                  form.kind === "feishu_bitable"
+                    ? '{"app_id":"cli_x","app_secret":"…"}'
+                    : form.kind === "maxcompute"
+                      ? '{"access_key_id":"…","access_key_secret":"…"}'
+                      : '{"type":"bearer","token":"…"}'}
+                  value={form.secretJson} onChange={(e) => set({ secretJson: e.target.value })} />
+                <p className="text-xs text-muted-foreground">
+                  服务端信封加密落库；也可创建后经详情页「凭据」卡设置/更换。
+                </p>
+              </div>
             )}
             <div className="grid gap-1">
               <Label htmlFor="ds-mapping">字段映射 JSON（触发输入键 → payload 取值路径）</Label>

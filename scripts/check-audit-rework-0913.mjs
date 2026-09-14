@@ -57,7 +57,7 @@ await page.evaluate(() => {
 });
 await new Promise((r) => setTimeout(r, 500));
 await page.evaluate(() => {
-  const opt = [...document.querySelectorAll("[role='option']")].find((o) => o.textContent.includes("轮询"));
+  const opt = [...document.querySelectorAll("[role='option']")].find((o) => o.textContent.includes("API（拉取）"));
   opt?.click();
 });
 await new Promise((r) => setTimeout(r, 700));

@@ -240,10 +240,12 @@ def _reconcile_impl(db: Session) -> dict:
                     l.error_code = "TARGET_EXECUTION_FAILED"
                 stats["logs"] += 1
         db.commit()
-    # 4: polling 源定时 tick
+    # 4: 拉取源定时 tick（09-14 类型体系：api_pull/feishu_bitable/maxcompute）
     from .routers.as_automations import tick_poll_source
+    from .source_adapters import PULL_KINDS
 
-    for src in db.query(DataSource).filter_by(kind="polling", status="active").all():
+    for src in db.query(DataSource).filter(
+            DataSource.kind.in_(PULL_KINDS), DataSource.status == "active").all():
         interval = float((src.config or {}).get("interval_seconds", 0) or 0)
         if interval <= 0:
             continue
