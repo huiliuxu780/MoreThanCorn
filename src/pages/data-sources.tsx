@@ -16,8 +16,8 @@
  * 诚实边界：轮询拉取暂不支持鉴权头（后端匿名 GET），表单如实说明，不摆假字段。
  */
 import * as React from "react"
-import { useNavigate } from "react-router-dom"
-import { CloudDownload, Copy, Database, FlaskConical, Plus, RotateCw, ScrollText, Settings2, Table as TableIcon, Webhook } from "lucide-react"
+import { useNavigate, useSearchParams } from "react-router-dom"
+import { CircleCheck, CircleX, Clock, CloudDownload, Copy, Database, Filter, FlaskConical, OctagonAlert, Plus, RotateCw, ScrollText, Settings2, Table as TableIcon, Webhook } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -50,6 +50,8 @@ import { Link } from "react-router-dom"
 import { IA_BOUNDARY } from "@/config/ui-terms"
 import { asApi, type CreateSourceBody, type SourceRow } from "@/services/as-api"
 import { connApi } from "@/services/resource-api"
+import { WfConnectionsContent } from "./wf-connections"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { toast } from "sonner"
 
@@ -297,8 +299,25 @@ export default function DataSourcesPage() {
     }
   }
 
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [tab, setTab] = React.useState(searchParams.get("tab") ?? "sources")
+  React.useEffect(() => {
+    const t = searchParams.get("tab") ?? "sources"
+    if (t !== tab) setTab(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+
   return (
     <div className="flex flex-col gap-4 p-4 md:p-6">
+      {/* 09-14 用户拍板（冗余整合）：数据接入=单入口三 tab——数据源/连接与目录/事件流水；
+          Connections 自设置页并入此处，消除三处分散 */}
+      <Tabs value={tab} onValueChange={(v) => { setTab(v); setSearchParams((p) => { const n = new URLSearchParams(p); if (v === "sources") n.delete("tab"); else n.set("tab", v); return n }, { replace: true }) }}>
+        <TabsList>
+          <TabsTrigger value="sources">数据源</TabsTrigger>
+          <TabsTrigger value="connections">连接与目录</TabsTrigger>
+          <TabsTrigger value="events">事件流水</TabsTrigger>
+        </TabsList>
+      <TabsContent value="sources" className="flex flex-col gap-4">
       {/* 09-14 D4 拍板：双「数据源」边界说明条（文案取自 ui-terms 单一事实源） */}
       <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-xs"
            style={{ borderColor: "var(--brand-subtle)", background: "var(--brand-soft)",
@@ -669,6 +688,89 @@ export default function DataSourcesPage() {
             <Button size="sm" variant="ghost" onClick={() => setTestTarget(null)}>收起</Button>
           </div>
         </div>
+      )}
+          </TabsContent>
+      <TabsContent value="connections" className="flex flex-col gap-4">
+        <WfConnectionsContent embedded />
+      </TabsContent>
+      <TabsContent value="events" className="flex flex-col gap-4">
+        <EventsTab />
+      </TabsContent>
+      </Tabs>
+</div>
+  )
+}
+
+
+/** 09-14 冗余整合：事件流水 tab——跨源 EventDelivery 一览（状态/重试/死信证据）。 */
+function EventsTab() {
+  const deliveries = useAsyncData(() => asApi.eventDeliveries({ pageSize: 100 }), [])
+  const ICON: Record<string, typeof Clock> = {
+    COMPLETED: CircleCheck, FAILED: CircleX, DEAD: OctagonAlert,
+    RUNNING: Clock, PENDING: Clock, FILTERED: Filter, DEDUPED: Copy,
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      {deliveries.error ? (
+        <div className="rounded-md border px-3 py-2 text-sm" style={{ color: "var(--status-danger-text)" }}>
+          事件流水加载失败：{deliveries.error}
+        </div>
+      ) : (deliveries.data?.items ?? []).length === 0 ? (
+        <p className="rounded-md border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">
+          暂无事件流水。Webhook/轮询源收到事件后，每条命中路由会产生一条投递记录（含重试与死信证据）。
+        </p>
+      ) : (
+        <table className="w-full border-collapse bg-card text-[12.5px]" style={{ border: "1px solid var(--border)" }}>
+          <thead>
+            <tr className="border-b text-left text-[11px] text-muted-foreground" style={{ background: "var(--surface-muted)" }}>
+              <th className="px-3 py-2 font-medium">时间</th>
+              <th className="px-3 py-2 font-medium">状态</th>
+              <th className="px-3 py-2 font-medium">目的地</th>
+              <th className="px-3 py-2 font-medium">尝试</th>
+              <th className="px-3 py-2 font-medium">备注</th>
+              <th className="px-3 py-2 text-right font-medium">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(deliveries.data?.items ?? []).map((d) => {
+              const Icon = ICON[d.status] ?? Clock
+              return (
+                <tr key={d.id} className="border-b last:border-b-0" style={{ borderColor: "var(--border)" }}>
+                  <td className="px-3 py-2 tabular-nums text-(--text-tertiary)">
+                    {d.createdAt ? new Date(d.createdAt).toLocaleString() : "—"}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Icon className="size-3.5" style={{ color: d.status === "COMPLETED" ? "var(--status-success-text)" : d.status === "DEAD" || d.status === "FAILED" ? "var(--status-danger-text)" : d.status === "FILTERED" || d.status === "DEDUPED" ? "var(--text-tertiary)" : "var(--status-warning-text)" }} />
+                      {d.status}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    {d.destinationKind ?? "—"}{d.destinationId ? ` · ${String(d.destinationId).slice(0, 8)}…` : ""}
+                  </td>
+                  <td className="px-3 py-2 tabular-nums">{d.attempts}/{d.maxAttempts}</td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    {d.deadReason || d.error || (d.nextRetryAt ? `下次重试 ${new Date(d.nextRetryAt).toLocaleTimeString()}` : "")}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {(d.status === "failed" || d.status === "dead") && (
+                      <button className="rounded border px-1.5 py-0.5 hover:bg-muted"
+                              onClick={async () => {
+                                try {
+                                  await asApi.deliveryRetry(d.id)
+                                  toast.success("已重发")
+                                  deliveries.retry()
+                                } catch (e) {
+                                  toast.error(`${(e as Error).message}`)
+                                }
+                              }}>重试</button>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       )}
     </div>
   )

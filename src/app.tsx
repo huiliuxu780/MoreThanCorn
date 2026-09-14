@@ -171,7 +171,7 @@ export function App() {
           <Route path="/resources/data/new" element={<ResWizardPage scope="data" />} />
           <Route path="/resources/data/:type/:id" element={<ResDetailPage />} />
           {/* docs/v2-design/10 §2.3：Connections 归设置（路由反转） */}
-          <Route path="/resources/connections" element={<Navigate to="/settings/connections" replace />} />
+          <Route path="/resources/connections" element={<Navigate to="/data-sources?tab=connections" replace />} />
           {/* docs/v2-design/10 §4.7：规则/表单出壳归 Workflow 域 */}
           <Route path="/workflows/rules" element={<ResultRulesPage />} />
           <Route path="/workflows/rules/:ruleSetId" element={<ResultRuleEditorPage />} />
@@ -186,7 +186,7 @@ export function App() {
           <Route path="/config/forms/*" element={<PrefixRedirect from="/config/forms" to="/workflows/forms" />} />
           <Route path="/resources/rules/*" element={<PrefixRedirect from="/resources/rules" to="/workflows/rules" />} />
           <Route path="/resources/forms/*" element={<PrefixRedirect from="/resources/forms" to="/workflows/forms" />} />
-          <Route path="/settings/connections" element={<SettingsPage fixedSection="connections" />} />
+          <Route path="/settings/connections" element={<Navigate to="/data-sources?tab=connections" replace />} />
           <Route path="/config/tools" element={<Navigate to="/resources/ai?tab=tools" replace />} />
           <Route path="/config/tools/new" element={<Navigate to="/resources/ai/new" replace />} />
           <Route path="/config/tools/:toolId" element={<ToolRedirect />} />

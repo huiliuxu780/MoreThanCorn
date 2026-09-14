@@ -54,7 +54,7 @@ export const IA_BOUNDARY = {
   assets: {
     text: "这里管理数据资产（数据库连接与表/对象，供分析任务读取与写回）。",
     linkText: "Webhook/轮询等事件入口在 数据接入 → 管理",
-    to: "/data-sources",
+    to: "/data-sources?tab=connections",
   },
 } as const
 

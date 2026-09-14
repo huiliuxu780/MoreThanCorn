@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   Check,
   Info,
-  Link2,
   Monitor,
   Moon,
   Palette,
@@ -24,7 +23,6 @@ import {
   permissionsFor, rbac, ROLES,
 } from "@/services/rbac"
 import { WF_BASE } from "@/services/wf-api"
-import { WfConnectionsContent } from "./wf-connections"
 
 interface SettingsSection {
   id: string
@@ -37,8 +35,8 @@ interface SettingsSection {
 // 入口不得伪装成已开放；保留全部真实分区。
 const SECTIONS: SettingsSection[] = [
   { id: "appearance", label: "外观", icon: Palette },
-  // docs/v2-design/10 §4.6：凭据层归设置（原 /resources/connections 反转）
-  { id: "connections", label: "连接", icon: Link2 },
+  // 09-14 用户拍板（冗余整合）：连接与目录并入「数据接入」单入口三 tab；
+  // /settings/connections 路由重定向到 /data-sources?tab=connections
   { id: "security", label: "权限与安全", icon: ShieldCheck },
   { id: "audit", label: "审计", icon: ScrollText },
   { id: "system", label: "系统信息", icon: Info },
@@ -251,14 +249,14 @@ export default function SettingsPage({ fixedSection }: { fixedSection?: string }
             <h1 className="text-[28px] font-semibold leading-9">{current.label}</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {current.id === "appearance" && "语言、主题等全局生效的个人偏好。"}
-              {current.id === "connections" && "模型 Provider / 数据连接 / 凭据的统一管理。"}
+
               {current.id === "security" && "当前身份与前端权限矩阵。"}
               {current.id === "audit" && "平台关键操作的审计记录。"}
               {current.id === "system" && "当前前端实例的真实运行信息。"}
             </p>
           </header>
           {section === "appearance" && <AppearanceSection />}
-          {section === "connections" && <WfConnectionsContent embedded />}
+
           {section === "security" && <SecuritySection />}
           {section === "audit" && <AuditSection />}
           {section === "system" && <SystemSection />}
