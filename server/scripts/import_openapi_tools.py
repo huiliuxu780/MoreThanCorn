@@ -46,6 +46,10 @@ ACTOR = "script:import_openapi_tools"
 XSPACE_CONN_NAME = "browser-accept-gw"
 XSPACE_DEV_BASE = "https://gw.dev-corn.bshg.com.cn"
 OAT_CONN_NAME = "OAT 业务网关（BSH BP）"
+# 09-14 用户给定：OAT 服务全挂 /bshbp-gate/api 前缀（文件内 bshbp-gate 路径自带、其余省略）
+OAT_TEST_BASE = "https://ra.test.bshg.com.cn/bshbp-gate/api"
+OAT_PROD_BASE = "https://ra.bshg.com.cn/bshbp-gate/api"
+OAT_PREFIX = "/bshbp-gate/api"
 OAT_AUTH_SCRIPT = """\
 // OAT 裸 JWT：导出示例 Authorization 无 Bearer 前缀，原样产出（Apifox 兼容 shim）
 const token = pm.environment.get("token");
@@ -192,6 +196,8 @@ def _response_schema(op: dict) -> dict:
 
 def build_tool(entry: dict, group: str, method: str, path: str, op: dict) -> dict:
     """组装 Tool/ToolVersion 字段（纯函数，便于单测）。"""
+    if group == "oat" and path.startswith(OAT_PREFIX):
+        path = path[len(OAT_PREFIX):] or "/"  # base 已含前缀，防双重拼接
     example = _request_example(op)
     schema_props = _request_schema_props(op)
     argn_only = bool(schema_props) and all(_ARGN_RE.match(k) for k in schema_props)
@@ -242,17 +248,17 @@ def ensure_oat_conn(db, apply: bool) -> tuple[str, list[str]]:
     else:
         log.append("⚠ 未提供 OAT_PASSWORD 环境变量：secret 暂存 {username,token}，"
                    "密码稍后经 设置→连接→轮换 补录")
-    # test 环境填本环境唯一实测网关 gw.dev-corn（09-14 用户要求填进去）；
-    # 文件一路由在其上暂 404（带 AKSK/JWT 亦同，疑似内网/VPN 域），环境 label 如实标注
+    # 09-14 用户给定 ra/ra.test 双域；prod 只读实测通（默认环境），test 路由通待测试账号
     c = Connection(name=OAT_CONN_NAME, kind="script", protocol="http-api",
-                   endpoint={"base_url": XSPACE_DEV_BASE},
+                   endpoint={"base_url": OAT_PROD_BASE},
                    environments=[
-                       {"code": "test", "label": "测试·dev-corn 网关（文件一路由暂 404，真域待确认）",
-                        "endpoint": {"base_url": XSPACE_DEV_BASE}},
-                       {"code": "prod", "label": "生产（域名待填）", "endpoint": {}},
+                       {"code": "test", "label": "测试·ra.test（路由通；待测试账号凭据）",
+                        "endpoint": {"base_url": OAT_TEST_BASE}},
+                       {"code": "prod", "label": "生产·ra（09-14 只读实测通）",
+                        "endpoint": {"base_url": OAT_PROD_BASE}},
                    ],
-                   default_env="test", auth_script=OAT_AUTH_SCRIPT,
-                   provider_hint="BSH BP/OAT；三公网网关均404疑内网域；token待轮换",
+                   default_env="prod", auth_script=OAT_AUTH_SCRIPT,
+                   provider_hint="BSH BP/OAT；服务全挂/bshbp-gate/api前缀；test待账号",
                    secret_ref="", lifecycle="draft", status="draft")
     if apply:
         db.add(c)
