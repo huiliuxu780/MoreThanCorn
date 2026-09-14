@@ -10,14 +10,16 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 import httpx
 
 from .egress import enforce_egress
 
-PULL_KINDS = ("api_pull", "feishu_bitable", "maxcompute")
-SOURCE_KINDS = ("webhook", "api_pull", "maxcompute", "feishu_bitable", "test_event")
+PULL_KINDS = ("api_pull", "feishu_bitable", "maxcompute", "sls")
+SOURCE_KINDS = ("webhook", "api_pull", "maxcompute", "feishu_bitable", "sls",
+                "test_event")
 MAX_PAGE_SIZE = 200
 
 
@@ -147,6 +149,65 @@ def fetch_feishu_bitable(config: dict, secret: Any,
     return rows, next_cursor
 
 
+def _sls_client(secret: Any, endpoint: str):
+    """SLS LogClient 构造（测试可 monkeypatch 本函数）。"""
+    if not isinstance(secret, dict) or not secret.get("access_key_id"):
+        raise SourceFetchError(
+            "SLS 源需要 secret={access_key_id, access_key_secret}")
+    from aliyun.log import LogClient
+    return LogClient(endpoint, str(secret["access_key_id"]),
+                     str(secret.get("access_key_secret", "")))
+
+
+def fetch_sls(config: dict, secret: Any,
+              cursor: str | None) -> tuple[list[dict], str | None]:
+    """SLS 日志拉取：时间+偏移游标（ts:offset）。
+
+    cursor 语义：from=ts（含）+ offset 起 line=page_size 条；满页则 offset 递增，
+    不满页则 offset 累加已取数（同秒后到日志靠 offset 续取，不重不漏同秒序）。
+    初始游标 = now - from_window_seconds（默认 3600）。
+    """
+    endpoint = str(config.get("endpoint") or "")
+    project = str(config.get("project") or "")
+    logstore = str(config.get("logstore") or "")
+    if not (endpoint and project and logstore):
+        raise SourceFetchError("SLS 源需要 config.endpoint/project/logstore")
+    enforce_egress(endpoint)
+    page_size = min(int(config.get("page_size") or 100), MAX_PAGE_SIZE)
+    ts, off = 0, 0
+    if cursor:
+        try:
+            ts_s, off_s = cursor.split(":", 1)
+            ts, off = int(ts_s), int(off_s)
+        except ValueError as exc:
+            raise SourceFetchError(f"SLS 游标格式非法：{cursor}") from exc
+    if not ts:
+        ts = int(time.time()) - int(config.get("from_window_seconds") or 3600)
+    client = _sls_client(secret, endpoint)
+    from aliyun.log import GetLogsRequest
+    import time as _t
+    now_ts = int(_t.time()) + 5
+    try:
+        req = GetLogsRequest(project, logstore, ts, now_ts,
+                             query=str(config.get("query") or ""),
+                             line=page_size, offset=off)
+        resp = client.get_logs(req)
+        logs = resp.get_logs()
+    except Exception as exc:  # noqa: BLE001
+        raise SourceFetchError(f"SLS 拉取失败：{exc}") from exc
+    rows = []
+    for lg in logs:
+        row = dict(lg.get_contents())
+        row.setdefault("__time__", lg.get_time())
+        rows.append({k: _jsonable(v) for k, v in row.items()})
+    taken = len(rows)
+    if taken == 0:
+        next_cursor = f"{ts}:{off}"
+    else:
+        next_cursor = f"{ts}:{off + taken}"
+    return rows, next_cursor
+
+
 def fetch_maxcompute(config: dict, secret: Any,
                      cursor: str | None) -> tuple[list[dict], str | None]:
     endpoint = str(config.get("endpoint") or "")
@@ -171,7 +232,17 @@ def fetch_maxcompute(config: dict, secret: Any,
         o = ODPS(secret["access_key_id"], secret.get("access_key_secret", ""),
                  project, endpoint=endpoint)
         t = o.get_table(table)
-        with t.open_reader() as reader:
+        part = None
+        if t.table_schema.partitions:
+            part = str(config.get("partition") or "")
+            if not part:
+                # 未显式指定分区：取最新创建分区（数据拉取源的合理默认）
+                parts = sorted(t.partitions, key=lambda p: p.creation_time)
+                if not parts:
+                    raise SourceFetchError(
+                        f"分区表 {table} 暂无分区；可用 config.partition 显式指定")
+                part = str(parts[-1].partition_spec)
+        with t.open_reader(partition=part) as reader:
             total = reader.count
             slice_ = reader[offset:offset + page_size]
             cols = [c.name for c in t.table_schema.columns]
@@ -188,6 +259,7 @@ _FETCHERS = {
     "api_pull": fetch_api_pull,
     "feishu_bitable": fetch_feishu_bitable,
     "maxcompute": fetch_maxcompute,
+    "sls": fetch_sls,
 }
 
 

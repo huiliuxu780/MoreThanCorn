@@ -65,3 +65,31 @@ gate.sh --live → ALL GATES GREEN（pytest 584 / vitest 76 / build / lint0 / �
 - pyodps 未安装（等批准）；飞书/MaxCompute 真源 e2e 等凭据；
 - 飞书增量拉取暂用 page_token 全量分页（无变更增量语义），后续可加 updated_field 增量；
 - MaxCompute 分区表暂整表切片读，分区裁剪待真实表结构后补。
+
+## 7. 补遗（09-14 续）：SLS 类型 + 真凭据 e2e
+
+### 7.1 新增第五类型 sls（SLS 日志，icon=ScrollText）
+- 适配器 `fetch_sls`：GetLogs 拉取，游标=`ts:offset`（from=ts 含 + offset 起 line=page_size；
+  满页 offset 递增、空页游标保持——同秒后到日志靠 offset 续取）；初始游标=now-from_window_seconds(默认3600)；
+  config.query 可选查询语句；凭据 {access_key_id, access_key_secret} 走 secret_ref。
+- 前端：创建表单 endpoint/project/logstore/query/页大小 + 详情页编辑器；类型校验保存即拒。
+- 测试 ×3：游标语义（满页/空页/offset 续）、缺 logstore 拒、缺凭据失败关闭（不 mock 客户端）；
+  maxcompute 驱动缺失测试改为 import 阻断式（pyodps 已装，仍验证失败关闭路径）。
+- 驱动安装：server venv 增 `pyodps 0.13.2` + `aliyun-log-python-sdk`（用户给凭据即视为批准）。
+
+### 7.2 真凭据 e2e（只读操作）
+- **MaxCompute 真跑通**：`bshcn_consumer_corn_prod.dim_aliyun_crm_case_type_status`（分区表）
+  → poll 返回 polled=25/pages=5（page_size=5 游标分页）→ 25 条事件落库（行无 id 字段→hash 去重键生效）
+  → 无路由留 filtered 证据 → 源与事件已清理。**分区处理**：config.partition 显式指定，
+  缺省自动取最新创建分区；分区表无分区失败关闭。
+- **发现（需用户澄清）**：
+  ① `func_quickbi_corn` 在给定 project 中**不存在**（29 张表无 func/quickbi/corn 匹配；函数列表空；
+  该 AKSK 无 odps:ListProjects 权限，仅给定 project 可达）——需确认它是什么对象
+  （表/视图/函数/QuickBI 数据集？在哪个 project？）。
+  ② SLS AKSK 的 `log:ListProject` 被 RAM 拒绝（scoped 策略）→ 无法自发现 project/logstore；
+  GetLogs 可能对指定 project/logstore 有权限——**需用户提供 project + logstore 名**（query 可选）。
+
+### 7.3 凭据安全注记
+- 凭据经对话明文传递 → **建议 e2e 完成后轮换两组 AKSK**；
+- 平台侧存储为 secret_ref 信封加密（WF_SECRET_KEY 包裹 data key），API 永不回显；
+- 全部真源操作仅只读（SELECT / GetLogs / list），无写入。

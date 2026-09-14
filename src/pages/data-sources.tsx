@@ -17,7 +17,7 @@
  */
 import * as React from "react"
 import { useNavigate } from "react-router-dom"
-import { CloudDownload, Copy, Database, FlaskConical, Plus, RotateCw, Settings2, Table as TableIcon, Webhook } from "lucide-react"
+import { CloudDownload, Copy, Database, FlaskConical, Plus, RotateCw, ScrollText, Settings2, Table as TableIcon, Webhook } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -58,11 +58,12 @@ const KIND_LABEL: Record<string, string> = {
   api_pull: "API（拉取）",
   maxcompute: "MaxCompute",
   feishu_bitable: "飞书多维表格",
+  sls: "SLS 日志",
   test_event: "测试事件",
 }
 const KIND_ICON = {
   webhook: Webhook, api_pull: CloudDownload, maxcompute: Database,
-  feishu_bitable: TableIcon, test_event: FlaskConical,
+  feishu_bitable: TableIcon, sls: ScrollText, test_event: FlaskConical,
 } as const
 const STATUS_LABEL: Record<string, string> = {
   active: "活跃",
@@ -73,7 +74,7 @@ const FILTER_OPS = ["eq", "ne", "contains", "gt", "lt"] as const
 
 interface FormState {
   name: string
-  kind: "webhook" | "api_pull" | "maxcompute" | "feishu_bitable" | "test_event"
+  kind: "webhook" | "api_pull" | "maxcompute" | "feishu_bitable" | "sls" | "test_event"
   url: string
   interval: string
   cursorField: string
@@ -84,6 +85,8 @@ interface FormState {
   appToken: string
   tableId: string
   viewId: string
+  logstore: string
+  slsQuery: string
   pageSize: string
   secretJson: string
   mapping: string
@@ -99,6 +102,8 @@ const EMPTY_FORM: FormState = {
   appToken: "",
   tableId: "",
   viewId: "",
+  logstore: "",
+  slsQuery: "",
   pageSize: "100",
   secretJson: "",
   url: "",
@@ -203,6 +208,17 @@ export default function DataSourcesPage() {
       if (form.viewId.trim()) config.view_id = form.viewId.trim()
       config.page_size = Number(form.pageSize) || 100
     }
+    if (form.kind === "sls") {
+      if (!form.endpoint.trim() || !form.project.trim() || !form.logstore.trim()) {
+        toast.error("SLS 源需要 endpoint / project / logstore")
+        return
+      }
+      config.endpoint = form.endpoint.trim()
+      config.project = form.project.trim()
+      config.logstore = form.logstore.trim()
+      if (form.slsQuery.trim()) config.query = form.slsQuery.trim()
+      config.page_size = Number(form.pageSize) || 100
+    }
     let secret: Record<string, unknown> | undefined
     if (form.secretJson.trim()) {
       try {
@@ -294,6 +310,7 @@ export default function DataSourcesPage() {
                   <SelectItem value="api_pull"><CloudDownload className="size-3.5" /> API（拉取）</SelectItem>
                   <SelectItem value="maxcompute"><Database className="size-3.5" /> MaxCompute</SelectItem>
                   <SelectItem value="feishu_bitable"><TableIcon className="size-3.5" /> 飞书多维表格</SelectItem>
+                  <SelectItem value="sls"><ScrollText className="size-3.5" /> SLS 日志</SelectItem>
                   <SelectItem value="test_event"><FlaskConical className="size-3.5" /> 测试事件</SelectItem>
                 </SelectContent>
               </Select>
@@ -383,13 +400,46 @@ export default function DataSourcesPage() {
                 </div>
               </>
             )}
+            {form.kind === "sls" && (
+              <>
+                <div className="grid gap-1">
+                  <Label htmlFor="ds-endpoint">Endpoint</Label>
+                  <Input id="ds-endpoint" placeholder="cn-shanghai.log.aliyuncs.com"
+                         value={form.endpoint} onChange={(e) => set({ endpoint: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-project">Project</Label>
+                    <Input id="ds-project" value={form.project}
+                           onChange={(e) => set({ project: e.target.value })} />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-logstore">Logstore</Label>
+                    <Input id="ds-logstore" value={form.logstore}
+                           onChange={(e) => set({ logstore: e.target.value })} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-slsquery">查询语句（可选）</Label>
+                    <Input id="ds-slsquery" placeholder="* 或 status: 500"
+                           value={form.slsQuery} onChange={(e) => set({ slsQuery: e.target.value })} />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-pagesize">页大小</Label>
+                    <Input id="ds-pagesize" inputMode="numeric" value={form.pageSize}
+                           onChange={(e) => set({ pageSize: e.target.value })} />
+                  </div>
+                </div>
+              </>
+            )}
             {form.kind !== "webhook" && form.kind !== "test_event" && (
               <div className="grid gap-1">
                 <Label htmlFor="ds-secret">凭据 JSON（加密存储，永不回显）</Label>
                 <Textarea id="ds-secret" rows={2} placeholder={
                   form.kind === "feishu_bitable"
                     ? '{"app_id":"cli_x","app_secret":"…"}'
-                    : form.kind === "maxcompute"
+                    : form.kind === "maxcompute" || form.kind === "sls"
                       ? '{"access_key_id":"…","access_key_secret":"…"}'
                       : '{"type":"bearer","token":"…"}'}
                   value={form.secretJson} onChange={(e) => set({ secretJson: e.target.value })} />

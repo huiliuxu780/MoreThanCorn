@@ -46,3 +46,7 @@ websockets==17.0.1
 
 # SDD 10 R0/R1：Runtime Provider 公共契约（仓库内独立包，editable 安装）
 ../packages/runtime_contract
+
+# 09-14 数据源类型体系：MaxCompute / SLS 拉取适配器驱动
+pyodps==0.13.2
+aliyun-log-python-sdk==0.9.51

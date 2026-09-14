@@ -9,7 +9,7 @@ import { useNavigate, useParams } from "react-router-dom"
 import {
   ArrowLeft, CircleCheck, CircleX, Clock, CloudDownload, Copy, Database, Filter,
   FlaskConical, History, KeyRound, OctagonAlert, Pause, Play, Plus,
-  Route as RouteIcon, Table as TableIcon, Trash2, Webhook,
+  Route as RouteIcon, ScrollText, Table as TableIcon, Trash2, Webhook,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -28,13 +28,13 @@ import { toast } from "sonner"
 
 const KIND_ICON = {
   webhook: Webhook, api_pull: CloudDownload, maxcompute: Database,
-  feishu_bitable: TableIcon, test_event: FlaskConical,
+  feishu_bitable: TableIcon, sls: ScrollText, test_event: FlaskConical,
 } as const
 const KIND_LABEL: Record<string, string> = {
   webhook: "Webhook", api_pull: "API（拉取）", maxcompute: "MaxCompute",
-  feishu_bitable: "飞书多维表格", test_event: "测试事件",
+  feishu_bitable: "飞书多维表格", sls: "SLS 日志", test_event: "测试事件",
 }
-const PULL_KINDS = ["api_pull", "feishu_bitable", "maxcompute"]
+const PULL_KINDS = ["api_pull", "feishu_bitable", "maxcompute", "sls"]
 const STATUS_LABEL: Record<string, string> = {
   active: "活跃", paused: "已暂停", error: "异常",
 }
@@ -409,6 +409,40 @@ export default function DataSourceDetailPage() {
                             setSaving(false)
                           }
                         }}>保存接收配置</Button>
+              </div>
+            ) : src.data.kind === "sls" ? (
+              <div className="grid gap-2">
+                <div className="grid gap-1">
+                  <Label htmlFor="ds-d-endpoint">Endpoint</Label>
+                  <Input id="ds-d-endpoint" value={String(cfg.endpoint ?? "")}
+                         onChange={(e) => setMc({ endpoint: e.target.value, project: String(cfg.project ?? ""), table: String(cfg.table ?? "") })} />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-d-project">Project</Label>
+                    <Input id="ds-d-project" value={String(cfg.project ?? "")} readOnly />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label htmlFor="ds-d-logstore">Logstore</Label>
+                    <Input id="ds-d-logstore" value={String(cfg.logstore ?? "")} readOnly />
+                  </div>
+                </div>
+                <Button size="sm" variant="outline" className="w-fit" disabled={saving}
+                        onClick={async () => {
+                          setSaving(true)
+                          try {
+                            await asApi.sourcePatch(sid, { config: { ...cfg, ...(mc ?? {}) } })
+                            toast.success("接收配置已保存")
+                            src.retry()
+                          } catch (e) {
+                            toast.error(`保存失败：${(e as Error).message}`)
+                          } finally {
+                            setSaving(false)
+                          }
+                        }}>保存接收配置</Button>
+                <p className="text-[11px] text-muted-foreground">
+                  游标=时间+偏移（ts:offset）；查询语句在 config.query（创建时设置）。
+                </p>
               </div>
             ) : src.data.kind === "feishu_bitable" ? (
               <div className="grid gap-2">

@@ -209,7 +209,10 @@ def test_feishu_bitable_flow(monkeypatch):
 
 # ---------- maxcompute 失败关闭 ----------
 
-def test_maxcompute_driver_missing_fail_closed():
+def test_maxcompute_driver_missing_fail_closed(monkeypatch):
+    """pyodps 已安装后仍须验证失败关闭路径：模拟驱动缺失（import 阻断）。"""
+    import sys
+    monkeypatch.setitem(sys.modules, "odps", None)
     with pytest.raises(sa.SourceDriverMissing, match="pyodps"):
         sa.fetch_page("maxcompute",
                       {"endpoint": "https://odps.example.com", "project": "p",
@@ -260,3 +263,62 @@ def test_poll_endpoint_kinds_and_cursor(monkeypatch):
             db.close()
     finally:
         _cleanup(sid_wh, sid_ap)
+
+
+# ---------- SLS 适配器 ----------
+
+class _FakeLog:
+    def __init__(self, contents, t):
+        self._c, self._t = contents, t
+
+    def get_contents(self):
+        return self._c
+
+    def get_time(self):
+        return self._t
+
+
+class _FakeResp:
+    def __init__(self, logs):
+        self._logs = logs
+
+    def get_logs(self):
+        return self._logs
+
+
+def test_sls_cursor_semantics(monkeypatch):
+    calls = []
+
+    def fake_client(secret, endpoint):
+        class C:
+            def get_logs(self, req):
+                calls.append({"offset": req.offset, "line": req.line,
+                              "query": req.query})
+                if req.offset == 0:
+                    return _FakeResp([_FakeLog({"msg": "a", "level": "ERROR"}, 1000),
+                                      _FakeLog({"msg": "b"}, 1000)])
+                return _FakeResp([])
+        return C()
+
+    monkeypatch.setattr(sa, "_sls_client", fake_client)
+    cfg = {"endpoint": "cn-shanghai.log.aliyuncs.com", "project": "p",
+           "logstore": "ls", "page_size": 2}
+    rows, nxt = sa.fetch_page("sls", cfg,
+                              _ref({"access_key_id": "ak", "access_key_secret": "sk"}),
+                              None)
+    assert len(rows) == 2 and rows[0]["msg"] == "a" and rows[0]["__time__"] == 1000
+    assert nxt.endswith(":2"), "满页 offset 递增"
+    rows2, nxt2 = sa.fetch_page("sls", cfg,
+                                _ref({"access_key_id": "ak", "access_key_secret": "sk"}),
+                                nxt)
+    assert calls[1]["offset"] == 2
+    assert rows2 == [] and nxt2 == nxt, "空页游标保持（同秒后到日志靠 offset 续取）"
+    with pytest.raises(sa.SourceFetchError):
+        sa.fetch_page("sls", {"endpoint": "e", "project": "p"}, "", None)
+
+
+def test_sls_missing_secret_fail_closed():
+    """凭据缺失失败关闭（不 monkeypatch _sls_client，走真实校验）。"""
+    with pytest.raises(sa.SourceFetchError, match="access_key"):
+        sa.fetch_page("sls", {"endpoint": "e", "project": "p", "logstore": "l"},
+                      "", None)

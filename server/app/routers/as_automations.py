@@ -1065,6 +1065,10 @@ def _validate_source_config(kind: str, config: dict) -> None:
         if not (config.get("endpoint") and config.get("project")
                 and config.get("table")):
             raise HTTPException(422, "MaxCompute 源需要 config.endpoint/project/table")
+    elif kind == "sls":
+        if not (config.get("endpoint") and config.get("project")
+                and config.get("logstore")):
+            raise HTTPException(422, "SLS 源需要 config.endpoint/project/logstore")
 
 
 @ingress_router.post("")

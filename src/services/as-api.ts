@@ -117,7 +117,7 @@ export interface SourceRow {
 
 export interface CreateSourceBody {
   name: string;
-  kind: "webhook" | "api_pull" | "maxcompute" | "feishu_bitable" | "test_event";
+  kind: "webhook" | "api_pull" | "maxcompute" | "feishu_bitable" | "sls" | "test_event";
   config: {
     /** api_pull：拉取地址/间隔/游标/页大小 */
     url?: string; interval_seconds?: number; cursor_field?: string;
@@ -126,6 +126,8 @@ export interface CreateSourceBody {
     endpoint?: string; project?: string; table?: string;
     /** feishu_bitable：app_token/table_id/view_id */
     app_token?: string; table_id?: string; view_id?: string;
+    /** sls：endpoint/project/logstore/query */
+    logstore?: string; query?: string;
     /** 事件过滤 {field, op: eq|ne|contains|gt|lt, value} */
     filter?: { field: string; op: string; value: unknown };
     /** 字段映射：触发输入键 → payload 取值路径 */
