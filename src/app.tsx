@@ -38,7 +38,6 @@ const ResModelsPage = lazy(() => import("@/pages/res-category-pages").then((m) =
 const ResToolsPage = lazy(() => import("@/pages/res-category-pages").then((m) => ({ default: m.ResToolsPage })))
 const ResKnowledgePage = lazy(() => import("@/pages/res-category-pages").then((m) => ({ default: m.ResKnowledgePage })))
 const ResDataPage = lazy(() => import("@/pages/res-category-pages").then((m) => ({ default: m.ResDataPage })))
-const ResConnectionsPage = lazy(() => import("@/pages/res-category-pages").then((m) => ({ default: m.ResConnectionsPage })))
 const AuditLogPage = lazy(() => import("@/pages/audit-log"))
 const ReleaseGovernancePage = lazy(() => import("@/pages/release-governance"))
 const ResultRulesPage = lazy(() => import("@/pages/result-rules"))
@@ -138,6 +137,7 @@ export function App() {
           <Route path="/agents/:agentId/chat" element={<AgentChatPage />} />
           <Route path="/agents/:agentId/:section" element={<WfAgentEditorPage />} />
           {/* 能力与资源持久壳（docs/v2-design/10）：五分类壳内切换 */}
+          <Route path="/resources/connections" element={<Navigate to="/settings/connections" replace />} />
           <Route path="/resources" element={<ResourcesShell />}>
             <Route index element={<Navigate to="/resources/skills" replace />} />
             <Route path="skills" element={<ResSkillsPage />} />
@@ -145,7 +145,6 @@ export function App() {
             <Route path="tools" element={<ResToolsPage />} />
             <Route path="knowledge" element={<ResKnowledgePage />} />
             <Route path="data" element={<ResDataPage />} />
-            <Route path="connections" element={<ResConnectionsPage />} />
           </Route>
           {/* Workflow */}
           <Route path="/workflows" element={<WfWorkflowsPage />} />
@@ -188,7 +187,7 @@ export function App() {
           <Route path="/config/forms/*" element={<PrefixRedirect from="/config/forms" to="/workflows/forms" />} />
           <Route path="/resources/rules/*" element={<PrefixRedirect from="/resources/rules" to="/workflows/rules" />} />
           <Route path="/resources/forms/*" element={<PrefixRedirect from="/resources/forms" to="/workflows/forms" />} />
-          <Route path="/settings/connections" element={<Navigate to="/resources/connections" replace />} />
+          <Route path="/settings/connections" element={<SettingsPage fixedSection="connections" />} />
           <Route path="/config/tools" element={<Navigate to="/resources/ai?tab=tools" replace />} />
           <Route path="/config/tools/new" element={<Navigate to="/resources/ai/new" replace />} />
           <Route path="/config/tools/:toolId" element={<ToolRedirect />} />

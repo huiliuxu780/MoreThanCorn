@@ -1,5 +1,5 @@
 import { useEffect, useState, type ComponentType } from "react"
-import {
+import { Link2,
   ArrowLeft,
   Check,
   Info,
@@ -12,6 +12,7 @@ import {
   Sunrise,
   MoonStar,
 } from "lucide-react"
+import { WfConnectionsContent } from "./wf-connections"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { useTheme } from "next-themes"
 import { Badge } from "@/components/ui/badge"
@@ -35,8 +36,9 @@ interface SettingsSection {
 // 入口不得伪装成已开放；保留全部真实分区。
 const SECTIONS: SettingsSection[] = [
   { id: "appearance", label: "外观", icon: Palette },
-  // 09-14 用户拍板（冗余整合）：连接与目录并入「数据接入」单入口三 tab；
-  // /settings/connections 路由重定向到 /data-sources?tab=connections
+  // 09-14 终版（用户再纠正）：Connections=系统根凭据管理，归设置（系统层），
+  // 与权限与安全/审计同级；能力与资源只放建于连接之上的数据资产
+  { id: "connections", label: "连接", icon: Link2 },
   { id: "security", label: "权限与安全", icon: ShieldCheck },
   { id: "audit", label: "审计", icon: ScrollText },
   { id: "system", label: "系统信息", icon: Info },
@@ -251,10 +253,12 @@ export default function SettingsPage({ fixedSection }: { fixedSection?: string }
               {current.id === "appearance" && "语言、主题等全局生效的个人偏好。"}
 
               {current.id === "security" && "当前身份与前端权限矩阵。"}
+              {current.id === "connections" && "系统根连接凭据管理：端点/凭据/多环境/轮换/健康；一切数据资产与接入的凭据单点。"}
               {current.id === "audit" && "平台关键操作的审计记录。"}
               {current.id === "system" && "当前前端实例的真实运行信息。"}
             </p>
           </header>
+          {section === "connections" && <WfConnectionsContent embedded />}
           {section === "appearance" && <AppearanceSection />}
 
           {section === "security" && <SecuritySection />}

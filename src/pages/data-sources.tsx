@@ -1,6 +1,6 @@
 /**
- * 数据接入（2026-09-09 换底 §五-G；09-13 审计修复轮重写）：
- * webhook/polling/test_event 数据源管理。
+ * 数据接入（2026-09-09 换底 §五-G；09-13 审计修复轮重写；09-14 六型+D5）：
+ * webhook/api_pull/maxcompute/feishu_bitable/sls/test_event 数据源管理。
  * 事件管线：接收→去重→过滤→映射→路由派发；流水/死信见 /api/v2/event-deliveries。
  *
  * 09-13 审计修复：
@@ -13,11 +13,12 @@
  * - 测试事件错误分流：JSON 不合法 vs 后端拒绝分别提示；
  * - 表单 Label 全部 htmlFor/id 关联（可访问名称）；
  * - 空态文案去实现层语言；轮询源补「立即拉取」真实治理入口。
- * 诚实边界：轮询拉取暂不支持鉴权头（后端匿名 GET），表单如实说明，不摆假字段。
+ * 09-14 D5：拉取型凭据统一走 Connection（设置 → 连接）或源级凭据 JSON；
+ * 无凭据时后端如实匿名 GET，表单不摆假字段。
  */
 import * as React from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { CircleCheck, CircleX, Clock, CloudDownload, Copy, Database, Filter, FlaskConical, OctagonAlert, Plus, RotateCw, ScrollText, Settings2, Table as TableIcon, Webhook } from "lucide-react"
+import { CircleCheck, CircleX, Clock, CloudDownload, Copy, Database, FlaskConical, OctagonAlert, Plus, RotateCw, ScrollText, Settings2, Table as TableIcon, Webhook } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -67,6 +68,8 @@ const KIND_ICON = {
   webhook: Webhook, api_pull: CloudDownload, maxcompute: Database,
   feishu_bitable: TableIcon, sls: ScrollText, test_event: FlaskConical,
 } as const
+/* 与后端 source_adapters.PULL_KINDS 对齐：这四型支持「立即拉取」（POST /{sid}/poll） */
+const PULL_KINDS: readonly string[] = ["api_pull", "feishu_bitable", "maxcompute", "sls"]
 const STATUS_LABEL: Record<string, string> = {
   active: "活跃",
   paused: "已暂停",
@@ -309,7 +312,7 @@ export default function DataSourcesPage() {
   return (
     <div className="flex flex-col gap-4 p-4 md:p-6">
       {/* 09-14 终版 IA：数据接入只管事件接入=数据源+事件流水；
-          连接凭据归 能力与资源→连接，数据资产(含目录挂载)归 能力与资源→数据资产 */}
+          连接凭据归 设置→连接（系统根凭据管理），数据资产(含目录挂载)归 能力与资源→数据资产 */}
       <Tabs value={tab} onValueChange={(v) => { setTab(v); setSearchParams((p) => { const n = new URLSearchParams(p); if (v === "sources") n.delete("tab"); else n.set("tab", v); return n }, { replace: true }) }}>
         <TabsList>
           <TabsTrigger value="sources">数据源</TabsTrigger>
@@ -328,7 +331,7 @@ export default function DataSourcesPage() {
         <div>
           <h1 className="text-xl font-semibold">数据接入</h1>
           <p className="text-sm text-muted-foreground">
-            Webhook / 轮询 / 测试事件源；同一数据源可服务多个自动任务，去重与死信在事件层治理。
+            Webhook / API 拉取 / MaxCompute / SLS / 多维表格 / 测试事件源；同一数据源可服务多个自动任务，去重与死信在事件层治理。
           </p>
         </div>
         <Button className="ml-auto" onClick={() => setOpen(true)}>
@@ -341,7 +344,7 @@ export default function DataSourcesPage() {
           <DialogHeader>
             <DialogTitle>新建数据源</DialogTitle>
             <DialogDescription>
-              Webhook 由外部系统推送（token 鉴权）；轮询由平台按间隔拉取；测试事件用于链路验证。
+              Webhook 由外部系统推送（token 鉴权）；拉取型源（API/MaxCompute/SLS/多维表格）由平台按间隔拉取，凭据可选 Connection（设置 → 连接）统一承载；测试事件用于链路验证。
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
@@ -628,7 +631,7 @@ export default function DataSourcesPage() {
                     <Button size="sm" variant="outline" onClick={() => setTestTarget(s.id)}>
                       发送测试事件
                     </Button>
-                    {s.kind === "polling" && (
+                    {PULL_KINDS.includes(s.kind) && (
                       <Button size="sm" variant="outline" disabled={polling === s.id}
                               onClick={() => void pollNow(s)}>
                         {polling === s.id ? "拉取中…" : "立即拉取"}
@@ -647,7 +650,7 @@ export default function DataSourcesPage() {
               <TableRow>
                 <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
                   暂无数据源。创建 Webhook 源后可用「发送测试事件」验证接入链路；
-                  轮询源由平台按设定间隔自动拉取，也可在列表中「立即拉取」。
+                  拉取型源由平台按设定间隔自动拉取，也可在列表中「立即拉取」。
                 </TableCell>
               </TableRow>
             )}
@@ -700,9 +703,15 @@ export default function DataSourcesPage() {
 /** 09-14 冗余整合：事件流水 tab——跨源 EventDelivery 一览（状态/重试/死信证据）。 */
 function EventsTab() {
   const deliveries = useAsyncData(() => asApi.eventDeliveries({ pageSize: 100 }), [])
+  /* 后端 EventDelivery.status 为小写（pending/running/completed/failed/dead）；
+     filtered/deduped 不产生投递行（F5 AC-023/024），故不在此表 */
   const ICON: Record<string, typeof Clock> = {
-    COMPLETED: CircleCheck, FAILED: CircleX, DEAD: OctagonAlert,
-    RUNNING: Clock, PENDING: Clock, FILTERED: Filter, DEDUPED: Copy,
+    completed: CircleCheck, failed: CircleX, dead: OctagonAlert,
+    running: Clock, pending: Clock,
+  }
+  const LABEL: Record<string, string> = {
+    pending: "待投递", running: "投递中", completed: "已投递",
+    failed: "失败（待重试）", dead: "死信",
   }
   return (
     <div className="flex flex-col gap-3">
@@ -712,7 +721,7 @@ function EventsTab() {
         </div>
       ) : (deliveries.data?.items ?? []).length === 0 ? (
         <p className="rounded-md border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">
-          暂无事件流水。Webhook/轮询源收到事件后，每条命中路由会产生一条投递记录（含重试与死信证据）。
+          暂无事件流水。数据源产生事件后，每条命中路由会产生一条投递记录（含重试与死信证据；filtered/deduped 不留投递行，证据在事件 route_outcomes）。
         </p>
       ) : (
         <table className="w-full border-collapse bg-card text-[12.5px]" style={{ border: "1px solid var(--border)" }}>
@@ -736,8 +745,8 @@ function EventsTab() {
                   </td>
                   <td className="px-3 py-2">
                     <span className="inline-flex items-center gap-1.5">
-                      <Icon className="size-3.5" style={{ color: d.status === "COMPLETED" ? "var(--status-success-text)" : d.status === "DEAD" || d.status === "FAILED" ? "var(--status-danger-text)" : d.status === "FILTERED" || d.status === "DEDUPED" ? "var(--text-tertiary)" : "var(--status-warning-text)" }} />
-                      {d.status}
+                      <Icon className="size-3.5" style={{ color: d.status === "completed" ? "var(--status-success-text)" : d.status === "dead" || d.status === "failed" ? "var(--status-danger-text)" : "var(--status-warning-text)" }} />
+                      {LABEL[d.status] ?? d.status}
                     </span>
                   </td>
                   <td className="px-3 py-2">

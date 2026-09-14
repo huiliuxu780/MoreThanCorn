@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react"
 import { NavLink, Outlet, useLocation } from "react-router-dom"
-import { Link2, BookOpen, Database, Sparkles, Cpu, Wrench } from "lucide-react"
+import { BookOpen, Database, Sparkles, Cpu, Wrench } from "lucide-react"
 
 import { PageContainer, PageHeader } from "@/components/app/page"
 import { cn } from "@/lib/utils"
 import { UI_TERMS } from "@/config/ui-terms"
 import { pagedApi } from "@/services/wf-api"
-import { connApi, resApi } from "@/services/resource-api"
+import { resApi } from "@/services/resource-api"
 
 /** docs/v2-design/10 §3：壳磁贴行常驻计数（原 Hub 门厅计数职能接管）。 */
 interface ShellCounts {
@@ -18,13 +18,11 @@ interface ShellCounts {
   knowledge: number | null
   datasources: number | null
   assets: number | null
-  connections: number | null
 }
 
 const EMPTY: ShellCounts = {
   skills: null, providers: null, models: null, tools: null,
   mcp: null, knowledge: null, datasources: null, assets: null,
-  connections: null,
 }
 
 const n = (v: number | null) => (v == null ? "—" : String(v))
@@ -42,13 +40,11 @@ export function useShellCounts(): ShellCounts {
       safe(resApi.list("knowledge", { page: 1, pageSize: 1 })),
       safe(resApi.list("datasource", { page: 1, pageSize: 1 })),
       safe(resApi.list("asset", { page: 1, pageSize: 1 })),
-      safe(connApi.list({})),
-    ]).then(([sk, pv, md, tl, mcp, kn, ds, as, cn]) => {
+    ]).then(([sk, pv, md, tl, mcp, kn, ds, as]) => {
       setC({
         skills: sk?.total ?? null, providers: pv?.total ?? null, models: md?.total ?? null,
         tools: tl?.total ?? null, mcp: mcp?.total ?? null, knowledge: kn?.total ?? null,
         datasources: ds?.total ?? null, assets: as?.total ?? null,
-        connections: cn?.total ?? null,
       })
     })
   }, [])
@@ -84,11 +80,6 @@ export function ResourcesShell() {
     {
       to: "/resources/data", icon: Database, label: UI_TERMS.navigation.dataAssetsHub,
       count: `源 ${n(c.datasources)} · 资产 ${n(c.assets)}`,
-    },
-    {
-      // 09-14 终版 IA：凭据/端点唯一归属=能力与资源→连接
-      to: "/resources/connections", icon: Link2, label: "连接",
-      count: `凭据 ${n(c.connections ?? 0)} · 多环境/轮换/健康`,
     },
   ]
 

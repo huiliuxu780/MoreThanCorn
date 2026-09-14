@@ -26,15 +26,17 @@ PAIRS = [
     ("--text-secondary", "--surface", 4.5, "卡片上次级文本"),
     ("--text-tertiary", "--background", 4.5, "辅助小字（时间戳/说明）"),
     ("--text-tertiary", "--surface", 4.5, "卡片上辅助小字"),
-    ("--status-success", "--surface", 4.5, "成功状态文本"),
-    ("--status-warning", "--surface", 4.5, "警告状态文本"),
-    ("--status-danger", "--surface", 4.5, "危险状态文本"),
+    # 09-14 D1 拍板后：文本/徽章字色读 -text token；原站值仅作图标/色点/图表
+    # （非文本且邻接文本已传达语义，WCAG 豁免，不再入门禁）
+    ("--status-success-text", "--surface", 4.5, "成功状态文本"),
+    ("--status-warning-text", "--surface", 4.5, "警告状态文本"),
+    ("--status-danger-text", "--surface", 4.5, "危险状态文本"),
     ("--brand-primary", "--background", 4.5, "品牌绿文本/链接"),
     ("--selected-foreground", "--selected", 4.5, "导航选中态文本"),
     # 真实徽章形态：状态色文本落在同族 soft 背景上（StateBadge/LANE_CHIP 实际用法）
-    ("--status-success", "--status-success-soft", 4.5, "成功徽章文本(soft底)"),
-    ("--status-warning", "--status-warning-soft", 4.5, "警告徽章文本(soft底)"),
-    ("--status-danger", "--status-danger-soft", 4.5, "危险徽章文本(soft底)"),
+    ("--status-success-text", "--status-success-soft", 4.5, "成功徽章文本(soft底)"),
+    ("--status-warning-text", "--status-warning-soft", 4.5, "警告徽章文本(soft底)"),
+    ("--status-danger-text", "--status-danger-soft", 4.5, "危险徽章文本(soft底)"),
     ("--text-secondary", "--fill-secondary", 3.0, "填充徽章文本(大字级)"),
     ("--border", "--background", 3.0, "边框非文本对比"),
 ]

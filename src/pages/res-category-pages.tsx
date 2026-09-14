@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react"
-import { WfConnectionsContent } from "@/pages/wf-connections"
 import { Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -64,11 +63,6 @@ export function ResKnowledgePage() {
       <ResCategoryList types={["knowledge"]} createTo="/resources/ai/new" />
     </div>
   )
-}
-
-/** 09-14 终版 IA：连接唯一归属=能力与资源→连接（凭据/多环境/轮换/健康）。 */
-export function ResConnectionsPage() {
-  return <WfConnectionsContent embedded />
 }
 
 /** 09-14 终版 IA：目录挂载唯一入口=数据资产页（连接选→目录选→挂载）。 */
