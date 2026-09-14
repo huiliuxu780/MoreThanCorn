@@ -8,6 +8,8 @@ export const KINDS = [
   { value: "basic", label: "Basic Auth" },
   { value: "aksk", label: "AkSk 签名" },
   { value: "script", label: "自定义脚本" },
+  { value: "maxcompute", label: "MaxCompute" },
+  { value: "sls", label: "SLS 日志" },
 ] as const
 
 const KIND_LABEL: Record<string, string> = Object.fromEntries(KINDS.map((k) => [k.value, k.label]))

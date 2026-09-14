@@ -1,12 +1,12 @@
 /** Connections — 真 API + 卡片网格。路由 /settings/connections。
  * R4：鉴权双层（内置算法 none/api_key/bearer/basic/aksk + 自定义脚本沙箱）、
  * 多环境域名（预设四槽+自定义，按环境凭据覆盖）、空跑鉴权、按环境测试。 */
-import { Database, Eye, EyeOff, Globe, KeyRound, Pencil, Play, Plug, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react"
+import { ScrollText, Database, Eye, EyeOff, Globe, KeyRound, Pencil, Play, Plug, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { useListQuery } from "@/hooks/use-list-query"
 import { Pagination } from "@/components/app/pagination"
 import { pagedApi } from "@/services/wf-api"
-import { connApi, type ConnSecret, type ConnectionDTO, type ConnectionEnvPatch } from "@/services/resource-api"
+import { connApi, resApi, type ConnSecret, type ConnectionDTO, type ConnectionEnvPatch } from "@/services/resource-api"
 import { AKSK_TEMPLATE, ENV_PRESETS, KINDS, PROTOCOLS, isDb, isOss, kindLabel, protocolLabel } from "@/services/connection-auth"
 import { toast } from "sonner"
 
@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import {
+import { DialogDescription,
   Dialog,
   DialogContent,
   DialogFooter,
@@ -28,7 +28,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-interface EpFields { baseUrl: string; host: string; port: string; user: string; database: string; bucket: string; region: string }
+interface EpFields { baseUrl: string; host: string; port: string; user: string; database: string; bucket: string; region: string; endpoint: string; project: string }
 /** SDD-12 修复轮：环境表单不再携带密钥输入（凭据只走轮换/清除）；
  * configured/versionNo 为只读展示；isNew=本次对话框新增（尚未落库）。 */
 interface EnvForm extends EpFields { code: string; label: string; configured: boolean; versionNo?: number; isNew?: boolean }
@@ -39,7 +39,7 @@ interface FormState extends EpFields {
   /** 二次验收修复：已配置任何凭据时锁定鉴权方式（服务端拒绝非原子 kind 变更） */
   kindLocked: boolean;
 }
-const EMPTY_EP: EpFields = { baseUrl: "", host: "", port: "", user: "", database: "", bucket: "", region: "" }
+const EMPTY_EP: EpFields = { baseUrl: "", host: "", port: "", user: "", database: "", bucket: "", region: "", endpoint: "", project: "" }
 const EMPTY_FORM: FormState = {
   id: null, name: "", kind: "api_key", protocol: "http-api", ...EMPTY_EP,
   providerHint: "", secret: "", authScript: "", environments: [], defaultEnv: "", kindLocked: false,
@@ -48,6 +48,8 @@ const EMPTY_FORM: FormState = {
 function endpointOf(protocol: string, f: EpFields): Record<string, string> {
   if (isDb(protocol)) return { host: f.host, port: f.port, user: f.user, database: f.database }
   if (isOss(protocol)) return { bucket: f.bucket, region: f.region }
+  if (protocol === "maxcompute" || protocol === "sls")
+    return { endpoint: f.endpoint, project: f.project }
   return { base_url: f.baseUrl }
 }
 
@@ -131,6 +133,15 @@ function EndpointFields({ protocol, v, onChange }: {
       </div>
     )
   }
+  if (protocol === "maxcompute" || protocol === "sls") {
+    return (
+      <div className="grid grid-cols-[2fr_1fr] gap-2">
+        <Input aria-label="Endpoint" value={v.endpoint} onChange={(e) => onChange({ endpoint: e.target.value })}
+               placeholder={protocol === "sls" ? "cn-shanghai.log.aliyuncs.com" : "https://service.….maxcompute.aliyun.com/api"} />
+        <Input aria-label="Project" value={v.project} onChange={(e) => onChange({ project: e.target.value })} placeholder="Project" />
+      </div>
+    )
+  }
   return <Input aria-label="接口基址" value={v.baseUrl} onChange={(e) => onChange({ baseUrl: e.target.value })} placeholder="https://网关域名" />
 }
 
@@ -143,6 +154,7 @@ export default function WfConnectionsPage() {
 const PROTO_ICON: Record<string, typeof Globe> = {
   "http-api": Globe, llm: Sparkles, mcp: Plug,
   postgresql: Database, mysql: Database, oss: Database,
+  maxcompute: Database, sls: ScrollText,
 }
 
 export function WfConnectionsContent({ embedded = false }: { embedded?: boolean }) {
@@ -150,6 +162,11 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
   const [loading, setLoading] = useState(true)
   const [searchInput, setSearchInput] = useState("")
   const [error, setError] = useState<string | null>(null)
+  // D5 目录浏览（一个 Connection 下多表/多日志库）
+  const [catalogFor, setCatalogFor] = useState<string | null>(null)
+  const [catalog, setCatalog] = useState<{ name: string; kind: string; schema?: string; partitioned?: boolean; comment?: string }[] | null>(null)
+  const [catalogErr, setCatalogErr] = useState<string | null>(null)
+  const [mounting, setMounting] = useState<string | null>(null)
   const [allRows, setAllRows] = useState<ConnectionDTO[]>([])
   const [open, setOpen] = useState(false)
   const [showSecret, setShowSecret] = useState(false)
@@ -199,14 +216,14 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
       return { code: e.code, label: e.label ?? "",
                configured: !!e.secretConfigured, versionNo: e.secretRevision?.versionNo,
                baseUrl: eep.base_url ?? "", host: eep.host ?? "", port: eep.port ?? "",
-               user: eep.user ?? "", database: eep.database ?? "", bucket: eep.bucket ?? "", region: eep.region ?? "" }
+               user: eep.user ?? "", database: eep.database ?? "", bucket: eep.bucket ?? "", region: eep.region ?? "" , endpoint: eep.endpoint ?? "", project: eep.project ?? ""}
     })
     setForm({
       id: c.id, name: c.name, kind: c.kind || "api_key", protocol: c.protocol || "http-api",
       baseUrl: ep.base_url ?? "", host: ep.host ?? "", port: ep.port ?? "",
       user: ep.user ?? "", database: ep.database ?? "", bucket: ep.bucket ?? "", region: ep.region ?? "",
       providerHint: c.providerHint ?? "", secret: "", authScript: c.authScript ?? "",
-      environments: envs, defaultEnv: c.defaultEnv ?? "",
+      endpoint: ep.endpoint ?? "", project: ep.project ?? "", environments: envs, defaultEnv: c.defaultEnv ?? "",
       // 二次验收修复：存在任何凭据（根级或环境）时锁定鉴权方式，避免非原子 kind 变更
       kindLocked: !!c.secretConfigured || envs.some((e) => e.configured),
     })
@@ -344,6 +361,45 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
   const setEnv = (i: number, patch: Partial<EnvForm>) =>
     set({ environments: form.environments.map((e, j) => (j === i ? { ...e, ...patch } : e)) })
 
+  const openCatalog = async (cid: string) => {
+    setCatalogFor(cid); setCatalog(null); setCatalogErr(null)
+    try {
+      const r = await connApi.catalog(cid)
+      setCatalog(r.items)
+    } catch (e) {
+      setCatalogErr((e as Error).message)
+    }
+  }
+
+  const mountAsset = async (cid: string, item: { name: string; partitioned?: boolean; comment?: string; schema?: string }) => {
+    setMounting(item.name)
+    try {
+      const conn = (await connApi.list({})).items.find((c) => c.id === cid)
+      const ep = (conn?.endpoint ?? {}) as Record<string, unknown>
+      const loc = String(ep.project ?? ep.database ?? "")
+      const existing = (await resApi.list("datasource", { pageSize: 100 })).items
+        .find((d) => (d as unknown as { connection_id?: string }).connection_id === cid)
+      const dsId = existing ? existing.id
+        : (await resApi.create("datasource", {
+            name: `${conn?.protocol ?? ""}·${loc || (conn?.name ?? "")}`,
+            type: conn?.protocol ?? "postgresql",
+            connection_id: cid, location: loc,
+          })).id
+      await resApi.create("asset", {
+        name: item.name, source: "catalog", datasource_id: dsId,
+        location: item.name, record_meaning: "一行记录",
+        record_id_field: "id", time_field: "gmt_create",
+        config: { partitioned: !!item.partitioned, comment: item.comment ?? "",
+                  schema: item.schema ?? "" },
+      })
+      toast.success(`已挂为数据资产：${item.name}`)
+    } catch (e) {
+      toast.error(`挂载失败：${(e as Error).message}`)
+    } finally {
+      setMounting(null)
+    }
+  }
+
   const createBtn = (
     <Button className="bg-foreground text-background hover:bg-foreground/85" onClick={openCreate}>
       <Plus className="size-4" /> 创建连接
@@ -351,6 +407,51 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
   )
   const inner = (
     <>
+      {/* D5 目录浏览对话框（发现自 Connection 凭据；挂为数据资产） */}
+      <Dialog open={catalogFor !== null} onOpenChange={(v) => { if (!v) setCatalogFor(null) }}>
+        <DialogContent className="max-h-[80vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>目录（表 / 日志库）</DialogTitle>
+            <DialogDescription>发现自 Connection 凭据；挂为数据资产后可被分析任务与数据接入引用。</DialogDescription>
+          </DialogHeader>
+          {catalogErr ? (
+            <div className="rounded-md border px-3 py-2 text-sm" style={{ color: "var(--status-danger-text)" }}>
+              目录发现失败：{catalogErr}
+            </div>
+          ) : catalog === null ? (
+            <p className="text-sm text-muted-foreground">发现中…</p>
+          ) : (
+            <table className="w-full border-collapse text-[12.5px]">
+              <thead>
+                <tr className="border-b text-left text-[11px] text-muted-foreground">
+                  <th className="px-2 py-1.5 font-medium">名称</th>
+                  <th className="px-2 py-1.5 font-medium">类型</th>
+                  <th className="px-2 py-1.5 font-medium">schema</th>
+                  <th className="px-2 py-1.5 font-medium">分区</th>
+                  <th className="px-2 py-1.5 text-right font-medium">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {catalog.map((it) => (
+                  <tr key={`${it.schema ?? ""}.${it.name}`} className="border-b last:border-b-0">
+                    <td className="px-2 py-1.5" title={it.comment}>{it.name}</td>
+                    <td className="px-2 py-1.5">{it.kind}</td>
+                    <td className="px-2 py-1.5">{it.schema ?? "—"}</td>
+                    <td className="px-2 py-1.5">{it.partitioned ? "是" : "—"}</td>
+                    <td className="px-2 py-1.5 text-right">
+                      <button className="rounded border px-1.5 py-0.5 hover:bg-muted"
+                              disabled={mounting === it.name}
+                              onClick={() => catalogFor && void mountAsset(catalogFor, it)}>
+                        {mounting === it.name ? "挂载中…" : "挂为数据资产"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </DialogContent>
+      </Dialog>
       {embedded ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
@@ -460,6 +561,11 @@ export function WfConnectionsContent({ embedded = false }: { embedded?: boolean 
                           <span className="text-[11px] text-muted-foreground">已归档 · 只读</span>
                         ) : (
                           <>
+                            {["maxcompute", "sls", "postgresql", "mysql"].includes(c.protocol) && (
+                              <button aria-label="目录" title="浏览表/日志库目录" className="rounded border p-1 hover:bg-muted" onClick={() => void openCatalog(c.id)}>
+                                <Database className="size-3.5" />
+                              </button>
+                            )}
                             <button aria-label="编辑" title="编辑" className="rounded border p-1 hover:bg-muted" onClick={() => openEdit(c)}>
                               <Pencil className="size-3.5" />
                             </button>

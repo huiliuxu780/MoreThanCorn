@@ -249,6 +249,22 @@ def list_connections(page: int = 1, pageSize: int = 20, search: str = "", type: 
             "total": total, "page": page, "pageSize": pageSize}
 
 
+@router.get("/api/connections/{cid}/catalog")
+def connection_catalog(cid: str, db: Session = Depends(get_db),
+                       user: dict = Depends(require_role())):
+    """D5 目录发现：一个 Connection 下多表/多日志库（凭据取自 Connection）。"""
+    from ..catalog_discovery import CatalogError, discover_catalog
+    conn = db.get(Connection, cid)
+    if conn is None:
+        raise HTTPException(404, "connection not found")
+    try:
+        items = discover_catalog(conn)
+    except CatalogError as exc:
+        raise HTTPException(502, {"code": "CATALOG_DISCOVERY_FAILED",
+                                  "detail": str(exc)})
+    return {"protocol": conn.protocol, "items": items, "total": len(items)}
+
+
 @router.get("/api/connections/{cid}")
 def get_connection(cid: str, db: Session = Depends(get_db)):
     """SDD-12 §5.3：只返回凭据字段状态（configured/版本/轮换时间），永不回明文。"""

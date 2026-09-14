@@ -18,7 +18,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .auth_signers import KINDS, normalize_kind
 
-PROTOCOLS = ("http-api", "llm", "mcp-http", "mysql", "postgresql", "oss")
+PROTOCOLS = ("http-api", "llm", "mcp-http", "mysql", "postgresql", "oss",
+           "maxcompute", "sls")  # D5：数据目录型协议
 _ENV_CODE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,15}$")
 
 

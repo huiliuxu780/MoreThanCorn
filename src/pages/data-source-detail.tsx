@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { asApi, type EventDeliveryDTO, type EventRouteDTO } from "@/services/as-api"
+import { connApi, resApi } from "@/services/resource-api"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { toast } from "sonner"
 
@@ -87,6 +88,9 @@ export default function DataSourceDetailPage() {
   const [mc, setMc] = React.useState<{ endpoint: string; project: string; table: string } | null>(null)
   const [fs, setFs] = React.useState<{ app_token: string; table_id: string; view_id: string } | null>(null)
   const [secretOpen, setSecretOpen] = React.useState(false)
+  // D5：Connection/DataAsset 引用展示与切换
+  const [assets, setAssets] = React.useState<{ id: string; name: string; location: string }[]>([])
+  const [connName, setConnName] = React.useState<string | null>(null)
   const [secretJson, setSecretJson] = React.useState("")
   const [saving, setSaving] = React.useState(false)
   const [newToken, setNewToken] = React.useState<string | null>(null)
@@ -110,6 +114,13 @@ export default function DataSourceDetailPage() {
     }
     if (pollUrl === null) setPollUrl(String(cfg.url ?? ""))
     if (pollInterval === null) setPollInterval(String(cfg.interval_seconds ?? "300"))
+    if (src.data.connectionId) {
+      connApi.get(src.data.connectionId).then((c) => setConnName(c.name)).catch(() => setConnName(null))
+    }
+    resApi.list("asset", { pageSize: 200 }).then((r) =>
+      setAssets(r.items.map((x) => ({ id: x.id, name: x.name,
+        location: String((x as unknown as { location?: string }).location ?? "") }))))
+      .catch(() => setAssets([]))
     if (mc === null) setMc({ endpoint: String(cfg.endpoint ?? ""),
                             project: String(cfg.project ?? ""),
                             table: String(cfg.table ?? "") })
@@ -537,6 +548,44 @@ export default function DataSourceDetailPage() {
                 飞书 {"{app_id, app_secret}"}；MaxCompute {"{access_key_id, access_key_secret}"}；
                 API 拉取 {"{type: bearer|api_key|basic, …}"}。服务端信封加密，永不回显。
               </p>
+            </Card>
+          )}
+
+          {(src.data?.connectionId || src.data?.assetId) && (
+            <Card icon={Database} title="连接与数据资产（D5）">
+              <div className="grid gap-1.5 text-[12.5px]">
+                <div className="flex gap-2">
+                  <span className="w-24 shrink-0 text-muted-foreground">Connection</span>
+                  <span>{connName ?? (src.data?.connectionId ? src.data.connectionId.slice(0, 8) + "…" : "—（手工配置模式）")}</span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="w-24 shrink-0 text-muted-foreground">数据资产</span>
+                  <span>{assets.find((a2) => a2.id === src.data?.assetId)?.name ?? "—"}</span>
+                </div>
+                <div className="mt-1 grid gap-1">
+                  <Label htmlFor="ds-asset-switch">切换表/日志库（已挂载的数据资产）</Label>
+                  <Select value={src.data?.assetId ?? ""}
+                          onValueChange={async (v) => {
+                            try {
+                              await asApi.sourcePatch(sid, { asset_id: v })
+                              toast.success("已切换数据资产")
+                              src.retry()
+                            } catch (e) {
+                              toast.error(`切换失败：${(e as Error).message}`)
+                            }
+                          }}>
+                    <SelectTrigger id="ds-asset-switch"><SelectValue placeholder="选择数据资产" /></SelectTrigger>
+                    <SelectContent>
+                      {assets.map((a2) => (
+                        <SelectItem key={a2.id} value={a2.id}>{a2.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">
+                    新表请先到 设置→连接→目录 挂载为数据资产。
+                  </p>
+                </div>
+              </div>
             </Card>
           )}
 

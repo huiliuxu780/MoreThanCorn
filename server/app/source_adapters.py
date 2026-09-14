@@ -31,6 +31,19 @@ class SourceDriverMissing(SourceFetchError):
     """驱动未安装（失败关闭，不 mock）。"""
 
 
+def _aksk(secret: Any) -> tuple[str, str]:
+    """AkSk 双约定兼容：Connection aksk 形 {access_key, secret_key}；
+    源级旧约定 {access_key_id, access_key_secret}。"""
+    if not isinstance(secret, dict):
+        raise SourceFetchError("需要 AkSk 凭据对象")
+    ak = str(secret.get("access_key_id") or secret.get("access_key") or "")
+    sk = str(secret.get("access_key_secret") or secret.get("secret_key") or "")
+    if not ak:
+        raise SourceFetchError(
+            "需要 AkSk 凭据：{access_key, secret_key} 或 {access_key_id, access_key_secret}")
+    return ak, sk
+
+
 def _jsonable(v: Any) -> Any:
     from datetime import date, datetime, time
     from decimal import Decimal
@@ -151,12 +164,9 @@ def fetch_feishu_bitable(config: dict, secret: Any,
 
 def _sls_client(secret: Any, endpoint: str):
     """SLS LogClient 构造（测试可 monkeypatch 本函数）。"""
-    if not isinstance(secret, dict) or not secret.get("access_key_id"):
-        raise SourceFetchError(
-            "SLS 源需要 secret={access_key_id, access_key_secret}")
+    ak, sk = _aksk(secret)
     from aliyun.log import LogClient
-    return LogClient(endpoint, str(secret["access_key_id"]),
-                     str(secret.get("access_key_secret", "")))
+    return LogClient(endpoint, ak, sk)
 
 
 def fetch_sls(config: dict, secret: Any,
@@ -219,9 +229,7 @@ def fetch_maxcompute(config: dict, secret: Any,
     if not (endpoint and project and (table or sql)):
         raise SourceFetchError(
             "MaxCompute 源需要 config.endpoint/project + (table 或 sql)")
-    if not isinstance(secret, dict) or not secret.get("access_key_id"):
-        raise SourceFetchError(
-            "MaxCompute 源需要 secret={access_key_id, access_key_secret}")
+    ak, sk = _aksk(secret)
     enforce_egress(endpoint)
     try:
         from odps import ODPS  # type: ignore
@@ -232,8 +240,7 @@ def fetch_maxcompute(config: dict, secret: Any,
     page_size = min(int(config.get("page_size") or 100), MAX_PAGE_SIZE)
     offset = int(cursor) if cursor else 0
     try:
-        o = ODPS(secret["access_key_id"], secret.get("access_key_secret", ""),
-                 project, endpoint=endpoint)
+        o = ODPS(ak, sk, project, endpoint=endpoint)
         if sql:
             # SQL 查询拉取模式（QuickBI 数据集/函数背后的 SQL 可直接贴入）；
             # offset 分页每页重跑查询（v1 成本可接受，文档注明）

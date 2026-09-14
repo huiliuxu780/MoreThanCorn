@@ -327,10 +327,12 @@ export const asApi = {
     req<{ id: string; name: string; kind: string; config: Record<string, unknown>;
           status: string; archived: boolean; cursor: Record<string, unknown>;
           last_poll_at: string | null; has_token: boolean; has_secret: boolean;
+          connectionId: string | null; assetId: string | null;
           created_at: string | null }>(
       `/api/v2/data-sources/${sid}`),
   sourcePatch: (sid: string, body: { name?: string; config?: Record<string, unknown>;
-                                     status?: "active" | "paused"; archived?: false }) =>
+                                     status?: "active" | "paused"; archived?: false;
+                                     connection_id?: string | null; asset_id?: string | null }) =>
     req<{ id: string; name: string; kind: string; config: Record<string, unknown>;
           status: string; archived: boolean }>(`/api/v2/data-sources/${sid}`, {
       method: "PATCH", body: JSON.stringify(body),

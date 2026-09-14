@@ -49,6 +49,7 @@ import {
 import { Link } from "react-router-dom"
 import { IA_BOUNDARY } from "@/config/ui-terms"
 import { asApi, type CreateSourceBody, type SourceRow } from "@/services/as-api"
+import { connApi } from "@/services/resource-api"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { toast } from "sonner"
 
@@ -87,6 +88,8 @@ interface FormState {
   viewId: string
   logstore: string
   slsQuery: string
+  connId: string
+  tablePick: string
   pageSize: string
   secretJson: string
   mapping: string
@@ -104,6 +107,8 @@ const EMPTY_FORM: FormState = {
   viewId: "",
   logstore: "",
   slsQuery: "",
+  connId: "",
+  tablePick: "",
   pageSize: "100",
   secretJson: "",
   url: "",
@@ -123,6 +128,22 @@ export default function DataSourcesPage() {
   const [testPayload, setTestPayload] = React.useState('{"topic":"billing","id":"evt-demo-1"}')
   const [testTarget, setTestTarget] = React.useState<string | null>(null)
   const [creating, setCreating] = React.useState(false)
+  // D5 两级选择器：Connection（凭据/端点）→ 目录（表/日志库）
+  const [conns, setConns] = React.useState<{ id: string; name: string; protocol: string }[]>([])
+  const [catalogItems, setCatalogItems] = React.useState<{ name: string; kind: string }[]>([])
+  const [catalogErr, setCatalogErr] = React.useState<string | null>(null)
+  React.useEffect(() => {
+    connApi.list({}).then((r) => setConns(r.items)).catch(() => setConns([]))
+  }, [])
+  const loadCatalog = async (cid: string) => {
+    setCatalogItems([]); setCatalogErr(null)
+    try {
+      const r = await connApi.catalog(cid)
+      setCatalogItems(r.items)
+    } catch (e) {
+      setCatalogErr((e as Error).message)
+    }
+  }
   const [polling, setPolling] = React.useState<string | null>(null)
 
   const rows: SourceRow[] = list.data?.items ?? []
@@ -189,8 +210,14 @@ export default function DataSourcesPage() {
       config.page_size = Number(form.pageSize) || 100
     }
     if (form.kind === "maxcompute") {
-      if (!form.endpoint.trim() || !form.project.trim() || !form.table.trim()) {
-        toast.error("MaxCompute 源需要 endpoint / project / table")
+      if (form.connId) {
+        if (!form.tablePick) {
+          toast.error("请从目录选择表")
+          return
+        }
+        config.table = form.tablePick
+      } else if (!form.endpoint.trim() || !form.project.trim() || !form.table.trim()) {
+        toast.error("MaxCompute 源需要 endpoint / project / table（或选择 Connection）")
         return
       }
       config.endpoint = form.endpoint.trim()
@@ -209,8 +236,14 @@ export default function DataSourcesPage() {
       config.page_size = Number(form.pageSize) || 100
     }
     if (form.kind === "sls") {
-      if (!form.endpoint.trim() || !form.project.trim() || !form.logstore.trim()) {
-        toast.error("SLS 源需要 endpoint / project / logstore")
+      if (form.connId) {
+        if (!form.tablePick) {
+          toast.error("请从目录选择 logstore")
+          return
+        }
+        config.logstore = form.tablePick
+      } else if (!form.endpoint.trim() || !form.project.trim() || !form.logstore.trim()) {
+        toast.error("SLS 源需要 endpoint / project / logstore（或选择 Connection）")
         return
       }
       config.endpoint = form.endpoint.trim()
@@ -220,7 +253,7 @@ export default function DataSourcesPage() {
       config.page_size = Number(form.pageSize) || 100
     }
     let secret: Record<string, unknown> | undefined
-    if (form.secretJson.trim()) {
+    if (!form.connId && form.secretJson.trim()) {
       try {
         secret = JSON.parse(form.secretJson) as Record<string, unknown>
       } catch (e) {
@@ -232,6 +265,7 @@ export default function DataSourcesPage() {
     try {
       const r = await asApi.createSource({
         name: form.name.trim(), kind: form.kind, config,
+        ...(form.connId ? { connection_id: form.connId } : {}),
         ...(secret ? { secret } : {}),
       })
       setOpen(false)
@@ -346,7 +380,40 @@ export default function DataSourcesPage() {
                 </div>
               </>
             )}
-            {form.kind === "maxcompute" && (
+            {(form.kind === "maxcompute" || form.kind === "sls") && (
+              <div className="grid gap-1">
+                <Label id="ds-conn-label">Connection（凭据与端点，可选）</Label>
+                <Select value={form.connId} onValueChange={(v) => { set({ connId: v, tablePick: "" }); void loadCatalog(v) }}>
+                  <SelectTrigger id="ds-conn" aria-labelledby="ds-conn-label">
+                    <SelectValue placeholder="选择连接后从目录选表；不选则手工配置" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {conns.filter((c) => c.protocol === form.kind).map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {(form.kind === "maxcompute" || form.kind === "sls") && form.connId && (
+              <div className="grid gap-1">
+                <Label id="ds-pick-label">{form.kind === "sls" ? "Logstore（目录发现）" : "表（目录发现）"}</Label>
+                <Select value={form.tablePick} onValueChange={(v) => set({ tablePick: v })}>
+                  <SelectTrigger id="ds-pick" aria-labelledby="ds-pick-label">
+                    <SelectValue placeholder={catalogErr ? "目录发现失败" : "选择表/日志库"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {catalogItems.map((it) => (
+                      <SelectItem key={it.name} value={it.name}>{it.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {catalogErr && (
+                  <p className="text-xs" style={{ color: "var(--status-danger-text)" }}>{catalogErr}</p>
+                )}
+              </div>
+            )}
+            {form.kind === "maxcompute" && !form.connId && (
               <>
                 <div className="grid gap-1">
                   <Label htmlFor="ds-endpoint">Endpoint</Label>
@@ -400,7 +467,7 @@ export default function DataSourcesPage() {
                 </div>
               </>
             )}
-            {form.kind === "sls" && (
+            {form.kind === "sls" && !form.connId && (
               <>
                 <div className="grid gap-1">
                   <Label htmlFor="ds-endpoint">Endpoint</Label>
@@ -433,9 +500,9 @@ export default function DataSourcesPage() {
                 </div>
               </>
             )}
-            {form.kind !== "webhook" && form.kind !== "test_event" && (
+            {form.kind !== "webhook" && form.kind !== "test_event" && !form.connId && (
               <div className="grid gap-1">
-                <Label htmlFor="ds-secret">凭据 JSON（加密存储，永不回显）</Label>
+                <Label htmlFor="ds-secret">凭据 JSON（加密存储，永不回显；选 Connection 后由连接承载）</Label>
                 <Textarea id="ds-secret" rows={2} placeholder={
                   form.kind === "feishu_bitable"
                     ? '{"app_id":"cli_x","app_secret":"…"}'

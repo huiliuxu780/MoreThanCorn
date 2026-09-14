@@ -744,6 +744,8 @@ class DataAsset(Base):
     health: Mapped[str] = mapped_column(String(16), default="Healthy")
     revision: Mapped[int] = mapped_column(Integer, default=1)
     rows: Mapped[dict] = mapped_column(JSONB, default=list)  # list of row dicts
+    # D5：目录元数据（schema/partitioned/comment/列数等发现器产出）
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
@@ -1478,8 +1480,12 @@ class DataSource(Base):
     # 09-14 D3 拍板：删除=归档语义（事件/路由流水可追溯；被引用时 409 列清单）
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     # 09-14 类型体系：非 webhook 类型凭据加密存储（飞书 app_id/app_secret、
-    # MaxCompute AccessKey、API 拉取 bearer/apikey/basic）；config 只放非敏感参数
+    # MaxCompute AccessKey、API 拉取 bearer/apikey/basic）；config 只放非敏感参数。
+    # D5：凭据正主是 Connection——connection_id 设置后本列仅兼容保留（迁移期双写）
     secret_ref: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # D5（09-14 拍板连接统一）：凭据/端点引用 Connection；表/日志库引用 DataAsset
+    connection_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    asset_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     cursor: Mapped[dict] = mapped_column(JSONB, default=dict)
     last_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

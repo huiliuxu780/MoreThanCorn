@@ -154,6 +154,12 @@ export interface ConnectionBody {
 }
 
 export const connApi = {
+  /** D5 目录发现：一个 Connection 下多表/多日志库 */
+  catalog: (cid: string) =>
+    req<{ protocol: string; total: number;
+          items: { name: string; kind: string; schema?: string;
+                   partitioned?: boolean; comment?: string }[] }>(
+      `/api/connections/${cid}/catalog`),
   list: (p: { type?: string; search?: string; lifecycle?: string } = {}) => {
     const q = new URLSearchParams()
     if (p.type) q.set("type", p.type)

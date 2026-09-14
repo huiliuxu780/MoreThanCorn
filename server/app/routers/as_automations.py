@@ -30,6 +30,8 @@ from ..models import (
     AutomationTrigger,
     AutomationTriggerLog,
     AgentSessionIndex,
+    Connection,
+    DataAsset,
     DataSource,
     DataSourceEvent,
     EventDelivery,
@@ -1020,6 +1022,8 @@ class SourcePatchBody(BaseModel):
     config: dict[str, Any] | None = None
     status: str | None = None
     archived: bool | None = None
+    connection_id: str | None = None
+    asset_id: str | None = None
 
 
 @ingress_router.get("")
@@ -1047,8 +1051,12 @@ def list_sources(includeArchived: str = "", db: Session = Depends(get_db),
     }
 
 
-def _validate_source_config(kind: str, config: dict) -> None:
-    """09-14 类型体系：分类型必填校验（保存即拒，不留到拉取时才炸）。"""
+def _validate_source_config(kind: str, config: dict,
+                            connection_id: str | None = None) -> None:
+    """09-14 类型体系：分类型必填校验（保存即拒，不留到拉取时才炸）。
+
+    D5：connection_id 设置时 endpoint/project 由 Connection 承载，此处不重复要求。
+    """
     from ..source_adapters import SOURCE_KINDS
     if kind not in SOURCE_KINDS:
         raise HTTPException(422, f"kind 只允许 {list(SOURCE_KINDS)}")
@@ -1062,15 +1070,17 @@ def _validate_source_config(kind: str, config: dict) -> None:
         if not (config.get("app_token") and config.get("table_id")):
             raise HTTPException(422, "飞书多维表格源需要 config.app_token 与 config.table_id")
     elif kind == "maxcompute":
-        if not (config.get("endpoint") and config.get("project")
-                and (config.get("table") or config.get("sql"))):
-            raise HTTPException(422, "MaxCompute 源需要 config.endpoint/project + (table 或 sql)")
+        if not (config.get("table") or config.get("sql")):
+            raise HTTPException(422, "MaxCompute 源需要 config.table 或 config.sql")
+        if not connection_id and not (config.get("endpoint") and config.get("project")):
+            raise HTTPException(422, "MaxCompute 源需要 connection_id 或 config.endpoint/project")
         if config.get("sql") and not str(config["sql"]).strip().lower().startswith("select"):
             raise HTTPException(422, "config.sql 仅支持 SELECT（只读）")
     elif kind == "sls":
-        if not (config.get("endpoint") and config.get("project")
-                and config.get("logstore")):
-            raise HTTPException(422, "SLS 源需要 config.endpoint/project/logstore")
+        if not config.get("logstore"):
+            raise HTTPException(422, "SLS 源需要 config.logstore")
+        if not connection_id and not (config.get("endpoint") and config.get("project")):
+            raise HTTPException(422, "SLS 源需要 connection_id 或 config.endpoint/project")
 
 
 @ingress_router.post("")
@@ -1106,6 +1116,8 @@ def get_source(sid: str, db: Session = Depends(get_db),
             "last_poll_at": src.last_poll_at.isoformat() if src.last_poll_at else None,
             "has_token": bool(src.auth_token_hash),
             "has_secret": bool(src.secret_ref),
+            "connectionId": src.connection_id,
+            "assetId": src.asset_id,
             "created_at": src.created_at.isoformat() if src.created_at else None}
 
 
@@ -1126,8 +1138,12 @@ def patch_source(sid: str, body: SourcePatchBody, db: Session = Depends(get_db),
     if body.config is not None:
         cfg = dict(src.config or {})
         cfg.update(body.config)
-        _validate_source_config(src.kind, cfg)  # 分类型必填+egress 保存即校验
+        _validate_source_config(src.kind, cfg, connection_id=src.connection_id)
         src.config = cfg
+    if body.connection_id is not None:
+        src.connection_id = body.connection_id or None
+    if body.asset_id is not None:
+        src.asset_id = body.asset_id or None
     if body.status is not None:
         if body.status not in ("active", "paused"):
             raise HTTPException(422, "status 只允许 active|paused")
@@ -1685,14 +1701,32 @@ def tick_pull_source(db: Session, src) -> dict:
 
     if src.kind not in PULL_KINDS:
         raise HTTPException(409, f"类型 {src.kind} 为推送/测试型，不支持拉取")
-    cfg = src.config or {}
+    cfg = dict(src.config or {})
+    secret_ref = src.secret_ref
+    # D5：connection_id/asset_id 优先（凭据/端点/表目录归 Connection/DataAsset）
+    if src.connection_id:
+        conn = db.get(Connection, src.connection_id)
+        if conn is None:
+            raise HTTPException(409, "源引用的 Connection 已不存在")
+        ep = conn.endpoint or {}
+        cfg.setdefault("endpoint", ep.get("endpoint") or ep.get("base_url") or "")
+        cfg.setdefault("project", ep.get("project") or "")
+        secret_ref = conn.secret_ref or secret_ref
+    if src.asset_id:
+        asset = db.get(DataAsset, src.asset_id)
+        if asset is None:
+            raise HTTPException(409, "源引用的 DataAsset 已不存在")
+        if src.kind == "sls":
+            cfg.setdefault("logstore", asset.location or "")
+        else:
+            cfg.setdefault("table", asset.location or "")
     cursor = (src.cursor or {}).get("last")
     pages = 0
     polled = 0
     dispatched = 0
     while pages < 5:
         try:
-            rows, next_cursor = fetch_page(src.kind, cfg, src.secret_ref, cursor)
+            rows, next_cursor = fetch_page(src.kind, cfg, secret_ref, cursor)
         except SourceFetchError as exc:
             src.status = "error"
             db.commit()
