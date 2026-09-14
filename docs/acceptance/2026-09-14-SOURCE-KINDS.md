@@ -103,3 +103,17 @@ gate.sh --live → ALL GATES GREEN（pytest 584 / vitest 76 / build / lint0 / �
   （数据集/自定义函数），把它背后的 SQL 贴入 config.sql 即可拉取。
 - SLS：用户选择「先给 RAM 加 ListProject 权限」；09-14 重试仍 denied（授权未生效），
   生效后重跑发现即可（list_project → list_logstore → 配源真跑）。
+
+### 7.5 谜底：func_quickbi_corn = QuickBI 数据集名，底表 qbi_file_*（09-14 终）
+- 用户质疑「不可能访问不到」复核：project 为 two-tier（list_schemas 报 two-tier 错误，无隐藏
+  schema）；SQL 解析级 `select * from func_quickbi_corn` → NoSuchTable cannot be resolved；
+  兄弟 project 猜测（dev/corn/prod 变体）全 False。**名字在 MaxCompute 元数据层确实不存在**。
+- 全表清单揭示真相：project 内有 `qbi_file_20260612_15_05_14_0` 与 `qbi_file_20260612_16_07_21_0`
+  （QuickBI 文件数据集底表），内容=**CORN 短信模板数据**（template_name=corn-01…corn-06…，
+  397 行/表，18 列，分区表 pt）。`func_quickbi_corn` 即 QuickBI 侧数据集命名，底表为 qbi_file_*。
+  两表区别：15_05 版 gmt_create/gmt_modified 有值；16_07 版 gmt 字段全 None（重传残缺版）。
+- **真 e2e 终跑通**：源「CORN 短信模板（QuickBI 数据集底表）」(kind=maxcompute,
+  table=qbi_file_20260612_15_05_14_0, page_size=100) → poll=397 行/4 页/397 事件落库，
+  payload.template_name 可见 corn-01…corn-06；**源保留**（SID=53808c68cd514d3599520b0ad5cbd0c5，
+  凭据信封加密落库），事件暂 filtered（未配路由），重复 poll 去重不增。
+- 如需 16_07 版或改 SQL 模式（config.sql）随时可切。
