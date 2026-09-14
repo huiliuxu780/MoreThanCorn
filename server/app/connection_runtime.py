@@ -30,6 +30,33 @@ def resolve_for_request(conn, env_code: str | None = None) -> tuple[dict, dict |
     return endpoint, payload, code
 
 
+class ToolUrlError(Exception):
+    """工具 URL 解析失败（相对路径缺 Connection / 缺 base_url）。"""
+
+
+def resolve_tool_url(url: str, conn) -> str:
+    """工具 request.url 唯一解析实现（09-14 OpenAPI 初始化轮）。
+
+    绝对 URL 原样返回（向后兼容存量工具）；以 / 开头的相对路径拼接绑定
+    Connection 的 endpoint.base_url——端点单点归 Connection（D5 原则），
+    多环境切 env 即切域名，工具配方不再硬编码 host。
+    """
+    u = (url or "").strip()
+    if not u:
+        raise ToolUrlError("工具配方缺少 request.url")
+    if not u.startswith("/"):
+        return u
+    if conn is None:
+        raise ToolUrlError("相对 URL 工具必须绑定提供 base_url 的 Connection")
+    ep, _payload, _code = resolve_for_request(conn)
+    base = str((ep or {}).get("base_url") or "").rstrip("/")
+    if not base:
+        raise ToolUrlError(
+            f"Connection「{getattr(conn, 'name', conn)}」endpoint 未配置 base_url，"
+            "相对 URL 无法解析（请先在 设置 → 连接 补齐端点）")
+    return base + u
+
+
 def resolve_db_target(conn, env_code: str | None = None,
                       database_default: str = "",
                       default_port: int = 5432) -> dict:

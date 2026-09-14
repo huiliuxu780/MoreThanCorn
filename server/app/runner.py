@@ -512,7 +512,17 @@ def exec_tool(node, ctx) -> dict:
         out = {"result": json.dumps(inputs, ensure_ascii=False)[:500], "fixture": True}
     else:
         req = spec["request"]
-        url = render_refs(req.get("url", ""), ctx.outputs, ctx.run_input)
+        tool = ctx.db.get(Tool, tv.tool_id)
+        # 09-14 OpenAPI 初始化轮：执行面状态闸门——非 ready 失败关闭（界面停用≠可被引用执行）
+        if tool and (tool.status or "ready") != "ready":
+            raise RunError(f"工具 {tool.name} 状态为 {tool.status}：执行面失败关闭（仅 ready 可执行）")
+        conn = ctx.db.get(Connection, tool.connection_id) if (tool and tool.connection_id) else None
+        # 09-14：相对 URL 由绑定 Connection 的 endpoint.base_url 解析（端点单点、多环境切域名）
+        from .connection_runtime import ToolUrlError, resolve_tool_url
+        try:
+            url = resolve_tool_url(render_refs(req.get("url", ""), ctx.outputs, ctx.run_input), conn)
+        except ToolUrlError as exc:
+            raise RunError(str(exc)) from exc
         # 09 P0-11：统一 Egress Policy（DNS/IPv6/元数据/私网全拦；禁自动重定向）
         from .egress import EgressError, assert_safe_url
         try:
@@ -521,16 +531,13 @@ def exec_tool(node, ctx) -> dict:
             raise RunError(str(exc)) from exc
         # R4（存量缺口修复）：Tool 绑定的鉴权连接运行时装上（此前仅管理面绑定）
         headers: dict = {}
-        tool = ctx.db.get(Tool, tv.tool_id)
-        if tool and tool.connection_id:
-            conn = ctx.db.get(Connection, tool.connection_id)
-            if conn:
-                _ep, payload, _code = resolve_for_request(conn)
-                try:
-                    headers = build_auth_headers(conn.kind, payload, script=conn.auth_script,
-                                                 env_vars=payload if isinstance(payload, dict) else None)
-                except AuthSignError as exc:
-                    raise RunError(str(exc))
+        if conn:
+            _ep, payload, _code = resolve_for_request(conn)
+            try:
+                headers = build_auth_headers(conn.kind, payload, script=conn.auth_script,
+                                             env_vars=payload if isinstance(payload, dict) else None)
+            except AuthSignError as exc:
+                raise RunError(str(exc))
         with httpx.Client(timeout=10, follow_redirects=False) as client:
             r = client.request(req.get("method", "GET"), url, headers=headers,
                                json=inputs if req.get("method", "GET") != "GET" else None)

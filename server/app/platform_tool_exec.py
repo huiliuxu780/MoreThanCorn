@@ -12,7 +12,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from .auth_signers import build_auth_headers
-from .connection_runtime import resolve_for_request
+from .connection_runtime import ToolUrlError, resolve_for_request, resolve_tool_url
 from .egress import assert_safe_url
 from .models import Connection, Tool, ToolVersion
 
@@ -31,18 +31,24 @@ def execute_tool_version(db: Session, tool_version_id: str, args: dict[str, Any]
     tool = db.get(Tool, tv.tool_id)
     if tool is None:
         raise ValueError(f"tool {tv.tool_id} not found")
+    # 09-14 OpenAPI 初始化轮：执行面状态闸门——非 ready（disabled/archived 等）
+    # 失败关闭，杜绝「界面停用但引用仍可执行」的僵尸路径
+    if (tool.status or "ready") != "ready":
+        raise ValueError(f"工具 {tool.name} 状态为 {tool.status}：执行面失败关闭（仅 ready 可执行）")
     spec = tv.spec or {}
     req = spec.get("request") or {}
     if not req:
         raise ValueError(f"tool {tool.name} 无 request 配方（测试 fixture 不允许生产执行）")
-    url = _render(req.get("url", ""), args)
+    conn = db.get(Connection, tool.connection_id) if tool.connection_id else None
+    try:
+        url = resolve_tool_url(_render(req.get("url", ""), args), conn)
+    except ToolUrlError as exc:
+        raise ValueError(str(exc)) from exc
     assert_safe_url(url)
     headers: dict[str, str] = {}
-    if tool.connection_id:
-        conn = db.get(Connection, tool.connection_id)
-        if conn:
-            _ep, payload, _code = resolve_for_request(conn)
-            headers = build_auth_headers(conn.kind, payload, script=conn.auth_script)
+    if conn:
+        _ep, payload, _code = resolve_for_request(conn)
+        headers = build_auth_headers(conn.kind, payload, script=conn.auth_script)
     method = (req.get("method") or "POST").upper()
     body = args if req.get("body") == "$args" else (req.get("body") or None)
     if isinstance(body, str):
