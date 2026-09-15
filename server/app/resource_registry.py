@@ -87,6 +87,11 @@ def references(db: Session, rtype: str, rid: str) -> list[dict]:
         for a in db.execute(select(DataAsset).where(DataAsset.datasource_id == rid)).scalars():
             refs.append({"kind": "data_asset", "label": a.name, "id": a.id})
     elif rtype == "asset":
+        # 09-15 接缝（IA 原则）：接入源消费资产亦为引用——资产卡「被 N 处引用」与删除守卫可见
+        from .models import DataSource as _DS
+        for src in db.execute(select(_DS).where(_DS.asset_id == rid,
+                                                _DS.archived.is_(False))).scalars():
+            refs.append({"kind": "ingress_source", "label": src.name, "id": src.id})
         for d in db.execute(select(DataDefinition).where(DataDefinition.data_asset_id == rid)).scalars():
             refs.append({"kind": "data_definition", "label": d.name, "id": d.id})
         for t in db.execute(select(AnalysisTask).where(AnalysisTask.data_asset_id == rid)).scalars():

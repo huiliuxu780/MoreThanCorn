@@ -1014,6 +1014,9 @@ class SourceBody(BaseModel):
     kind: str
     config: dict[str, Any] = {}
     secret: dict[str, Any] | str | None = None
+    # 09-15 接缝：创建即链接凭据/端点与资产（原仅 PATCH 应用，创建静默丢弃=D5 缺口）
+    connection_id: str | None = None
+    asset_id: str | None = None
 
 
 class SourcePatchBody(BaseModel):
@@ -1085,8 +1088,29 @@ def _validate_source_config(kind: str, config: dict,
 
 @ingress_router.post("")
 def create_source(body: SourceBody, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
-    _validate_source_config(body.kind, body.config)
+    _validate_source_config(body.kind, body.config, connection_id=body.connection_id)
     src = DataSource(name=body.name, kind=body.kind, config=body.config)
+    # 09-15 接缝修复：创建时即落 connection_id/asset_id（原仅 PATCH 应用，创建静默丢弃=D5 契约缺口）
+    if body.connection_id:
+        src.connection_id = body.connection_id
+    if body.asset_id:
+        src.asset_id = body.asset_id
+    # 09-15 接缝（IA 原则）：目录型源未指定资产时自动落 DataAsset（同 connection+location 复用），
+    # 杜绝「同一表/日志库只活在接入侧」的分叉（bsh 教训）
+    if src.connection_id and not src.asset_id and src.kind in ("maxcompute", "sls"):
+        loc = str(body.config.get("table") or body.config.get("logstore") or "")
+        if loc:
+            asset = (db.query(DataAsset)
+                     .filter(DataAsset.location == loc,
+                             DataAsset.config["connection_id"].as_string() == src.connection_id)
+                     .first())
+            if asset is None:
+                asset = DataAsset(name=loc[:64], location=loc, source="catalog",
+                                  config={"connection_id": src.connection_id},
+                                  record_meaning="一条业务记录", lifecycle="Ready")
+                db.add(asset)
+                db.flush()
+            src.asset_id = asset.id
     if body.secret is not None:
         from ..secrets import encrypt_secret, serialize_secret
         src.secret_ref = encrypt_secret(serialize_secret(body.secret))
