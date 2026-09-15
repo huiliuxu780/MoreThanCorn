@@ -24,13 +24,6 @@ export default function DataHubPage() {
   const tab = (TABS.some((t) => t.key === raw) ? raw : "ingress") as typeof TABS[number]["key"]
   return (
     <div className="flex flex-col gap-4 p-4 md:p-6">
-      <header>
-        <h1 className="text-xl font-semibold">数据</h1>
-        <p className="text-sm text-muted-foreground">
-          同一批数据对象的三个镜头：接入健康（流动）/ 数据资产（库存）/ 事件流水（证据）；
-          凭据根在 设置→连接，本页不存凭据。
-        </p>
-      </header>
       <Tabs value={tab} onValueChange={(v) => setSearchParams((p) => {
         const n = new URLSearchParams(p)
         if (v === "ingress") n.delete("tab"); else n.set("tab", v)
