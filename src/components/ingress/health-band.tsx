@@ -47,19 +47,27 @@ function AutoPill({ row }: { row: SourceHealthRow }) {
   )
 }
 
-export function HealthBand() {
+export function HealthBand({ onTest }: { onTest?: (id: string) => void }) {
   const navigate = useNavigate()
   const data = useAsyncData(() => asApi.healthSummary(), [])
   if (data.error) {
     return (
-      <div className="rounded-md border px-3 py-2 text-sm"
+      <div role="alert" className="flex items-center gap-3 rounded-md border px-3 py-2 text-sm"
            style={{ borderColor: "var(--status-danger)", color: "var(--status-danger-text)" }}>
-        接入健康概览加载失败：{data.error}
+        <span>数据源列表加载失败：{data.error}</span>
+        <Button size="xs" variant="outline" onClick={() => data.retry()}>重试</Button>
       </div>
     )
   }
   const rows = data.data?.items ?? []
-  if (!data.loading && rows.length === 0) return null
+  if (!data.loading && rows.length === 0) {
+    return (
+      <p className="rounded-md border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">
+        暂无数据源。创建 Webhook 源后可用「发送测试事件」验证接入链路；
+        拉取型源由平台按设定间隔自动拉取，也可在列表中「立即拉取」。
+      </p>
+    )
+  }
   return (
     <div className="overflow-hidden rounded-lg border" style={{ borderColor: "var(--border)" }}>
       <div className="flex items-center gap-2 border-b px-3.5 py-2"
@@ -133,6 +141,9 @@ export function HealthBand() {
                   </td>
                   <td className="px-3.5 py-2.5 text-right">
                     <div className="flex justify-end gap-1">
+                      {onTest && (
+                        <Button size="xs" variant="outline" onClick={() => onTest(r.sourceId)}>发送测试事件</Button>
+                      )}
                       {PULL_KINDS.includes(r.kind) && (
                         <Button size="xs" variant="outline" onClick={() => {
                           void asApi.pollSource(r.sourceId).then(

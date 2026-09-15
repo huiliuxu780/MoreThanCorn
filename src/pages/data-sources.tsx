@@ -18,8 +18,7 @@
  */
 import * as React from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { CircleCheck, CircleX, Clock, CloudDownload, Copy, Database, FlaskConical, OctagonAlert, Plus, RotateCw, ScrollText, Settings2, Table as TableIcon, Webhook } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { CircleCheck, CircleX, Clock, CloudDownload, Copy, Database, FlaskConical, OctagonAlert, Plus, ScrollText, Table as TableIcon, Webhook } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -39,18 +38,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { Link } from "react-router-dom"
 import { IA_BOUNDARY } from "@/config/ui-terms"
 import { HealthBand } from "@/components/ingress/health-band"
-import { asApi, type CreateSourceBody, type SourceRow } from "@/services/as-api"
+import { asApi, type CreateSourceBody } from "@/services/as-api"
 import { connApi } from "@/services/resource-api"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAsyncData } from "@/hooks/use-async-data"
@@ -58,19 +49,14 @@ import { toast } from "sonner"
 
 /* 09-14 类型体系常量与按型字段组：16 号稿 B2 起单点在共享组件（老 Dialog 与向导共用） */
 import {
-  EMPTY_SOURCE_FORM, KIND_ICON, KIND_LABEL, PULL_KINDS,
-  SourceKindFields, deriveSourcePayload, type SourceFormState,
+  EMPTY_SOURCE_FORM, SourceKindFields, deriveSourcePayload, type SourceFormState,
 } from "@/components/ingress/source-kind-fields"
 
-const STATUS_LABEL: Record<string, string> = {
-  active: "活跃",
-  paused: "已暂停",
-  error: "异常",
-}
 
 export default function DataSourcesPage() {
   const navigate = useNavigate()
-  const list = useAsyncData((o) => asApi.sources(o?.signal), [])
+  /* 16 号稿 B4 合并：源表唯一=HealthBand；bandKey 触发其重取 */
+  const [bandKey, setBandKey] = React.useState(0)
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState<SourceFormState>(EMPTY_SOURCE_FORM)
   const [token, setToken] = React.useState<string | null>(null)
@@ -93,9 +79,7 @@ export default function DataSourcesPage() {
       setCatalogErr((e as Error).message)
     }
   }
-  const [polling, setPolling] = React.useState<string | null>(null)
 
-  const rows: SourceRow[] = list.data?.items ?? []
   const set = (patch: Partial<SourceFormState>) => setForm((f) => ({ ...f, ...patch }))
 
   const create = async () => {
@@ -120,7 +104,7 @@ export default function DataSourcesPage() {
       })
       setOpen(false)
       setForm(EMPTY_SOURCE_FORM)
-      list.retry()
+      setBandKey((k) => k + 1)
       if (r.webhook_token) {
         setToken(String(r.webhook_token))  // 一次性交付弹窗
       } else {
@@ -130,20 +114,6 @@ export default function DataSourcesPage() {
       toast.error(`创建失败：${(e as Error).message}`)
     } finally {
       setCreating(false)
-    }
-  }
-
-  const pollNow = async (s: SourceRow) => {
-    setPolling(s.id)
-    try {
-      const r = await asApi.pollSource(s.id)
-      toast.success(`拉取完成：${r.polled} 条，派发 ${r.dispatched} 条`)
-      list.retry()
-    } catch (e) {
-      toast.error(`拉取失败：${(e as Error).message}`)
-      list.retry()
-    } finally {
-      setPolling(null)
     }
   }
 
@@ -263,75 +233,8 @@ export default function DataSourcesPage() {
       </Dialog>
 
       {/* 16 号稿 B4：接入健康概览带（每源诊断；老列表保留在其下） */}
-      <HealthBand />
+      <HealthBand key={bandKey} onTest={setTestTarget} />
       {/* 09-13 审计修复：loading / error / empty 三态分离，失败不再伪装成「暂无数据源」 */}
-      {list.error ? (
-        <div className="flex flex-col items-center gap-2 rounded-md border border-status-danger/40 p-8 text-sm" role="alert">
-          <span className="text-status-danger">数据源列表加载失败：{list.error}</span>
-          <Button size="sm" variant="outline" onClick={() => list.retry()}>
-            <RotateCw className="size-3.5" /> 重试
-          </Button>
-        </div>
-      ) : list.loading && !list.data ? (
-        <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">加载中…</div>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>名称</TableHead>
-              <TableHead>类型</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>最近拉取</TableHead>
-              <TableHead>操作</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((s) => (
-              <TableRow key={s.id}>
-                <TableCell className="font-medium">{s.name}</TableCell>
-                <TableCell>
-                  <Badge variant="outline">
-                    {(() => { const I = KIND_ICON[s.kind as keyof typeof KIND_ICON] ?? Webhook
-                      return <I className="size-3" /> })()}
-                    {KIND_LABEL[s.kind] ?? s.kind}
-                  </Badge>
-                </TableCell>
-                <TableCell>{STATUS_LABEL[s.status] ?? s.status}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {s.last_poll_at ? new Date(s.last_poll_at).toLocaleString() : "—"}
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setTestTarget(s.id)}>
-                      发送测试事件
-                    </Button>
-                    {PULL_KINDS.includes(s.kind) && (
-                      <Button size="sm" variant="outline" disabled={polling === s.id}
-                              onClick={() => void pollNow(s)}>
-                        {polling === s.id ? "拉取中…" : "立即拉取"}
-                      </Button>
-                    )}
-                    {/* 09-14 D3 拍板：治理入口=独立详情页（非抽屉） */}
-                    <Button size="sm" variant="outline"
-                            onClick={() => navigate(`/data-sources/${s.id}`)}>
-                      <Settings2 className="size-3.5" /> 管理
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-            {!rows.length && (
-              <TableRow>
-                <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
-                  暂无数据源。创建 Webhook 源后可用「发送测试事件」验证接入链路；
-                  拉取型源由平台按设定间隔自动拉取，也可在列表中「立即拉取」。
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      )}
-
       {testTarget && (
         <div className="rounded-md border p-3">
           <Label htmlFor="ds-test-payload">测试 payload（JSON）</Label>

@@ -27,14 +27,15 @@ const sources = vi.fn()
 const createSource = vi.fn()
 const testEvent = vi.fn()
 const pollSource = vi.fn()
+const healthSummary = vi.fn((..._a: unknown[]) => Promise.resolve({ items: [] }))
 vi.mock("@/services/as-api", () => ({
   asApi: {
     sources: (...a: unknown[]) => sources(...a),
     createSource: (...a: unknown[]) => createSource(...a),
     testEvent: (...a: unknown[]) => testEvent(...a),
     pollSource: (...a: unknown[]) => pollSource(...a),
-    /* 16 号稿 B4：页面新增概览带依赖 */
-    healthSummary: () => Promise.resolve({ items: [] }),
+    /* 16 号稿 B4 合并：源表唯一=概览带，失败态由其驱动 */
+    healthSummary: (...a: unknown[]) => healthSummary(...a),
   },
 }))
 const toastError = vi.fn()
@@ -102,7 +103,7 @@ describe("DataSources 审计返工锁定", () => {
   })
 
   it("列表失败显示错误态与重试，不再伪装暂无数据源", async () => {
-    sources.mockRejectedValue(new Error("net-down"))
+    healthSummary.mockRejectedValueOnce(new Error("net-down"))
     render(<MemoryRouter><DataSourcesPage /></MemoryRouter>)
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toContain("net-down"))
