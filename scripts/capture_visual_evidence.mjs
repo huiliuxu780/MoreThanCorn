@@ -60,20 +60,11 @@ const page = await browser.newPage();
 for (const vp of VIEWPORTS) {
   await page.setViewport(vp);
 
-  // 导航（展开）+ 任务页
+  // 导航（09-15 固定 208px 宽、无折叠态）+ 任务页
   await page.goto(`${MTC}/tasks`, { waitUntil: "networkidle2" });
   await sleep(1200);
-  await page.evaluate(() => localStorage.setItem("mtc-nav-collapsed", "0"));
-  await page.reload({ waitUntil: "networkidle2" });
-  await sleep(1200);
-  await measure(page, "tasks-nav-expanded", vp);
+  await measure(page, "tasks-nav-fixed", vp);
   await shoot(page, "01-nav-tasks", vp, "mtc");
-  // 导航（收起）
-  await page.evaluate(() => localStorage.setItem("mtc-nav-collapsed", "1"));
-  await page.reload({ waitUntil: "networkidle2" });
-  await sleep(1000);
-  await shoot(page, "01b-nav-collapsed", vp, "mtc");
-  await page.evaluate(() => localStorage.setItem("mtc-nav-collapsed", "0"));
 
   // 设置
   await page.goto(`${MTC}/settings`, { waitUntil: "networkidle2" });

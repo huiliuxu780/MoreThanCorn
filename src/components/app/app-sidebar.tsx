@@ -1,24 +1,4 @@
-import {
-  Bot,
-  Boxes,
-  CalendarClock,
-  Check,
-  ClipboardList,
-  LogIn,
-  LogOut,
-  Monitor,
-  Plus,
-  Waypoints,
-  Workflow,
-  Moon,
-  MoonStar,
-  Settings,
-  ShieldCheck,
-  Sun,
-  Sunrise,
-  UserRound,
-  Webhook,
-} from "lucide-react"
+import { Bot, Boxes, CalendarClock, Check, ClipboardList, LogIn, LogOut, Monitor, Waypoints, Workflow, Moon, MoonStar, Settings, ShieldCheck, Sun, Sunrise, UserRound, Webhook } from "lucide-react"
 import * as React from "react"
 import { NavLink, useLocation, useNavigate } from "react-router-dom"
 import { useTheme } from "next-themes"
@@ -40,7 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { CortexMark, PanelFoldIcon } from "@/components/app/logo"
+import { CortexMark } from "@/components/app/logo"
 import { avatarFor } from "@/lib/agent-avatar"
 
 export interface NavItem {
@@ -274,44 +254,28 @@ function AccountMenu({
 
 export type AppNavProps = AccountMenuProps
 
-const COLLAPSE_KEY = "mtc-nav-collapsed"
-
-function useCollapsed() {
-  const [collapsed, setCollapsed] = React.useState(
-    () => localStorage.getItem(COLLAPSE_KEY) !== "0", // 原站默认收起窄轨
-  )
-  const toggle = React.useCallback(() => {
-    setCollapsed((v) => {
-      localStorage.setItem(COLLAPSE_KEY, v ? "0" : "1")
-      return !v
-    })
-  }, [])
-  return { collapsed, toggle }
-}
-
-/** 侧栏单项：展开态图标+文字横排；收起态仅图标（title 提示）。 */
-function SideLink({ item, active, collapsed }: { item: NavItem; active: boolean; collapsed: boolean }) {
+/** 侧栏单项：图标+文字横排（09-15 固定宽拍板后无收起态）。 */
+function SideLink({ item, active }: { item: NavItem; active: boolean }) {
   return (
     <NavLink
       to={item.to}
       title={item.label}
       data-active={active || undefined}
       className={cn(
-        "flex h-8 items-center rounded text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        collapsed ? "w-full justify-center" : "gap-2 px-2",
+        "flex h-8 items-center gap-2 px-2 rounded text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         active
           ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
           : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
       )}
     >
       <item.icon className="size-4 shrink-0" />
-      {!collapsed && <span className="truncate">{item.label}</span>}
+      <span className="truncate">{item.label}</span>
     </NavLink>
   )
 }
 
 /** 参考原站员工区（仅 Agent tab，无 Group）：搜索+新建+活跃 Agent 列表。 */
-function AgentListSection({ collapsed }: { collapsed: boolean }) {
+function AgentListSection() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const [agents, setAgents] = React.useState<
@@ -338,45 +302,6 @@ function AgentListSection({ collapsed }: { collapsed: boolean }) {
     }
   }, [])
   const filtered = agents.filter((a) => a.name.toLowerCase().includes(q.toLowerCase()))
-
-  // 收起态：原站保留「紧凑胶囊」（qc-quests-sidebar__compact-capsule）——白底竖向药丸，
-  // 内含「+ 新建」与 Agent 头像快捷入口（Group 切换不引入）。我方此前整块隐藏。
-  if (collapsed) {
-    return (
-      <div className="flex min-h-0 flex-1 items-start justify-center overflow-hidden px-2 py-3">
-        <div className="flex max-h-full w-10 shrink-0 flex-col items-center gap-3 overflow-y-auto rounded-full bg-surface p-2">
-          <button
-            type="button"
-            aria-label="新建 Agent"
-            title="新建 Agent"
-            onClick={() => navigate("/agents/new")}
-            className="flex size-6 shrink-0 items-center justify-center rounded-full border text-muted-foreground transition-colors hover:bg-sidebar-accent"
-            style={{ borderColor: "var(--border)" }}
-          >
-            <Plus className="size-4" />
-          </button>
-          {agents.map((a) => {
-            const activeAgent = pathname === `/agents/${a.id}` || pathname.startsWith(`/agents/${a.id}/`)
-            return (
-              <button
-                key={a.id}
-                type="button"
-                aria-label={a.name}
-                title={a.name}
-                onClick={() => navigate(`/agents/${a.id}`)}
-                className={cn(
-                  "flex size-6 shrink-0 items-center justify-center rounded-full transition-opacity",
-                  activeAgent ? "ring-2 ring-brand" : "opacity-80 hover:opacity-100",
-                )}
-              >
-                <img src={avatarFor(a.id, a.avatar)} alt="" className="size-6 rounded-full object-cover" />
-              </button>
-            )
-          })}
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col border-t pt-2" style={{ borderColor: "var(--sidebar-border)" }}>
@@ -439,75 +364,41 @@ function AgentListSection({ collapsed }: { collapsed: boolean }) {
 }
 
 /**
- * 2026-09-09 换底：QoderWake 同构应用壳侧栏——展开 240px / 收起 60px，
- * 分组 heading、折叠按钮、活跃 Agent 列表区（无 Group）、底部用户区。
+ * 2026-09-09 换底：QoderWake 同构应用壳侧栏——分组 heading、活跃 Agent 列表区、底部用户区。
+ * 09-15 用户拍板：**固定 208px 宽、取消折叠**（翻覆 09-10 可折叠壳拍板：宽度永远可预期，
+ * 代价=失去 240 展开态与 64 窄轨；长 Agent 名/描述以 truncate 处理）。
  */
 export function AppSidebar(props: AppNavProps) {
   const { pathname } = useLocation()
   const navigateTo = useNavigate()
   const active = computeActiveNav(pathname)
-  const { collapsed, toggle } = useCollapsed()
   const username = props.authed ? currentUsername() : "dev"
   const initial = username.slice(0, 1).toUpperCase() || "?"
 
   return (
     <aside
-      className={cn(
-        "sticky top-0 hidden h-dvh shrink-0 flex-col border-r bg-sidebar md:flex",
-        collapsed ? "w-16" : "w-60",
-      )}
+      className="sticky top-0 hidden h-dvh w-52 shrink-0 flex-col border-r bg-sidebar md:flex"
       data-testid="app-sidebar"
     >
-      {/* §八：品牌与折叠按钮共用 48px 顶部区域（导航自 y=48 起）。
-          QoderWake 同构：收起态默认只显品牌 mark，悬停才切换为「展开侧边栏」面板图标
-          （panel 图标不常驻）；展开态为 mark+名称+常驻面板图标。 */}
-      {collapsed ? (
-        <div className="flex h-12 shrink-0 items-center justify-center">
-          <button
-            type="button"
-            onClick={toggle}
-            title="展开侧边栏"
-            aria-label="展开侧边栏"
-            aria-expanded={false}
-            className="group flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <CortexMark className="size-7 shrink-0 group-hover:hidden" />
-            <PanelFoldIcon collapsed className="hidden size-4 group-hover:block" />
-          </button>
-        </div>
-      ) : (
-        <div className="flex h-12 shrink-0 items-center gap-2 px-3">
-          <CortexMark className="size-6 shrink-0" />
-          <strong className="min-w-0 flex-1 truncate text-sm font-semibold">{UI_TERMS.productName}</strong>
-          <button
-            type="button"
-            onClick={toggle}
-            title="折叠侧边栏"
-            aria-label="折叠侧边栏"
-            aria-expanded
-            className="flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <PanelFoldIcon collapsed={false} className="size-5" />
-          </button>
-        </div>
-      )}
-      <nav aria-label="工作台导航" className={cn("shrink-0 overflow-y-auto pb-2", collapsed ? "px-0" : "px-3")}>
+      {/* 品牌区 48px（导航自 y=48 起）；09-15 固定宽后无折叠按钮。 */}
+      <div className="flex h-12 shrink-0 items-center gap-2 px-3">
+        <CortexMark className="size-6 shrink-0" />
+        <strong className="min-w-0 flex-1 truncate text-sm font-semibold">{UI_TERMS.productName}</strong>
+      </div>
+      <nav aria-label="工作台导航" className="shrink-0 overflow-y-auto pb-2 px-3">
         {NAV_GROUPS.map((group) => {
           const items = group.items.filter((i) => rbac.can(i.permission))
           if (!items.length) return null
           return (
             <div key={group.title} className="mb-3">
-              {!collapsed && (
-                <h2 className="pb-1 text-[10px] font-normal text-muted-foreground">
-                  {group.title}
-                </h2>
-              )}
+              <h2 className="pb-1 text-[10px] font-normal text-muted-foreground">
+                {group.title}
+              </h2>
               <div className="flex flex-col gap-1">
                 {items.map((item) => (
                   <SideLink
                     key={item.to}
                     item={item}
-                    collapsed={collapsed}
                     active={active === NAV_KEY_BY_TO[item.to]}
                   />
                 ))}
@@ -516,33 +407,31 @@ export function AppSidebar(props: AppNavProps) {
           )
         })}
       </nav>
-      <AgentListSection collapsed={collapsed} />
+      <AgentListSection />
       {/* §八：齿轮 = 唯一全局设置菜单触发器（点击先弹菜单，不直接跳页）。
           QoderWake 同构（实测）：收起态 footer 仅图标按钮（28×28/pad6/radius4/图标16，
           column 间距12，footer padding 12px 0，不显示头像与账号文字）；展开态
           头像 28px + 名称/团队版 + 图标按钮。 */}
       <div
-        className={cn("shrink-0 border-t", collapsed ? "py-3" : "p-2")}
+        className="shrink-0 border-t p-2"
         style={{ borderColor: "var(--sidebar-border)" }}
       >
-        <div className={cn("flex items-center", collapsed ? "flex-col gap-3" : "gap-1")}>
-          {!collapsed && (
+        <div className="flex items-center gap-1">
+          <span
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-md p-2 text-sm text-muted-foreground"
+            title={`${UI_TERMS.navigation.account}：${username}`}
+          >
             <span
-              className="flex min-w-0 flex-1 items-center gap-2 rounded-md p-2 text-sm text-muted-foreground"
-              title={`${UI_TERMS.navigation.account}：${username}`}
+              aria-hidden
+              className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground"
             >
-              <span
-                aria-hidden
-                className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground"
-              >
-                {initial}
-              </span>
-              <span className="min-w-0 truncate">
-                <span className="block truncate text-sm font-medium">{username}</span>
-                <span className="block truncate text-[11px] text-muted-foreground">团队版</span>
-              </span>
+              {initial}
             </span>
-          )}
+            <span className="min-w-0 truncate">
+              <span className="block truncate text-sm font-medium">{username}</span>
+              <span className="block truncate text-[11px] text-muted-foreground">团队版</span>
+            </span>
+          </span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
