@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/table"
 import { Link } from "react-router-dom"
 import { IA_BOUNDARY } from "@/config/ui-terms"
+import { HealthBand } from "@/components/ingress/health-band"
 import { asApi, type CreateSourceBody, type SourceRow } from "@/services/as-api"
 import { connApi } from "@/services/resource-api"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -261,6 +262,8 @@ export default function DataSourcesPage() {
         </DialogContent>
       </Dialog>
 
+      {/* 16 号稿 B4：接入健康概览带（每源诊断；老列表保留在其下） */}
+      <HealthBand />
       {/* 09-13 审计修复：loading / error / empty 三态分离，失败不再伪装成「暂无数据源」 */}
       {list.error ? (
         <div className="flex flex-col items-center gap-2 rounded-md border border-status-danger/40 p-8 text-sm" role="alert">

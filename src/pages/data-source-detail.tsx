@@ -6,6 +6,7 @@
  */
 import * as React from "react"
 import { useNavigate, useParams } from "react-router-dom"
+import { EMPTY_ROUTE_FORM, RouteForm, type RouteFormValue } from "@/components/ingress/route-form"
 import {
   ArrowLeft, CircleCheck, CircleX, Clock, CloudDownload, Copy, Database, Filter,
   FlaskConical, History, KeyRound, OctagonAlert, Pause, Play, Plus,
@@ -67,6 +68,36 @@ function Card({ icon: Icon, title, extra, children }: {
       </header>
       <div className="p-4">{children}</div>
     </section>
+  )
+}
+
+/** 16 号稿 B4：路由创建入口（全站首个路由创建 UI；向导步④同用 RouteForm）。 */
+function RouteCreateBox({ sid, onCreated }: { sid: string; onCreated: () => void }) {
+  const [open, setOpen] = React.useState(false)
+  const [form, setForm] = React.useState<RouteFormValue>(EMPTY_ROUTE_FORM)
+  const [saving, setSaving] = React.useState(false)
+  if (!open) {
+    return (
+      <Button size="xs" variant="outline" className="mb-2" onClick={() => setOpen(true)}>
+        <Plus className="size-3" /> 新建路由
+      </Button>
+    )
+  }
+  return (
+    <div className="mb-3 grid gap-2 rounded-md border p-3" style={{ borderColor: "var(--border)", background: "var(--surface-muted)" }}>
+      <RouteForm value={form} set={(p) => setForm((f) => ({ ...f, ...p }))} idp="dtl" />
+      <div className="flex gap-2">
+        <Button size="xs" disabled={saving} onClick={() => {
+          if (!form.destId) { toast.error("请选择目的地实例"); return }
+          setSaving(true)
+          asApi.createRoute({ sourceId: sid, destination: { kind: form.destKind, id: form.destId } })
+            .then(() => { toast.success("路由已创建"); setForm(EMPTY_ROUTE_FORM); setOpen(false); onCreated() })
+            .catch((e) => toast.error(`创建失败：${(e as Error).message}`))
+            .finally(() => setSaving(false))
+        }}>保存路由</Button>
+        <Button size="xs" variant="ghost" onClick={() => setOpen(false)}>取消</Button>
+      </div>
+    </div>
   )
 }
 
@@ -590,6 +621,7 @@ export default function DataSourceDetailPage() {
           )}
 
           <Card icon={RouteIcon} title={`事件路由（${routes.data?.total ?? 0}）`}>
+            <RouteCreateBox sid={sid} onCreated={() => routes.retry()} />
             {routes.error ? (
               <p className="text-xs text-(--status-danger-text)">路由加载失败：{routes.error}</p>
             ) : (routes.data?.items ?? []).length === 0 ? (

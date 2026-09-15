@@ -87,6 +87,8 @@ export interface SourceHealthRow {
   sourceId: string; name: string; kind: string; status: string;
   lastPollAt: string | null; lastPollOk: boolean; lastPollError: string;
   lastPollCount: number; events24h: number;
+  /** 自动拉取间隔（秒）；0=仅手动（watcher 不 tick） */
+  intervalSeconds: number;
   /** filtered=24h filtered 事件数（不产生 delivery 行） */
   deliveries24h: { completed: number; failed: number; dead: number; filtered: number };
   routeCount: number;

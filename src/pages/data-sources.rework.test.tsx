@@ -33,6 +33,8 @@ vi.mock("@/services/as-api", () => ({
     createSource: (...a: unknown[]) => createSource(...a),
     testEvent: (...a: unknown[]) => testEvent(...a),
     pollSource: (...a: unknown[]) => pollSource(...a),
+    /* 16 号稿 B4：页面新增概览带依赖 */
+    healthSummary: () => Promise.resolve({ items: [] }),
   },
 }))
 const toastError = vi.fn()

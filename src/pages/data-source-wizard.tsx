@@ -24,7 +24,7 @@ import {
 } from "@/pages/wf-connections"
 import { asApi, type CreateSourceBody } from "@/services/as-api"
 import { connApi, type ConnSecret } from "@/services/resource-api"
-import { bizApi } from "@/services/wf-api"
+import { EMPTY_ROUTE_FORM, RouteForm, type RouteFormValue } from "@/components/ingress/route-form"
 
 const AUTH_KINDS = ["none", "api_key", "bearer", "basic", "aksk", "script"] as const
 const protocolFor = (k: SourceKind) =>
@@ -71,18 +71,7 @@ export default function DataSourceWizardPage() {
 
   /* ── 路由步 ── */
   const [wantRoute, setWantRoute] = React.useState(true)
-  const [routeName, setRouteName] = React.useState("")
-  const [destKind, setDestKind] = React.useState<"automation" | "analysis_task">("automation")
-  const [destId, setDestId] = React.useState("")
-  const [automations, setAutomations] = React.useState<{ id: string; name: string }[]>([])
-  const [tasks, setTasks] = React.useState<{ id: string; name: string }[]>([])
-  React.useEffect(() => {
-    asApi.automations({}).then((r) => setAutomations(
-      ((r.items ?? []) as { id: string; name?: string }[])
-        .map((a) => ({ id: a.id, name: a.name ?? a.id })))).catch(() => setAutomations([]))
-    bizApi.analysisTasks.list(1, 100).then((r) => setTasks(
-      (r.items ?? []).map((t) => ({ id: t.id, name: t.name })))).catch(() => setTasks([]))
-  }, [])
+  const [routeForm, setRouteForm] = React.useState<RouteFormValue>(EMPTY_ROUTE_FORM)
 
   /* ── apply ── */
   const [applying, setApplying] = React.useState(false)
@@ -130,11 +119,11 @@ export default function DataSourceWizardPage() {
       out.source = { id: src.id, name: form.name.trim() }
       /* 3) Route（可跳过） */
       if (wantRoute) {
-        if (!destId) throw new Error("路由已启用但未选目的地实例")
-        const rname = routeName.trim() || `${form.name.trim()} → ${destKind === "automation" ? "自动任务" : "分析批次"}`
+        if (!routeForm.destId) throw new Error("路由已启用但未选目的地实例")
+        const rname = routeForm.name.trim() || `${form.name.trim()} → ${routeForm.destKind === "automation" ? "自动任务" : "分析批次"}`
         const r = await asApi.createRoute({
           sourceId: src.id,
-          destination: { kind: destKind, id: destId },
+          destination: { kind: routeForm.destKind, id: routeForm.destId },
         })
         out.route = { id: r.id, name: rname }
       }
@@ -320,36 +309,8 @@ export default function DataSourceWizardPage() {
             </p>
           )}
           {wantRoute && (
-            <>
-              <div className="grid gap-1">
-                <Label htmlFor="wz-rname">路由名称</Label>
-                <Input id="wz-rname" value={routeName} onChange={(e) => setRouteName(e.target.value)}
-                       placeholder={`${form.name || "源"} → …`} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="grid gap-1">
-                  <Label id="wz-dk-label">目的地类型（XOR）</Label>
-                  <Select value={destKind} onValueChange={(v) => { setDestKind(v as typeof destKind); setDestId("") }}>
-                    <SelectTrigger id="wz-dk" aria-labelledby="wz-dk-label"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="automation">自动任务（AutomationDefinition）</SelectItem>
-                      <SelectItem value="analysis_task">分析批次（AnalysisTask）</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-1">
-                  <Label id="wz-di-label">目的地实例</Label>
-                  <Select value={destId} onValueChange={setDestId}>
-                    <SelectTrigger id="wz-di" aria-labelledby="wz-di-label"><SelectValue placeholder="选择目的地" /></SelectTrigger>
-                    <SelectContent>
-                      {(destKind === "automation" ? automations : tasks).map((d) => (
-                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </>
+            <RouteForm value={routeForm} idp="wz"
+                       set={(patch) => setRouteForm((f) => ({ ...f, ...patch }))} />
           )}
           <div className="flex justify-between">
             <Button variant="ghost" onClick={() => setStep(3)}>上一步</Button>
@@ -388,7 +349,7 @@ export default function DataSourceWizardPage() {
             {result.route && (
               <div className="flex gap-3 px-3 py-2 text-[12.5px]">
                 <span className="w-24 shrink-0 text-[10.5px] font-semibold tracking-wide text-muted-foreground">ROUTE</span>
-                <span className="font-semibold">{result.route.name} · destination={destKind}</span>
+                <span className="font-semibold">{result.route.name} · destination={routeForm.destKind}</span>
                 <span className="ml-auto font-mono text-[10.5px] text-muted-foreground">{result.route.id.slice(0, 8)}…（新建）</span>
               </div>
             )}
