@@ -22,6 +22,7 @@ const AgentFlowsPage = lazy(() => import("@/pages/agentflows"))
 const AgentFlowDetailPage = lazy(() => import("@/pages/agentflow-detail"))
 const DataSourcesPage = lazy(() => import("@/pages/data-sources"))
 const DataSourceDetailPage = lazy(() => import("@/pages/data-source-detail"))
+const DataSourceWizardPage = lazy(() => import("@/pages/data-source-wizard"))
 // A-14：agent 轨道 mock 双轨已清退——/agents 固定走真 API 页面
 const WfAgentsPage = lazy(() => import("@/pages/wf-agents-list"))
 const AgentCreatePage = lazy(() => import("@/pages/agent-create"))
@@ -127,6 +128,8 @@ export function App() {
           <Route path="/agentflows" element={<AgentFlowsPage />} />
           <Route path="/agentflows/:fid" element={<AgentFlowDetailPage />} />
           <Route path="/data-sources" element={<DataSourcesPage />} />
+          {/* 16 号稿 B3：新建接入一站式向导（老入口保留） */}
+          <Route path="/data-sources/wizard" element={<DataSourceWizardPage />} />
           <Route path="/data-sources/:sid" element={<DataSourceDetailPage />} />
           <Route path="/operations/today" element={<OperationsTodayPage />} />
           {/* Agent 管理 */}

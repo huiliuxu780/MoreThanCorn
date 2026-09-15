@@ -179,7 +179,10 @@ export default function DataSourcesPage() {
             Webhook / API 拉取 / MaxCompute / SLS / 多维表格 / 测试事件源；同一数据源可服务多个自动任务，去重与死信在事件层治理。
           </p>
         </div>
-        <Button className="ml-auto" onClick={() => setOpen(true)}>
+        <Button variant="outline" className="ml-auto" onClick={() => navigate("/data-sources/wizard")}>
+          新建接入（向导）
+        </Button>
+        <Button onClick={() => setOpen(true)}>
           <Plus className="size-4" /> 新建数据源
         </Button>
       </header>
