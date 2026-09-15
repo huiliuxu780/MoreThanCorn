@@ -253,7 +253,8 @@ export function SourceKindFields({ form, set, cat, idp = "ds" }: {
                 : '{"type":"bearer","token":"…"}'}
             value={form.secretJson} onChange={(e) => set({ secretJson: e.target.value })} />
           <p className="text-xs text-muted-foreground">
-            服务端信封加密落库；也可创建后经详情页「凭据」卡设置/更换。
+            {form.kind === "api_pull" && "不填凭据时平台以匿名 GET 拉取（诚实边界，不摆假字段）；"}
+            填写后服务端信封加密落库、永不回显；也可创建后经详情页「凭据」卡设置/更换。
           </p>
         </div>
       )}

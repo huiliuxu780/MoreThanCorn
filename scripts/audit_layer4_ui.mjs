@@ -125,7 +125,36 @@ async function clickByLabel(page, label, tag) {
   }, SEL, label, tag);
   let box = await find();
   if (!box) return false;
-  if (!box.inView) {
+  // 09-15 修误报：视口 inView 不等于真可见——侧栏等内部滚动容器会把 rect 裁在
+  // 容器外（点击落到底下元素=假 no-effect）。用 elementFromPoint 验命中，未命中则
+  // 容器内 scrollIntoView 再验（真实用户可滚动到达=可控件）。
+  const hits = async () => page.evaluate((sel, lbl, tg, x, y) => {
+    const el = document.elementFromPoint(x, y);
+    if (!el) return false;
+    for (const cand of document.querySelectorAll(sel)) {
+      const t = (cand.getAttribute("aria-label") || cand.textContent || "")
+        .trim().replace(/\s+/g, " ").slice(0, 30);
+      if (t === lbl && cand.tagName.toLowerCase() === tg && (cand === el || cand.contains(el))) return true;
+    }
+    return false;
+  }, SEL, label, tag, box.x, box.y);
+  if (!await hits()) {
+    await page.evaluate((sel, lbl, tg) => {
+      for (const el of document.querySelectorAll(sel)) {
+        const t = (el.getAttribute("aria-label") || el.textContent || "")
+          .trim().replace(/\s+/g, " ").slice(0, 30);
+        if (t === lbl && el.tagName.toLowerCase() === tg) {
+          el.scrollIntoView({ block: "center" });
+          return;
+        }
+      }
+    }, SEL, label, tag);
+    await new Promise((r) => setTimeout(r, 200));
+    box = await find();
+    if (!box) return false;
+    if (!await hits()) return false;
+  }
+  if (false && !box.inView) {
     await page.evaluate((sel, lbl, tg) => {
       for (const el of document.querySelectorAll(sel)) {
         const t = (el.getAttribute("aria-label") || el.textContent || "")
