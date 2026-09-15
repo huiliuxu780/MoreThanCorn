@@ -20,7 +20,7 @@ const AutomationsV2Page = lazy(() => import("@/pages/automations-v2"))
 const AutomationDetailPage = lazy(() => import("@/pages/automation-detail"))
 const AgentFlowsPage = lazy(() => import("@/pages/agentflows"))
 const AgentFlowDetailPage = lazy(() => import("@/pages/agentflow-detail"))
-const DataSourcesPage = lazy(() => import("@/pages/data-sources"))
+const DataHubPage = lazy(() => import("@/pages/data-hub"))
 const DataSourceDetailPage = lazy(() => import("@/pages/data-source-detail"))
 const DataSourceWizardPage = lazy(() => import("@/pages/data-source-wizard"))
 // A-14：agent 轨道 mock 双轨已清退——/agents 固定走真 API 页面
@@ -38,7 +38,6 @@ const ResSkillsPage = lazy(() => import("@/pages/res-skills"))
 const ResModelsPage = lazy(() => import("@/pages/res-category-pages").then((m) => ({ default: m.ResModelsPage })))
 const ResToolsPage = lazy(() => import("@/pages/res-category-pages").then((m) => ({ default: m.ResToolsPage })))
 const ResKnowledgePage = lazy(() => import("@/pages/res-category-pages").then((m) => ({ default: m.ResKnowledgePage })))
-const ResDataPage = lazy(() => import("@/pages/res-category-pages").then((m) => ({ default: m.ResDataPage })))
 const AuditLogPage = lazy(() => import("@/pages/audit-log"))
 const ReleaseGovernancePage = lazy(() => import("@/pages/release-governance"))
 const ResultRulesPage = lazy(() => import("@/pages/result-rules"))
@@ -74,6 +73,11 @@ function AiLegacyRedirect() {
 }
 
 /** SDD 13 §10.2：旧批次路由 → canonical route（replace redirect，不维护双页面）。 */
+function DataSourceSidRedirect() {
+  const { sid } = useParams()
+  return <Navigate to={`/resources/data/source/${sid}`} replace />
+}
+
 function TaskRunRedirect() {
   const { taskRunId } = useParams()
   return <Navigate to={`/operations/task-runs/${taskRunId}`} replace />
@@ -127,10 +131,10 @@ export function App() {
           {/* AgentFlow / 数据接入（换底新增控制面） */}
           <Route path="/agentflows" element={<AgentFlowsPage />} />
           <Route path="/agentflows/:fid" element={<AgentFlowDetailPage />} />
-          <Route path="/data-sources" element={<DataSourcesPage />} />
-          {/* 16 号稿 B3：新建接入一站式向导（老入口保留） */}
-          <Route path="/data-sources/wizard" element={<DataSourceWizardPage />} />
-          <Route path="/data-sources/:sid" element={<DataSourceDetailPage />} />
+          {/* 09-15 合并案（IA 原则）：数据接入整体并入 能力与资源→数据页；老路径全重定向 */}
+          <Route path="/data-sources" element={<Navigate to="/resources/data?tab=ingress" replace />} />
+          <Route path="/data-sources/wizard" element={<Navigate to="/resources/data/wizard" replace />} />
+          <Route path="/data-sources/:sid" element={<DataSourceSidRedirect />} />
           <Route path="/operations/today" element={<OperationsTodayPage />} />
           {/* Agent 管理 */}
           <Route path="/agents" element={<WfAgentsPage />} />
@@ -147,7 +151,9 @@ export function App() {
             <Route path="models" element={<ResModelsPage />} />
             <Route path="tools" element={<ResToolsPage />} />
             <Route path="knowledge" element={<ResKnowledgePage />} />
-            <Route path="data" element={<ResDataPage />} />
+            <Route path="data" element={<DataHubPage />} />
+            <Route path="data/wizard" element={<DataSourceWizardPage />} />
+            <Route path="data/source/:sid" element={<DataSourceDetailPage />} />
           </Route>
           {/* Workflow */}
           <Route path="/workflows" element={<WfWorkflowsPage />} />

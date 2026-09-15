@@ -134,7 +134,7 @@ export function HealthBand({ onTest }: { onTest?: (id: string) => void }) {
                       <button type="button"
                               className="rounded-md border px-2 py-0.5 text-[11.5px] font-semibold"
                               style={{ borderColor: "var(--status-warning)", background: "var(--status-warning-soft)", color: "var(--status-warning-text)" }}
-                              onClick={() => navigate(`/data-sources/${r.sourceId}`)}>
+                              onClick={() => navigate(`/resources/data/source/${r.sourceId}`)}>
                         ⚠ 未配置{r.deliveries24h.filtered > 0 ? " · 事件积压" : ""}
                       </button>
                     )}
@@ -151,7 +151,7 @@ export function HealthBand({ onTest }: { onTest?: (id: string) => void }) {
                             (e) => { toast.error(`拉取失败：${(e as Error).message}`); data.retry() })
                         }}>立即拉取</Button>
                       )}
-                      <Button size="xs" variant="ghost" onClick={() => navigate(`/data-sources/${r.sourceId}`)}>管理</Button>
+                      <Button size="xs" variant="ghost" onClick={() => navigate(`/resources/data/source/${r.sourceId}`)}>管理</Button>
                     </div>
                   </td>
                 </tr>

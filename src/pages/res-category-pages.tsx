@@ -167,7 +167,8 @@ function CatalogMountDialog({ open, onOpenChange, onMounted }: {
   )
 }
 
-export function ResDataPage() {
+/** 09-15 合并案：数据资产 section——数据页 tab②（库存镜头）。 */
+export function AssetsSection() {
   const [mountOpen, setMountOpen] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   return (

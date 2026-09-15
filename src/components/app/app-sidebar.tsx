@@ -1,4 +1,4 @@
-import { Bot, Boxes, CalendarClock, Check, ClipboardList, LogIn, LogOut, Monitor, Waypoints, Workflow, Moon, MoonStar, Settings, ShieldCheck, Sun, Sunrise, UserRound, Webhook } from "lucide-react"
+import { Bot, Boxes, CalendarClock, Check, ClipboardList, LogIn, LogOut, Monitor, Waypoints, Workflow, Moon, MoonStar, Settings, ShieldCheck, Sun, Sunrise, UserRound } from "lucide-react"
 import * as React from "react"
 import { NavLink, useLocation, useNavigate } from "react-router-dom"
 import { useTheme } from "next-themes"
@@ -84,13 +84,8 @@ export const NAV_ITEMS: NavItem[] = [
       "/config/data-assets",
     ],
   },
-  {
-    label: "数据接入",
-    to: "/data-sources",
-    icon: Webhook,
-    permission: "tool.view",
-    activePrefixes: ["/data-sources"],
-  },
+  /* 09-15 合并案（IA 原则）：数据接入不再有独立导航条目——
+     唯一入口=能力与资源→数据磁贴（/resources/data） */
 ]
 
 /** QoderWake 同构分组：工作管理 / 员工资源（无 Group）。 */
@@ -106,7 +101,6 @@ export type TopNavKey =
   | "resources"
   | "workflows"
   | "agentflows"
-  | "datasources"
   | "settings"
 
 const NAV_KEY_BY_TO: Record<string, TopNavKey> = {
@@ -116,7 +110,6 @@ const NAV_KEY_BY_TO: Record<string, TopNavKey> = {
   "/resources": "resources",
   "/workflows": "workflows",
   "/agentflows": "agentflows",
-  "/data-sources": "datasources",
 }
 
 /** 任一路径最多一个一级项 active；/settings/** → 设置。 */

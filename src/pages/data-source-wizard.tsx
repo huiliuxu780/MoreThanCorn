@@ -172,7 +172,7 @@ export default function DataSourceWizardPage() {
             向导 {step}/5 · 连接→源→路由一次走完；老入口「新建数据源」保留不变。
           </p>
         </div>
-        <Button variant="outline" className="ml-auto" onClick={() => navigate("/data-sources")}>
+        <Button variant="outline" className="ml-auto" onClick={() => navigate("/resources/data")}>
           返回列表
         </Button>
       </header>
@@ -367,8 +367,8 @@ export default function DataSourceWizardPage() {
                   (e) => toast.error(`拉取失败：${(e as Error).message}`))
               }}>立即拉取验证</Button>
             )}
-            <Button variant="outline" onClick={() => navigate("/data-sources?tab=events")}>查看事件流水</Button>
-            <Button variant="ghost" onClick={() => navigate("/data-sources")}>回列表看概览带</Button>
+            <Button variant="outline" onClick={() => navigate("/resources/data?tab=events")}>查看事件流水</Button>
+            <Button variant="ghost" onClick={() => navigate("/resources/data")}>回列表看概览带</Button>
           </div>
         </div>
       )}

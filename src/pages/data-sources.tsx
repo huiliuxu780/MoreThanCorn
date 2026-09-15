@@ -17,7 +17,7 @@
  * 无凭据时后端如实匿名 GET，表单不摆假字段。
  */
 import * as React from "react"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { Navigate, useNavigate } from "react-router-dom"
 import { CircleCheck, CircleX, Clock, CloudDownload, Copy, Database, FlaskConical, OctagonAlert, Plus, ScrollText, Table as TableIcon, Webhook } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -43,7 +43,6 @@ import { IA_BOUNDARY } from "@/config/ui-terms"
 import { HealthBand } from "@/components/ingress/health-band"
 import { asApi, type CreateSourceBody } from "@/services/as-api"
 import { connApi } from "@/services/resource-api"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { toast } from "sonner"
 
@@ -53,7 +52,9 @@ import {
 } from "@/components/ingress/source-kind-fields"
 
 
-export default function DataSourcesPage() {
+/** 09-15 合并案（IA 原则 P2）：接入健康 section——数据页 tab① 内容；
+ *  老 /data-sources 路由重定向到 /resources/data?tab=ingress。 */
+export function IngressSection() {
   const navigate = useNavigate()
   /* 16 号稿 B4 合并：源表唯一=HealthBand；bandKey 触发其重取 */
   const [bandKey, setBandKey] = React.useState(0)
@@ -117,24 +118,9 @@ export default function DataSourcesPage() {
     }
   }
 
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [tab, setTab] = React.useState(searchParams.get("tab") ?? "sources")
-  React.useEffect(() => {
-    const t = searchParams.get("tab") ?? "sources"
-    if (t !== tab) setTab(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
-
   return (
-    <div className="flex flex-col gap-4 p-4 md:p-6">
-      {/* 09-14 终版 IA：数据接入只管事件接入=数据源+事件流水；
-          连接凭据归 设置→连接（系统根凭据管理），数据资产(含目录挂载)归 能力与资源→数据资产 */}
-      <Tabs value={tab} onValueChange={(v) => { setTab(v); setSearchParams((p) => { const n = new URLSearchParams(p); if (v === "sources") n.delete("tab"); else n.set("tab", v); return n }, { replace: true }) }}>
-        <TabsList>
-          <TabsTrigger value="sources">数据源</TabsTrigger>
-          <TabsTrigger value="events">事件流水</TabsTrigger>
-        </TabsList>
-      <TabsContent value="sources" className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
+      {/* 09-15 IA 原则：连接凭据=设置→连接（系统根）；资产与接入=数据页两 tab（同页互指） */}
       {/* 09-14 D4 拍板：双「数据源」边界说明条（文案取自 ui-terms 单一事实源） */}
       <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-xs"
            style={{ borderColor: "var(--brand-subtle)", background: "var(--brand-soft)",
@@ -143,20 +129,14 @@ export default function DataSourcesPage() {
         <Link to={IA_BOUNDARY.ingress.to} className="font-medium"
               style={{ color: "var(--brand-primary)" }}>{IA_BOUNDARY.ingress.linkText}</Link>
       </div>
-      <header className="flex items-center gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">数据接入</h1>
-          <p className="text-sm text-muted-foreground">
-            Webhook / API 拉取 / MaxCompute / SLS / 多维表格 / 测试事件源；同一数据源可服务多个自动任务，去重与死信在事件层治理。
-          </p>
-        </div>
-        <Button variant="outline" className="ml-auto" onClick={() => navigate("/data-sources/wizard")}>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" className="ml-auto" onClick={() => navigate("/resources/data/wizard")}>
           新建接入（向导）
         </Button>
         <Button onClick={() => setOpen(true)}>
           <Plus className="size-4" /> 新建数据源
         </Button>
-      </header>
+      </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -267,18 +247,12 @@ export default function DataSourcesPage() {
           </div>
         </div>
       )}
-          </TabsContent>
-      <TabsContent value="events" className="flex flex-col gap-4">
-        <EventsTab />
-      </TabsContent>
-      </Tabs>
 </div>
   )
 }
 
-
-/** 09-14 冗余整合：事件流水 tab——跨源 EventDelivery 一览（状态/重试/死信证据）。 */
-function EventsTab() {
+/** 09-15 合并案：事件流水 section——数据页 tab③（P2 跨源事件管线聚合视图）。 */
+export function EventsSection() {
   const deliveries = useAsyncData(() => asApi.eventDeliveries({ pageSize: 100 }), [])
   /* 后端 EventDelivery.status 为小写（pending/running/completed/failed/dead）；
      filtered/deduped 不产生投递行（F5 AC-023/024），故不在此表 */
@@ -355,4 +329,9 @@ function EventsTab() {
       )}
     </div>
   )
+}
+
+/** 09-15 合并案：老入口重定向（IA 唯一归属=能力与资源→数据页）。 */
+export default function DataSourcesPage() {
+  return <Navigate to="/resources/data?tab=ingress" replace />
 }

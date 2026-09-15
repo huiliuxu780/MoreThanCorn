@@ -242,7 +242,7 @@ export default function DataSourceDetailPage() {
     try {
       await asApi.sourceDelete(sid)
       toast.success("数据源已归档")
-      navigate("/data-sources")
+      navigate("/resources/data")
     } catch (e) {
       const detail = (e as Error & { detail?: { references?: { kind: string; count: number }[] } }).detail
       if (detail?.references) {
@@ -259,7 +259,7 @@ export default function DataSourceDetailPage() {
       <div className="flex flex-col items-center gap-3 p-10 text-sm">
         <span className="text-status-danger">数据源加载失败：{src.error}</span>
         <Button size="sm" variant="outline" onClick={() => src.retry()}>重试</Button>
-        <Button size="sm" variant="ghost" onClick={() => navigate("/data-sources")}>返回列表</Button>
+        <Button size="sm" variant="ghost" onClick={() => navigate("/resources/data")}>返回列表</Button>
       </div>
     )
   }
@@ -274,7 +274,7 @@ export default function DataSourceDetailPage() {
     <div className="flex flex-col gap-4 p-4 md:p-6">
       <div className="text-xs text-muted-foreground">
         <button className="inline-flex items-center gap-1 hover:text-foreground"
-                onClick={() => navigate("/data-sources")}>
+                onClick={() => navigate("/resources/data")}>
           <ArrowLeft className="size-3" /> 数据接入
         </button>
         <span className="opacity-50"> / </span>

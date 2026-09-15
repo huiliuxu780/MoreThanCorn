@@ -34,7 +34,7 @@ export const UI_TERMS = {
     modelAccess: "模型接入",
     toolsMcp: "工具与 MCP",
     knowledgeBase: "知识库",
-    dataAssetsHub: "数据资产",
+    dataAssetsHub: "数据",
     dataAssets: "数据定义",
     resultRules: "结果规则",
     forms: "表单",
@@ -48,21 +48,21 @@ export const UI_TERMS = {
 export const IA_BOUNDARY = {
   ingress: {
     text: "这里管理数据接入（Webhook 推送，API/MaxCompute/SLS/多维表格拉取：把外部数据采集为事件流，触发自动任务或分析批次）。",
-    linkText: "前往 能力与资源 → 数据资产 →",
-    to: "/resources/data",
+    linkText: "同页切 数据资产 tab →",
+    to: "/resources/data?tab=assets",
   },
   assets: {
     text: "这里管理数据资产（目录发现挂载的表/对象，供分析任务读取与写回；凭据统一在 设置 → 连接 管理）。",
-    linkText: "Webhook/API 拉取等事件入口在 数据接入 → 管理",
-    to: "/data-sources",
+    linkText: "同页切 接入健康 tab → 管理",
+    to: "/resources/data?tab=ingress",
   },
 } as const
 
 /** 09-14 D4 拍板：术语表样张落地（新文案一律从表取；含已拍板分词）。 */
 export const GLOSSARY: readonly { zh: string; en: string; scope: string; note: string }[] = [
-  { zh: "数据源（事件）", en: "DataSource", scope: "数据接入 /api/v2/data-sources",
+  { zh: "数据源（事件）", en: "DataSource", scope: "数据页·接入健康 /api/v2/data-sources",
     note: "Webhook/API 拉取/MaxCompute/SLS/多维表格/测试事件入口；产出 SourceEvent，经 EventRoute 派发" },
-  { zh: "数据资产", en: "Datasource + DataAsset", scope: "能力与资源 → 数据资产",
+  { zh: "数据资产", en: "Datasource + DataAsset", scope: "数据页·数据资产",
     note: "目录发现挂载的表/对象；凭据引用 Connection（设置 → 连接）；禁止再译作「数据源」" },
   { zh: "连接（凭据）", en: "Connection", scope: "设置 → 连接（系统根凭据管理）",
     note: "协议端点+加密凭据+多环境+轮换/健康；一切资产与接入的凭据单点；Secret 永不回显" },

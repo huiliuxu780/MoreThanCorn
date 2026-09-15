@@ -87,7 +87,7 @@ export function ResourcesShell() {
     <PageContainer wide className="space-y-4">
       <PageHeader
         title={UI_TERMS.navigation.resourcesHub}
-        description="统一管理平台能力与数据资产；Agent / Workflow / 分析任务可复用的基础设施"
+        description="统一管理平台能力与数据；Agent / Workflow / 分析任务可复用的基础设施；数据页=接入健康/资产/事件流水三镜头"
       />
       <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5" role="navigation" aria-label="资源分类">
         {tiles.map((t) => (

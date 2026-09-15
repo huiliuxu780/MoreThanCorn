@@ -50,7 +50,7 @@ vi.mock("@/hooks/use-async-data", async () => {
   return actual
 })
 
-import DataSourcesPage from "./data-sources"
+import { IngressSection } from "./data-sources"
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -70,7 +70,7 @@ describe("DataSources 审计返工锁定", () => {
   it("轮询表单补全 config 字段并按后端契约提交", async () => {
     sources.mockResolvedValue({ items: [] })
     createSource.mockResolvedValue({ id: "src-1" })
-    render(<MemoryRouter><DataSourcesPage /></MemoryRouter>)
+    render(<MemoryRouter><IngressSection /></MemoryRouter>)
     await openCreate()
     await pickKind("API（拉取）")
     // P0：轮询专属字段必须出现
@@ -104,7 +104,7 @@ describe("DataSources 审计返工锁定", () => {
 
   it("列表失败显示错误态与重试，不再伪装暂无数据源", async () => {
     healthSummary.mockRejectedValueOnce(new Error("net-down"))
-    render(<MemoryRouter><DataSourcesPage /></MemoryRouter>)
+    render(<MemoryRouter><IngressSection /></MemoryRouter>)
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toContain("net-down"))
     expect(screen.getByRole("button", { name: /重试/ })).toBeTruthy()
@@ -114,7 +114,7 @@ describe("DataSources 审计返工锁定", () => {
   it("webhook token 一次性交付：复制按钮+丢失强提醒", async () => {
     sources.mockResolvedValue({ items: [] })
     createSource.mockResolvedValue({ id: "src-2", webhook_token: "tok_abc123" })
-    render(<MemoryRouter><DataSourcesPage /></MemoryRouter>)
+    render(<MemoryRouter><IngressSection /></MemoryRouter>)
     await openCreate()
     fireEvent.change(document.querySelector("#ds-name")!, { target: { value: "钩子源" } })
     fireEvent.click(screen.getByRole("button", { name: "保存" }))
