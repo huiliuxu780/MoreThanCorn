@@ -44,19 +44,6 @@ export const UI_TERMS = {
   },
 } as const
 
-/** 09-14 D4 拍板 + IA 终版（Connections=设置系统根凭据）：概念边界说明（文案单一事实源）。 */
-export const IA_BOUNDARY = {
-  ingress: {
-    text: "这里管理数据接入（Webhook 推送，API/MaxCompute/SLS/多维表格拉取：把外部数据采集为事件流，触发自动任务或分析批次）。",
-    linkText: "同页切 数据资产 tab →",
-    to: "/resources/data?tab=assets",
-  },
-  assets: {
-    text: "这里管理数据资产（目录发现挂载的表/对象，供分析任务读取与写回；凭据统一在 设置 → 连接 管理）。",
-    linkText: "同页切 接入健康 tab → 管理",
-    to: "/resources/data?tab=ingress",
-  },
-} as const
 
 /** 09-14 D4 拍板：术语表样张落地（新文案一律从表取；含已拍板分词）。 */
 export const GLOSSARY: readonly { zh: string; en: string; scope: string; note: string }[] = [

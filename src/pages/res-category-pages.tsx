@@ -2,8 +2,6 @@ import { useEffect, useState } from "react"
 import { Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
-import { Link } from "react-router-dom"
-import { IA_BOUNDARY } from "@/config/ui-terms"
 import { ResCategoryList } from "@/pages/res-list"
 import { FilterBar } from "@/components/app/filters"
 import { Button } from "@/components/ui/button"
@@ -173,16 +171,9 @@ export function AssetsSection() {
   const [reloadKey, setReloadKey] = useState(0)
   return (
     <div className="flex flex-col gap-3">
-      {/* 09-14 D4 拍板：双「数据源」边界说明条（文案取自 ui-terms 单一事实源） */}
-      <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-xs"
-           style={{ borderColor: "var(--brand-subtle)", background: "var(--brand-soft)",
-                    color: "var(--text-secondary)" }}>
-        <span>ℹ︎ {IA_BOUNDARY.assets.text}</span>
-        <Link to={IA_BOUNDARY.assets.to} className="font-medium"
-              style={{ color: "var(--brand-primary)" }}>{IA_BOUNDARY.assets.linkText}</Link>
-        <span className="ml-auto">
-          <Button size="sm" variant="outline" onClick={() => setMountOpen(true)}>从连接目录挂载</Button>
-        </span>
+      {/* 09-15：边界横幅退役（合并后 tab 即边界）；挂载入口保留为独立按钮行 */}
+      <div className="flex justify-end">
+        <Button size="sm" variant="outline" onClick={() => setMountOpen(true)}>从连接目录挂载</Button>
       </div>
       <ResCategoryList key={reloadKey} types={["datasource", "asset"]} createTo="/resources/data/new" />
       <CatalogMountDialog open={mountOpen} onOpenChange={setMountOpen}

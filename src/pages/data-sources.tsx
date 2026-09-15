@@ -38,8 +38,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Link } from "react-router-dom"
-import { IA_BOUNDARY } from "@/config/ui-terms"
 import { HealthBand } from "@/components/ingress/health-band"
 import { asApi, type CreateSourceBody } from "@/services/as-api"
 import { connApi } from "@/services/resource-api"
@@ -121,14 +119,6 @@ export function IngressSection() {
   return (
     <div className="flex flex-col gap-4">
       {/* 09-15 IA 原则：连接凭据=设置→连接（系统根）；资产与接入=数据页两 tab（同页互指） */}
-      {/* 09-14 D4 拍板：双「数据源」边界说明条（文案取自 ui-terms 单一事实源） */}
-      <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-xs"
-           style={{ borderColor: "var(--brand-subtle)", background: "var(--brand-soft)",
-                    color: "var(--text-secondary)" }}>
-        <span>ℹ︎ {IA_BOUNDARY.ingress.text}</span>
-        <Link to={IA_BOUNDARY.ingress.to} className="font-medium"
-              style={{ color: "var(--brand-primary)" }}>{IA_BOUNDARY.ingress.linkText}</Link>
-      </div>
       <div className="flex items-center gap-2">
         <Button variant="outline" className="ml-auto" onClick={() => navigate("/resources/data/wizard")}>
           新建接入（向导）
