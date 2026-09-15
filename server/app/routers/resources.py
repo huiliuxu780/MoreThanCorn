@@ -313,7 +313,32 @@ def test_resource(coll: str, rid: str, payload: dict | None = None, db: Session 
 def usage_resource(coll: str, rid: str, db: Session = Depends(get_db)):
     rtype = _rtype(coll)
     _get_obj(db, rtype, rid)
-    return {"refs": references(db, rtype, rid)}
+    out = {"refs": references(db, rtype, rid)}
+    if rtype == "tool":
+        # 09-15 IA 原则 P1 判例补齐：工具的证据家=run trace；Usage 给「关联 run」入口
+        # （workflow 节点引用本工具的 run + agent 版本依赖快照含本工具的 run），跳 run 详情看 trace。
+        from sqlalchemy import String as SAString, cast, or_
+        from ..models import AgentVersion, Run
+        refs = out["refs"]
+        wf_ids = {r.get("workflowId") for r in refs if r.get("workflowId")}
+        conds = []
+        if wf_ids:
+            conds.append(Run.workflow_id.in_(wf_ids))
+        av_ids = [v.id for v in db.query(AgentVersion.id).filter(
+            cast(AgentVersion.dependency_snapshot, SAString).like(f"%{rid}%")).all()]
+        if av_ids:
+            conds.append(Run.agent_version_id.in_(av_ids))
+        runs = []
+        if conds:
+            rows = (db.query(Run).filter(or_(*conds))
+                    .order_by(Run.created_at.desc()).limit(20).all())
+            runs = [{"id": r.id, "status": r.status, "trigger": r.trigger,
+                     "kind": "workflow" if r.workflow_id else "agent",
+                     "workflowId": r.workflow_id, "agentId": r.agent_id,
+                     "createdAt": r.created_at.isoformat() if r.created_at else ""}
+                    for r in rows]
+        out["runs"] = runs
+    return out
 
 
 # ---------- Tool 版本 ----------

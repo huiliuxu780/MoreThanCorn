@@ -41,6 +41,7 @@ export default function ResDetailPage() {
   const [sp] = useSearchParams()
   const [dto, setDto] = useState<ResourceDTO | null>(null)
   const [refs, setRefs] = useState<RefInfo[]>([])
+  const [runs, setRuns] = useState<ToolRelatedRun[]>([])
   const [versions, setVersions] = useState<{ version: number; status: string }[]>([])
   const [testOpen, setTestOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(sp.get("edit") === "1")
@@ -48,12 +49,18 @@ export default function ResDetailPage() {
   const [blocked, setBlocked] = useState<{ refs: RefInfo[] } | null>(null)
   const [editForm, setEditForm] = useState<{ name?: string; description?: string }>({})
 
-  const domain = ["model", "tool", "mcp", "knowledge"].includes(type) ? "ai" : "data"
+  interface ToolRelatedRun { id: string; status: string; trigger: string; kind: string; createdAt: string }
+
+const domain = ["model", "tool", "mcp", "knowledge"].includes(type) ? "ai" : "data"
   const listPath = `/resources/${domain}`
 
   const load = useCallback(() => {
     resApi.get(type, id).then((d) => { setDto(d); setEditForm({ name: d.name, description: d.description }) }).catch(() => setDto(null))
-    resApi.usage(type, id).then((r) => setRefs(r.refs)).catch(() => setRefs([]))
+    resApi.usage(type, id).then((r) => {
+      setRefs(r.refs)
+      // 09-15 IA 原则 P1：工具 Usage 补「关联 run」入口（证据家=run trace）
+      setRuns((r as { runs?: ToolRelatedRun[] }).runs ?? [])
+    }).catch(() => setRefs([]))
     if (type === "tool") resApi.toolVersions(id).then(setVersions).catch(() => undefined)
   }, [type, id])
   useEffect(() => { load() }, [load])
@@ -190,6 +197,35 @@ export default function ResDetailPage() {
               </tbody>
             </table>
           </div>
+          {type === "tool" && (
+            <div className="max-w-3xl">
+              <h3 className="mb-2 text-xs font-semibold text-muted-foreground">关联 Run（最近 20 条；逐次调用证据在 run trace 内）</h3>
+              <div className="overflow-hidden rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+                    <th className="px-3.5 py-2 font-medium">时间</th><th className="px-3.5 py-2 font-medium">类型</th>
+                    <th className="px-3.5 py-2 font-medium">触发</th><th className="px-3.5 py-2 font-medium">状态</th>
+                    <th className="px-3.5 py-2 font-medium">操作</th>
+                  </tr></thead>
+                  <tbody>
+                    {runs.length === 0 && <tr><td colSpan={5} className="px-3.5 py-6 text-center text-xs text-muted-foreground">暂无关联 run</td></tr>}
+                    {runs.map((r) => (
+                      <tr key={r.id} className="border-b last:border-0">
+                        <td className="px-3.5 py-2 text-xs text-muted-foreground">{r.createdAt ? new Date(r.createdAt).toLocaleString() : "-"}</td>
+                        <td className="px-3.5 py-2 text-xs">{r.kind === "workflow" ? "Workflow" : "Agent"}</td>
+                        <td className="px-3.5 py-2 text-xs text-muted-foreground">{r.trigger}</td>
+                        <td className="px-3.5 py-2 text-xs">{r.status}</td>
+                        <td className="px-3.5 py-2">
+                          <button type="button" className="text-xs text-primary underline-offset-2 hover:underline"
+                            onClick={() => navigate(`/operations/runs/${r.id}`)}>查看 trace</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="versions" className="space-y-3 pt-4">
