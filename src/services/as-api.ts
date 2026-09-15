@@ -82,6 +82,27 @@ export interface EventRouteDTO {
   retryPolicy: Record<string, unknown>;
   enabled: boolean; archived: boolean; revision: number;
 }
+/** 16 号稿 B1：概览带每源健康聚合行（/data-sources/health-summary）。 */
+export interface SourceHealthRow {
+  sourceId: string; name: string; kind: string; status: string;
+  lastPollAt: string | null; lastPollOk: boolean; lastPollError: string;
+  lastPollCount: number; events24h: number;
+  /** filtered=24h filtered 事件数（不产生 delivery 行） */
+  deliveries24h: { completed: number; failed: number; dead: number; filtered: number };
+  routeCount: number;
+}
+/** 路由创建体（POST /event-routes，camelCase 与 _validate_route_body 对齐）。 */
+export interface CreateRouteBody {
+  sourceId: string;
+  destination: { kind: "automation" | "analysis_task"; id: string };
+  eventType?: string;
+  filter?: Record<string, unknown>;
+  mapping?: Record<string, unknown>;
+  dedupe?: { keyPath?: string; windowSeconds?: number };
+  completionPolicy?: "accepted" | "terminal";
+  retryPolicy?: Record<string, unknown>;
+  enabled?: boolean;
+}
 export interface EventDeliveryDTO {
   id: string; eventId: string; source: string; status: string;
   routeId: string | null; routeRevision: number | null;
@@ -108,7 +129,7 @@ export interface BoardSummary {
 export interface SourceRow {
   id: string;
   name: string;
-  kind: "webhook" | "polling" | "test_event";
+  kind: "webhook" | "api_pull" | "maxcompute" | "feishu_bitable" | "sls" | "test_event";
   status: "active" | "paused" | "error";
   config: Record<string, unknown>;
   last_poll_at: string | null;
@@ -355,6 +376,12 @@ export const asApi = {
     return req<{ items: EventRouteDTO[]; total: number }>(
       `/api/v2/event-routes${q.toString() ? `?${q}` : ""}`)
   },
+  /** 16 号稿 B1：概览带健康聚合（常数条查询）。 */
+  healthSummary: () =>
+    req<{ items: SourceHealthRow[] }>("/api/v2/data-sources/health-summary"),
+  createRoute: (body: CreateRouteBody) =>
+    req<EventRouteDTO>("/api/v2/event-routes", {
+      method: "POST", body: JSON.stringify(body) }),
   eventDeliveries: (params: { sourceId?: string; sourceEventId?: string;
                               status?: string; pageSize?: number } = {}) => {
     const q = new URLSearchParams()

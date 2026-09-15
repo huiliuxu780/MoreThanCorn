@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel
-from sqlalchemy import and_, or_, text
+from sqlalchemy import and_, func, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -1103,6 +1103,61 @@ def create_source(body: SourceBody, db: Session = Depends(get_db), user: dict = 
     return {"id": src.id}
 
 
+@ingress_router.get("/health-summary")
+def health_summary(db: Session = Depends(get_db),
+                   user: dict = Depends(require_role())):
+    """16 号稿 B1：概览带每源健康聚合（常数条查询，禁 N+1）。
+
+    24h 窗=UTC 滚动（事件/投递落库即 utcnow）；deliveries24h.filtered 取
+    filtered 事件数（filtered 不产生 delivery 行，F5 AC-023/024）；
+    routeCount 仅计未归档路由。
+    """
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    sources = (db.query(DataSource)
+               .filter(DataSource.archived.is_(False))
+               .order_by(DataSource.created_at.desc()).all())
+    sids = [s.id for s in sources] or ["-"]
+    ev_total = dict(db.query(DataSourceEvent.source_id, func.count(DataSourceEvent.id))
+                    .filter(DataSourceEvent.source_id.in_(sids),
+                            DataSourceEvent.created_at >= since)
+                    .group_by(DataSourceEvent.source_id).all())
+    ev_filtered = dict(db.query(DataSourceEvent.source_id, func.count(DataSourceEvent.id))
+                       .filter(DataSourceEvent.source_id.in_(sids),
+                               DataSourceEvent.created_at >= since,
+                               DataSourceEvent.status == "filtered")
+                       .group_by(DataSourceEvent.source_id).all())
+    dl_rows = (db.query(DataSourceEvent.source_id, EventDelivery.status,
+                        func.count(EventDelivery.id))
+               .join(DataSourceEvent, DataSourceEvent.id == EventDelivery.event_id)
+               .filter(DataSourceEvent.source_id.in_(sids),
+                       EventDelivery.created_at >= since)
+               .group_by(DataSourceEvent.source_id, EventDelivery.status).all())
+    rt_count = dict(db.query(EventRoute.source_id, func.count(EventRoute.id))
+                    .filter(EventRoute.source_id.in_(sids),
+                            EventRoute.archived.is_(False))
+                    .group_by(EventRoute.source_id).all())
+    deliveries: dict[str, dict[str, int]] = {}
+    for sid_, status_, n in dl_rows:
+        d = deliveries.setdefault(sid_, {"completed": 0, "failed": 0, "dead": 0, "filtered": 0})
+        if status_ in d:
+            d[status_] += n
+    items = []
+    for s in sources:
+        d = deliveries.get(s.id, {"completed": 0, "failed": 0, "dead": 0, "filtered": 0})
+        d = dict(d)
+        d["filtered"] = int(ev_filtered.get(s.id, 0))
+        items.append({
+            "sourceId": s.id, "name": s.name, "kind": s.kind, "status": s.status,
+            "lastPollAt": s.last_poll_at.isoformat() if s.last_poll_at else None,
+            "lastPollOk": bool(s.last_poll_ok), "lastPollError": s.last_poll_error or "",
+            "lastPollCount": int(s.last_poll_count or 0),
+            "events24h": int(ev_total.get(s.id, 0)),
+            "deliveries24h": d,
+            "routeCount": int(rt_count.get(s.id, 0)),
+        })
+    return {"items": items}
+
+
 @ingress_router.get("/{sid}")
 def get_source(sid: str, db: Session = Depends(get_db),
                user: dict = Depends(require_role())):
@@ -1729,6 +1784,9 @@ def tick_pull_source(db: Session, src) -> dict:
             rows, next_cursor = fetch_page(src.kind, cfg, secret_ref, cursor)
         except SourceFetchError as exc:
             src.status = "error"
+            # g061：失败留证（概览带 inline 展示），不再随 502 丢弃
+            src.last_poll_ok = False
+            src.last_poll_error = str(exc)[:500]
             db.commit()
             raise HTTPException(502, f"拉取失败：{exc}") from exc
         polled += len(rows)
@@ -1745,6 +1803,10 @@ def tick_pull_source(db: Session, src) -> dict:
     src.cursor = {**(src.cursor or {}), "last": cursor} if cursor else (src.cursor or {})
     src.status = "active"
     src.last_poll_at = datetime.now(timezone.utc)
+    # g061：成功清零留证
+    src.last_poll_ok = True
+    src.last_poll_error = ""
+    src.last_poll_count = polled
     db.commit()
     return {"polled": polled, "dispatched": dispatched, "pages": pages,
             "cursor": cursor}
@@ -1765,6 +1827,8 @@ def poll_source(sid: str, db: Session = Depends(get_db), user: dict = Depends(re
         raise
     except Exception as exc:  # noqa: BLE001
         src.status = "error"
+        src.last_poll_ok = False
+        src.last_poll_error = repr(exc)[:500]
         db.commit()
         raise HTTPException(502, f"poll failed: {exc!r}") from exc
 

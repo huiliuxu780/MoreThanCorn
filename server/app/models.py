@@ -1488,6 +1488,11 @@ class DataSource(Base):
     asset_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     cursor: Mapped[dict] = mapped_column(JSONB, default=dict)
     last_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 09-15 g061（16 号稿 B1）：拉取健康三列——概览带失败原因/自动拉取诊断；
+    # tick 双路写（成功清零/失败留证），修「失败消息随 502 丢弃」缺口
+    last_poll_error: Mapped[str] = mapped_column(Text, default="")
+    last_poll_ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_poll_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
