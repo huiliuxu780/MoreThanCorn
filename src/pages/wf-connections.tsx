@@ -28,10 +28,10 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-interface EpFields { baseUrl: string; host: string; port: string; user: string; database: string; bucket: string; region: string; endpoint: string; project: string }
+export interface EpFields { baseUrl: string; host: string; port: string; user: string; database: string; bucket: string; region: string; endpoint: string; project: string }
 /** SDD-12 修复轮：环境表单不再携带密钥输入（凭据只走轮换/清除）；
  * configured/versionNo 为只读展示；isNew=本次对话框新增（尚未落库）。 */
-interface EnvForm extends EpFields { code: string; label: string; configured: boolean; versionNo?: number; isNew?: boolean }
+export interface EnvForm extends EpFields { code: string; label: string; configured: boolean; versionNo?: number; isNew?: boolean }
 interface FormState extends EpFields {
   id: string | null; name: string; kind: string; protocol: string;
   providerHint: string; secret: ConnSecret | ""; authScript: string;
@@ -39,13 +39,13 @@ interface FormState extends EpFields {
   /** 二次验收修复：已配置任何凭据时锁定鉴权方式（服务端拒绝非原子 kind 变更） */
   kindLocked: boolean;
 }
-const EMPTY_EP: EpFields = { baseUrl: "", host: "", port: "", user: "", database: "", bucket: "", region: "", endpoint: "", project: "" }
+export const EMPTY_EP: EpFields = { baseUrl: "", host: "", port: "", user: "", database: "", bucket: "", region: "", endpoint: "", project: "" }
 const EMPTY_FORM: FormState = {
   id: null, name: "", kind: "api_key", protocol: "http-api", ...EMPTY_EP,
   providerHint: "", secret: "", authScript: "", environments: [], defaultEnv: "", kindLocked: false,
 }
 
-function endpointOf(protocol: string, f: EpFields): Record<string, string> {
+export function endpointOf(protocol: string, f: EpFields): Record<string, string> {
   if (isDb(protocol)) return { host: f.host, port: f.port, user: f.user, database: f.database }
   if (isOss(protocol)) return { bucket: f.bucket, region: f.region }
   if (protocol === "maxcompute" || protocol === "sls")
@@ -54,7 +54,7 @@ function endpointOf(protocol: string, f: EpFields): Record<string, string> {
 }
 
 /** 按 kind 渲染密钥输入；script 为动态 KV 行（脚本 env 变量来源） */
-function SecretFields({ kind, value, onChange }: {
+export function SecretFields({ kind, value, onChange }: {
   kind: string; value: ConnSecret | ""; onChange: (v: ConnSecret | "") => void
 }) {
   if (kind === "none") return null
@@ -108,7 +108,7 @@ function SecretFields({ kind, value, onChange }: {
 }
 
 /** 端点字段（主表单与环境行共用） */
-function EndpointFields({ protocol, v, onChange }: {
+export function EndpointFields({ protocol, v, onChange }: {
   protocol: string; v: EpFields; onChange: (p: Partial<EpFields>) => void
 }) {
   if (isDb(protocol)) {
