@@ -20,6 +20,7 @@ import {
 import { ErrorState, TableSkeleton } from "@/components/app/list-state"
 import { PageContainer, PageHeader } from "@/components/app/page"
 import { AVATARS, avatarFor } from "@/lib/agent-avatar"
+import { GroupsView } from "@/features/groups/groups-view"
 
 interface AgentRow {
   id: string; name: string; type: string; typeLabel: string; status: string; updatedAt: string; description?: string; avatar?: string | null;
@@ -181,6 +182,8 @@ export default function WfAgentsListPage() {
   const [sort, setSort] = useState<"updated" | "name">("updated")
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState<"active" | "archived">("active")
+  // Group Spec §5.2：管理页分段 Agent|Group（原站 /management 分段控件同构）
+  const [topView, setTopView] = useState<"agents" | "groups">("agents")
   const [modules, setModules] = useState<ModuleMeta[]>([])
   const [archivedTotal, setArchivedTotal] = useState(0)
   // F-arch：封存/解封确认（引用清单在弹窗内拉取）
@@ -240,6 +243,29 @@ export default function WfAgentsListPage() {
 
   return (
     <PageContainer wide>
+      <div
+        className="mb-4 flex h-8 w-fit items-center gap-2.5 rounded-lg bg-(--segment-bg) p-1"
+        role="tablist"
+        aria-label="管理分类"
+      >
+        {(["agents", "groups"] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            role="tab"
+            aria-selected={topView === v}
+            onClick={() => setTopView(v)}
+            className={`h-6 rounded px-2.5 text-xs leading-4 transition-colors ${topView === v
+              ? "bg-(--segment-active) font-medium text-foreground"
+              : "text-muted-foreground hover:text-foreground"}`}
+          >
+            {v === "agents" ? "Agent" : "Group"}
+          </button>
+        ))}
+      </div>
+      {topView === "groups" ? (
+        <GroupsView />
+      ) : (
       <div className="space-y-4">
       <div className="mb-2">
       <PageHeader
@@ -361,6 +387,7 @@ export default function WfAgentsListPage() {
         </DialogContent>
       </Dialog>
       </div>
+      )}
     </PageContainer>
   )
 }

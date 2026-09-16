@@ -17,6 +17,8 @@ export type Permission =
   | "agent.view"
   | "agent.edit"
   | "agent.publish"
+  | "group.view"
+  | "group.manage"
   | "tool.view"
   | "tool.manage"
   | "tool.publish"
@@ -33,11 +35,11 @@ export type Permission =
 export type Role = "viewer" | "editor" | "publisher" | "admin"
 
 const VIEW_PERMS: Permission[] = [
-  "quality.view", "task.view", "agent.view", "tool.view", "asset.view",
+  "quality.view", "task.view", "agent.view", "group.view", "tool.view", "asset.view",
   "rules.view", "connection.view",
 ]
 const MANAGE_PERMS: Permission[] = [
-  "task.manage", "agent.edit", "tool.manage", "asset.manage",
+  "task.manage", "agent.edit", "group.manage", "tool.manage", "asset.manage",
   "rules.manage", "connection.manage", "quality.review",
 ]
 const PUBLISH_PERMS: Permission[] = ["agent.publish", "tool.publish", "rules.publish"]

@@ -28,6 +28,22 @@ POLICY_TOOL_NAMES: dict[str, tuple[str, ...]] = {
     "subagent": ("AgentCreate", "AgentInvite", "TeamCreate", "TeamDelete", "TeamSay"),
 }
 
+# Group Spec 不变量 4 / D1：团队组成平台所有——群会话（session.team_id 非空）
+# 恒摘四建团工具；manifest 拉取失败 fail-closed 连 TeamSay 一并 deny
+# （安全降级：成员仍可对用户应答，只是不能群内协调）。
+GROUP_CREATE_TOOLS: tuple[str, ...] = (
+    "AgentCreate", "AgentInvite", "TeamCreate", "TeamDelete")
+
+
+def group_denied_tools(is_group: bool, manifest: dict | None) -> list[str]:
+    """纯决策函数（probes/p1x_team 断言源）：群会话工具门禁。"""
+    if not is_group:
+        return []
+    denied = list(GROUP_CREATE_TOOLS)
+    if not manifest:
+        denied.extend(POLICY_TOOL_NAMES["subagent"])
+    return sorted(set(denied))
+
 _CACHE: dict[str, tuple[float, dict]] = {}
 _CACHE_TTL = 60.0
 
@@ -103,16 +119,17 @@ async def get_toolkit_with_policy(**kw):
     if not sid:
         return toolkit
     manifest = await _fetch_manifest(str(sid))
-    if not manifest:
+    is_group = getattr(sess, "team_id", None) is not None
+    denied: list[str] = group_denied_tools(is_group, manifest)
+    if not manifest and not is_group:
         return toolkit
     # 旧六开关 tool_policy（deny 族摘除）
-    policy = manifest.get("tool_policy") or {}
-    denied: list[str] = []
+    policy = (manifest or {}).get("tool_policy") or {}
     for key, names in POLICY_TOOL_NAMES.items():
         if policy.get(key, True) is False:
             denied.extend(names)
     # 新 v2 执行规格：三态 deny 摘除 + permission_context 注入
-    spec = manifest.get("permission_policy") or {}
+    spec = (manifest or {}).get("permission_policy") or {}
     denied.extend(spec.get("deny_tools") or [])
     if spec:
         _apply_permission_context(sess, spec)

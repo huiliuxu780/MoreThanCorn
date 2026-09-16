@@ -1189,7 +1189,8 @@ class AgentSessionIndex(Base):
     agent_id: Mapped[str] = mapped_column(String(32), index=True)
     release_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     trigger_kind: Mapped[str] = mapped_column(String(16), default="manual")
-    # manual|chat|schedule|api|event|workflow|agentflow|agent_tool
+    # manual|chat|schedule|api|event|workflow|agentflow|agent_tool|group
+    # （group=Group 群聊会话，Spec group-capability §4.4；词表注释级、无 DB ck）
     automation_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     trigger_log_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     workflow_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
@@ -1202,6 +1203,9 @@ class AgentSessionIndex(Base):
     # 平台只存哈希——共享 MTC_INTERNAL_TOKEN 仅是传输门，会话令牌才绑定
     # user/agent/session/release/工具清单。
     session_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # g062（Group Spec §3.1/§4.4）：群会话反链，仅 trigger_kind='group' 行非空
+    group_session_id: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -1518,3 +1522,120 @@ class DataSourceEvent(Base):
     route_outcomes: Mapped[list] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Group（多 Agent 群聊协作组）—— docs/product-domain/group-capability-spec.md
+# v1.1 APPROVED（g062group0001）。定义真源在平台；运行时 team 花名册在
+# AgentScope 官方 teams 表（TeamRecord.members 仅 worker，leader 经
+# TeamRecord.session_id/leader_agent_id 标识）。
+# ---------------------------------------------------------------------------
+
+
+class AgentGroup(Base):
+    """群定义：恰一位 Leader + 成员（含 Leader 共 1..5，不变量 1/2）。"""
+    __tablename__ = "agent_group"
+    __table_args__ = (
+        CheckConstraint("char_length(name) <= 20", name="ck_agent_group_name_len"),
+        CheckConstraint("char_length(name) > 0", name="ck_agent_group_name_nonempty"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(20))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    leader_agent_id: Mapped[str] = mapped_column(String(32), index=True)
+    avatar: Mapped[str | None] = mapped_column(Text, nullable=True)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    # g063：成员协作 SOP 绑定指针（原子替换；仅可绑 published，Spec §3.1）
+    sop_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AgentGroupMember(Base):
+    """群成员行：role ∈ leader|member；uq(group,agent)；config=每成员覆盖。"""
+    __tablename__ = "agent_group_member"
+    __table_args__ = (
+        CheckConstraint("role in ('leader', 'member')", name="ck_agent_group_member_role"),
+        UniqueConstraint("group_id", "agent_id", name="uq_group_member"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    group_id: Mapped[str] = mapped_column(String(32), index=True)
+    agent_id: Mapped[str] = mapped_column(String(32), index=True)
+    role: Mapped[str] = mapped_column(String(8))
+    # {chat_model_config?, knowledge_ids?}（D3：响应模型+知识挂载，无工作目录假字段）
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AgentGroupSession(Base):
+    """群会话（UI 文案「任务」）=一个 AgentScope team 实例；closed 只读不解散。"""
+    __tablename__ = "agent_group_session"
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('active', 'closed', 'failed')",
+            name="ck_agent_group_session_status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    group_id: Mapped[str] = mapped_column(String(32), index=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(8), default="active")
+    leader_session_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    runtime_team_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # 开聊时冻结：{agent_id:{runtime_agent_id, frozen_model_id/params, knowledge_ids}}
+    binding_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict)
+    closed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AgentGroupSessionMember(Base):
+    """群会话成员 session 映射（聚合 SSE 与投影用）。"""
+    __tablename__ = "agent_group_session_member"
+    __table_args__ = (
+        UniqueConstraint("group_session_id", "agent_id", name="uq_group_session_member"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    group_session_id: Mapped[str] = mapped_column(String(32), index=True)
+    agent_id: Mapped[str] = mapped_column(String(32))
+    session_id: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AgentGroupSkill(Base):
+    """群技能挂载（g063）：装配时逐成员 session 上传 SKILL.md 进 workspace。"""
+    __tablename__ = "agent_group_skill"
+    __table_args__ = (UniqueConstraint("group_id", "skill_id", name="uq_group_skill"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    group_id: Mapped[str] = mapped_column(String(32), index=True)
+    skill_id: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AgentGroupSop(Base):
+    """成员协作 SOP（g063）：版本化群协作规则；published 行只读（不可变发布）。"""
+    __tablename__ = "agent_group_sop"
+    __table_args__ = (
+        CheckConstraint("status in ('draft', 'published')",
+                        name="ck_agent_group_sop_status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    group_id: Mapped[str] = mapped_column(String(32), index=True)
+    name: Mapped[str] = mapped_column(String(64))
+    content_md: Mapped[str] = mapped_column(Text, default="")
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(16), default="draft")
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow)

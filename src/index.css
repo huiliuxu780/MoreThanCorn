@@ -18,6 +18,15 @@
 :root {
   --radius: 0.375rem;
 
+  /* ---- Group 域作用域 token（Spec group-capability §5.0 / D10）----
+     原站 mint 族逐值照抄（台账 §0）；中性色不引入原站值——全站 09-14 D1
+     已按 WCAG 修正三级文字色，Group 域中性色复用本站 token（台账 §5-7）。 */
+  --group-primary: #8EE5A1;
+  --group-primary-bg: #F1FAF3;
+  --group-primary-bg-hover: #E6F7EC;
+  --group-primary-border: #CDEFD9;
+  --group-avatar-tile: #E7F8E6;
+
   /* ---- MTC-003 主题：极白中性骨架 + 低饱和薄荷绿品牌色 ---- */
   --background: #FFFFFF;
   --surface: #FFFFFF;
@@ -107,6 +116,13 @@
 }
 
 [data-theme="dark"] {
+  /* ---- Group 域 dark 对应值（原站 dark token 表，禁残留浅色） ---- */
+  --group-primary: #8EE5A1;
+  --group-primary-bg: #14261C;
+  --group-primary-bg-hover: #1A2E21;
+  --group-primary-border: #335942;
+  --group-avatar-tile: #1A2E21;
+
   /* ---- 极黑中性骨架；禁止残留 Light token ---- */
   --background: #080909;
   --surface: #101211;
@@ -274,6 +290,13 @@
 /* ---- 09-06 原站对齐：羊皮纸深色（暖黑中性骨架，参照原站 dark-parchment 实测值）；
        品牌/状态色与 dark 同源；禁止残留浅色值 ---- */
 [data-theme="dark-parchment"] {
+  /* ---- Group 域 dark 对应值（与 dark 同源） ---- */
+  --group-primary: #8EE5A1;
+  --group-primary-bg: #14261C;
+  --group-primary-bg-hover: #1A2E21;
+  --group-primary-border: #335942;
+  --group-avatar-tile: #1A2E21;
+
   --background: #1A1814;
   --surface: #1E1C18;
   --surface-muted: #252220;

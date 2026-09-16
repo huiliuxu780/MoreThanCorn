@@ -1,4 +1,4 @@
-import { Bot, Boxes, CalendarClock, Check, ClipboardList, LogIn, LogOut, Monitor, Waypoints, Workflow, Moon, MoonStar, Settings, ShieldCheck, Sun, Sunrise, UserRound } from "lucide-react"
+import { Bot, Boxes, CalendarClock, Check, ClipboardList, LogIn, LogOut, Monitor, Plus, Search, Waypoints, Workflow, Moon, MoonStar, Settings, ShieldCheck, Sun, Sunrise, UserRound } from "lucide-react"
 import * as React from "react"
 import { NavLink, useLocation, useNavigate } from "react-router-dom"
 import { useTheme } from "next-themes"
@@ -22,6 +22,9 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { CortexMark } from "@/components/app/logo"
 import { avatarFor } from "@/lib/agent-avatar"
+import { groupsApi, type GroupView } from "@/services/as-api"
+import { GroupAvatarCluster } from "@/features/groups/group-avatar"
+import { GroupCreateDialog } from "@/features/groups/group-create-dialog"
 
 export interface NavItem {
   label: string
@@ -267,7 +270,9 @@ function SideLink({ item, active }: { item: NavItem; active: boolean }) {
   )
 }
 
-/** 参考原站员工区（仅 Agent tab，无 Group）：搜索+新建+活跃 Agent 列表。 */
+/** 原站员工与群组区（Group Spec §5.1，09-15 恢复 09-09 移除的 Group tablist）：
+ * tablist Agent(n)|Group(n) 选中 2px 黑下划线 + 虚线新建钮（随 tab 切文案）+
+ * 搜索 + 对象卡列表（群卡=32 头像簇+名 13/600+成员名串 12 三级色）。 */
 function AgentListSection() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
@@ -295,28 +300,72 @@ function AgentListSection() {
     }
   }, [])
   const filtered = agents.filter((a) => a.name.toLowerCase().includes(q.toLowerCase()))
+  const [tab, setTab] = React.useState<"agents" | "groups">("agents")
+  const [groups, setGroups] = React.useState<GroupView[]>([])
+  const [createOpen, setCreateOpen] = React.useState(false)
+  const searchRef = React.useRef<HTMLInputElement>(null)
+  React.useEffect(() => {
+    let alive = true
+    groupsApi.list().then((r) => { if (alive) setGroups(r.items) }).catch(() => undefined)
+    return () => { alive = false }
+  }, [])
+  const filteredGroups = groups.filter((g) => g.name.includes(q.trim()))
 
   return (
     <div className="flex min-h-0 flex-1 flex-col border-t pt-2" style={{ borderColor: "var(--sidebar-border)" }}>
-      <div className="flex items-center justify-between px-3 pb-1">
-        <h2 className="text-xs font-medium text-muted-foreground">Agent（{agents.length}）</h2>
+      <div
+        className="flex items-center border-b px-3"
+        style={{ borderColor: "var(--border)" }}
+        role="tablist"
+        aria-label="员工与群组"
+      >
+        {(["agents", "groups"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            role="tab"
+            aria-selected={tab === t}
+            onClick={() => setTab(t)}
+            className={`w-24 border-b-2 px-1 py-2 text-xs font-medium transition-colors ${
+              tab === t
+                ? "border-(--text-primary) text-(--text-primary)"
+                : "border-transparent text-(--text-secondary) hover:text-(--text-primary)"
+            }`}
+          >
+            {t === "agents" ? `Agent（${agents.length}）` : `Group（${groups.length}）`}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 px-3 pt-3">
         <button
           type="button"
-          className="rounded-md px-2 py-0.5 text-xs text-muted-foreground hover:bg-sidebar-accent"
-          onClick={() => navigate("/agents/new")}
+          className="flex h-8 flex-auto items-center justify-center gap-2 rounded-[6px] border border-dashed px-2 text-[13px] transition-colors hover:bg-(--surface-raised) hover:text-(--text-primary)"
+          style={{ borderColor: "var(--border)", color: "var(--text-tertiary)" }}
+          onClick={() => (tab === "agents" ? navigate("/agents/new") : setCreateOpen(true))}
         >
-          新建
+          <Plus size={14} />
+          <span className="truncate">{tab === "agents" ? "新建 Agent" : "新建 Group"}</span>
+        </button>
+        <button
+          type="button"
+          aria-label="搜索"
+          className="mr-1 shrink-0 text-(--text-tertiary)"
+          onClick={() => searchRef.current?.focus()}
+        >
+          <Search size={15} />
         </button>
       </div>
-      <div className="px-2 pb-1">
+      <div className="px-2 pb-1 pt-2">
         <input
+          ref={searchRef}
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="搜索 Agent"
+          placeholder={tab === "agents" ? "搜索 Agent" : "搜索群组"}
           className="w-full rounded-md border bg-transparent px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
       </div>
       {/* §八：填满剩余空间并独立滚动（删除 max-h-64 限制） */}
+      {tab === "agents" && (
       <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
         {filtered.map((a) => {
           const activeAgent = pathname === `/agents/${a.id}` || pathname.startsWith(`/agents/${a.id}/`)
@@ -352,6 +401,35 @@ function AgentListSection() {
           <li className="px-2 py-3 text-center text-[10px] text-muted-foreground">暂无 Agent</li>
         )}
       </ul>
+      )}
+      {tab === "groups" && (
+        <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 pb-2 pt-1">
+          {filteredGroups.map((g) => (
+            <li key={g.id}>
+              <button
+                type="button"
+                onClick={() => navigate(`/groups/${g.id}`)}
+                title={g.name}
+                className="flex h-14 w-full items-center gap-2 rounded-[6px] px-1.5 text-left transition-colors hover:bg-(--surface-muted)"
+              >
+                <GroupAvatarCluster memberIds={g.members.map((m) => m.agentId)} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-semibold text-(--text-primary)">
+                    {g.name}
+                  </span>
+                  <span className="block truncate text-xs text-(--text-tertiary)">
+                    {g.members.map((m) => m.agentName).join("、")}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+          {!filteredGroups.length && (
+            <li className="px-2 py-3 text-center text-[10px] text-muted-foreground">暂无 Group</li>
+          )}
+        </ul>
+      )}
+      <GroupCreateDialog open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   )
 }

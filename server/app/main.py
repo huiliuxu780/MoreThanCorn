@@ -8,7 +8,7 @@ from .config import auth_enforced, is_production
 from .legacy_agent_archive import LegacyAgentArchivedError
 from .runner import start_worker
 from .routers import (admin, agent_caps, agents, alerts, analytics, as_agents,
-                      as_automations, as_flows_board, auth_routes,
+                      as_automations, as_flows_board, as_groups, auth_routes,
                       automations, business, event_routes, forms, governance,
                       operations, registry, resources, runs, work_items, workflows)
 # P0-07：runtime_providers 路由已退役（不挂载、不 import）。模块保留在
@@ -192,6 +192,7 @@ app.include_router(forms.router)
 
 # AgentScope 2.0.8 换底（2026-09-09 任务书）：控制面/代理/看板/接入 v2 路由
 app.include_router(as_agents.router)
+app.include_router(as_groups.router)  # g062：Group 定义实体 P1（Spec group-capability §4.1）
 app.include_router(as_agents.kb_router)
 app.include_router(as_automations.router)
 app.include_router(as_automations.ext_router)

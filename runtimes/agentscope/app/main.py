@@ -99,6 +99,9 @@ def build_app():
     from .script_runner import script_router
 
     app.include_router(script_router)
+    from .group_runner import group_router
+
+    app.include_router(group_router)  # Group Spec §4.2 装配端点
     # 平台前端直连运行时 SSE（开发态本地源放行；生产由平台代理收口）
     app.add_middleware(
         CORSMiddleware,

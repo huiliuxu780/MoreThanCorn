@@ -222,6 +222,18 @@ def update_agent(aid: str, payload: dict, db: Session = Depends(get_db),
         a.avatar = payload["avatar"]
     if "description" in payload:
         a.description = payload["description"]
+    if "archived" in payload and bool(payload["archived"]) and not a.archived:
+        # Group Spec 不变量 7：Agent 归档双向闸门——在用群成员/Leader 拒归档+引用清单
+        from ..models import AgentGroup, AgentGroupMember
+        refs = (db.query(AgentGroupMember, AgentGroup)
+                .join(AgentGroup, AgentGroup.id == AgentGroupMember.group_id)
+                .filter(AgentGroupMember.agent_id == a.id,
+                        AgentGroup.archived.is_(False)).all())
+        if refs:
+            raise HTTPException(409, detail={
+                "code": "AGENT_IN_USE_BY_GROUP",
+                "message": "Agent 是以下 Group 的成员，请先移出或归档对应 Group",
+                "groups": [{"id": g.id, "name": g.name} for _, g in refs]})
     if "archived" in payload:
         a.archived = bool(payload["archived"])
     if expected is not None:

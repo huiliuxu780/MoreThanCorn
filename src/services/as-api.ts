@@ -454,3 +454,135 @@ export function openRuntimeStream(
     .catch(() => onDone?.());
   return ctrl;
 }
+
+// ---------------------------------------------------------------------------
+// Group（多 Agent 群聊协作组）客户端（Spec group-capability v1.1 §4.1）
+// ---------------------------------------------------------------------------
+
+export interface GroupMemberView {
+  agentId: string
+  role: "leader" | "member"
+  config: Record<string, unknown>
+  agentName: string
+}
+
+export interface GroupView {
+  id: string
+  name: string
+  description: string | null
+  leaderAgentId: string
+  avatar: string | null
+  archived: boolean
+  revision: number
+  memberCount: number
+  members: GroupMemberView[]
+  activeSessionId: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface GroupSessionView {
+  id: string
+  title: string | null
+  status: "active" | "closed" | "failed"
+  leaderSessionId: string | null
+  runtimeTeamId: string | null
+  closedAt: string | null
+  createdAt: string | null
+}
+
+export interface GroupStreamEnvelope {
+  id: number
+  source: { agentId: string; name: string; role: "leader" | "member"; sessionId: string }
+  payload: string
+}
+
+export const groupsApi = {
+  list: (archived: "" | "true" | "all" = "") =>
+    req<{ total: number; items: GroupView[] }>(
+      `/api/v2/groups${archived ? `?archived=${archived}` : ""}`),
+  get: (gid: string) => req<GroupView>(`/api/v2/groups/${gid}`),
+  create: (body: {
+    name: string
+    description?: string | null
+    leader_agent_id: string
+    members: { agent_id: string; config?: Record<string, unknown> }[]
+  }) =>
+    req<GroupView>("/api/v2/groups", { method: "POST", body: JSON.stringify(body) }),
+  patch: (gid: string, body: Record<string, unknown>) =>
+    req<GroupView>(`/api/v2/groups/${gid}`, { method: "PATCH", body: JSON.stringify(body) }),
+  remove: (gid: string) =>
+    req<{ id: string; deleted?: boolean; archived?: boolean }>(
+      `/api/v2/groups/${gid}`, { method: "DELETE" }),
+  archive: (gid: string) =>
+    req<GroupView>(`/api/v2/groups/${gid}/archive`, { method: "POST" }),
+  restore: (gid: string) =>
+    req<GroupView>(`/api/v2/groups/${gid}/restore`, { method: "POST" }),
+  sessions: (gid: string) =>
+    req<{ items: GroupSessionView[] }>(`/api/v2/groups/${gid}/sessions`),
+  sessionDetail: (gid: string, gsid: string) =>
+    req<GroupSessionView & {
+      leaderAgentId: string
+      members: { agentId: string; sessionId: string; role: "leader" | "member" }[]
+    }>(`/api/v2/groups/${gid}/sessions/${gsid}`),
+  open: (gid: string) =>
+    req<GroupSessionView & { id: string }>(`/api/v2/groups/${gid}/sessions`,
+      { method: "POST" }),
+  turn: (gid: string, gsid: string, text: string) =>
+    req<{ status: string; session_id: string }>(
+      `/api/v2/groups/${gid}/sessions/${gsid}/turns`,
+      { method: "POST", body: JSON.stringify({ text }) }),
+  confirm: (gid: string, gsid: string, agentId: string, confirmed: boolean) =>
+    req<Record<string, unknown>>(
+      `/api/v2/groups/${gid}/sessions/${gsid}/confirm`,
+      { method: "POST", body: JSON.stringify({ agent_id: agentId, confirmed }) }),
+  interrupt: (gid: string, gsid: string, scope: "leader" | "all" = "all") =>
+    req<{ interrupted: number }>(
+      `/api/v2/groups/${gid}/sessions/${gsid}/interrupt`,
+      { method: "POST", body: JSON.stringify({ scope }) }),
+  close: (gid: string, gsid: string) =>
+    req<{ id: string; status: string }>(
+      `/api/v2/groups/${gid}/sessions/${gsid}`, { method: "DELETE" }),
+  skills: (gid: string) =>
+    req<{ items: { id: string; skillId: string; name: string; description: string }[] }>(
+      `/api/v2/groups/${gid}/skills`),
+  mountSkill: (gid: string, skillId: string) =>
+    req<{ id: string }>(`/api/v2/groups/${gid}/skills`,
+      { method: "POST", body: JSON.stringify({ skill_id: skillId }) }),
+  unmountSkill: (gid: string, skillId: string) =>
+    req<{ deleted: boolean }>(`/api/v2/groups/${gid}/skills/${skillId}`,
+      { method: "DELETE" }),
+  sops: (gid: string) =>
+    req<{
+      boundSopId: string | null
+      items: { id: string; name: string; revision: number; status: string; content: string; publishedAt: string | null }[]
+    }>(`/api/v2/groups/${gid}/sops`),
+  createSop: (gid: string, name: string, content: string) =>
+    req<{ id: string; status: string; revision: number }>(
+      `/api/v2/groups/${gid}/sops`,
+      { method: "POST", body: JSON.stringify({ name, content }) }),
+  publishSop: (gid: string, sopId: string) =>
+    req<{ id: string; status: string }>(
+      `/api/v2/groups/${gid}/sops/${sopId}/publish`, { method: "POST" }),
+  bindSop: (gid: string, sopId: string | null) =>
+    req<{ boundSopId: string | null }>(`/api/v2/groups/${gid}/sop-bind`,
+      { method: "POST", body: JSON.stringify({ sop_id: sopId }) }),
+  /** 聚合 SSE（Spec §4.3）：envelope={id, source, payload(原 runtime 事件 JSON 串)}。 */
+  streamUrl: (gid: string, gsid: string) =>
+    `${BASE}/api/v2/groups/${gid}/sessions/${gsid}/stream`,
+}
+
+export function openGroupStream(
+  gid: string,
+  gsid: string,
+  onEnvelope: (env: GroupStreamEnvelope) => void,
+  onDone?: () => void,
+  external?: AbortController,
+): AbortController {
+  return openRuntimeStream(
+    groupsApi.streamUrl(gid, gsid),
+    (ev) => onEnvelope(ev as unknown as GroupStreamEnvelope),
+    onDone,
+    external,
+  )
+}

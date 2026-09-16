@@ -121,6 +121,16 @@ def create_session(
         return _raise(c.post("/mtc/session", json=body)).json()["session_id"]
 
 
+def group_session(user_id: str, body: dict, timeout: float = 60.0) -> dict:
+    """Group 装配（Spec group-capability §4.2）：/mtc/group-session 串行五步。
+
+    返回 {runtime_team_id, leader_session_id, member_sessions[]}。
+    internal_token 为群会话令牌（run_token 同款共享先例），平台存哈希入索引。
+    """
+    with _client(user_id, timeout=httpx.Timeout(timeout)) as c:
+        return _raise(c.post("/mtc/group-session", json=body)).json()
+
+
 def chat_trigger(
     user_id: str, agent_id: str, session_id: str, text: str
 ) -> dict:
