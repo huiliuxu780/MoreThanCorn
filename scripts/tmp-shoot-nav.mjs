@@ -1,0 +1,10 @@
+import puppeteer from "puppeteer-core";
+const browser = await puppeteer.launch({ executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", headless: "new", args: ["--window-size=1440,1000"], defaultViewport: { width: 1440, height: 1000 } });
+const page = await browser.newPage();
+await page.goto("http://localhost:5199/tasks", { waitUntil: "networkidle2", timeout: 30000 });
+await new Promise(r => setTimeout(r, 2000));
+const w = await page.evaluate(() => document.querySelector('[data-testid="app-sidebar"]')?.getBoundingClientRect().width);
+const hasToggle = await page.evaluate(() => !!document.querySelector('[aria-label="折叠侧边栏"],[aria-label="展开侧边栏"]'));
+await page.screenshot({ path: "/tmp/nav-fixed.png" });
+console.log(JSON.stringify({ sidebarWidth: w, hasCollapseToggle: hasToggle }));
+await browser.close();

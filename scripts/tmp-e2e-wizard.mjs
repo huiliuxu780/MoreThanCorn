@@ -1,0 +1,37 @@
+import puppeteer from "puppeteer-core";
+const NAME = `wizard-e2e-${Date.now() % 100000}`;
+const browser = await puppeteer.launch({ executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", headless: "new", args: ["--window-size=1440,1000"], defaultViewport: { width: 1440, height: 1000 } });
+const page = await browser.newPage();
+const errs = [];
+page.on("pageerror", e => errs.push(String(e).slice(0,140)));
+const clickText = async (t) => {
+  const ok = await page.evaluate((txt) => {
+    const el = [...document.querySelectorAll("button")].find(e => e.textContent?.trim().startsWith(txt));
+    if (el) { el.click(); return true } return false;
+  }, t);
+  await new Promise(r => setTimeout(r, 800));
+  return ok;
+};
+await page.goto("http://localhost:5199/data-sources/wizard", { waitUntil: "networkidle2", timeout: 30000 });
+await new Promise(r => setTimeout(r, 1500));
+await page.evaluate(() => { [...document.querySelectorAll("button")].find(b => b.textContent?.includes("测试事件"))?.click() });
+await new Promise(r => setTimeout(r, 400));
+await clickText("下一步：凭据");
+await clickText("下一步：源配置");
+await page.type("#wz-name", NAME);
+await clickText("下一步：路由");
+await page.evaluate(() => { document.querySelector("#wz-wantroute")?.click() });
+await new Promise(r => setTimeout(r, 300));
+await clickText("创建并继续");
+await new Promise(r => setTimeout(r, 2000));
+const summary = await page.evaluate(() => document.body.innerText);
+const okSource = summary.includes(NAME) && summary.includes("SOURCE");
+await page.screenshot({ path: "/tmp/e2e-wiz5.png" });
+await page.goto("http://localhost:5199/data-sources", { waitUntil: "networkidle2", timeout: 30000 });
+await new Promise(r => setTimeout(r, 2500));
+const band = await page.evaluate(() => document.body.innerText);
+const okBand = band.includes(NAME);
+await page.screenshot({ path: "/tmp/e2e-band.png" });
+console.log(JSON.stringify({ NAME, okSource, okBand, jsErrors: errs }));
+await browser.close();
+if (!okSource || !okBand) process.exit(1);

@@ -1,0 +1,13 @@
+import puppeteer from "puppeteer-core";
+const browser = await puppeteer.launch({ executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", headless: "new", args: ["--window-size=1440,1000"], defaultViewport: { width: 1440, height: 1000 } });
+const page = await browser.newPage();
+const errs = [];
+page.on("pageerror", e => errs.push(String(e).slice(0,120)));
+await page.goto("file:///Users/rivers/MoreThanCorn/docs/v2-design/prototypes/ingress-wizard-v1.html", { waitUntil: "networkidle2" });
+await new Promise(r => setTimeout(r, 700));
+await page.screenshot({ path: "/tmp/proto2-A.png" });
+await page.evaluate(() => go("s2", document.querySelectorAll(".seg button")[2]));
+await new Promise(r => setTimeout(r, 300));
+await page.screenshot({ path: "/tmp/proto2-B2.png" });
+console.log("js errors:", errs.length, errs.join("|"));
+await browser.close();

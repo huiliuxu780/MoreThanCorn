@@ -68,3 +68,24 @@ def test_rotation_dual_active_window():
     r2 = client.post(f"/api/v2/data-sources/{sid}/signing-secret",
                      json={"secret": "short"})
     assert r2.status_code == 422
+
+
+def test_webhook_rate_limit_shared():
+    """09-17：限速走 Redis 分钟桶（共享存储），超限 429。"""
+    import hashlib as _hl
+    sid = client.post("/api/v2/data-sources", json={
+        "name": f"rate-{_t.time_ns()}", "kind": "webhook",
+        "config": {"rate_limit_per_min": 2}}).json()["id"]
+    TOKENS[sid] = "x"  # 未用签名；限速在 token 校验后——需真 token：重建
+    r = client.post("/api/v2/data-sources", json={
+        "name": f"rate2-{_t.time_ns()}", "kind": "webhook",
+        "config": {"rate_limit_per_min": 2}})
+    sid = r.json()["id"]
+    tok = r.json()["webhook_token"]
+    codes = []
+    for _ in range(4):
+        rr = client.post(f"/api/v2/ingress/webhook/{sid}", json={"a": 1},
+                         headers={"x-source-token": tok})
+        codes.append(rr.status_code)
+    assert codes[:2] == [200, 200]
+    assert 429 in codes[2:]

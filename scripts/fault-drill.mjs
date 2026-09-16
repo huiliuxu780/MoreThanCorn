@@ -35,7 +35,7 @@ async function setup() {
   serverProc = spawn(".venv/bin/uvicorn", ["app.main:app", "--host", "127.0.0.1", "--port", PORT], {
     cwd: `${ROOT}server`,
     env: { ...process.env, WF_DATABASE_URL: DB_URL, WF_ENV: "production",
-           WF_SECRET_KEY: "DtpVdK_t2tGHMmUvPRSHcyOIMeflUpBDC-gF0e0yBbk=", WF_ADMIN_PASSWORD: "admin", WF_PAR_RUN: "1",
+           WF_SECRET_KEY: process.env.WF_SECRET_KEY ?? (() => { throw new Error("WF_SECRET_KEY 必经环境变量提供（09-17 轮换去硬编码）") })(), WF_ADMIN_PASSWORD: "admin", WF_PAR_RUN: "1",
            WF_EMBEDDED_WORKER: "on" },  // 单进程演练：显式内嵌 worker/scheduler
     stdio: ["ignore", "pipe", "pipe"],
   })

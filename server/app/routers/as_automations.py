@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import hmac
 import json
 import secrets as pysecrets
@@ -1913,7 +1914,52 @@ webhook_router = APIRouter(prefix="/api/v2/ingress", tags=["ingress"])
 # 限速为进程内存实现，多 worker/多实例须升级共享存储（归 EventBridge 切片）。
 WEBHOOK_MAX_BYTES = 256 * 1024
 WEBHOOK_RATE_WINDOW_S = 60.0
-_webhook_hits: dict[str, list[float]] = {}
+_webhook_hits: dict[str, list[float]] = {}  # Redis 不可达时的单实例回退
+_rate_redis = None
+_rate_redis_failed = False
+
+
+def _rate_redis_client():
+    global _rate_redis, _rate_redis_failed
+    if _rate_redis is not None or _rate_redis_failed:
+        return _rate_redis
+    try:
+        import redis as _rlib
+        _rate_redis = _rlib.Redis.from_url(
+            os.environ.get("MTC_REDIS_URL", "redis://127.0.0.1:6379/4"),
+            socket_timeout=1)
+        _rate_redis.ping()
+    except Exception:  # noqa: BLE001
+        _rate_redis = None
+        _rate_redis_failed = True
+    return _rate_redis
+
+
+def _webhook_rate_hit(sid: str, limit: int) -> None:
+    """09-17：限速共享存储——Redis 分钟桶 INCR，多 worker/多实例安全；
+    Redis 不可达回退进程内存（单实例语义，诚实边界登记）。"""
+    r = _rate_redis_client()
+    if r is not None:
+        try:
+            key = f"mtc:wh:{sid}:{int(time.time() // 60)}"
+            n = int(r.incr(key))
+            if n == 1:
+                r.expire(key, 120)
+            if n > limit:
+                raise HTTPException(429, f"source 限速 {limit} 次/分钟，请稍后重发")
+            return
+        except HTTPException:
+            raise
+        except Exception:  # noqa: BLE001
+            pass
+    now = time.monotonic()
+    hits = [t for t in _webhook_hits.get(sid, [])
+            if now - t < WEBHOOK_RATE_WINDOW_S]
+    if len(hits) >= limit:
+        _webhook_hits[sid] = hits
+        raise HTTPException(429, f"source 限速 {limit} 次/分钟，请稍后重发")
+    hits.append(now)
+    _webhook_hits[sid] = hits
 
 
 SIGNATURE_TOLERANCE_S = 300  # W2：Stripe 官方 tolerance 默认 5 分钟且禁止 0
@@ -2032,14 +2078,7 @@ async def webhook(
         if missing:
             raise HTTPException(422, f"CloudEvents 信封缺必备属性：{missing}")
     limit = int((src.config or {}).get("rate_limit_per_min") or 60)
-    now = time.monotonic()
-    hits = [t for t in _webhook_hits.get(sid, [])
-            if now - t < WEBHOOK_RATE_WINDOW_S]
-    if len(hits) >= limit:
-        _webhook_hits[sid] = hits
-        raise HTTPException(429, f"source 限速 {limit} 次/分钟，请稍后重发")
-    hits.append(now)
-    _webhook_hits[sid] = hits
+    _webhook_rate_hit(sid, limit)
     dedupe = str(payload.get("id") or payload.get("eventId") or pysecrets.token_hex(8))
     event = ingest(db, src, payload, dedupe_key=dedupe)
     return {"status": "received", "event_id": event.id}

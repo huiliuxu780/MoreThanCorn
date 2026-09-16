@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+export WF_SECRET_KEY="${WF_SECRET_KEY:-cggqm392aTD_ussCNmqX3CCwz9SGdH5yeQfK008SE74=}"
 # 一键起本地验收栈（dev，wf_dev 库）：backend 8120 + fake providers 8301/8302 + vite 5173。
 # 诚实标注：8301/8302 是 fake provider（固定输出，仅打通链路/验收用，非真实业务判断）。
 # 真实 Agent 运行需真实模型 Key（见 REAL RUNTIME 段注释）——占位 key 下真路径恒 401。

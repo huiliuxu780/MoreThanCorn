@@ -20,7 +20,7 @@ const ROOT = new URL("..", import.meta.url).pathname
 const PORT = process.env.WF_E2E_PORT ?? "8199"
 const DB = process.env.WF_E2E_DB ?? "wf_e2e"
 const DB_URL = `postgresql+psycopg://rivers@127.0.0.1:5432/${DB}`
-const SECRET = "DtpVdK_t2tGHMmUvPRSHcyOIMeflUpBDC-gF0e0yBbk="
+const SECRET = process.env.WF_SECRET_KEY ?? (() => { throw new Error("WF_SECRET_KEY 必经环境变量提供（09-17 轮换去硬编码）") })()
 
 let failures = 0
 let checks = 0
