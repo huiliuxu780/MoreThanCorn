@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>新建接入向导 + 接入健康概览带 原型 v2 · 产品真主题 1:1（16 号稿）</title>
+<style>
+/* ── 产品真主题 token（抄自 src/index.css light/mint，2026-09-15）── */
+:root{
+  --background:#FFFFFF; --surface:#FFFFFF; --surface-muted:#F6F6F4;
+  --border:#E7E7E3; --border-soft:#EFEFEB;
+  --text-primary:#111211; --text-secondary:#686D69; --text-tertiary:#737270;
+  --brand-primary:#2F7D4B; --brand-hover:#25663D; --brand-soft:#EDF8F0; --brand-subtle:#DDF2E3;
+  --success-text:#237A4E; --success-soft:#ECF7F0;
+  --warning-text:#8F6410; --warning-soft:#FAF3E5;
+  --danger-text:#BE4343;  --danger-soft:#FBEFEF;
+  --running-text:#2b7ea3; --running-soft:#EDF4F9;
+  --radius:6px;
+  --font:-apple-system,BlinkMacSystemFont,"Inter","SF Pro Text","PingFang SC","Segoe UI",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased}
+body{font-family:var(--font);font-size:13px;color:var(--text-primary);background:var(--background)}
+button{font-family:inherit}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono);font-size:11px;color:var(--text-tertiary)}
+
+/* 讨论稿标识（诚实横幅，细条不抢戏） */
+.proto-strip{background:var(--warning-soft);color:var(--warning-text);border-bottom:1px solid var(--border);
+  padding:5px 20px;font-size:11.5px;display:flex;gap:10px;align-items:center}
+.proto-strip b{font-weight:650}
+
+/* 原型切屏器（产品式 segment 控件） */
+.switchbar{position:sticky;top:0;z-index:40;background:var(--surface);border-bottom:1px solid var(--border);
+  padding:7px 20px;display:flex;gap:10px;align-items:center}
+.switchbar .lbl{font-size:11px;color:var(--text-tertiary);font-weight:550}
+.seg{display:inline-flex;background:var(--surface-muted);border-radius:var(--radius);padding:2px;gap:2px}
+.seg button{border:none;background:transparent;border-radius:4px;padding:4px 10px;font-size:11.5px;font-weight:550;
+  color:var(--text-secondary);cursor:pointer;white-space:nowrap}
+.seg button.on{background:var(--surface);color:var(--text-primary);box-shadow:0 1px 2px rgba(17,18,17,.08);border:1px solid var(--border)}
+
+/* 产品壳：64px 窄轨 + 内容区 */
+.shell{display:flex;min-height:calc(100vh - 62px)}
+.rail{width:64px;flex-shrink:0;border-right:1px solid var(--border);background:var(--surface);
+  display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px}
+.rail .logo{width:26px;height:26px;border-radius:7px;background:var(--text-primary);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;margin-bottom:10px}
+.rail .ri{width:36px;height:32px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;
+  color:var(--text-tertiary);cursor:pointer}
+.rail .ri:hover{background:var(--surface-muted);color:var(--text-primary)}
+.rail .ri.on{background:var(--surface-muted);color:var(--text-primary);font-weight:600}
+.rail .ri svg{width:16px;height:16px}
+.rail .sp{flex:1}
+.main{flex:1;min-width:0;padding:22px 26px 60px}
+
+/* 页头 */
+.phead{display:flex;align-items:flex-start;gap:14px;margin-bottom:16px}
+.phead h1{font-size:20px;font-weight:650;letter-spacing:-.02em}
+.phead .sub{font-size:12.5px;color:var(--text-secondary);margin-top:5px}
+.phead .acts{margin-left:auto;display:flex;gap:8px}
+
+/* 按钮（shadcn 形态：h-9 rounded-md） */
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 13px;border-radius:var(--radius);
+  border:1px solid var(--border);background:var(--surface);font-size:12.5px;font-weight:550;color:var(--text-primary);
+  cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--surface-muted)}
+.btn.primary{background:var(--brand-primary);border-color:var(--brand-primary);color:#fff}
+.btn.primary:hover{background:var(--brand-hover)}
+.btn.outline{background:var(--surface)}
+.btn.ghost{border-color:transparent;color:var(--text-secondary)}
+.btn.ghost:hover{background:var(--surface-muted);color:var(--text-primary)}
+.btn.xs{height:26px;padding:0 9px;font-size:11.5px;gap:4px;border-radius:var(--radius)}
+.btn.xs svg{width:12px;height:12px}
+.btn svg{width:14px;height:14px}
+
+/* 徽章（产品 Badge 形态） */
+.badge{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:var(--radius);
+  border:1px solid var(--border);background:var(--surface);font-size:11.5px;font-weight:550;color:var(--text-secondary);white-space:nowrap}
+.badge svg{width:12px;height:12px}
+.pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:999px;
+  font-size:11.5px;font-weight:600;white-space:nowrap;border:1px solid transparent}
+.pill .dot{width:6px;height:6px;border-radius:50%}
+.pill.ok{background:var(--success-soft);color:var(--success-text);border-color:rgba(35,122,78,.18)} .pill.ok .dot{background:var(--success-text)}
+.pill.bad{background:var(--danger-soft);color:var(--danger-text);border-color:rgba(190,67,67,.18)} .pill.bad .dot{background:var(--danger-text)}
+.pill.warn{background:var(--warning-soft);color:var(--warning-text);border-color:rgba(143,100,16,.2)} .pill.warn .dot{background:var(--warning-text)}
+.pill.gray{background:var(--surface-muted);color:var(--text-secondary);border-color:var(--border)} .pill.gray .dot{background:var(--text-tertiary)}
+.chip-unrouted{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:var(--radius);
+  background:var(--warning-soft);color:var(--warning-text);border:1px solid rgba(143,100,16,.22);
+  font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+.chip-unrouted:hover{border-color:rgba(143,100,16,.45)}
+.chip-unrouted svg{width:12px;height:12px}
+
+/* 卡片/带 */
+.card{border:1px solid var(--border);border-radius:8px;background:var(--surface);overflow:hidden}
+.card-h{display:flex;align-items:center;gap:9px;padding:9px 14px;background:var(--surface-muted);border-bottom:1px solid var(--border-soft)}
+.card-h .t{font-size:12.5px;font-weight:650}
+.card-h .n{font-size:11.5px;color:var(--text-tertiary)}
+.card-b{padding:16px 18px}
+
+/* 表格（密度对齐真页面：12.5px / 行 ~46px） */
+table.tb{width:100%;border-collapse:collapse;font-size:12.5px}
+table.tb th{text-align:left;font-size:12px;font-weight:550;color:var(--text-tertiary);padding:8px 14px;
+  border-bottom:1px solid var(--border);background:var(--surface)}
+table.tb td{padding:9px 14px;border-bottom:1px solid var(--border-soft);vertical-align:middle;color:var(--text-primary)}
+table.tb tr:last-child td{border-bottom:none}
+table.tb td .subline{display:block;font-size:11px;margin-top:2px}
+table.tb td .subline.ok{color:var(--text-tertiary)}
+table.tb td .subline.err{color:var(--danger-text)}
+table.tb .acts{display:flex;gap:4px;justify-content:flex-end}
+.dlv{font-variant-numeric:tabular-nums;font-size:12px;color:var(--text-secondary)}
+.dlv .c{color:var(--success-text);font-weight:600}.dlv .f{color:var(--danger-text);font-weight:600}.dlv .d{color:var(--text-tertiary);font-weight:600}
+
+/* 向导步骤条（品牌色） */
+.steps{display:flex;align-items:center;gap:0;margin:2px 0 18px}
+.steps .st{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:550;color:var(--text-tertiary)}
+.steps .st .no{width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:var(--surface);
+  display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--text-tertiary)}
+.steps .st.on{color:var(--text-primary)} .steps .st.on .no{background:var(--brand-primary);border-color:var(--brand-primary);color:#fff}
+.steps .st.done{color:var(--text-secondary)} .steps .st.done .no{background:var(--brand-soft);border-color:var(--brand-subtle);color:var(--brand-primary)}
+.steps .bar{width:30px;height:1px;background:var(--border);margin:0 9px}
+
+/* 表单（Label 12px + h-9 输入，border 真 token） */
+.fld{margin-bottom:12px}
+.fld label{display:block;font-size:12px;font-weight:550;color:var(--text-primary);margin-bottom:5px}
+.fld input,.fld select,.fld textarea{width:100%;height:32px;border:1px solid var(--border);border-radius:var(--radius);
+  background:var(--surface);padding:0 10px;font-size:12.5px;color:var(--text-primary);font-family:inherit}
+.fld textarea{height:auto;padding:8px 10px;line-height:1.55}
+.fld input:focus,.fld select:focus,.fld textarea:focus{outline:none;border-color:var(--brand-primary);box-shadow:0 0 0 3px var(--brand-soft)}
+.fld .note{font-size:11px;color:var(--text-tertiary);margin-top:4px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+
+/* 类型卡 / Radio 行（产品式：细边框+品牌 ring，非粗黑框） */
+.typegrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.typecard{border:1px solid var(--border);border-radius:8px;background:var(--surface);padding:13px 14px;cursor:pointer;text-align:left;font:inherit}
+.typecard:hover{border-color:#d5d5d0;background:var(--surface-muted)}
+.typecard.on{border-color:var(--brand-primary);box-shadow:0 0 0 3px var(--brand-soft)}
+.typecard .ic{width:28px;height:28px;border-radius:var(--radius);background:var(--brand-soft);color:var(--brand-primary);
+  display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+.typecard .ic svg{width:14px;height:14px}
+.typecard .t{font-size:12.5px;font-weight:650;display:flex;gap:6px;align-items:center}
+.typecard .d{font-size:11.5px;color:var(--text-secondary);margin-top:4px;line-height:1.55}
+.radiorow{border:1px solid var(--border);border-radius:8px;padding:11px 13px;cursor:pointer;margin-bottom:8px;background:var(--surface)}
+.radiorow:hover{background:var(--surface-muted)}
+.radiorow.on{border-color:var(--brand-primary);box-shadow:0 0 0 3px var(--brand-soft)}
+.radiorow .top{display:flex;gap:9px;align-items:flex-start}
+.radiorow .rd{width:14px;height:14px;border-radius:50%;border:1.5px solid #c9c9c4;margin-top:1.5px;flex-shrink:0;background:var(--surface)}
+.radiorow.on .rd{border-color:var(--brand-primary);background:radial-gradient(circle,var(--brand-primary) 0 4px,#fff 4.5px)}
+.radiorow .t{font-size:12.5px;font-weight:600}
+.radiorow .d{font-size:11.5px;color:var(--text-secondary);margin-top:3px;line-height:1.55}
+.subpanel{margin:9px 0 2px 23px;padding:11px 12px;border-radius:var(--radius);background:var(--surface-muted)}
+.subpanel .fld{margin-bottom:9px}.subpanel .fld:last-child{margin-bottom:0}
+
+/* 折叠区（实线细边框，非虚线） */
+.collapse{border:1px solid var(--border-soft);border-radius:var(--radius);margin-top:4px;background:var(--surface)}
+.collapse summary{font-size:12px;font-weight:550;color:var(--text-secondary);padding:7px 11px;cursor:pointer;list-style:none}
+.collapse summary::before{content:"›";display:inline-block;margin-right:6px;color:var(--text-tertiary);transition:transform .15s}
+.collapse[open] summary::before{transform:rotate(90deg)}
+.collapse .inner{padding:2px 11px 11px}
+
+/* 完成清单 */
+.sumrow{display:flex;gap:10px;align-items:center;border:1px solid var(--border-soft);border-radius:var(--radius);
+  padding:8px 11px;background:var(--surface-muted);margin-bottom:7px}
+.sumrow .k{font-size:10.5px;font-weight:650;letter-spacing:.05em;color:var(--text-tertiary);width:82px;flex-shrink:0}
+.sumrow .v{font-size:12.5px;font-weight:600}
+.sumrow .id{margin-left:auto}
+.okcard{border:1px solid rgba(35,122,78,.25);background:var(--success-soft);border-radius:var(--radius);
+  padding:9px 12px;font-size:12px;color:var(--success-text);margin-top:10px}
+
+.btnrow{display:flex;gap:8px;align-items:center;margin-top:16px}
+.spacer{flex:1}
+.pagenote{font-size:11.5px;color:var(--text-tertiary);background:var(--surface-muted);border:1px solid var(--border-soft);
+  border-radius:var(--radius);padding:7px 10px;margin-top:12px}
+.wizcol{max-width:820px}
+.screen{display:none}.screen.on{display:block}
+svg{stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+</style>
+</head>
+<body>
+<div class="proto-strip"><b>讨论稿原型 v2</b><span>16 号稿「新建接入向导 + 接入健康概览带」· 产品真主题 1:1 · 数据=wf_dev 真实状态+标注样例行 · 非真实产品</span></div>
+<div class="switchbar">
+  <span class="lbl">切屏</span>
+  <span class="seg">
+    <button class="on" onclick="go('s0',this)">A 接入+概览带</button>
+    <button onclick="go('s1',this)">B① 类型</button>
+    <button onclick="go('s2',this)">B② 凭据</button>
+    <button onclick="go('s3',this)">B③ 源配置</button>
+    <button onclick="go('s4',this)">B④ 路由</button>
+    <button onclick="go('s5',this)">B⑤ 完成</button>
+    <button onclick="go('s6',this)">C 详情·路由治理</button>
+  </span>
+</div>
+
+<div class="shell">
+  <nav class="rail">
+    <div class="logo">C</div>
+    <div class="ri" title="任务"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg></div>
+    <div class="ri" title="自动任务"><svg viewBox="0 0 24 24"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m4.9 19.1 2.9-2.9"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/></svg></div>
+    <div class="ri on" title="能力与资源"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg></div>
+    <div class="ri" title="Agent"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M5 21a7 7 0 0 1 14 0"/></svg></div>
+    <div class="sp"></div>
+    <div class="ri" title="设置"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/></svg></div>
+  </nav>
+
+  <div class="main">
+
+  <!-- ═══ A 数据接入 + 概览带 ═══ -->
+  <div class="screen on" id="s0">
+    <div class="phead">
+      <div><h1>数据接入</h1>
+        <div class="sub">Webhook / API 拉取 / MaxCompute / SLS / 多维表格 / 测试事件源；同一数据源可服务多个自动任务，去重与死信在事件层治理。</div></div>
+      <div class="acts">
+        <button class="btn outline" onclick="go('s1',document.querySelectorAll('.seg button')[1])"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>新建接入（向导）</button>
+        <button class="btn primary"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>新建数据源</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-h"><span class="t">接入健康概览</span>
+        <span class="n">每源一行：拉取结果 / 24h 事件 / 24h 投递 / 路由消费——「未配置」=事件只留 filtered 存证，没人消费</span></div>
+      <table class="tb">
+        <thead><tr><th>名称</th><th>状态</th><th>自动拉取</th><th>最近拉取</th><th>事件 24h</th><th>投递 24h</th><th>路由</th><th style="text-align:right">操作</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><b>SLS bsh 日志（k8s-log 生产）</b> <span class="badge"><svg viewBox="0 0 24 24"><path d="M8 3v4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2V3"/></svg>SLS 日志</span></td>
+            <td><span class="pill ok"><span class="dot"></span>活跃</span></td>
+            <td><span class="pill ok">自动 · 5min</span><span class="subline ok" style="display:block">下次 09:45</span></td>
+            <td class="num">09-14 18:01<span class="subline ok">成功 500 条 / 5 页</span></td>
+            <td class="num">1,000</td>
+            <td class="dlv"><span class="c">0</span> / <span class="f">0</span> / <span class="d">0</span></td>
+            <td><span class="chip-unrouted" onclick="go('s6',document.querySelectorAll('.seg button')[6])"><svg viewBox="0 0 24 24"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>未配置 · 事件积压</span></td>
+            <td><div class="acts"><button class="btn xs outline">立即拉取</button><button class="btn xs ghost">管理</button></div></td>
+          </tr>
+          <tr>
+            <td><b>CORN 短信模板（QuickBI 数据集底表）</b> <span class="badge"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/></svg>MaxCompute</span></td>
+            <td><span class="pill ok"><span class="dot"></span>活跃</span></td>
+            <td><span class="pill ok">自动 · 5min</span><span class="subline ok" style="display:block">下次 09:45</span></td>
+            <td class="num">09-14 13:09<span class="subline ok">成功 397 条 / 4 页</span></td>
+            <td class="num">397</td>
+            <td class="dlv"><span class="c">0</span> / <span class="f">0</span> / <span class="d">0</span></td>
+            <td><span class="chip-unrouted" onclick="go('s6',document.querySelectorAll('.seg button')[6])"><svg viewBox="0 0 24 24"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>未配置 · 事件积压</span></td>
+            <td><div class="acts"><button class="btn xs outline">立即拉取</button><button class="btn xs ghost">管理</button></div></td>
+          </tr>
+          <tr>
+            <td><b>工单系统 API</b> <span class="badge" style="color:var(--text-tertiary)">样例行·失败态</span> <span class="badge"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M4 21h16"/></svg>API（拉取）</span></td>
+            <td><span class="pill bad"><span class="dot"></span>异常</span></td>
+            <td><span class="pill gray">手动</span><span class="subline ok" style="display:block">interval=0</span></td>
+            <td class="num">09-15 06:00<span class="subline err">拉取失败：HTTP 401 Authorization 被拒（凭据过期？）</span></td>
+            <td class="num">0</td>
+            <td class="dlv"><span class="c">0</span> / <span class="f">0</span> / <span class="d">0</span></td>
+            <td><span class="pill ok">1 条路由</span></td>
+            <td><div class="acts"><button class="btn xs outline">立即拉取</button><button class="btn xs ghost">管理</button></div></td>
+          </tr>
+          <tr>
+            <td><b>测试</b> <span class="badge"><svg viewBox="0 0 24 24"><path d="M10 2v6L4 18a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3L14 8V2"/></svg>Webhook</span></td>
+            <td><span class="pill ok"><span class="dot"></span>活跃</span></td>
+            <td><span class="pill gray">推送型 · 无需拉取</span></td>
+            <td class="num">—<span class="subline ok">推送型：等待对方调用</span></td>
+            <td class="num">0</td>
+            <td class="dlv"><span class="c">0</span> / <span class="f">0</span> / <span class="d">0</span></td>
+            <td><span class="chip-unrouted"><svg viewBox="0 0 24 24"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>未配置</span></td>
+            <td><div class="acts"><button class="btn xs outline">发送测试事件</button><button class="btn xs ghost">管理</button></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><span class="t">数据源</span><span class="n">原有列表（保留不变）</span></div>
+      <table class="tb">
+        <thead><tr><th>名称</th><th>类型</th><th>状态</th><th>最近拉取</th><th style="text-align:right">操作</th></tr></thead>
+        <tbody>
+          <tr><td>SLS bsh 日志（k8s-log 生产）</td><td><span class="badge">SLS 日志</span></td><td>活跃</td><td class="num">2026/9/14 18:01:43</td>
+            <td><div class="acts"><button class="btn xs outline">发送测试事件</button><button class="btn xs outline">立即拉取</button><button class="btn xs ghost">管理</button></div></td></tr>
+          <tr><td>CORN 短信模板（QuickBI 数据集底表）</td><td><span class="badge">MaxCompute</span></td><td>活跃</td><td class="num">2026/9/14 13:09:03</td>
+            <td><div class="acts"><button class="btn xs outline">发送测试事件</button><button class="btn xs outline">立即拉取</button><button class="btn xs ghost">管理</button></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pagenote">设计要点：概览带与老列表并存（带=状态诊断，列表=操作入口）；「未配置」chip 点击直达 C 屏；失败原因 inline 红字（后端 g061 迁移落 last_poll_error）。</div>
+  </div>
+
+  <!-- ═══ B① 类型 ═══ -->
+  <div class="screen" id="s1">
+    <div class="phead"><div><h1>新建接入</h1><div class="sub">向导 1/5 · 这条接入是什么形态？</div></div></div>
+    <div class="wizcol" style="max-width:none">
+      <div class="steps">
+        <span class="st on"><span class="no">1</span>类型</span><span class="bar"></span>
+        <span class="st"><span class="no">2</span>凭据</span><span class="bar"></span>
+        <span class="st"><span class="no">3</span>源配置</span><span class="bar"></span>
+        <span class="st"><span class="no">4</span>路由</span><span class="bar"></span>
+        <span class="st"><span class="no">5</span>完成</span>
+      </div>
+      <div class="typegrid">
+        <button class="typecard" onclick="pick(this)"><span class="ic"><svg viewBox="0 0 24 24"><path d="M10 2v6L4 18a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3L14 8V2"/></svg></span>
+          <span class="t">Webhook（外部推送）</span><span class="d">对方系统主动推事件给你（工单变更/告警）。无需凭据，保存后交付一次性 token。</span></button>
+        <button class="typecard" onclick="pick(this)"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M4 21h16"/></svg></span>
+          <span class="t">API（拉取）</span><span class="d">对方是 HTTP JSON 接口，平台按间隔轮询（游标分页）。</span></button>
+        <button class="typecard on" onclick="pick(this)"><span class="ic"><svg viewBox="0 0 24 24"><path d="M8 3v4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2V3"/></svg></span>
+          <span class="t">SLS 日志</span><span class="d">阿里云日志服务 logstore；凭据挂 Connection 后可目录发现。</span></button>
+        <button class="typecard" onclick="pick(this)"><span class="ic"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/></svg></span>
+          <span class="t">MaxCompute</span><span class="d">ODPS 表（分区自动取最新，或 config.sql 只读）；目录发现表清单。</span></button>
+        <button class="typecard" onclick="pick(this)"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg></span>
+          <span class="t">飞书多维表格</span><span class="d">Bitable 记录分页拉取；app_id/app_secret + app_token/table_id。</span></button>
+        <button class="typecard" onclick="pick(this)"><span class="ic"><svg viewBox="0 0 24 24"><path d="M9 3h6"/><path d="M10 3v6l-4 8a3 3 0 0 0 3 4h6a3 3 0 0 0 3-4l-4-8V3"/></svg></span>
+          <span class="t">测试事件 <span class="pill gray" style="height:18px;font-size:10.5px">仅链路验证</span></span>
+          <span class="d">不接真实系统，只验证 接收→去重→路由→投递 全链。</span></button>
+      </div>
+      <div class="btnrow"><span class="spacer"></span><button class="btn primary" onclick="go('s2',document.querySelectorAll('.seg button')[2])">下一步：凭据<svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button></div>
+    </div>
+  </div>
+
+  <!-- ═══ B② 凭据 ═══ -->
+  <div class="screen" id="s2">
+    <div class="phead"><div><h1>新建接入</h1><div class="sub">向导 2/5 · SLS 日志的凭据从哪来？</div></div></div>
+    <div class="wizcol">
+      <div class="steps">
+        <span class="st done"><span class="no">✓</span>类型</span><span class="bar"></span>
+        <span class="st on"><span class="no">2</span>凭据</span><span class="bar"></span>
+        <span class="st"><span class="no">3</span>源配置</span><span class="bar"></span>
+        <span class="st"><span class="no">4</span>路由</span><span class="bar"></span>
+        <span class="st"><span class="no">5</span>完成</span>
+      </div>
+      <div class="card"><div class="card-b">
+        <div class="radiorow on" onclick="radio(this,'p-reuse')"><div class="top"><span class="rd"></span>
+          <div><div class="t">复用已有 Connection</div><div class="d">凭据正主在 设置→连接：一套 AKSK 接 N 个 logstore，轮换只换一处。按协议过滤现有连接，选完步③自动出目录发现。</div></div></div>
+          <div class="subpanel" id="p-reuse">
+            <div class="fld"><label>Connection（protocol = sls）</label>
+              <select><option>SLS·k8s-log 生产项目（bsh 日志库） · AkSk 签名 · active</option></select>
+              <div class="note">endpoint cn-shanghai.log.aliyuncs.com · project k8s-log-c6142c…c45b</div></div>
+          </div>
+        </div>
+        <div class="radiorow" onclick="radio(this,'p-new')"><div class="top"><span class="rd"></span>
+          <div><div class="t">内联新建 Connection</div><div class="d">表单与 设置→连接 完全同源（共享组件）；保存为普通可复用连接，不贴单次标签。</div></div></div>
+          <div class="subpanel" id="p-new" style="display:none">
+            <div class="fld"><label>连接名称</label><input value="sls-新logstore-conn"></div>
+            <div class="grid2">
+              <div class="fld"><label>Endpoint</label><input placeholder="cn-shanghai.log.aliyuncs.com"></div>
+              <div class="fld"><label>Project</label><input placeholder="k8s-log-…"></div>
+            </div>
+            <div class="grid2">
+              <div class="fld"><label>AccessKey ID</label><input type="password" placeholder="••••••••"></div>
+              <div class="fld"><label>AccessKey Secret</label><input type="password" placeholder="••••••••"></div>
+            </div>
+            <div class="note">信封加密落库、永不回显；多环境端点/凭据覆盖创建后到 设置→连接 补。</div>
+          </div>
+        </div>
+        <div class="radiorow" onclick="radio(this,'p-none')"><div class="top"><span class="rd"></span>
+          <div><div class="t">不用 Connection（源级凭据 / 匿名）</div><div class="d">兼容路径：凭据 JSON 加密存在源上。限制如实说明：不与别处共享、轮换要改源。</div></div></div>
+          <div class="subpanel" id="p-none" style="display:none">
+            <div class="fld"><label>凭据 JSON（加密存储，永不回显）</label><textarea rows="2" placeholder='{"access_key_id":"…","access_key_secret":"…"}'></textarea></div>
+          </div>
+        </div>
+        <div class="btnrow"><button class="btn ghost" onclick="go('s1',document.querySelectorAll('.seg button')[1])">上一步</button><span class="spacer"></span><button class="btn primary" onclick="go('s3',document.querySelectorAll('.seg button')[3])">下一步：源配置<svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button></div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ═══ B③ 源配置 ═══ -->
+  <div class="screen" id="s3">
+    <div class="phead"><div><h1>新建接入</h1><div class="sub">向导 3/5 · 源配置（字段与现有创建表单同源抽出）</div></div></div>
+    <div class="wizcol">
+      <div class="steps">
+        <span class="st done"><span class="no">✓</span>类型</span><span class="bar"></span>
+        <span class="st done"><span class="no">✓</span>凭据</span><span class="bar"></span>
+        <span class="st on"><span class="no">3</span>源配置</span><span class="bar"></span>
+        <span class="st"><span class="no">4</span>路由</span><span class="bar"></span>
+        <span class="st"><span class="no">5</span>完成</span>
+      </div>
+      <div class="card"><div class="card-b">
+        <div class="fld"><label>名称</label><input value="SLS 应用日志（app-a logstore）"></div>
+        <div class="grid2">
+          <div class="fld"><label>Connection（凭据与端点）</label><select><option>SLS·k8s-log 生产项目（bsh 日志库）</option></select></div>
+          <div class="fld"><label>Logstore（目录发现）</label><select><option>app-a</option><option>bsh</option><option>ingress-nginx</option></select>
+            <div class="note">GET /api/connections/{cid}/catalog 实时发现；失败红字不 mock。</div></div>
+        </div>
+        <div class="grid3">
+          <div class="fld"><label>自动拉取间隔（秒）</label><input value="300">
+            <div class="note">0=仅手动：watcher 不会自动拉取（不推荐）</div></div>
+          <div class="fld"><label>页大小</label><input value="100"></div>
+          <div class="fld"><label>查询语句（可选）</label><input placeholder="* 或 status: 500"></div>
+        </div>
+        <details class="collapse"><summary>字段映射 / 过滤条件（可选）</summary>
+          <div class="inner">
+            <div class="fld"><label>字段映射 JSON（触发输入键 → payload 取值路径）</label><textarea rows="2">{"value":"content"}</textarea></div>
+            <div class="fld"><label>过滤条件 JSON（可选；未知 op 保存即拒，运行 fail-closed）</label><input placeholder='{"field":"level","op":"eq","value":"error"}'></div>
+          </div></details>
+        <div class="btnrow"><button class="btn ghost" onclick="go('s2',document.querySelectorAll('.seg button')[2])">上一步</button><span class="spacer"></span><button class="btn primary" onclick="go('s4',document.querySelectorAll('.seg button')[4])">下一步：路由<svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button></div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ═══ B④ 路由 ═══ -->
+  <div class="screen" id="s4">
+    <div class="phead"><div><h1>新建接入</h1><div class="sub">向导 4/5 · 事件要给谁消费？（可跳过）</div></div></div>
+    <div class="wizcol">
+      <div class="steps">
+        <span class="st done"><span class="no">✓</span>类型</span><span class="bar"></span>
+        <span class="st done"><span class="no">✓</span>凭据</span><span class="bar"></span>
+        <span class="st done"><span class="no">✓</span>源配置</span><span class="bar"></span>
+        <span class="st on"><span class="no">4</span>路由</span><span class="bar"></span>
+        <span class="st"><span class="no">5</span>完成</span>
+      </div>
+      <div class="card"><div class="card-b">
+        <div class="grid2">
+          <div class="fld"><label>路由名称</label><input value="app-a 日志 → 质检自动任务"></div>
+          <div class="fld"><label>目的地类型（XOR）</label><select><option>自动任务（AutomationDefinition）</option><option>分析批次（AnalysisTask）</option></select></div>
+        </div>
+        <div class="fld"><label>目的地实例</label><select><option>通话质检·v3（自动任务）</option><option>NPS 工单分析（自动任务）</option></select></div>
+        <div class="pagenote" style="margin-top:0">EventRoute=契约：destination 二选一。不配=事件只留 filtered 存证，概览带挂「未配置·事件积压」。此表单=全站首个路由创建 UI（现状只能 API 建）。</div>
+        <div class="btnrow">
+          <button class="btn ghost" onclick="go('s3',document.querySelectorAll('.seg button')[3])">上一步</button>
+          <button class="btn outline" style="color:var(--warning-text);border-color:rgba(143,100,16,.35)" onclick="go('s5',document.querySelectorAll('.seg button')[5])">暂不配置：事件仅留 filtered 存证，稍后详情页补</button>
+          <span class="spacer"></span>
+          <button class="btn primary" onclick="go('s5',document.querySelectorAll('.seg button')[5])">创建并继续<svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+        </div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ═══ B⑤ 完成 ═══ -->
+  <div class="screen" id="s5">
+    <div class="phead"><div><h1>新建接入</h1><div class="sub">向导 5/5 · 创建结果</div></div></div>
+    <div class="wizcol">
+      <div class="steps">
+        <span class="st done"><span class="no">✓</span>类型</span><span class="bar"></span>
+        <span class="st done"><span class="no">✓</span>凭据</span><span class="bar"></span>
+        <span class="st done"><span class="no">✓</span>源配置</span><span class="bar"></span>
+        <span class="st done"><span class="no">✓</span>路由</span><span class="bar"></span>
+        <span class="st on"><span class="no">5</span>完成</span>
+      </div>
+      <div class="card"><div class="card-b">
+        <div class="sumrow"><span class="k">CONNECTION</span><span class="v">SLS·k8s-log 生产项目（bsh 日志库）（复用）</span><span class="id mono">f4c52462…</span></div>
+        <div class="sumrow"><span class="k">SOURCE</span><span class="v">SLS 应用日志（app-a logstore） · sls · active</span><span class="id mono">9c1e…（新建）</span></div>
+        <div class="sumrow"><span class="k">ROUTE</span><span class="v">app-a 日志 → 质检自动任务 · destination=automation</span><span class="id mono">77ab…（新建）</span></div>
+        <div class="okcard">已配路由：事件进来即派发「通话质检·v3」；投递成败在 事件流水 tab 逐路由留证（重试/死信独立）。单次 apply 顺序落库，任一失败停在该实体可重试；按名称幂等防撞。</div>
+        <div class="btnrow">
+          <button class="btn primary">立即拉取验证</button>
+          <button class="btn outline">查看事件流水</button>
+          <button class="btn ghost" onclick="go('s0',document.querySelectorAll('.seg button')[0])">回列表看概览带</button>
+        </div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ═══ C 详情页路由治理 ═══ -->
+  <div class="screen" id="s6">
+    <div class="phead"><div><h1>SLS bsh 日志（k8s-log 生产） <span style="color:var(--text-tertiary);font-weight:450;font-size:14px">/ 路由治理</span></h1>
+      <div class="sub">现状 0 条路由——事件 1,000 条全部 filtered 存证，无人消费。</div></div>
+      <div class="acts"><button class="btn primary"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>新建路由</button></div></div>
+    <div class="wizcol">
+      <div class="card" style="margin-bottom:14px"><div class="card-h"><span class="t">新建路由</span><span class="n">与向导步④同款表单组件</span></div>
+        <div class="card-b">
+          <div class="grid2">
+            <div class="fld"><label>路由名称</label><input placeholder="bsh 日志 → …"></div>
+            <div class="fld"><label>目的地类型（XOR）</label><select><option>自动任务（AutomationDefinition）</option><option>分析批次（AnalysisTask）</option></select></div>
+          </div>
+          <div class="fld"><label>目的地实例</label><select><option>通话质检·v3（自动任务）</option><option>日志异常分析（分析批次）</option></select></div>
+          <div class="btnrow" style="margin-top:4px"><button class="btn primary">保存路由</button><button class="btn ghost">取消</button></div>
+        </div></div>
+      <div class="card"><div class="card-h"><span class="t">现有路由</span></div>
+        <div class="card-b" style="padding:26px 18px;text-align:center;color:var(--text-tertiary);font-size:12.5px">暂无路由。事件进入后状态=filtered，证据保留在事件 route_outcomes。</div></div>
+      <div class="pagenote">C 屏补现状真缺口：路由创建至今无 UI（as-api 无 createRoute）；A 屏「未配置」chip 一键到这里。</div>
+    </div>
+  </div>
+
+  </div>
+</div>
+<script>
+function go(id, btn){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
+  document.getElementById(id).classList.add('on');
+  document.querySelectorAll('.seg button').forEach(b=>b.classList.remove('on'));
+  if(btn) btn.classList.add('on');
+  window.scrollTo(0,0);
+}
+function pick(el){ el.parentElement.querySelectorAll('.typecard').forEach(c=>c.classList.remove('on')); el.classList.add('on'); }
+function radio(el, panel){
+  el.parentElement.querySelectorAll('.radiorow').forEach(r=>r.classList.remove('on'));
+  el.classList.add('on');
+  el.closest('.card-b').querySelectorAll('.subpanel').forEach(p=>p.style.display='none');
+  document.getElementById(panel).style.display='block';
+}
+</script>
+</body>
+</html>

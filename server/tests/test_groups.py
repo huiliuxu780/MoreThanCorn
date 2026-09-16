@@ -426,3 +426,75 @@ def test_watcher_ticks_error_sources(monkeypatch):
     with SessionLocal() as db:
         db.delete(db.get(DataSource, src_id))
         db.commit()
+
+
+def _webhook_src_with_signing(secret: str):
+    from app.kms import kms_encrypt
+    from app.models import DataSource
+    import hashlib as _hl
+    with SessionLocal() as db:
+        src = DataSource(name=u("whsign"), kind="webhook", status="active",
+                         auth_token_hash=_hl.sha256(b"tok123").hexdigest(),
+                         signing_secret_enc=kms_encrypt(secret))
+        db.add(src)
+        db.commit()
+        return src.id
+
+
+def test_webhook_signature_w1_w3():
+    import hashlib as _hl
+    import hmac as _hmac
+    import time as _t
+    sid = _webhook_src_with_signing("sec-abc")
+    body = b'{"type":"t1","id":"i1","data":1}'
+    ts = str(int(_t.time()))
+    sig = _hmac.new(b"sec-abc", f"{ts}.".encode() + body, _hl.sha256).hexdigest()
+    r = client.post(f"/api/v2/ingress/webhook/{sid}", content=body,
+                    headers={"Content-Type": "application/json",
+                             "x-source-token": "tok123",
+                             "x-mtc-signature": f"t={ts},v1={sig}"})
+    assert r.status_code == 200, r.text
+    # 错签拒绝
+    r2 = client.post(f"/api/v2/ingress/webhook/{sid}", content=body,
+                     headers={"Content-Type": "application/json",
+                              "x-source-token": "tok123",
+                              "x-mtc-signature": f"t={ts},v1={'0'*64}"})
+    assert r2.status_code == 401
+    # 过期时间戳拒绝（W2）
+    old_ts = str(int(_t.time()) - 600)
+    old_sig = _hmac.new(b"sec-abc", f"{old_ts}.".encode() + body, _hl.sha256).hexdigest()
+    r3 = client.post(f"/api/v2/ingress/webhook/{sid}", content=body,
+                     headers={"Content-Type": "application/json",
+                              "x-source-token": "tok123",
+                              "x-mtc-signature": f"t={old_ts},v1={old_sig}"})
+    assert r3.status_code == 401
+
+
+def test_webhook_cloudevents_and_eventbridge_token():
+    import hashlib as _hl
+    from app.models import DataSource
+    with SessionLocal() as db:
+        src = DataSource(name=u("whce"), kind="webhook", status="active",
+                         auth_token_hash=_hl.sha256(b"ebtok").hexdigest())
+        db.add(src)
+        db.commit()
+        sid = src.id
+    ce = {"specversion": "1.0", "id": "ce-1", "source": "acs.oss",
+          "type": "oss:ObjectCreated", "time": "2026-09-16T10:00:00Z",
+          "data": {"bucket": "b1", "key": "k1"}}
+    r = client.post(f"/api/v2/ingress/webhook/{sid}", json=ce,
+                    headers={"x-eventbridge-signature-token": "ebtok"})
+    assert r.status_code == 200, r.text
+    # dedupe：同 ce.id 重投不新建事件
+    r2 = client.post(f"/api/v2/ingress/webhook/{sid}", json=ce,
+                     headers={"x-eventbridge-signature-token": "ebtok"})
+    assert r2.status_code == 200
+    from app.models import DataSourceEvent
+    with SessionLocal() as db:
+        n = db.query(DataSourceEvent).filter_by(source_id=sid).count()
+    assert n == 1
+    # 信封缺必备属性拒绝
+    bad = {"specversion": "1.0", "id": "ce-2"}
+    r3 = client.post(f"/api/v2/ingress/webhook/{sid}", json=bad,
+                     headers={"x-eventbridge-signature-token": "ebtok"})
+    assert r3.status_code == 422

@@ -1903,24 +1903,74 @@ WEBHOOK_RATE_WINDOW_S = 60.0
 _webhook_hits: dict[str, list[float]] = {}
 
 
+SIGNATURE_TOLERANCE_S = 300  # W2：Stripe 官方 tolerance 默认 5 分钟且禁止 0
+
+
+def _verify_signature(src, raw: bytes, headers) -> None:
+    """W1–W3：可选 HMAC 验签（配置 signing_secret 才启用）。
+
+    支持两种头：X-MTC-Signature: t=<ts>,v1=<hex>（Stripe 式，签 "{t}.{raw}"）
+    与 X-Hub-Signature-256: sha256=<hex>（GitHub 式，签 raw）。
+    W2 时间戳超 tolerance 拒绝；W3 一律 hmac.compare_digest 常量时间比较。
+    """
+    secret_enc = getattr(src, "signing_secret_enc", None)
+    if not secret_enc:
+        return
+    from ..kms import kms_decrypt
+    secret = kms_decrypt(secret_enc).encode()
+    mtc_sig = headers.get("x-mtc-signature") or ""
+    hub_sig = headers.get("x-hub-signature-256") or ""
+    if not mtc_sig and not hub_sig:
+        raise HTTPException(401, "missing signature header")
+    if mtc_sig:
+        parts = dict(kv.split("=", 1) for kv in mtc_sig.split(",") if "=" in kv)
+        ts, sig = parts.get("t", ""), parts.get("v1", "")
+        if not ts.isdigit() or abs(time.time() - int(ts)) > SIGNATURE_TOLERANCE_S:
+            raise HTTPException(401, "signature timestamp outside tolerance")
+        calc = hmac.new(secret, f"{ts}.".encode() + raw, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(calc, sig):
+            raise HTTPException(401, "invalid signature")
+    else:
+        sig = hub_sig.removeprefix("sha256=")
+        calc = hmac.new(secret, raw, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(calc, sig):
+            raise HTTPException(401, "invalid signature")
+
+
 @webhook_router.post("/webhook/{sid}")
-def webhook(
+async def webhook(
     sid: str,
     request: Request,
-    payload: dict[str, Any] = {},
     x_source_token: str = Header(default=""),
+    x_eventbridge_token: str = Header(default="",
+                                      alias="x-eventbridge-signature-token"),
     db: Session = Depends(get_db),
 ):
     src = db.get(DataSource, sid)
     if src is None or src.kind != "webhook":
         raise HTTPException(404, "source not found")
+    # P0.5：EventBridge HTTP 目标的内置 Token 鉴权头与现有 token 模型同构
+    token = x_source_token or x_eventbridge_token
     if not src.auth_token_hash or not hmac.compare_digest(
-        hashlib.sha256(x_source_token.encode()).hexdigest(), src.auth_token_hash
+        hashlib.sha256(token.encode()).hexdigest(), src.auth_token_hash
     ):
         raise HTTPException(401, "invalid source token")
-    clen = request.headers.get("content-length")
-    if clen and clen.isdigit() and int(clen) > WEBHOOK_MAX_BYTES:
+    raw = await request.body()
+    if len(raw) > WEBHOOK_MAX_BYTES:
         raise HTTPException(413, f"payload 超过上限 {WEBHOOK_MAX_BYTES // 1024}KB")
+    _verify_signature(src, raw, request.headers)
+    try:
+        payload = json.loads(raw or b"{}")
+    except json.JSONDecodeError as exc:
+        raise HTTPException(422, "payload 不是合法 JSON") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "payload 必须是 JSON 对象")
+    # P0.5 CloudEvents 1.0 转换层：信封原样入库（type 供 route 类型匹配、
+    # id 供 dedupe、data 嵌套可经 mapping 路径取用）；缺必备属性拒绝
+    if "specversion" in payload:
+        missing = [k for k in ("id", "source", "type") if not payload.get(k)]
+        if missing:
+            raise HTTPException(422, f"CloudEvents 信封缺必备属性：{missing}")
     limit = int((src.config or {}).get("rate_limit_per_min") or 60)
     now = time.monotonic()
     hits = [t for t in _webhook_hits.get(sid, [])
