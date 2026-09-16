@@ -76,6 +76,11 @@ def build_app():
     os.makedirs(WS_ROOT, exist_ok=True)
     storage = AsyncSQLAlchemyStorage(DB_URL, create_tables=True)
     bus = RedisMessageBus(db=REDIS_DB)
+    # Group worker 退化兜底中继（group_worker_guard）：放弃点前自动中继最后文本
+    from . import group_worker_guard as _group_guard
+
+    _group_guard.set_bus(bus)
+    _group_guard.install()
     workspace = LocalWorkspaceManager(
         basedir=WS_ROOT, isolation=IsolationPolicy.PER_SESSION
     )

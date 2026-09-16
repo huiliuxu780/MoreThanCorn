@@ -99,6 +99,12 @@ async def create_group_session(
     await storage.set_session_team_id(user_id, leader_rec.id, team.id)
     for rec in worker_recs:
         await storage.set_session_team_id(user_id, rec.id, team.id)
+        # 退化兜底中继登记（group_worker_guard）：worker session → leader 路由
+        from .group_worker_guard import register_worker
+
+        register_worker(rec.id, leader_session_id=leader_rec.id,
+                        leader_agent_id=body.leader.runtime_agent_id,
+                        user_id=user_id)
     # leader 花名册注入（寻址名=官方 directory 命名 name@agent_id[:8]）
     roster: list[tuple[str, str]] = []
     for w in body.workers:
