@@ -855,6 +855,10 @@ def create_task(payload: dict, db: Session = Depends(get_db),
         agent = db.get(Agent, agent_id) if agent_id else None
         if not agent:
             raise HTTPException(422, "executionTarget.agentId 必填且必须存在")
+        # 09-16 封存执行面闸门：分析任务绑定拦 archived
+        if agent.archived:
+            raise HTTPException(422, detail={"code": "AGENT_ARCHIVED",
+                                             "message": "已封存 Agent 不可绑定为分析任务执行目标"})
         # P0-B（09-10）：Task 可调用任意可执行 Agent（module/custom 同权经
         # AgentScope 统一入口）；旧三类与归档 Agent 拒绝。
         if agent.type in ("autonomous", "dialogue", "expert-group"):
@@ -1407,6 +1411,10 @@ def _update_agent_task(db: Session, t: AnalysisTask, cur, payload: dict, user: d
     agent = db.get(Agent, agent_id) if agent_id else None
     if not agent or not agent.module_key:
         raise HTTPException(422, "executionTarget.agentId 必须指向领域 Module Agent")
+    # 09-16 封存执行面闸门：编辑绑定拦 archived
+    if agent.archived:
+        raise HTTPException(422, detail={"code": "AGENT_ARCHIVED",
+                                         "message": "已封存 Agent 不可绑定为分析任务执行目标"})
     version_policy = (tgt.get("versionPolicy")
                       or (cur.agent_version_policy if cur else "latest_sandbox_release"))
     if version_policy not in ("pinned", "latest_sandbox_release", "latest_prod_release"):

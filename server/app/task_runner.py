@@ -144,6 +144,14 @@ def start_task_run(db: Session, task_id: str, trigger: str = "manual",
         raise TaskStartError("任务已暂停，禁止启动新批次（INV-10）", 409)
     if t.status != "active":
         raise TaskStartError(f"任务状态 {t.status} 不可运行（需 active）")
+    # 09-16 封存执行面闸门：批次启动拦 archived 绑定 Agent
+    if t.execution_target_type == "agent" and t.agent_id:
+        from .models import Agent as _Ag
+        _ag = db.get(_Ag, t.agent_id)
+        if _ag is not None and _ag.archived:
+            raise TaskStartError(
+                {"code": "AGENT_ARCHIVED",
+                 "message": "任务绑定的 Agent 已封存，禁止启动新批次；先解封或改绑"}, 409)
     tv = db.get(AnalysisTaskVersion, t.current_version_id) if t.current_version_id else None
     if not tv:
         raise TaskStartError("任务缺少配置版本")

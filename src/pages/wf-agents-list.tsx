@@ -7,6 +7,7 @@ import { Archive, ArchiveRestore, Contact, MessageCircleMore, Plus, Search, Sett
 import { toast } from "sonner"
 import { useListQuery } from "@/hooks/use-list-query"
 import { Pagination } from "@/components/app/pagination"
+import { asApi } from "@/services/as-api"
 import { agentApi, pagedApi } from "@/services/wf-api"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -190,6 +191,8 @@ export default function WfAgentsListPage() {
   const [archTarget, setArchTarget] = useState<AgentRow | null>(null)
   const [archRefs, setArchRefs] = useState<Awaited<ReturnType<typeof agentApi.references>> | null>(null)
   const [archBusy, setArchBusy] = useState(false)
+  // 09-16 封存闸门 UI：联动暂停为确认框可选项（默认仅提示不联动）
+  const [archPauseRefs, setArchPauseRefs] = useState(false)
 
   useEffect(() => {
     agentApi.modules().then((r) => setModules(r.items)).catch(() => undefined)
@@ -218,6 +221,22 @@ export default function WfAgentsListPage() {
     try {
       await agentApi.setArchived(archTarget.id, !archTarget.archived)
       toast.success(archTarget.archived ? "已解封，Agent 恢复到使用中" : "已封存，Agent 不再出现在使用中列表且不可再执行")
+      // 可选联动：暂停引用该 Agent 的 enabled 自动任务
+      if (!archTarget.archived && archPauseRefs) {
+        try {
+          const list = await asApi.automations()
+          const hits = (list.items ?? []).filter(
+            (a: Record<string, unknown>) => a.target_kind === "agent"
+              && a.agent_id === archTarget.id && a.enabled === true)
+          for (const a of hits) {
+            await asApi.setEnabled(String(a.id), false)
+          }
+          if (hits.length) toast.success(`已联动暂停 ${hits.length} 个自动任务`)
+        } catch (e) {
+          toast.error(`联动暂停失败：${(e as Error).message}`)
+        }
+        setArchPauseRefs(false)
+      }
       setArchTarget(null)
       load()
       pagedApi.agents({ page: 1, pageSize: 1, archived: "true" })
@@ -372,6 +391,14 @@ export default function WfAgentsListPage() {
               <p className="mt-2 text-xs text-muted-foreground">
                 封存不解除引用；引用它的任务下次执行会得到「AGENT_ARCHIVED」拒绝。默认不自动暂停相关自动任务。
               </p>
+              <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={archPauseRefs}
+                  onChange={(e) => setArchPauseRefs(e.target.checked)}
+                />
+                同时暂停引用该 Agent 的自动任务（可选联动）
+              </label>
             </div>
           )}
           <DialogFooter>

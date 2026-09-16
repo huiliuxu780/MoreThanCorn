@@ -601,6 +601,9 @@ def start_session(
     explicitly.  The model config always comes from the release snapshot
     (P0-02), never from live draft state.
     """
+    # 09-16 封存执行面闸门：新会话拦 archived（调用方 ValueError→422）
+    if agent.archived:
+        raise ValueError("AGENT_ARCHIVED: 已封存 Agent 不可开启新会话；先解封")
     if release_override is not None:
         # an explicitly pinned release (e.g. run.runtime_snapshot.releaseId) —
         # the caller already chose; do not re-resolve to a different one

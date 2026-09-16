@@ -300,6 +300,10 @@ def run_agent_endpoint(aid: str, payload: dict | None = None, db: Session = Depe
     a = db.get(Agent, aid)
     if not a:
         raise HTTPException(404, "agent not found")
+    # 09-16 封存执行面闸门：run-now 拦 archived
+    if a.archived:
+        raise HTTPException(409, detail={"code": "AGENT_ARCHIVED",
+                                         "message": "已封存 Agent 不可 run-now；先解封"})
     from ..agent_runtime import RunError, run_agent
     try:
         run_id = run_agent(db, a, (payload or {}).get("input") or {},
@@ -447,6 +451,10 @@ def create_release(aid: str, payload: dict, db: Session = Depends(get_db),
     if not a:
         raise HTTPException(404, "agent not found")
     assert_agent_executable(a)  # R-Archive：旧 Agent 不再部署/回滚
+    # 09-16 封存执行面闸门：发布/回滚拦 archived
+    if a.archived:
+        raise HTTPException(409, detail={"code": "AGENT_ARCHIVED",
+                                         "message": "已封存 Agent 不可发布/回滚；先解封"})
     if a.archived:
         raise HTTPException(409, detail={"code": "AGENT_ARCHIVED",
                                          "message": "已封存 Agent 不可发布/回滚；先在列表解封"})
