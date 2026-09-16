@@ -1483,6 +1483,10 @@ class DataSource(Base):
     auth_token_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # g067（15 号稿 P0 W1–W3）：可选 HMAC 签名密钥（kms 信封加密）；配置后才验签
     signing_secret_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # g068（W6）：轮换双活——窗口内（默认 24h）旧密钥仍可验签
+    signing_secret_prev_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    signing_secret_rotated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="active")  # active|paused|error
     # 09-14 D3 拍板：删除=归档语义（事件/路由流水可追溯；被引用时 409 列清单）
     archived: Mapped[bool] = mapped_column(Boolean, default=False)

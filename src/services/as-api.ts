@@ -151,7 +151,8 @@ export interface CreateSourceBody {
     app_token?: string; table_id?: string; view_id?: string;
     /** sls：endpoint/project/logstore/query */
     logstore?: string; query?: string;
-    /** 事件过滤 {field, op: eq|ne|contains|gt|lt, value} */
+    /** 事件过滤 {field, op: eq|ne|contains|gt|lt, value  signing_secret?: string
+} */
     filter?: { field: string; op: string; value: unknown };
     /** 字段映射：触发输入键 → payload 取值路径 */
     mapping?: Record<string, string>;
@@ -351,8 +352,13 @@ export const asApi = {
           status: string; archived: boolean; cursor: Record<string, unknown>;
           last_poll_at: string | null; has_token: boolean; has_secret: boolean;
           connectionId: string | null; assetId: string | null;
-          created_at: string | null }>(
+          created_at: string | null; has_signing: boolean;
+          signing_prev_until: string | null }>(
       `/api/v2/data-sources/${sid}`),
+  setSigningSecret: (sid: string, secret: string) =>
+    req<{ rotated: boolean; prev_active_until: string | null }>(
+      `/api/v2/data-sources/${sid}/signing-secret`,
+      { method: "POST", body: JSON.stringify({ secret }) }),
   sourcePatch: (sid: string, body: { name?: string; config?: Record<string, unknown>;
                                      status?: "active" | "paused"; archived?: false;
                                      connection_id?: string | null; asset_id?: string | null }) =>
@@ -520,6 +526,10 @@ export const groupsApi = {
     req<GroupView>(`/api/v2/groups/${gid}/restore`, { method: "POST" }),
   sessions: (gid: string) =>
     req<{ items: GroupSessionView[] }>(`/api/v2/groups/${gid}/sessions`),
+  setSigningSecret: (sid: string, secret: string) =>
+    req<{ rotated: boolean; prev_active_until: string | null }>(
+      `/api/v2/data-sources/${sid}/signing-secret`,
+      { method: "POST", body: JSON.stringify({ secret }) }),
   sessionDetail: (gid: string, gsid: string) =>
     req<GroupSessionView & {
       leaderAgentId: string

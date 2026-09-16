@@ -111,6 +111,8 @@ export default function DataSourceDetailPage() {
     () => asApi.eventDeliveries({ sourceId: sid, pageSize: 50 }), [sid])
 
   const cfg = (src.data?.config ?? {}) as Record<string, unknown>
+  const [rotateSecret, setRotateSecret] = React.useState("")
+  const [rotating, setRotating] = React.useState(false)
   const [mappingRows, setMappingRows] = React.useState<{ key: string; path: string }[] | null>(null)
   const [filterRow, setFilterRow] = React.useState<
     { field: string; op: string; value: string } | null | undefined>(undefined)
@@ -560,6 +562,40 @@ export default function DataSourceDetailPage() {
                  style={{ background: "var(--status-warning-soft)", color: "var(--status-warning-text)" }}>
                 重新生成后旧 token 即刻失效；新 token 仅显示一次，关闭后无法再查看。
               </p>
+              <div className="mt-3 border-t pt-3" style={{ borderColor: "var(--border)" }}>
+                <p className="mb-1 text-xs font-medium">
+                  HMAC 签名密钥：{src.data.has_signing ? "已配置" : "未配置"}
+                  {src.data.signing_prev_until
+                    ? `（旧密钥双活至 ${src.data.signing_prev_until}）` : ""}
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={rotateSecret}
+                    onChange={(e) => setRotateSecret(e.target.value)}
+                    placeholder="新签名密钥（≥16 字符）"
+                    className="h-8 flex-1 rounded-md border bg-transparent px-2 text-xs outline-none"
+                    style={{ borderColor: "var(--border)" }}
+                  />
+                  <Button size="sm" variant="outline" disabled={rotateSecret.length < 16 || rotating}
+                          onClick={async () => {
+                            setRotating(true)
+                            try {
+                              const r = await asApi.setSigningSecret(sid, rotateSecret)
+                              toast.success(r.rotated
+                                ? `已轮换；旧密钥双活至 ${r.prev_active_until}`
+                                : "签名密钥已配置")
+                              setRotateSecret("")
+                              src.retry()
+                            } catch (e) {
+                              toast.error(`${(e as Error).message}`)
+                            } finally {
+                              setRotating(false)
+                            }
+                          }}>
+                    {src.data.has_signing ? "轮换（双活 24h）" : "配置"}
+                  </Button>
+                </div>
+              </div>
             </Card>
           )}
 

@@ -42,6 +42,7 @@ export default function DataSourceWizardPage() {
   const navigate = useNavigate()
   const [step, setStep] = React.useState(1)
   const [kind, setKind] = React.useState<SourceKind>("webhook")
+  const [signingSecret, setSigningSecret] = React.useState("")
   const [form, setForm] = React.useState<SourceFormState>(EMPTY_SOURCE_FORM)
   const set = (patch: Partial<SourceFormState>) => setForm((f) => ({ ...f, ...patch }))
 
@@ -115,6 +116,7 @@ export default function DataSourceWizardPage() {
         config: derived.payload.config as CreateSourceBody["config"],
         ...(connId ? { connection_id: connId } : {}),
         ...(derived.payload.secret ? { secret: derived.payload.secret } : {}),
+        ...(kind === "webhook" && signingSecret ? { signing_secret: signingSecret } : {}),
       })
       out.source = { id: src.id, name: form.name.trim() }
       /* 3) Route（可跳过） */
@@ -217,6 +219,22 @@ export default function DataSourceWizardPage() {
                  style={{ borderColor: "var(--border)" }}>
               Webhook 为推送型：无需凭据。保存后交付一次性 token（仅显示一次），把 URL 与
               X-Source-Token 头交给推送方即可。
+              <div className="mt-3">
+                <label className="mb-1 block text-xs font-medium text-foreground">
+                  HMAC 签名密钥（可选，W1–W3 验签；配置后推送方须带签名头）
+                </label>
+                <input
+                  value={signingSecret}
+                  onChange={(e) => setSigningSecret(e.target.value)}
+                  placeholder="≥16 字符；留空=仅 token 鉴权"
+                  className="h-8 w-full rounded-md border bg-transparent px-2 text-xs outline-none"
+                  style={{ borderColor: "var(--border)" }}
+                />
+                <p className="mt-1 text-xs">
+                  支持 X-MTC-Signature: t=ts,v1=sig（签 ts.raw body）或 X-Hub-Signature-256；
+                  轮换双活 24h 在源详情页操作。
+                </p>
+              </div>
             </div>
           ) : (
             <>

@@ -1043,6 +1043,8 @@ class SourceBody(BaseModel):
     # 09-15 接缝：创建即链接凭据/端点与资产（原仅 PATCH 应用，创建静默丢弃=D5 缺口）
     connection_id: str | None = None
     asset_id: str | None = None
+    # 09-17 W6：webhook 可选 HMAC 签名密钥（kms 信封加密存储）
+    signing_secret: str | None = None
 
 
 class SourcePatchBody(BaseModel):
@@ -1143,6 +1145,9 @@ def create_source(body: SourceBody, db: Session = Depends(get_db), user: dict = 
     if body.kind == "webhook":
         token = pysecrets.token_urlsafe(18)
         src.auth_token_hash = hashlib.sha256(token.encode()).hexdigest()
+        if body.signing_secret:
+            from ..kms import kms_encrypt as _ke
+            src.signing_secret_enc = _ke(str(body.signing_secret))
         db.add(src)
         db.commit()
         db.refresh(src)
@@ -1222,6 +1227,14 @@ def get_source(sid: str, db: Session = Depends(get_db),
             "last_poll_at": src.last_poll_at.isoformat() if src.last_poll_at else None,
             "has_token": bool(src.auth_token_hash),
             "has_secret": bool(src.secret_ref),
+            # W6：签名密钥状态（双活窗口截止）
+            "has_signing": bool(src.signing_secret_enc),
+            "signing_prev_until": (
+                (src.signing_secret_rotated_at + timedelta(
+                    hours=float((src.config or {}).get(
+                        "signing_rotation_window_hours", 24)))).isoformat()
+                if src.signing_secret_prev_enc and src.signing_secret_rotated_at
+                else None),
             "connectionId": src.connection_id,
             "assetId": src.asset_id,
             "created_at": src.created_at.isoformat() if src.created_at else None}
@@ -1917,7 +1930,16 @@ def _verify_signature(src, raw: bytes, headers) -> None:
     if not secret_enc:
         return
     from ..kms import kms_decrypt
-    secret = kms_decrypt(secret_enc).encode()
+    # W6 双活：轮换窗口内（默认 24h，config.signing_rotation_window_hours 可覆盖）
+    # 新旧 secret 同时可验；窗口外旧 secret 失效
+    secrets = [kms_decrypt(secret_enc).encode()]
+    prev_enc = getattr(src, "signing_secret_prev_enc", None)
+    rotated_at = getattr(src, "signing_secret_rotated_at", None)
+    if prev_enc and rotated_at is not None:
+        window_h = float((src.config or {}).get("signing_rotation_window_hours", 24))
+        age_h = (datetime.now(timezone.utc) - rotated_at).total_seconds() / 3600.0
+        if age_h <= window_h:
+            secrets.append(kms_decrypt(prev_enc).encode())
     mtc_sig = headers.get("x-mtc-signature") or ""
     hub_sig = headers.get("x-hub-signature-256") or ""
     if not mtc_sig and not hub_sig:
@@ -1927,14 +1949,52 @@ def _verify_signature(src, raw: bytes, headers) -> None:
         ts, sig = parts.get("t", ""), parts.get("v1", "")
         if not ts.isdigit() or abs(time.time() - int(ts)) > SIGNATURE_TOLERANCE_S:
             raise HTTPException(401, "signature timestamp outside tolerance")
-        calc = hmac.new(secret, f"{ts}.".encode() + raw, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(calc, sig):
+        ok = any(hmac.compare_digest(
+            hmac.new(sec, f"{ts}.".encode() + raw, hashlib.sha256).hexdigest(), sig)
+            for sec in secrets)
+        if not ok:
             raise HTTPException(401, "invalid signature")
     else:
         sig = hub_sig.removeprefix("sha256=")
-        calc = hmac.new(secret, raw, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(calc, sig):
+        ok = any(hmac.compare_digest(
+            hmac.new(sec, raw, hashlib.sha256).hexdigest(), sig)
+            for sec in secrets)
+        if not ok:
             raise HTTPException(401, "invalid signature")
+
+
+@ingress_router.post("/{sid}/signing-secret")
+def set_or_rotate_signing_secret(
+    sid: str,
+    payload: dict[str, Any],
+    db: Session = Depends(get_db),
+    _user: dict = Depends(require_operator),
+):
+    """W6：配置或轮换 webhook 签名密钥（kms 信封加密存储）。
+
+    未配置=设置当前密钥；已配置=轮换（当前→prev，rotated_at=now，
+    窗口内双活）。secret 必填且 ≥16 字符。
+    """
+    from ..kms import kms_encrypt
+    src = db.get(DataSource, sid)
+    if src is None:
+        raise HTTPException(404, "source not found")
+    secret = str(payload.get("secret") or "")
+    if len(secret) < 16:
+        raise HTTPException(422, "secret 至少 16 字符")
+    rotated = False
+    if src.signing_secret_enc:
+        src.signing_secret_prev_enc = src.signing_secret_enc
+        src.signing_secret_rotated_at = datetime.now(timezone.utc)
+        rotated = True
+    src.signing_secret_enc = kms_encrypt(secret)
+    db.commit()
+    until = None
+    if rotated and src.signing_secret_rotated_at:
+        window_h = float((src.config or {}).get("signing_rotation_window_hours", 24))
+        until = (src.signing_secret_rotated_at
+                 + timedelta(hours=window_h)).isoformat()
+    return {"rotated": rotated, "prev_active_until": until}
 
 
 @webhook_router.post("/webhook/{sid}")
