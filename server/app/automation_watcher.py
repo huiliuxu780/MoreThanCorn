@@ -244,8 +244,12 @@ def _reconcile_impl(db: Session) -> dict:
     from .routers.as_automations import tick_poll_source
     from .source_adapters import PULL_KINDS
 
+    # 09-16 数据链路修复：error 源不得永久停 tick——单次网络抖动曾把源
+    #  parked 在 error 直到人工干预；纳入 error 一起 tick，成功即自愈回 active
+    # （tick_pull_source 成功路径 status="active"）。
     for src in db.query(DataSource).filter(
-            DataSource.kind.in_(PULL_KINDS), DataSource.status == "active").all():
+            DataSource.kind.in_(PULL_KINDS),
+            DataSource.status.in_(("active", "error"))).all():
         interval = float((src.config or {}).get("interval_seconds", 0) or 0)
         if interval <= 0:
             continue

@@ -399,3 +399,30 @@ def test_member_config_override_in_binding(monkeypatch):
     leader = captured["leader"]
     assert leader["chat_model_config"]["model"] == "qwen-max"
     assert leader["knowledge_ids"] == ["kb-1"]
+
+
+def test_watcher_ticks_error_sources(monkeypatch):
+    """09-16 数据链路修复回归：error 源不得永久停 tick（曾单次网络抖动 parked 致死）。"""
+    from app.automation_watcher import reconcile_once
+    from app.routers import as_automations
+    from app.models import DataSource
+
+    with SessionLocal() as db:
+        src = DataSource(name=u("errsrc"), kind="api_pull", status="error",
+                         config={"interval_seconds": 300},
+                         cursor={})
+        db.add(src)
+        db.commit()
+        src_id = src.id
+    ticked = []
+    monkeypatch.setattr(as_automations, "tick_poll_source",
+                        lambda db_, s: ticked.append(s.id))
+    try:
+        with SessionLocal() as db:
+            reconcile_once(db)
+    except Exception:
+        pass
+    assert src_id in ticked
+    with SessionLocal() as db:
+        db.delete(db.get(DataSource, src_id))
+        db.commit()
