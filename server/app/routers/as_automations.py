@@ -55,6 +55,7 @@ class AutomationBody(BaseModel):
     workflow_version_id: str | None = None
     agentflow_id: str | None = None
     agentflow_release_id: str | None = None
+    group_id: str | None = None
     session_policy: str = "fresh"
     prompt_template: str = ""
     input_mapping: dict[str, Any] = {}
@@ -77,7 +78,7 @@ def _auto(db: Session, aid: str) -> AutomationDefinition:
 
 # ---------- P0-G（09-10）：执行者真实校验 + 展示 ----------
 
-_TARGET_KINDS = ("agent", "workflow", "agentflow")
+_TARGET_KINDS = ("agent", "workflow", "agentflow", "group")
 
 
 def _executor_info(db: Session, target_kind: str, agent_id: str | None,
@@ -107,6 +108,13 @@ def _validate_target(db: Session, uid: str, body: "AutomationBody") -> None:
         raise HTTPException(422, detail={
             "code": "BAD_TARGET_KIND",
             "message": f"target_kind 必须是 {'|'.join(_TARGET_KINDS)}"})
+    if body.target_kind == "group":
+        from ..models import AgentGroup as _AG
+        grp = db.get(_AG, body.group_id or "")
+        if grp is None or grp.archived:
+            raise HTTPException(422, detail={
+                "code": "GROUP_MISSING",
+                "message": "group 目标不存在或已归档"})
     if body.target_kind == "agent":
         if not body.agent_id:
             raise HTTPException(422, detail={
@@ -150,7 +158,7 @@ def _validate_target(db: Session, uid: str, body: "AutomationBody") -> None:
                 raise HTTPException(422, detail={
                     "code": "TARGET_VERSION_MISMATCH",
                     "message": "workflow_version_id 不属于该 Workflow"})
-    else:  # agentflow
+    elif body.target_kind == "agentflow":
         if not body.agentflow_id and not body.agentflow_release_id:
             raise HTTPException(422, detail={
                 "code": "TARGET_REQUIRED",
@@ -190,6 +198,7 @@ def _serialize(db: Session, auto: AutomationDefinition) -> dict:
         "workflow_id": auto.workflow_id,
         "agentflow_id": auto.agentflow_id,
         "agentflow_release_id": auto.agentflow_release_id,
+        "group_id": auto.group_id,
         "executor": _executor_info(db, auto.target_kind, auto.agent_id,
                                    auto.workflow_id, auto.agentflow_id),
         "enabled": auto.enabled,
@@ -491,7 +500,7 @@ def dispatch(
             log.workflow_run_id = run.id
             log.status = "queued"
             log.queued_at = datetime.now(timezone.utc)
-        else:
+        elif auto.target_kind == "agentflow":
             release = resolve_agentflow_release(
                 db,
                 release_id=auto.agentflow_release_id,
@@ -505,6 +514,22 @@ def dispatch(
             log.agentflow_run_id = flow_run.id
             log.status = "queued"
             log.queued_at = datetime.now(timezone.utc)
+        else:  # group：第四执行体（执行域 Spec 增补；一触发一 Invocation 不变）
+            from .as_groups import open_group_session
+            gs = open_group_session(db, auto.group_id or "", uid,
+                                    reuse_active=True)
+            log.target_kind = "group_session"
+            log.target_ref = gs.id
+            log.session_id = gs.leader_session_id
+            log.status = "queued"
+            log.queued_at = datetime.now(timezone.utc)
+            db.commit()
+            idx = (db.query(AgentSessionIndex)
+                   .filter_by(session_id=gs.leader_session_id).first())
+            rt.chat_trigger(idx.user_id or uid, idx.runtime_agent_id,
+                            gs.leader_session_id, prompt_text)
+            log.status = "running"
+            log.started_at = datetime.now(timezone.utc)
     except Exception as exc:  # noqa: BLE001
         log.status = "failed"
         log.error_code = "TARGET_EXECUTION_FAILED"
@@ -601,6 +626,7 @@ def create_automation(body: AutomationBody, db: Session = Depends(get_db), user:
         workflow_version_id=body.workflow_version_id,
         agentflow_id=body.agentflow_id,
         agentflow_release_id=body.agentflow_release_id,
+        group_id=body.group_id,
         session_policy=body.session_policy,
         prompt_template=body.prompt_template,
         input_mapping=body.input_mapping,

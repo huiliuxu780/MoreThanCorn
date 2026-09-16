@@ -589,10 +589,12 @@ def board_tasks(
     lane: str = "",
     source: str = "",
     executor: str = "",
+    group: str = "",
     db: Session = Depends(get_db),
     user: dict = Depends(require_role()),
 ):
-    """任务投影（executor 过滤 = QoderWake per-Waker 任务看板同构）。"""
+    """任务投影（executor 过滤 = QoderWake per-Waker 任务看板同构；
+    group 过滤 = 原站看板 Waker/Group 维度同构）。"""
     rows = _project(db, user.get("username", "dev"), period)
     if keyword:
         rows = [r for r in rows if keyword.lower() in (r["title"] or "").lower()]
@@ -605,6 +607,9 @@ def board_tasks(
     if executor:
         rows = [r for r in rows
                 if executor == (r.get("executor_id") or "") or executor in (r.get("executor") or "")]
+    if group:
+        rows = [r for r in rows
+                if group == (r.get("group_id") or "") or group in (r.get("group_name") or "")]
     rows.sort(key=lambda r: r["updated_at"] or "", reverse=True)
     return {"items": rows[offset : offset + limit], "total": len(rows)}
 
@@ -620,10 +625,14 @@ def filter_options(db: Session = Depends(get_db), user: dict = Depends(require_r
     for k, label in SOURCE_LABELS.items():
         if label in buckets:
             buckets[label].append(k)
+    from ..models import AgentGroup
+    groups = (db.query(AgentGroup).filter(AgentGroup.archived.is_(False))
+              .order_by(AgentGroup.name).all())
     return {
         "sources": [{"value": ",".join(buckets[d]) or d, "label": d} for d in display],
         "lanes": ["pending", "running", "done", "waiting", "failed,cancelled"],
         "periods": ["7d", "30d", "90d"],
+        "groups": [{"value": g.id, "label": g.name} for g in groups],
     }
 
 
@@ -661,6 +670,16 @@ def _project(db: Session, uid: str, period: str) -> list[dict]:
             st.get("status"), st.get("finished_reason"), 1 if st.get("found") else 0
         )
         agent = db.get(Agent, i.agent_id)
+        group_id, group_name = "", ""
+        detail_route = f"/agents/{i.agent_id}/chat?session={i.session_id}"
+        if i.group_session_id:
+            from ..models import AgentGroup, AgentGroupSession
+            gs = db.get(AgentGroupSession, i.group_session_id)
+            if gs:
+                grp = db.get(AgentGroup, gs.group_id)
+                group_id = gs.group_id
+                group_name = grp.name if grp else gs.group_id
+                detail_route = f"/conversations/groups/{gs.group_id}/conv_{gs.id}"
         rows.append(
             {
                 "id": f"session:{i.session_id}",
@@ -668,6 +687,8 @@ def _project(db: Session, uid: str, period: str) -> list[dict]:
                 "title": f"{agent.name if agent else i.agent_id} · {i.trigger_kind}",
                 "executor": agent.name if agent else i.agent_id,
                 "executor_id": i.agent_id,
+                "group_id": group_id,
+                "group_name": group_name,
                 "source": i.trigger_kind,
                 "source_label": SOURCE_LABELS.get(i.trigger_kind, i.trigger_kind),
                 "lane": lane,
@@ -675,7 +696,7 @@ def _project(db: Session, uid: str, period: str) -> list[dict]:
                 "status_label": lane,
                 "updated_at": i.created_at.isoformat(),
                 "session_id": i.session_id,
-                "detail_route": f"/agents/{i.agent_id}/chat?session={i.session_id}",
+                "detail_route": detail_route,
             }
         )
 

@@ -1,0 +1,5 @@
+{"ts": 1789488895.605984, "key": "assembly_order", "payload": {"leader_context_precond": true, "members_roles": ["invited"], "team_session_is_leader": true}}
+{"ts": 1789488949.617441, "key": "assembly_order", "payload": {"leader_context_precond": true, "members_roles": ["invited"], "team_session_is_leader": true}}
+{"ts": 1789488949.624213, "key": "teamsay_routing", "payload": {"delivered_to_worker_inbox": true, "payload_keys": null}}
+{"ts": 1789488949.641027, "key": "restart_recovery", "payload": {"team_roster_survives": true, "leader_team_id_survives": true}}
+{"ts": 1789488949.641888, "key": "fail_closed", "payload": {"group_no_manifest": ["AgentCreate", "AgentInvite", "TeamCreate", "TeamDelete", "TeamSay"], "group_with_manifest": ["AgentCreate", "AgentInvite", "TeamCreate", "TeamDelete"], "non_group": []}}

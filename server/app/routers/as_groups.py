@@ -303,10 +303,10 @@ def _session_members(db: Session, gsid: str) -> list[AgentGroupSessionMember]:
             .filter(AgentGroupSessionMember.group_session_id == gsid).all())
 
 
-@router.post("/{gid}/sessions")
-def open_session(gid: str, db: Session = Depends(get_db),
-                 user: dict = Depends(require_operator)):
-    """开聊=装配（不变量 3/5；D2：active 存在 409）。"""
+def open_group_session(db: Session, gid: str, uid: str, *,
+                       reuse_active: bool = False) -> AgentGroupSession:
+    """开聊=装配（不变量 3/5；D2：active 存在 409，reuse_active=True 时返回
+    既有 active 会话供 automation 派发复用）。"""
     from .. import agentscope_client as rt
     from ..agentflow_executor import _node_runtime_binding
 
@@ -314,10 +314,12 @@ def open_session(gid: str, db: Session = Depends(get_db),
     if g.archived:
         raise HTTPException(409, detail={"code": "GROUP_ARCHIVED",
                                          "message": "Group 已归档，先恢复再开聊"})
-    if _active_session(db, gid):
+    active = _active_session(db, gid)
+    if active:
+        if reuse_active:
+            return active
         raise HTTPException(409, detail={"code": "ACTIVE_SESSION_EXISTS",
                                          "message": "已有 active 群会话，续聊或先关聊"})
-    uid = user.get("username", "dev")
     members = (db.query(AgentGroupMember)
                .filter(AgentGroupMember.group_id == gid).all())
     bindings: dict[str, dict] = {}
@@ -414,6 +416,14 @@ def open_session(gid: str, db: Session = Depends(get_db),
                                 (skill.content or "").encode("utf-8"))])
                 except Exception:  # noqa: BLE001 —— 单会话挂载失败不阻断开聊
                     continue
+    db.refresh(gs)
+    return gs
+
+
+@router.post("/{gid}/sessions")
+def open_session(gid: str, db: Session = Depends(get_db),
+                 user: dict = Depends(require_operator)):
+    gs = open_group_session(db, gid, user.get("username", "dev"))
     return {"id": gs.id, "title": gs.title, "status": gs.status,
             "leaderSessionId": gs.leader_session_id,
             "runtimeTeamId": gs.runtime_team_id}
@@ -431,6 +441,13 @@ def group_turn(gid: str, gsid: str, body: TurnBody,
     if s.status != "active":
         raise HTTPException(409, detail={"code": "SESSION_CLOSED",
                                          "message": "群会话已关闭，只读"})
+    # g064 不变量 10：回合预算闸门
+    if s.turn_count >= s.max_team_turns:
+        raise HTTPException(409, detail={
+            "code": "BUDGET_EXCEEDED",
+            "message": f"群会话已达回合预算 {s.max_team_turns}，"
+                       "请关聊新建任务或提升 max_team_turns"})
+    s.turn_count += 1
     uid = user.get("username", "dev")
     idx = (db.query(AgentSessionIndex)
            .filter_by(session_id=s.leader_session_id).first())

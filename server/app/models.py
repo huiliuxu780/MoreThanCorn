@@ -1222,6 +1222,7 @@ class AutomationDefinition(Base):
     workflow_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     agentflow_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     agentflow_release_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    group_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     session_policy: Mapped[str] = mapped_column(String(16), default="fresh")
     # fresh|stateful|conversation
@@ -1590,6 +1591,9 @@ class AgentGroupSession(Base):
     runtime_team_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # 开聊时冻结：{agent_id:{runtime_agent_id, frozen_model_id/params, knowledge_ids}}
     binding_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # g064：回合预算（不变量 10；team turn=用户发言回合）
+    turn_count: Mapped[int] = mapped_column(Integer, default=0)
+    max_team_turns: Mapped[int] = mapped_column(Integer, default=60)
     closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

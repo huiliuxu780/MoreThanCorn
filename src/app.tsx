@@ -28,6 +28,9 @@ const WfAgentsPage = lazy(() => import("@/pages/wf-agents-list"))
 const AgentCreatePage = lazy(() => import("@/pages/agent-create"))
 const WfAgentEditorPage = lazy(() => import("@/pages/wf-agent-editor"))
 const AgentChatPage = lazy(() => import("@/pages/agent-chat"))
+// Group Spec §5.4：群聊页 + /groups/:gid 重定向（conv_ 前缀照抄原站路由形态）
+const GroupChatPage = lazy(async () => ({ default: (await import("@/pages/group-chat")).default }))
+const GroupRedirectPage = lazy(async () => ({ default: (await import("@/pages/group-chat")).GroupRedirect }))
 const WfWorkflowsPage = lazy(() => import("@/pages/wf-workflows-list"))
 const WfFormsPage = lazy(() => import("@/pages/wf-forms"))
 const WfFormEditorPage = lazy(() => import("@/pages/wf-forms").then((m) => ({ default: m.WfFormEditorPage })))
@@ -142,6 +145,9 @@ export function App() {
           <Route path="/agents/:agentId/runs/:runId" element={<RunDetailPage />} />
           <Route path="/agents/:agentId" element={<WfAgentEditorPage />} />
           <Route path="/agents/:agentId/chat" element={<AgentChatPage />} />
+          {/* Group 群聊（Spec §5.4；Route Map 登记：非一级入口，侧栏 tablist/管理页直达） */}
+          <Route path="/conversations/groups/:gid/:sid" element={<GroupChatPage />} />
+          <Route path="/groups/:gid" element={<GroupRedirectPage />} />
           <Route path="/agents/:agentId/:section" element={<WfAgentEditorPage />} />
           {/* 能力与资源持久壳（docs/v2-design/10）：五分类壳内切换 */}
           <Route path="/resources/connections" element={<Navigate to="/settings/connections" replace />} />

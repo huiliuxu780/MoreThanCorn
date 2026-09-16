@@ -266,3 +266,93 @@ def test_sop_lifecycle_immutability_and_bind():
     # 名称校验
     assert client.post(f"/api/v2/groups/{gid}/sops",
                        json={"name": "", "content": ""}).status_code == 422
+
+
+def test_turn_budget_gate():
+    a = _mk_agent()
+    gid = _create([a]).json()["id"]
+    from app.models import AgentGroupSession
+    with SessionLocal() as db:
+        gs = AgentGroupSession(group_id=gid, status="active",
+                               binding_snapshot={}, turn_count=0, max_team_turns=1)
+        db.add(gs)
+        db.commit()
+        gsid = gs.id
+    # 第一回合放行（无运行时亦应在预算闸门之后才失败；这里只断言计数与闸门顺序）
+    with SessionLocal() as db:
+        gs = db.get(AgentGroupSession, gsid)
+        assert gs.turn_count == 0
+    # 手工置满预算 → 409 BUDGET_EXCEEDED
+    with SessionLocal() as db:
+        gs = db.get(AgentGroupSession, gsid)
+        gs.turn_count = 1
+        db.commit()
+    r = client.post(f"/api/v2/groups/{gid}/sessions/{gsid}/turns",
+                    json={"text": "x"})
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "BUDGET_EXCEEDED"
+
+
+def test_automation_group_target_dispatch(monkeypatch):
+    from app.routers import as_groups as ag_mod
+    from app import agentscope_client as rt_mod
+    from app.models import AgentGroupSession, AgentSessionIndex
+
+    a = _mk_agent()
+    gid = _create([a]).json()["id"]
+
+    calls = {}
+
+    def fake_open(db, g, uid, *, reuse_active=False):
+        calls["gid"] = g
+        with SessionLocal() as d:
+            gs = AgentGroupSession(group_id=g, status="active",
+                                   binding_snapshot={}, leader_session_id="ldr-1")
+            d.add(gs)
+            d.commit()
+            d.add(AgentSessionIndex(session_id="ldr-1", user_id=uid,
+                                    agent_id=a, runtime_agent_id="rt-1",
+                                    trigger_kind="group", group_session_id=gs.id))
+            d.commit()
+            return gs
+
+    monkeypatch.setattr(ag_mod, "open_group_session", fake_open)
+    monkeypatch.setattr(rt_mod, "chat_trigger",
+                        lambda *args, **kw: calls.setdefault("trigger", args))
+
+    r = client.post("/api/v2/automations", json={
+        "name": u("ga"), "target_kind": "group", "group_id": gid,
+        "prompt_template": "汇报状态", "triggers": []})
+    assert r.status_code in (200, 201), r.text
+    aid = r.json()["id"]
+    r2 = client.post(f"/api/v2/automations/{aid}/run-now")
+    assert r2.status_code in (200, 202), r2.text
+    assert calls.get("gid") == gid
+    assert "trigger" in calls
+    # 幽灵 group 创建校验
+    r3 = client.post("/api/v2/automations", json={
+        "name": u("gb"), "target_kind": "group", "group_id": "nope",
+        "prompt_template": "x", "triggers": []})
+    assert r3.status_code == 422
+
+
+def test_board_group_filter():
+    from app.models import AgentGroupSession, AgentSessionIndex
+    a = _mk_agent()
+    gid = _create([a]).json()["id"]
+    with SessionLocal() as db:
+        gs = AgentGroupSession(group_id=gid, status="closed", binding_snapshot={})
+        db.add(gs)
+        db.commit()
+        gsid = gs.id
+        db.add(AgentSessionIndex(session_id=u("s"), user_id="dev", agent_id=a,
+                                 runtime_agent_id="rt-1", trigger_kind="group",
+                                 group_session_id=gsid))
+        db.commit()
+    opts = client.get("/api/board/filter-options").json()
+    assert any(g["value"] == gid for g in opts["groups"])
+    rows = client.get(f"/api/board/tasks?group={gid}").json()
+    assert rows["total"] >= 1
+    assert all(r.get("group_id") == gid for r in rows["items"])
+    rows_all = client.get("/api/board/tasks?group=other").json()
+    assert rows_all["total"] == 0

@@ -49,6 +49,7 @@ import {
   executableWorkflows,
 } from "@/lib/executable-targets"
 import { asApi } from "@/services/as-api"
+import { groupsApi } from "@/services/as-api"
 import { agentApi, wfApi } from "@/services/wf-api"
 import { toast } from "sonner"
 
@@ -83,6 +84,7 @@ const EXECUTOR_LABEL: Record<string, string> = {
   agent: "Agent",
   workflow: "Workflow",
   agentflow: "AgentFlow",
+  group: "Group",
 }
 
 export default function AutomationsV2Page() {
@@ -152,11 +154,18 @@ export default function AutomationsV2Page() {
     agent_id: "",
     workflow_id: "",
     agentflow_id: "",
+    group_id: "",
     prompt_template: "",
     session_policy: "fresh",
     max_runs: "",
     deadline: "",
   })
+  const [groupOptions, setGroupOptions] = React.useState<{ id: string; name: string }[]>([])
+  React.useEffect(() => {
+    if (form.target_kind !== "group") return
+    groupsApi.list().then((r) => setGroupOptions(r.items.map((i) => ({ id: i.id, name: i.name }))))
+      .catch(() => setGroupOptions([]))
+  }, [form.target_kind, open])
   const [triggers, setTriggers] = React.useState<
     { kind: string; cron: string; timezone: string; source_id: string; filter: string; mapping: string }[]
   >([{ kind: "schedule", cron: "0 9 * * *", timezone: "Asia/Shanghai", source_id: "", filter: "", mapping: "" }])
@@ -234,6 +243,7 @@ export default function AutomationsV2Page() {
         agent_id: form.target_kind === "agent" ? form.agent_id || null : null,
         workflow_id: form.target_kind === "workflow" ? form.workflow_id || null : null,
         agentflow_id: form.target_kind === "agentflow" ? form.agentflow_id || null : null,
+        group_id: form.target_kind === "group" ? form.group_id || null : null,
         session_policy: form.session_policy,
         prompt_template: form.prompt_template,
         max_runs: form.max_runs ? Number(form.max_runs) : null,
@@ -453,7 +463,7 @@ export default function AutomationsV2Page() {
             <div className="grid gap-1">
               <Label>执行方式 *</Label>
               <div className="grid gap-2 sm:grid-cols-3">
-                {(["agent", "workflow", "agentflow"] as const).map((k) => (
+                {(["agent", "workflow", "agentflow", "group"] as const).map((k) => (
                   <button
                     key={k}
                     type="button"
@@ -463,10 +473,10 @@ export default function AutomationsV2Page() {
                     }`}
                   >
                     <div className="text-sm font-medium">
-                      {k === "agent" ? "交给 Agent" : k === "workflow" ? "运行 Workflow" : "运行 AgentFlow"}
+                      {k === "agent" ? "交给 Agent" : k === "workflow" ? "运行 Workflow" : k === "group" ? "交给 Group" : "运行 AgentFlow"}
                     </div>
                     <div className="mt-0.5 text-muted-foreground">
-                      {k === "agent" ? "由一个指定的 Agent 完成任务" : k === "workflow" ? "由已发布工作流执行" : "由一个编排好的流程完成任务"}
+                      {k === "agent" ? "由一个指定的 Agent 完成任务" : k === "workflow" ? "由已发布工作流执行" : k === "group" ? "多 Agent 群聊协作完成（复用 active 会话）" : "由一个编排好的流程完成任务"}
                     </div>
                   </button>
                 ))}
@@ -512,6 +522,18 @@ export default function AutomationsV2Page() {
                     </SelectContent>
                   </Select>
                 ))}
+              {form.target_kind === "group" && (
+                <Select value={form.group_id} onValueChange={(v) => setForm({ ...form, group_id: v })}>
+                  <SelectTrigger aria-label="选择 Group">
+                    <SelectValue placeholder="选择 Group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {groupOptions.map((g) => (
+                      <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               {form.target_kind === "agentflow" &&
                 (flowOpts.length === 0 ? (
                   <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground" data-testid="empty-exec-agentflow">
@@ -642,7 +664,8 @@ export default function AutomationsV2Page() {
                 !form.name.trim() ||
                 (form.target_kind === "agent" && (!form.agent_id || !form.prompt_template.trim())) ||
                 (form.target_kind === "workflow" && !form.workflow_id) ||
-                (form.target_kind === "agentflow" && !form.agentflow_id)
+                (form.target_kind === "agentflow" && !form.agentflow_id) ||
+                (form.target_kind === "group" && (!form.group_id || !form.prompt_template.trim()))
               }
             >
               保存

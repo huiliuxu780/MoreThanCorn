@@ -13,11 +13,11 @@
 | D1 | 运行时装配模式 | 待拍板 | 平台确定性装配（§4.2）：平台直写官方 TeamRecord（**members 仅 worker，leader 经 TeamRecord.session_id/leader_agent_id 标识，官方形态**）+ 全员 session 绑 team_id；摘除 LLM 建团四工具（AgentCreate/AgentInvite/TeamCreate/TeamDelete），leader/worker 仅留 TeamSay；group 会话 manifest 缺失 fail-closed |
 | D2 | 会话模型 | 待拍板 | 一组 N 会话（会话=原站「任务」UI 文案）；**POST sessions 遇 active 一律 409 ACTIVE_SESSION_EXISTS**（前端引导续聊或先关聊）；关聊=标 closed 不解散 runtime（保 transcript，§4.1 DELETE） |
 | D3 | 成员「工作目录」字段 | 待拍板 | 配置 pane 改 {响应模型, 知识挂载}；不装假字段 |
-| D4 | Group 进 automation 触发面 | 待拍板 | P3 后置；按执行域 Spec 第四执行体增补，「一触发一 Invocation」不变、不套 TaskRun |
+| D4 | Group 进 automation 触发面 | **已落地（09-16 P3）** | g065 group_id + g066 ck 复合约束扩 group 分支；dispatch 第四执行体（reuse active 会话）+leader chat_trigger；board group 维度+前端筛选；「一触发一 Invocation」不变、不套 TaskRun |
 | D5 | 成员数 | 待拍板 | **members 含 Leader 共 1..5，其中恰一位 role=leader**（聚合流路数=成员数） |
 | D6 | 侧栏 tablist 折叠态 | 待拍板 | 仅展开态（240）显示；折叠轨隐藏 |
 | D7 | 活体补证 | **已闭合** | 用户 09-15 自建真组只读补证完毕 |
-| D8 | 群技能 / 成员协作 SOP 期次 | 待拍板 | 群技能 P2（复用 skill 实体）；SOP P3（agent_group_sop 不可变发布）；UI 三节先照抄含空态 |
+| D8 | 群技能 / 成员协作 SOP 期次 | **已落地（09-16 提前）** | g063 群技能挂载+agent_group_sop 不可变发布+绑定指针；装配注入 workspace/SOP System；UI 三节真接线 |
 | D9 | @提及弹层 | 待拍板 | 自研入 P2（原站 placeholder 承诺+CSS mention-chip 存在、活体弹层未复现）；**翻覆设计稿 §10-3「MVP 不做」旧句**（该句与设计稿 §6.2 自相矛盾，以本行为准） |
 | D10 | Group 域色彩 token | 待拍板 | 原站 mint 值入**作用域 token**（`--group-*`），不动全局 --primary/--brand-primary（#2F7D4B/#76D596）；群域与全站品牌色并存登记为已知视觉差异 |
 | D11 | DM Sans 字体 | 待拍板 | 自托管 woff2 引入（OFL 开源）；不引入则回落系统栈并登记差异 |

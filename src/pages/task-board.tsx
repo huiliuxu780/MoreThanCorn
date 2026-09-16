@@ -128,13 +128,15 @@ export default function TaskBoardPage() {
   const [keyword, setKeyword] = React.useState("")
   const [source, setSource] = React.useState("all")
   const [lane, setLane] = React.useState("all")
+  // 09-16 D4：Group 维度筛选（原站看板 Waker/Group 同构）
+  const [groupFilter, setGroupFilter] = React.useState("all")
   const [view, setView] = React.useState<"list" | "lanes">("list")
   const [offset, setOffset] = React.useState(0)
   const limit = 20
 
   const query = React.useMemo(
-    () => ({ period, keyword, source, lane, offset: String(offset), limit: String(limit) }),
-    [period, keyword, source, lane, offset],
+    () => ({ period, keyword, source, lane, group: groupFilter, offset: String(offset), limit: String(limit) }),
+    [period, keyword, source, lane, groupFilter, offset],
   )
   const summary = useAsyncData((o) => asApi.boardSummary(period, o?.signal), [period])
   const tasks = useAsyncData(
@@ -146,8 +148,9 @@ export default function TaskBoardPage() {
         keyword: keyword || "",
         lane: lane === "all" ? "" : lane,
         source: source === "all" ? "" : source,
+        group: groupFilter === "all" ? "" : groupFilter,
       }, o?.signal),
-    [period, offset, keyword, lane, source],
+    [period, offset, keyword, lane, source, groupFilter],
   )
   const filters = useAsyncData((o) => asApi.boardFilters(o?.signal), [])
 
@@ -255,6 +258,19 @@ export default function TaskBoardPage() {
               <SelectContent>
                 <SelectItem value="all">全部</SelectItem>
                 {(((filters.data as Record<string, { value: string; label: string }[]>)?.sources) ?? []).map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={groupFilter} onValueChange={(v) => { setGroupFilter(v); setOffset(0) }}>
+              <SelectTrigger className="w-32" aria-label="Waker / Group">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部</SelectItem>
+                {(((filters.data as Record<string, { value: string; label: string }[]>)?.groups) ?? []).map((o) => (
                   <SelectItem key={o.value} value={o.value}>
                     {o.label}
                   </SelectItem>
