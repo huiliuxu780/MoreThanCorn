@@ -105,7 +105,9 @@ export function HealthBand({ onTest }: { onTest?: (id: string) => void }) {
                   <td className="px-3.5 py-2.5">
                     <Badge variant="outline" style={r.status === "error"
                       ? { borderColor: "var(--status-danger)", background: "var(--status-danger-soft)", color: "var(--status-danger-text)" }
-                      : { borderColor: "var(--brand-subtle)", background: "var(--brand-soft)", color: "var(--brand-primary)" }}>
+                      : r.status === "paused"
+                        ? { borderColor: "var(--border)", background: "var(--surface-muted)", color: "var(--text-secondary)" }
+                        : { borderColor: "var(--status-success)", background: "var(--status-success-soft)", color: "var(--status-success-text)" }}>
                       {r.status === "error" ? "异常" : r.status === "paused" ? "已暂停" : "活跃"}
                     </Badge>
                   </td>

@@ -292,7 +292,8 @@ export default function DataSourceDetailPage() {
           <div className="flex items-center gap-2">
             <h1 className="text-lg font-semibold">{src.data.name}</h1>
             <Badge variant="outline"><KindIcon className="size-3" />{KIND_LABEL[src.data.kind]}</Badge>
-            <Badge variant={src.data.status === "active" ? "secondary" : "outline"}>
+            <Badge variant={src.data.status === "active" ? "secondary"
+              : src.data.status === "error" ? "destructive" : "outline"}>
               {STATUS_LABEL[src.data.status] ?? src.data.status}
             </Badge>
             {src.data.archived && <Badge variant="outline">已归档</Badge>}
