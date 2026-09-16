@@ -16,6 +16,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { pagedApi } from "@/services/wf-api"
+import { resApi } from "@/services/resource-api"
 import { groupsApi } from "@/services/as-api"
 import { avatarFor } from "@/lib/agent-avatar"
 
@@ -40,6 +41,8 @@ export function GroupCreateDialog({
   const [selected, setSelected] = useState<string[]>([])
   const [leader, setLeader] = useState<string | null>(null)
   const [model, setModel] = useState<Record<string, string>>({})
+  const [knowledgeOpts, setKnowledgeOpts] = useState<{ id: string; name: string }[]>([])
+  const [knowledgePick, setKnowledgePick] = useState<Record<string, string[]>>({})
   const [saving, setSaving] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
 
@@ -50,6 +53,10 @@ export function GroupCreateDialog({
     setSelected([])
     setLeader(null)
     setModel({})
+    resApi.list("knowledge", { pageSize: 50 })
+      .then((r: { items?: { id: string; name: string }[] }) =>
+        setKnowledgeOpts(r.items ?? []))
+      .catch(() => setKnowledgeOpts([]))
     pagedApi.agents({ page: 1, pageSize: 100 }).then((r) => {
       // 候选约束（Spec §5.3）：仅已发布（prodVersion）且未归档
       setCandidates(r.items.map((a) => ({
@@ -89,7 +96,10 @@ export function GroupCreateDialog({
         leader_agent_id: leader,
         members: selected.map((id) => ({
           agent_id: id,
-          config: model[id] ? { chat_model_config: { model: model[id] } } : {},
+          config: {
+            ...(model[id] ? { chat_model_config: { model: model[id] } } : {}),
+            ...(knowledgePick[id] ? { knowledge_ids: knowledgePick[id] } : {}),
+          },
         })),
       })
       toast.success("群组已创建")
@@ -236,9 +246,33 @@ export function GroupCreateDialog({
                   </div>
                   <div className="mt-5">
                     <span className="text-[14px] font-medium">知识挂载</span>
-                    <p className="mt-1.5 text-[12px] text-(--text-tertiary)">
-                      可挂载知识库；未选择时使用 Agent 发布冻结的默认挂载
-                    </p>
+                    <ul className="mt-1.5 max-h-32 overflow-y-auto rounded-[6px] border border-(--border) p-1">
+                      {knowledgeOpts.map((k) => (
+                        <li key={k.id}>
+                          <label className="flex h-7 items-center gap-2 rounded px-1 text-[13px] hover:bg-(--surface-muted)">
+                            <input
+                              type="checkbox"
+                              checked={(knowledgePick[activeCandidate.id] ?? []).includes(k.id)}
+                              onChange={(e) => setKnowledgePick((prev) => {
+                                const cur = prev[activeCandidate.id] ?? []
+                                return {
+                                  ...prev,
+                                  [activeCandidate.id]: e.target.checked
+                                    ? [...cur, k.id]
+                                    : cur.filter((x) => x !== k.id),
+                                }
+                              })}
+                            />
+                            <span className="truncate">{k.name}</span>
+                          </label>
+                        </li>
+                      ))}
+                      {knowledgeOpts.length === 0 && (
+                        <li className="px-1 py-2 text-[12px] text-(--text-tertiary)">
+                          无可选知识库；未选择时使用 Agent 发布冻结的默认挂载
+                        </li>
+                      )}
+                    </ul>
                   </div>
                 </>
               )}

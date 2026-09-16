@@ -330,10 +330,18 @@ def open_group_session(db: Session, gid: str, uid: str, *,
             raise HTTPException(422, detail={
                 "code": "AGENT_NOT_PUBLISHED",
                 "message": f"成员 {m.agent_id} 缺 prod active release：{exc}"}) from exc
+        # D3：成员级覆盖生效——chat_model_config 浅合并、knowledge_ids 替换
+        cfg = dict(extra["chat_model_config"] or {})
+        mcfg = (m.config or {}).get("chat_model_config") or {}
+        cfg.update(mcfg)
+        kbs = list(extra["knowledge_ids"] or [])
+        mkbs = (m.config or {}).get("knowledge_ids")
+        if mkbs is not None:
+            kbs = list(mkbs)
         bindings[m.agent_id] = {
             "runtime_agent_id": runtime_id,
-            "chat_model_config": extra["chat_model_config"],
-            "knowledge_ids": extra["knowledge_ids"],
+            "chat_model_config": cfg,
+            "knowledge_ids": kbs,
         }
     seq = (db.query(AgentGroupSession)
            .filter(AgentGroupSession.group_id == gid).count()) + 1

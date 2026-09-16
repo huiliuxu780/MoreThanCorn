@@ -356,3 +356,46 @@ def test_board_group_filter():
     assert all(r.get("group_id") == gid for r in rows["items"])
     rows_all = client.get("/api/board/tasks?group=other").json()
     assert rows_all["total"] == 0
+
+
+def test_member_config_override_in_binding(monkeypatch):
+    from app import agentscope_client as rt_mod
+    captured = {}
+
+    def fake_group_session(uid, body, timeout=60.0):
+        captured.update(body)
+        return {"runtime_team_id": "t1", "leader_session_id": "ldr",
+                "member_sessions": []}
+
+    monkeypatch.setattr(rt_mod, "group_session", fake_group_session)
+    # 需要已发布 Agent：复用 release 构造
+    from app.models import Agent, AgentVersion, Release
+    with SessionLocal() as db:
+        a = Agent(name=u("ov")[:20], type="module", module_key="m", module_version="1")
+        db.add(a)
+        db.commit()
+        aid = a.id
+        v = AgentVersion(agent_id=aid, version_no=1, definition={}, dependency_snapshot={}, artifact_hash="h")
+        db.add(v)
+        db.commit()
+        r = Release(agent_id=aid, agent_version_id=v.id, environment="prod",
+                    status="active", runtime_provider_id=None,
+                    runtime_binding_snapshot={
+                        "agentscope_agent_id": "rt-ov",
+                        "frozen_model_id": "qwen-plus",
+                        "chat_model_config": {"model": "qwen-plus"},
+                        "resources": {}, "_frozen_skills": {}, "_frozen_mcps": {},
+                        "_frozen_tools": {}, "_frozen_knowledges": {},
+                    })
+        db.add(r)
+        db.commit()
+    gid = client.post("/api/v2/groups", json={
+        "name": u("ovg"), "leader_agent_id": aid,
+        "members": [{"agent_id": aid,
+                     "config": {"chat_model_config": {"model": "qwen-max"},
+                                "knowledge_ids": ["kb-1"]}}]}).json()["id"]
+    r2 = client.post(f"/api/v2/groups/{gid}/sessions")
+    assert r2.status_code == 200, r2.text
+    leader = captured["leader"]
+    assert leader["chat_model_config"]["model"] == "qwen-max"
+    assert leader["knowledge_ids"] == ["kb-1"]
