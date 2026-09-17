@@ -252,6 +252,13 @@ export default function GroupChatPage() {
 
   const anyRunning = Object.values(streams).some((s) => s.status === "running")
   const anyThinking = Object.values(streams).some((s) => s.live.some((b) => b.kind === "thinking" && !b.finished))
+  // 09-17：生成中条带头像=正在回答的成员；无则 Leader
+  const runningSessionId = Object.keys(streams).find((k) => streams[k].status === "running")
+  const bannerAvatar = avatarFor(
+    (runningSessionId ? sourceMeta[runningSessionId]?.agentId : undefined)
+      ?? group?.members.find((m) => m.role === "leader")?.agentId
+      ?? gid,
+  )
 
   const send = async (text: string) => {
     const t = text.trim()
@@ -773,6 +780,8 @@ export default function GroupChatPage() {
             )}
             {(anyRunning) && (
               <div className="mb-1 flex h-9 items-center gap-2 rounded-xl bg-(--status-success-soft) px-3 text-xs">
+                {/* 09-17（用户指认）：生成中条带正在回答的 Agent 头像 */}
+                <img src={bannerAvatar} alt="" className="size-5 shrink-0 rounded-full object-cover" />
                 <Loader2 className="size-3.5 animate-spin text-(--status-success)" aria-hidden />
                 <span className="font-medium text-(--status-success)">
                   {anyThinking ? "深度思考" : "生成中"}

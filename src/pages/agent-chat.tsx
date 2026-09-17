@@ -1040,6 +1040,7 @@ export default function AgentChatPage() {
               ? stream.modelCalls.length > 0 || stream.tools.length > 0 || stream.live.some((b) => b.kind === "thinking")
               : historyItems.length > 0) && (
               <AgentActivity
+                className="pl-7"
                 defaultOpen={stream.status === "running"}
                 collapseOnComplete={false}
                 status={stream.status === "running" ? "working" : "complete"}
@@ -1191,6 +1192,8 @@ export default function AgentChatPage() {
             )}
             {(stream.status === "running" || reconnecting) && (
               <div className="mb-1 flex h-9 items-center gap-2 rounded-xl bg-(--status-success-soft) px-3 text-xs">
+                {/* 09-17（用户指认）：生成中条带 Agent 头像 */}
+                <img src={avatarFor(agentId, agent?.avatar)} alt="" className="size-5 shrink-0 rounded-full object-cover" />
                 <Loader2 className="size-3.5 animate-spin text-(--status-success)" aria-hidden />
                 <span className="font-medium text-(--status-success)">
                   {reconnecting
