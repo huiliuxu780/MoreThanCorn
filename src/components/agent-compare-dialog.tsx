@@ -8,6 +8,10 @@ import { useEffect, useState } from "react"
 import { Copy, RefreshCw, Send } from "lucide-react"
 import { toast } from "sonner"
 
+import { Message } from "@/components/beui/agents/message"
+import { MessageBubble } from "@/components/beui/agents/message-bubble"
+import { StreamingResponse } from "@/components/beui/agents/streaming-response"
+import { Markdown } from "@/components/chat/markdown"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -47,26 +51,28 @@ function Pane({ title, right, state }: {
         {state.running ? (
           <p className="text-xs text-(--text-tertiary)">运行中…</p>
         ) : state.text ? (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-[11px] text-(--text-tertiary)">
-              <span className="h-px flex-1" style={{ background: "var(--border)" }} />
-              {state.at} 用户发起文本对话
-              <span className="h-px flex-1" style={{ background: "var(--border)" }} />
-            </div>
-            <div className="rounded-lg border bg-surface px-3 py-2 text-[13px]"
-                 style={{ borderColor: "var(--border)" }}>
-              {state.text}
-            </div>
-            <div className="text-[11px] text-(--text-tertiary)">{state.at}</div>
-            {state.status && state.status !== "succeeded" && (
-              <Badge variant="outline">{state.status}</Badge>
-            )}
-            {state.output && (
-              <pre className="max-h-64 w-full overflow-auto rounded-lg border bg-surface p-2 text-[11px]"
-                   style={{ borderColor: "var(--border)" }}>
-                {JSON.stringify(state.output, null, 1)}
-              </pre>
-            )}
+          /* 09-16 用户指认：对话渲染不手搓，与 agent-chat 同组件（beUI Message/
+             MessageBubble/StreamingResponse+Markdown） */
+          <div className="space-y-3">
+            <Message from="user">
+              <MessageBubble align="end">
+                <span className="text-sm">{state.text}</span>
+              </MessageBubble>
+            </Message>
+            <Message from="assistant">
+              <div className="space-y-1">
+                {state.status && state.status !== "succeeded" && (
+                  <Badge variant="outline">{state.status}</Badge>
+                )}
+                {state.output ? (
+                  <StreamingResponse status="complete"
+                    copyText={JSON.stringify(state.output, null, 2)}>
+                    <Markdown content={"```json\n" + JSON.stringify(state.output, null, 2) + "\n```"} />
+                  </StreamingResponse>
+                ) : null}
+                <div className="text-[11px] text-(--text-tertiary)">{state.at}</div>
+              </div>
+            </Message>
           </div>
         ) : (
           <p className="text-xs text-(--text-tertiary)">底部输入问题后双栏并行运行。</p>
@@ -145,7 +151,7 @@ export function AgentCompareDialog({ agent, open, onClose }: {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="flex h-[80vh] max-w-5xl flex-col p-0">
+      <DialogContent className="flex h-[82vh] flex-col p-0" style={{ width: "min(1280px, 94vw)", maxWidth: "none" }}>
         <DialogHeader className="flex-row items-center gap-3 border-b px-4 py-3"
           style={{ borderColor: "var(--border)" }}>
           <DialogTitle className="text-[15px]">

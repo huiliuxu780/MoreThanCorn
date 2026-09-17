@@ -20,7 +20,6 @@ export interface MountRow { kind: string; name?: string; ref?: string; status?: 
 
 export function AgentProfileSection({ agent, archived }: { agent: AgentInfo; archived?: boolean }) {
   const navigate = useNavigate()
-  const [detailOpen, setDetailOpen] = React.useState(false)
   const [delOpen, setDelOpen] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const [mounts, setMounts] = React.useState<MountRow[]>([])
@@ -91,8 +90,8 @@ export function AgentProfileSection({ agent, archived }: { agent: AgentInfo; arc
                 <FileText className="size-3.5 text-muted-foreground" />
                 <span className="font-mono text-xs font-medium">{s.key}</span>
                 <span className="text-[11px] text-muted-foreground">{s.hint}</span>
-                <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setDetailOpen(true)}>
-                  查看
+                <Button variant="ghost" size="sm" className="ml-auto" onClick={() => navigate(`/agents/${agent.id}/config`)} disabled={archived}>
+                  去编辑
                 </Button>
               </div>
             </div>
@@ -127,25 +126,6 @@ export function AgentProfileSection({ agent, archived }: { agent: AgentInfo; arc
           </Button>
         </section>
       )}
-
-      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>角色源文件内容</DialogTitle>
-            <DialogDescription>identity.md / persona.md / bible.md 对应的平台真实字段。</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            {sources.map((s) => (
-              <div key={s.key}>
-                <div className="font-mono text-xs font-medium">{s.key}</div>
-                <pre className="mt-1 whitespace-pre-wrap break-words rounded-md border bg-surface-muted p-2 text-xs">
-                  {s.content}
-                </pre>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={delOpen} onOpenChange={setDelOpen}>
         <DialogContent>

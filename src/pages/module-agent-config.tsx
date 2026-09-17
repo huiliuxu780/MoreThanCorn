@@ -23,6 +23,7 @@ import { ModulePublishDialog } from "@/components/module-publish-dialog"
 import { useAgentVersionState } from "@/components/agent-publish-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -54,6 +55,9 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
   const [name, setName] = useState(agent.name)
   const [desc, setDesc] = useState(agent.description ?? "")
   const [purpose, setPurpose] = useState<string>((agent.config as { spec?: { purpose?: string } })?.spec?.purpose ?? "")
+  // 09-16 doc08 §4.1：persona.md 编辑分区（实例工作风格）
+  const [persona, setPersona] = useState<string>((agent.config as { persona?: string }).persona ?? "")
+  const [previewOpen, setPreviewOpen] = useState(false)
   const [modelId, setModelId] = useState<string>(((agent.config as { modelRef?: { modelId?: string } })?.modelRef?.modelId) ?? "")
   const [thinking, setThinking] = useState(
     ((agent.config as { modelRef?: { params?: Record<string, unknown> } })?.modelRef?.params?.thinking_enable) === true)
@@ -83,7 +87,7 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
       await agentApi.update(agent.id, {
         name, description: desc,
         config: {
-          ...(agent.config as object), spec: { purpose }, capabilities: caps,
+          ...(agent.config as object), spec: { purpose }, persona, capabilities: caps,
           permissions: perms,
           modelRef: {
             ...(agent.config as { modelRef?: object })?.modelRef, modelId,
@@ -132,7 +136,7 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
       <div className="min-h-0 flex-1 overflow-y-auto p-4" style={{ background: "var(--surface-muted)" }}>
           <div className="flex gap-4">
             <div className="flex min-w-0 flex-1 flex-col gap-4">
-              <Card no={1} title="Agent 身份">
+              <Card no={1} title="identity.md · 身份（职责与边界）">
                 <div className="space-y-2">
                   <div className="flex gap-3"><Label className="w-16 pt-2 text-xs">名称</Label>
                     <Input value={name} maxLength={20} onChange={(e) => setName(e.target.value)} /></div>
@@ -155,7 +159,27 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
                   </div>
                 </div>
               </Card>
-              <Card no={2} title="模型与推理（实例配置）">
+              <Card no={2} title="persona.md · 人格与沟通（实例工作风格）">
+                <Textarea value={persona} placeholder="如：结论先行、证据附引用、不确定时显式说不确定"
+                  onChange={(e) => setPersona(e.target.value)} />
+                <p className="mt-1 text-[11px]" style={{ color: "var(--text-tertiary)" }}>
+                  编译进 system_prompt；发布时冻结进版本快照。
+                </p>
+              </Card>
+              <Card no={3} title="bible.md · 执行流程与业务定位"
+                right={<span className="flex items-center gap-2"><span className="rounded bg-(--status-warning-soft) px-1.5 py-0.5 text-[10px] text-(--status-warning-text)">只读</span><Button variant="outline" size="sm" onClick={() => setPreviewOpen(true)}>编译预览</Button></span>}>
+                <div className="mb-2 rounded bg-(--status-warning-soft) px-2 py-1 text-[11px] text-(--status-warning-text)">
+                  criteria/工具/主数据由 Module 版本冻结；实例仅可追加「业务定位」。
+                </div>
+                <pre className="max-h-40 overflow-auto rounded border p-2 text-[11px]" style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}>
+                  {meta ? meta.criteria.map((c) => `- ${c}`).join("\n") : "（Module 未加载）"}
+                </pre>
+                <div className="mt-2 space-y-1">
+                  <Label className="text-xs">业务定位（实例追加）</Label>
+                  <Textarea value={purpose} placeholder="如：面向售后退款场景" onChange={(e) => setPurpose(e.target.value)} />
+                </div>
+              </Card>
+              <Card no={4} title="模型与推理（发布时冻结；新 Session 用该 Release 模型）">
                 <div className="flex items-center gap-3">
                   <Label className="w-16 text-xs">模型</Label>
                   <Select value={modelId || undefined} onValueChange={setModelId}>
@@ -186,7 +210,7 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
                   </span>
                 </div>
               </Card>
-              <Card no={3} title="能力与权限（发布时冻结）">
+              <Card no={5} title="能力与权限（发布时冻结）">
                 <div className="grid gap-2 sm:grid-cols-2">
                   {PERM_LABELS.map(([key, label]) => (
                     <div key={key} className="flex items-center gap-2">
@@ -203,20 +227,7 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
                   关闭后该工具族不装配进 Agent；需重新发布生效。
                 </p>
               </Card>
-              <Card no={4} title="指令（Module 资产 · 只读）"
-                right={<span className="rounded bg-(--status-warning-soft) px-1.5 py-0.5 text-[10px] text-(--status-warning-text)">只读</span>}>
-                <div className="mb-2 rounded bg-(--status-warning-soft) px-2 py-1 text-[11px] text-(--status-warning-text)">
-                  criteria/工具/主数据由 Module 版本冻结；实例仅可追加「业务定位」。
-                </div>
-                <pre className="max-h-40 overflow-auto rounded border p-2 text-[11px]" style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}>
-                  {meta ? meta.criteria.map((c) => `- ${c}`).join("\n") : "（Module 未加载）"}
-                </pre>
-                <div className="mt-2 space-y-1">
-                  <Label className="text-xs">业务定位（实例追加）</Label>
-                  <Textarea value={purpose} placeholder="如：面向售后退款场景" onChange={(e) => setPurpose(e.target.value)} />
-                </div>
-              </Card>
-              <Card no={5} title="资源（Module 冻结 · 只读）">
+              <Card no={6} title="资源（Module 冻结 · 只读）">
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { t: "工具", d: `${(meta?.logicalTools ?? []).length} 个逻辑工具` },
@@ -235,6 +246,15 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
             </div>
           </div>
       </div>
+      <Dialog open={previewOpen} onOpenChange={(o) => !o && setPreviewOpen(false)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>编译预览（system_prompt 只读）</DialogTitle></DialogHeader>
+          <pre className="max-h-96 overflow-auto rounded-md border p-3 text-[11px]"
+               style={{ borderColor: "var(--border)" }}>
+{`# IDENTITY\n${desc || "—"}\n\n# PERSONA\n${persona || "—"}\n\n# BIBLE\n业务定位：${purpose || "—"}\n\n## Module criteria（冻结）\n${(meta?.criteria ?? []).map((c) => `- ${c}`).join("\n") || "—"}`}
+          </pre>
+        </DialogContent>
+      </Dialog>
       <ModulePublishDialog agentId={agent.id} open={publishOpen} onClose={() => setPublishOpen(false)} onPublished={vs.refresh} />
       <AgentCompareDialog agent={agent} open={compareOpen} onClose={() => setCompareOpen(false)} />
     </div>
