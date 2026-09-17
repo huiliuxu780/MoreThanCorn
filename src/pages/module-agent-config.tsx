@@ -113,7 +113,7 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
       </div>
       {/* R8-UI D-1：Draft vs Last-published 对照卡 */}
       <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-surface px-4 py-2" style={{ borderColor: "var(--border)" }}>
-        <span className="truncate text-[11px]" style={{ color: "var(--text-tertiary)" }}>{desc || meta?.description || ""}</span>
+        <span className="truncate text-[11px]" style={{ color: "var(--text-tertiary)" }}>{desc || "（暂无实例描述——identity.md 分区可补；Module manifest 描述不再兜底显示）"}</span>
         <div className="flex shrink-0 items-center gap-5 rounded-lg border px-3 py-1.5" style={{ borderColor: "var(--border)" }}>
           <div>
             <b className="flex items-center gap-1.5 text-[12px]" style={{ color: "var(--text-primary)" }}>
@@ -141,7 +141,7 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
                   <div className="flex gap-3"><Label className="w-16 pt-2 text-xs">名称</Label>
                     <Input value={name} maxLength={20} onChange={(e) => setName(e.target.value)} /></div>
                   <div className="flex gap-3"><Label className="w-16 pt-2 text-xs">描述</Label>
-                    <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} /></div>
+                    <Textarea value={desc} placeholder="实例职责描述（展示于头部与概览页；不再回落代码 manifest）" onChange={(e) => setDesc(e.target.value)} /></div>
                   <div className="space-y-1.5">
                     <Label className="text-xs">核心能力（概览页展示）</Label>
                     {caps.map((c, i) => (
