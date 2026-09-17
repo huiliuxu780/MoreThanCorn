@@ -4,7 +4,6 @@
  *  测试面板环境=Release 绑定（草稿须显式 Provider）；运行结果可跳 Run 详情。
  *  Module 资产（criteria/工具/主数据/Schema）只读；实例仅编辑名称/描述/业务定位/模型。 */
 import { useEffect, useState } from "react"
-import { useNavigate } from "react-router-dom"
 const PERM_LABELS: [string, string][] = [
   ["shell", "Shell 命令（Bash）"],
   ["file_write", "文件写入（Write/Edit）"],
@@ -19,7 +18,7 @@ const DEFAULT_PERMS: Record<string, boolean> = {
 }
 import { toast } from "sonner"
 
-import { AgentVersionDiffDialog } from "@/components/agent-version-diff"
+import { AgentCompareDialog } from "@/components/agent-compare-dialog"
 import { ModulePublishDialog } from "@/components/module-publish-dialog"
 import { useAgentVersionState } from "@/components/agent-publish-dialog"
 import { Badge } from "@/components/ui/badge"
@@ -29,12 +28,10 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import { agentApi, wfApi, type AgentInfo, type AgentVersionInfo } from "@/services/wf-api"
+import { agentApi, wfApi, type AgentInfo } from "@/services/wf-api"
 
 
 interface ModuleMeta { key: string; version: string; displayName: string; description: string; riskClass: string; providers: string[]; logicalTools: string[]; criteria: string[]; inputSchema?: { required?: string[]; properties?: Record<string, unknown> }; outputSchema?: Record<string, unknown> }
-interface ReleaseOpt { releaseId: string; environment: string; status: string; canaryPercent: number; versionNo: number | null; createdAt: string }
-interface RunResult { status: string; output?: Record<string, unknown>; usage?: Record<string, unknown>; calls?: { kind: string; targetType?: string; targetId?: string }[] }
 
 function Card({ no, title, children, right }: { no: number; title: string; children: React.ReactNode; right?: React.ReactNode }) {
   return (
@@ -52,7 +49,6 @@ function Card({ no, title, children, right }: { no: number; title: string; child
 }
 
 export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
-  const navigate = useNavigate()
   const vs = useAgentVersionState(agent.id)
   const [meta, setMeta] = useState<ModuleMeta | null>(null)
   const [name, setName] = useState(agent.name)
@@ -66,19 +62,12 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
     return typeof b === "number" ? b : ""
   })
   const [models, setModels] = useState<{ modelKey: string; capabilities?: string[] }[]>([])
-  const [versions, setVersions] = useState<AgentVersionInfo[]>([])
-  const [releases, setReleases] = useState<ReleaseOpt[]>([])
-  const [diffOpen, setDiffOpen] = useState(false)
   const [publishOpen, setPublishOpen] = useState(false)
+  const [compareOpen, setCompareOpen] = useState(false)
   // 09-07：核心能力（原站概览块数据源；config JSONB 手填一等字段）
   const [caps, setCaps] = useState<{ name: string; description: string }[]>(
     ((agent.config as { capabilities?: { name: string; description: string }[] }).capabilities) ?? [])
   // 测试面板：环境=Release 绑定；草稿=Provider 必选（R3 语义）
-  const [envSel, setEnvSel] = useState("")
-  const [sample, setSample] = useState('{"sample_id": "S1", "dialogues": []}')
-  const [running, setRunning] = useState(false)
-  const [result, setResult] = useState<(RunResult & { runId?: string }) | null>(null)
-  const [callsOpen, setCallsOpen] = useState(true)
   const [perms, setPerms] = useState<Record<string, boolean>>({
     ...DEFAULT_PERMS,
     ...(((agent.config as { permissions?: Record<string, boolean> }).permissions) ?? {}),
@@ -86,13 +75,8 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
 
   useEffect(() => {
     agentApi.modules().then((r) => setMeta(r.items.find((m) => m.key === agent.moduleKey) ?? null)).catch(() => undefined)
-    agentApi.versions(agent.id).then(setVersions).catch(() => undefined)
-    agentApi.releases(agent.id).then((rs) => { setReleases(rs.filter((x) => x.status === "active")); }).catch(() => undefined)
     wfApi.models().then(setModels).catch(() => undefined)
   }, [agent.id, agent.moduleKey])
-
-  const activeReleases = releases.filter((r) => r.versionNo != null)
-  const hasRelease = activeReleases.length > 0
 
   const save = async () => {
     try {
@@ -113,37 +97,6 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
       }, agent.configRevision)
       toast.success("已保存")
     } catch (e) { toast.error((e as Error).message) }
-  }
-
-  const runTest = async () => {
-    // 已发布：环境=Release 绑定（解析 versionId）；草稿：Provider 必选
-    const extra: Record<string, unknown> = {}
-    if (hasRelease) {
-      const rel = activeReleases.find((r) => `${r.environment}:${r.versionNo}` === envSel)
-      if (!rel) { toast.error("请选择环境（Release 绑定）"); return }
-      const ver = versions.find((v) => v.versionNo === rel.versionNo)
-      if (!ver) { toast.error("该 Release 的版本不存在"); return }
-      extra.versionId = ver.versionId
-    } else {
-      toast.error("无 active Release：运行只认发布快照，请先发布")
-      return
-    }
-    setRunning(true); setResult(null)
-    try {
-      let input: Record<string, unknown> = {}
-      try { input = JSON.parse(sample) } catch { /* keep {} */ }
-      const { runId } = await agentApi.run(agent.id, input, "test", extra)
-      const deadline = Date.now() + 30000
-      for (; ;) {
-        const d = await agentApi.runDetail(agent.id, runId)
-        if (["succeeded", "failed", "cancelled"].includes(d.status)) {
-          setResult({ status: d.status, output: (d.output as Record<string, unknown>) ?? undefined, usage: d.usage, calls: (d.calls as RunResult["calls"]) ?? [], runId })
-          break
-        }
-        if (Date.now() > deadline) { setResult({ status: "timeout", runId }); break }
-        await new Promise((r) => setTimeout(r, 400))
-      }
-    } catch (e) { toast.error((e as Error).message) } finally { setRunning(false) }
   }
 
   const inputProps = Object.keys((meta?.inputSchema?.properties ?? {}) as object)
@@ -172,7 +125,7 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
               {vs.latest ? `V${vs.latest.versionNo} · ${vs.latest.createdAt.slice(0, 10)}` : "（无）"}
             </small>
           </div>
-          <Button size="sm" variant="outline" disabled={!vs.latest} onClick={() => setDiffOpen(true)}>对比</Button>
+          <Button size="sm" variant="outline" onClick={() => setCompareOpen(true)}>对比</Button>
         </div>
       </div>
       {/* 09-07：运行观测/版本/效果评测拆为工作区子页（board/governance），此处仅配置表单+测试面板 */}
@@ -280,77 +233,10 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
                 </div>
               </Card>
             </div>
-            {/* 右：测试面板 */}
-            <div className="w-[360px] shrink-0">
-              <div className="rounded-lg border bg-surface" style={{ borderColor: "var(--border)" }}>
-                <div className="border-b px-3 py-2 text-[13px] font-semibold" style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}>测试 Agent</div>
-                <div className="space-y-3 p-3">
-                  {hasRelease ? (
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs">环境</Label>
-                      <Select value={envSel || undefined} onValueChange={setEnvSel}>
-                        <SelectTrigger className="h-8"><SelectValue placeholder="选择 Release 绑定" /></SelectTrigger>
-                        <SelectContent>
-                          {activeReleases.map((r) => (
-                            <SelectItem key={r.releaseId} value={`${r.environment}:${r.versionNo}`}>
-                              {r.environment === "prod" ? "线上" : "沙箱"} V{r.versionNo}{r.canaryPercent > 0 ? ` · 灰度 ${r.canaryPercent}%` : " · 稳定"}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  ) : (
-                    /* 09-16 死路径修复：执行只认 Release 快照（P0-04/P0-07），
-                       草稿+Provider 旧路径后端必 NO_RELEASED_VERSION → 明示禁跑 */
-                    <p className="rounded bg-(--status-warning-soft) px-2 py-1.5 text-[11px] text-(--status-warning-text)">
-                      该 Agent 尚无 active Release。运行只认发布快照（模型/工具/权限/技能均冻结自 Release），请先发布再测试。
-                    </p>
-                  )}
-                  <Textarea value={sample} onChange={(e) => setSample(e.target.value)} className="min-h-20 font-mono text-[11px]" />
-                  <Button size="sm" className="w-full" disabled={running || !hasRelease} onClick={runTest}>
-                    {running ? "运行中…" : "运行"}
-                  </Button>
-                  {result && (
-                    <div className="space-y-2 rounded border p-2 text-[11px]" style={{ borderColor: "var(--border)" }}>
-                      <div className="flex items-center gap-2">状态：<b>{result.status}</b>
-                        {result.runId && (
-                          <Button variant="outline" size="sm" className="ml-auto h-6 text-[10px]"
-                            onClick={() => navigate(`/agents/${agent.id}/runs/${result.runId}`)}>查看 Run 详情 ↗</Button>
-                        )}
-                      </div>
-                      {result.output && <pre className="max-h-40 overflow-auto text-[10px]" style={{ color: "var(--text-secondary)" }}>{JSON.stringify(result.output, null, 1)}</pre>}
-                      {result.usage && (
-                        <div style={{ color: "var(--text-tertiary)" }}>
-                          {String((result.usage as { total?: number }).total ?? "")} tokens
-                          · 模型 {String((result.usage as { modelCalls?: number }).modelCalls ?? "—")} 次
-                          · 工具 {String((result.usage as { toolCalls?: number }).toolCalls ?? "—")} 次
-                        </div>
-                      )}
-                      {(result.calls?.length ?? 0) > 0 && (
-                        <div className="rounded border" style={{ borderColor: "var(--border)" }}>
-                          <button className="flex w-full items-center gap-1 px-2 py-1 text-[11px]" style={{ color: "var(--text-secondary)" }}
-                            onClick={() => setCallsOpen((o) => !o)}>
-                            工具调用（{result.calls!.length}）{callsOpen ? "⌃" : "⌄"}
-                          </button>
-                          {callsOpen && result.calls!.map((c, i) => (
-                            <div key={i} className="flex items-center gap-2 border-t px-2 py-1" style={{ borderColor: "var(--border)" }}>
-                              <span style={{ color: "var(--status-success-text)" }}>✓</span>
-                              <span className="font-mono" style={{ color: "var(--text-secondary)" }}>{c.targetId ?? c.kind}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
           </div>
       </div>
       <ModulePublishDialog agentId={agent.id} open={publishOpen} onClose={() => setPublishOpen(false)} onPublished={vs.refresh} />
-      <AgentVersionDiffDialog agentId={agent.id} open={diffOpen} onClose={() => setDiffOpen(false)}
-        versions={versions.map((v) => ({ versionId: v.versionId, versionNo: v.versionNo }))}
-        defaultLeft="draft" defaultRight={versions[0]?.versionId ?? "draft"} />
+      <AgentCompareDialog agent={agent} open={compareOpen} onClose={() => setCompareOpen(false)} />
     </div>
   )
 }

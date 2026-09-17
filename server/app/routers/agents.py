@@ -306,10 +306,19 @@ def run_agent_endpoint(aid: str, payload: dict | None = None, db: Session = Depe
                                          "message": "已封存 Agent 不可 run-now；先解封"})
     from ..agent_runtime import RunError, run_agent
     try:
+        _trigger = (payload or {}).get("trigger", "agent")
+        # 09-16 对比弹窗：modelOverride 仅 test 触发可用（模型对比）；
+        # 非 test 触发携带即拒，防生产运行被偷换模型
+        _mo = (payload or {}).get("modelOverride")
+        if _mo and _trigger != "test":
+            raise HTTPException(422, detail={
+                "code": "MODEL_OVERRIDE_TEST_ONLY",
+                "message": "modelOverride 仅 test 触发可用（对比弹窗模型对比）"})
         run_id = run_agent(db, a, (payload or {}).get("input") or {},
-                           trigger=(payload or {}).get("trigger", "agent"),
+                           trigger=_trigger,
                            version_id=(payload or {}).get("versionId"),
-                           provider_id=(payload or {}).get("providerId"))
+                           provider_id=(payload or {}).get("providerId"),
+                           model_override=_mo if _trigger == "test" else None)
     except RunError as e:
         msg = str(e)
         if msg.startswith("NO_RELEASED_VERSION"):

@@ -42,16 +42,18 @@ def _translate(name: str, schema: dict[str, Any]) -> Any:
     if kind == "array":
         item = _translate(f"{name}_item", schema.get("items", {"type": "string"}))
         return list[item]  # type: ignore[valid-type]
+    if isinstance(kind, list):
+        # 09-16：list 型 type 必须先于 _PRIMITIVES 成员判断（list 不可哈希，
+        # 否则 TypeError: unhashable type 使所有含 nullable union 的 Module schema 运行必 500）
+        non_null = [k for k in kind if k != "null"]
+        if len(non_null) == 1 and "null" in kind:
+            return Optional[_translate(name, {"type": non_null[0]})]  # type: ignore[misc]
+        raise SchemaTranslationError(f"union types unsupported: {kind}")
     if kind in _PRIMITIVES:
         enum = schema.get("enum")
         if enum:
             return Literal[tuple(enum)]  # type: ignore[valid-type]
         return _PRIMITIVES[kind]
-    if isinstance(kind, list):
-        non_null = [k for k in kind if k != "null"]
-        if len(non_null) == 1 and "null" in kind:
-            return Optional[_translate(name, {"type": non_null[0]})]  # type: ignore[misc]
-        raise SchemaTranslationError(f"union types unsupported: {kind}")
     if kind is None and schema.get("enum"):
         return Literal[tuple(schema["enum"])]  # type: ignore[valid-type]
     raise SchemaTranslationError(f"unsupported schema node: {schema!r}")

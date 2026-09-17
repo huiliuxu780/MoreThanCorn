@@ -272,7 +272,8 @@ def _canary_bucket(run_id: str) -> int:
 
 def _run_native_agent(db: Session, agent: Agent, run_input: dict, trigger: str,
                       version_id: str | None, provider_id: str | None, enqueue: bool,
-                      agent_chain: list[str]) -> str:
+                      agent_chain: list[str],
+                      model_override: dict | None = None) -> str:
     """Agent 一次性运行（Module 与 custom 共用，P0-B 09-10）：
     显式环境解析 Release → Run 业务链 → 统一入口进 AgentScope（fresh Session）。
 
@@ -354,6 +355,7 @@ def _run_native_agent(db: Session, agent: Agent, run_input: dict, trigger: str,
             trigger_kind="manual" if trigger in ("manual", "test") else trigger,
             environment=environment,
             timeout_seconds=600,
+            model_override=model_override,
         )
     except Exception as exc:  # noqa: BLE001
         run.status = "failed"
@@ -379,7 +381,8 @@ def _run_native_agent(db: Session, agent: Agent, run_input: dict, trigger: str,
 def run_agent(db: Session, agent: Agent, run_input: dict, trigger: str = "agent",
               agent_chain: list[str] | None = None, call_chain_wf: list[str] | None = None,
               enqueue: bool = True, version_id: str | None = None,
-              provider_id: str | None = None) -> str:
+              provider_id: str | None = None,
+              model_override: dict | None = None) -> str:
     """返回 run_id。P0-07/P0-B：Agent 执行唯一生产路径 = AgentScope 统一入口。
 
     Module Agent 与 custom Agent 同走 _run_native_agent（Release 解析 → Run
@@ -394,4 +397,5 @@ def run_agent(db: Session, agent: Agent, run_input: dict, trigger: str = "agent"
             "仅支持历史查询（P0-A 09-10）"
         )
     return _run_native_agent(db, agent, run_input, trigger, version_id,
-                             provider_id, enqueue, agent_chain or [])
+                             provider_id, enqueue, agent_chain or [],
+                             model_override)

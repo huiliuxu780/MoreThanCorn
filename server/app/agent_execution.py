@@ -593,6 +593,7 @@ def start_session(
     agentflow_run_id: str | None = None,
     agentflow_node_run_id: str | None = None,
     release_override: Release | None = None,
+    model_override: dict | None = None,
 ) -> AgentSessionIndex:
     """Create or resume the official Session per explicit policy.
 
@@ -620,6 +621,10 @@ def start_session(
     # 名下；以调用者身份操作他人 owner 的运行时对象会被官方 access 层 404。
     runtime_uid = (release.runtime_binding_snapshot or {}).get("owner") or user_id
     model_cfg = chat_model_config_for_release(db, runtime_uid, release)
+    # 09-16 对比弹窗（模型对比）：test-only 模型覆盖，仅覆盖 model 键，
+    # 其余冻结参数不动；非 test 触发由调用方闸门忽略该参数
+    if model_override:
+        model_cfg = {**model_cfg, **model_override}
     knowledge_ids = (agent.config or {}).get("default_knowledge_ids") or []
 
     if policy == "conversation" and conversation_key:
@@ -878,7 +883,8 @@ def run_turn(
 ) -> AgentSessionIndex:
     index = index or start_session(
         db, user_id, agent, trigger_kind=trigger_kind,
-        environment=environment, **session_kwargs
+        environment=environment, model_override=model_override,
+        **session_kwargs
     )
     runtime_agent_id = index.runtime_agent_id or resolve_runtime_agent(
         db, user_id, agent, environment=environment
@@ -898,6 +904,7 @@ def run_structured(
     environment: str = "prod",
     index: AgentSessionIndex | None = None,
     timeout_seconds: float = 300.0,
+    model_override: dict | None = None,
     **session_kwargs: Any,
 ) -> tuple[AgentSessionIndex, dict]:
     # P1-01: single resolution pass (the duplicated resolve lines were removed)
