@@ -628,11 +628,41 @@ export default function AgentChatPage() {
     const so = m.structured_output as Record<string, unknown> | null | undefined
     return so ? [{ index: i, role: String(m.role), so }] : []
   })
+  // 09-17（用户指认）：快捷问题不再写死——优先取身份文件「核心能力」派生任务句，
+  // 空时回落通用引导两句。
   const suggestions = React.useMemo(() => {
-    const base = ["介绍你的职责与能做的事", "列出你挂载的 Skill 与工具"]
-    if (agent?.description) base.push(agent.description.slice(0, 24))
-    return base.slice(0, 3)
+    const caps = (((agent?.config as { capabilities?: { name: string; description?: string }[] } | undefined)
+      ?.capabilities) ?? []).filter((c) => c.name?.trim())
+    if (caps.length) {
+      return caps.slice(0, 3).map((c) => c.description?.trim() || `帮我${c.name.trim()}`)
+    }
+    return ["介绍你的职责与能做的事", "列出你挂载的 Skill 与工具"]
   }, [agent])
+
+  // 09-17（用户指认）：欢迎话术读身份文件——custom 取 rolePrompt「# 角色：X」，
+  // module 取 Module 显示名；拼接身份描述首句：「我是一名X，……」
+  const [moduleRole, setModuleRole] = React.useState("")
+  React.useEffect(() => {
+    if (!agent?.moduleKey) { setModuleRole(""); return }
+    agentApi.modules()
+      .then((r) => setModuleRole(r.items.find((m) => m.key === agent.moduleKey)?.displayName ?? ""))
+      .catch(() => setModuleRole(""))
+  }, [agent?.moduleKey])
+  const identityGreeting = React.useMemo(() => {
+    const cfg = (agent?.config ?? {}) as { rolePrompt?: string }
+    const roleMatch = /^#\s*角色[：:]\s*(.+)$/m.exec(cfg.rolePrompt ?? "")
+    const sentence = (agent?.description ?? "").trim().split(/[。\n；;]/)[0]?.trim() ?? ""
+    if (roleMatch?.[1]?.trim()) {
+      return sentence ? `我是一名${roleMatch[1].trim()}，${sentence}。` : `我是一名${roleMatch[1].trim()}。`
+    }
+    if (moduleRole) {
+      return sentence ? `我是${moduleRole}领域 Agent，${sentence}。` : `我是${moduleRole}领域 Agent。`
+    }
+    if (agent?.type === "custom") {
+      return sentence ? `我是一名自定义角色 Agent，${sentence}。` : "我是一名自定义角色 Agent。"
+    }
+    return sentence ? `我是${agent?.name ?? ""}，${sentence}。` : ""
+  }, [agent, moduleRole])
 
   return (
     <div className="flex h-dvh min-w-0 flex-1 overflow-hidden">
@@ -812,15 +842,18 @@ export default function AgentChatPage() {
           </button>
         )}
         <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto flex min-h-full max-w-[720px] flex-col justify-end space-y-4 px-4 py-4">
+          <div className={`mx-auto flex min-h-full max-w-[720px] flex-col space-y-4 px-4 py-4 ${
+            messages.length === 0 && stream.live.length === 0 ? "justify-start pt-[10vh]" : "justify-end"
+          }`}>
             {messages.length === 0 && stream.live.length === 0 && (
-              <div className="space-y-3 rounded-lg border border-dashed p-6 text-center">
-                <img src={avatarFor(agentId, agent?.avatar)} alt="avatar" className="mx-auto size-10 rounded-full" />
-                <p className="text-sm font-medium">
+              /* 09-17（用户指认）：初始化卡=有背景实体卡+偏上布局+大头像+身份话术 */
+              <div className="space-y-4 rounded-xl border bg-(--surface-muted) p-8 text-center shadow-sm">
+                <img src={avatarFor(agentId, agent?.avatar)} alt="avatar" className="mx-auto size-16 rounded-full object-cover" />
+                <p className="text-base font-semibold">
                   {agent?.name ? `你好，我是 ${agent.name}` : "你好"}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  {agent?.description || "输入第一条消息开始对话；回复流、工具调用与思考均来自 AgentScope 真实事件。"}
+                <p className="mx-auto max-w-[46ch] text-sm leading-6 text-muted-foreground">
+                  {identityGreeting || "输入第一条消息开始对话。"}
                 </p>
                 <div className="flex flex-wrap justify-center gap-2">
                   {suggestions.map((s) => (
