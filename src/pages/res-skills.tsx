@@ -103,7 +103,7 @@ export default function ResSkillsPage() {
       <FilterBar>
         <SearchField value={search} onChange={setSearch} placeholder="搜索 Skills…" />
         <Select value={source || "__all__"} onValueChange={(v) => setSource(v === "__all__" ? "" : v)}>
-          <SelectTrigger className="h-9 w-32"><SelectValue placeholder="来源：全部" /></SelectTrigger>
+          <SelectTrigger size="sm" className="w-32"><SelectValue placeholder="来源：全部" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">来源：全部</SelectItem>
             <SelectItem value="builtin">内置</SelectItem>

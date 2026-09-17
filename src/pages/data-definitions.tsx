@@ -51,7 +51,7 @@ export default function DataDefinitionsPage() {
       <FilterBar>
         <SearchField value={search} onChange={setSearch} placeholder="搜索数据定义..." />
         <Select value={assetFilter || "__all__"} onValueChange={(v) => setAssetFilter(v === "__all__" ? "" : v)}>
-          <SelectTrigger className="h-9 w-44"><SelectValue placeholder="全部 Data Asset" /></SelectTrigger>
+          <SelectTrigger size="sm" className="w-44"><SelectValue placeholder="全部 Data Asset" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">全部 Data Asset</SelectItem>
             {assets.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}

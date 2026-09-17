@@ -300,7 +300,7 @@ export default function AutomationsV2Page() {
           value={filters.executor || "__all"}
           onValueChange={(v) => setFilters({ ...filters, executor: v === "__all" ? "" : v, page: 1 })}
         >
-          <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+          <SelectTrigger size="sm" className="w-44"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all">全部执行者</SelectItem>
             {agentOpts.map((a) => (
@@ -318,7 +318,7 @@ export default function AutomationsV2Page() {
           value={filters.triggerKind || "__all"}
           onValueChange={(v) => setFilters({ ...filters, triggerKind: v === "__all" ? "" : v, page: 1 })}
         >
-          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+          <SelectTrigger size="sm" className="w-32"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all">全部类型</SelectItem>
             <SelectItem value="schedule">定时</SelectItem>
@@ -330,7 +330,7 @@ export default function AutomationsV2Page() {
           value={filters.status || "__all"}
           onValueChange={(v) => setFilters({ ...filters, status: v === "__all" ? "" : v, page: 1 })}
         >
-          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+          <SelectTrigger size="sm" className="w-32"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all">全部状态</SelectItem>
             <SelectItem value="enabled">已启用</SelectItem>
@@ -344,7 +344,7 @@ export default function AutomationsV2Page() {
             setFilters({ ...filters, sort, order, page: 1 })
           }}
         >
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+          <SelectTrigger size="sm" className="w-40"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="created_at:desc">最近创建</SelectItem>
             <SelectItem value="created_at:asc">最早创建</SelectItem>
@@ -437,7 +437,7 @@ export default function AutomationsV2Page() {
             value={String(filters.pageSize)}
             onValueChange={(v) => setFilters({ ...filters, pageSize: Number(v), page: 1 })}
           >
-            <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+            <SelectTrigger size="sm" className="w-24"><SelectValue /></SelectTrigger>
             <SelectContent>
               {[10, 20, 50].map((n) => (
                 <SelectItem key={n} value={String(n)}>{n} 条/页</SelectItem>
@@ -604,7 +604,7 @@ export default function AutomationsV2Page() {
                       value={t.kind}
                       onValueChange={(v) => setTriggers(triggers.map((x, j) => (j === i ? { ...x, kind: v } : x)))}
                     >
-                      <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                      <SelectTrigger size="sm" className="w-32"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="schedule">定时（按计划运行）</SelectItem>
                         <SelectItem value="api">API（收到请求时运行）</SelectItem>

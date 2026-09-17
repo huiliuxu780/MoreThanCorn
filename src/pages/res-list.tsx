@@ -129,7 +129,7 @@ export function ResCategoryList({ types, createTo }: { types: string[]; createTo
         <SearchField value={searchInput} onChange={setSearchInput} placeholder="搜索资源名称..." />
         {tab === "datasource" && (
           <Select value={dsType || "__all__"} onValueChange={(v) => { setDsType(v === "__all__" ? "" : v); setPage(1) }}>
-            <SelectTrigger className="h-9 w-36"><SelectValue placeholder="全部类型" /></SelectTrigger>
+            <SelectTrigger size="sm" className="w-36"><SelectValue placeholder="全部类型" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">全部类型</SelectItem>
               {DS_TYPES.map((t) => <SelectItem key={t} value={t}>{t === "oss" ? "对象存储 OSS" : t === "http" ? "HTTP API" : t}</SelectItem>)}
@@ -137,7 +137,7 @@ export function ResCategoryList({ types, createTo }: { types: string[]; createTo
           </Select>
         )}
         <Select value={status || "__all__"} onValueChange={(v) => { setStatus(v === "__all__" ? "" : v); setPage(1) }}>
-          <SelectTrigger className="h-9 w-32"><SelectValue placeholder="全部状态" /></SelectTrigger>
+          <SelectTrigger size="sm" className="w-32"><SelectValue placeholder="全部状态" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">全部状态</SelectItem>
             <SelectItem value="enabled">Enabled</SelectItem>
@@ -145,7 +145,7 @@ export function ResCategoryList({ types, createTo }: { types: string[]; createTo
           </SelectContent>
         </Select>
         <Select value={health || "__all__"} onValueChange={(v) => { setHealth(v === "__all__" ? "" : v); setPage(1) }}>
-          <SelectTrigger className="h-9 w-32"><SelectValue placeholder="全部健康度" /></SelectTrigger>
+          <SelectTrigger size="sm" className="w-32"><SelectValue placeholder="全部健康度" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">全部健康度</SelectItem>
             <SelectItem value="untested">Untested</SelectItem>

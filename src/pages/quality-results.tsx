@@ -113,7 +113,7 @@ export default function QualityResultsPage() {
           placeholder="搜索 Interaction、坐席或消费者诉求"
         />
         <Select value={filters.time ?? "__all__"} onValueChange={(v) => setFilter("time", v)}>
-          <SelectTrigger className="h-9 w-28"><SelectValue placeholder="时间" /></SelectTrigger>
+          <SelectTrigger size="sm" className="w-28"><SelectValue placeholder="时间" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">全部时间</SelectItem>
             <SelectItem value="今日">今日</SelectItem>
@@ -122,7 +122,7 @@ export default function QualityResultsPage() {
           </SelectContent>
         </Select>
         <Select value={filters.criterion ?? "__all__"} onValueChange={(v) => setFilter("criterion", v)}>
-          <SelectTrigger className="h-9 w-36"><SelectValue placeholder="质量问题" /></SelectTrigger>
+          <SelectTrigger size="sm" className="w-36"><SelectValue placeholder="质量问题" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">全部问题</SelectItem>
             {vocab.criteria.map((c) => (
@@ -131,7 +131,7 @@ export default function QualityResultsPage() {
           </SelectContent>
         </Select>
         <Select value={filters.risk ?? "__all__"} onValueChange={(v) => setFilter("risk", v)}>
-          <SelectTrigger className="h-9 w-28"><SelectValue placeholder="风险" /></SelectTrigger>
+          <SelectTrigger size="sm" className="w-28"><SelectValue placeholder="风险" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">全部风险</SelectItem>
             <SelectItem value="Critical">Critical</SelectItem>
@@ -141,7 +141,7 @@ export default function QualityResultsPage() {
           </SelectContent>
         </Select>
         <Select value={filters.team ?? "__all__"} onValueChange={(v) => setFilter("team", v)}>
-          <SelectTrigger className="h-9 w-32"><SelectValue placeholder="班组" /></SelectTrigger>
+          <SelectTrigger size="sm" className="w-32"><SelectValue placeholder="班组" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">全部班组</SelectItem>
             {vocab.team.map((t) => (
@@ -150,7 +150,7 @@ export default function QualityResultsPage() {
           </SelectContent>
         </Select>
         <Select value={filters.serviceType ?? "__all__"} onValueChange={(v) => setFilter("serviceType", v)}>
-          <SelectTrigger className="h-9 w-32"><SelectValue placeholder="服务类型" /></SelectTrigger>
+          <SelectTrigger size="sm" className="w-32"><SelectValue placeholder="服务类型" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">全部服务类型</SelectItem>
             {vocab.serviceType.map((sv) => (
@@ -177,7 +177,7 @@ export default function QualityResultsPage() {
             </DropdownMenuContent>
           </DropdownMenu>
           <Select value={params.sort || "time:desc"} onValueChange={(v) => update({ sort: v }, true)}>
-            <SelectTrigger className="h-9 w-36"><SelectValue /></SelectTrigger>
+            <SelectTrigger size="sm" className="w-36"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="time:desc">时间 · 最新优先</SelectItem>
               <SelectItem value="time:asc">时间 · 最早优先</SelectItem>

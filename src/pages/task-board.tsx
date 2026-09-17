@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Waypoints, Workflow } from "lucide-react"
+import { List, SquareKanban,  Waypoints, Workflow } from "lucide-react"
 import { avatarFor } from "@/lib/agent-avatar"
 import { asApi, type BoardSummary, type BoardTask } from "@/services/as-api"
 import { useAsyncData } from "@/hooks/use-async-data"
@@ -175,17 +175,13 @@ export default function TaskBoardPage() {
         </p>
       </header>
 
-      {/* 工作记录（原站 qc-work-management-summary 同构：白底卡 py6 + header 同行周期 +
-          4 张白底 metric 卡，值 26px·600） */}
-      <section
-        aria-label="工作记录"
-        className="flex flex-col gap-4 border bg-surface py-6 shadow-sm"
-        style={{ borderColor: "var(--border)", borderRadius: "8px" }}
-      >
-        <div className="flex items-center gap-2 px-6">
+      {/* 工作记录（09-17 用户指认「太高，和自动任务一样」：单条带 fill-tertiary/圆角6/
+          内距20/值44px·600/名13px，无内嵌白卡，与自动任务指标带同构） */}
+      <section aria-label="工作记录" className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
           <h2 className="text-sm font-medium">工作记录</h2>
           <Select value={period} onValueChange={(v) => { setPeriod(v); setOffset(0) }}>
-            <SelectTrigger className="ml-2 w-32" aria-label="数据周期">
+            <SelectTrigger size="sm" className="ml-2 w-32" aria-label="数据周期">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -197,27 +193,26 @@ export default function TaskBoardPage() {
         </div>
         {/* 09-13 审计修复：摘要失败禁止伪装成业务 0——错误态显式渲染+重试 */}
         {summary.error ? (
-          <div className="flex items-center gap-3 px-6 pb-2 text-sm" role="alert">
+          <div className="flex items-center gap-3 text-sm" role="alert">
             <span className="text-status-danger">工作记录摘要加载失败：{summary.error}</span>
             <Button size="sm" variant="outline" onClick={() => summary.retry()}>重试</Button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-4 px-6 md:grid-cols-4">
+          <div
+            className="grid grid-cols-2 gap-y-5 rounded-md p-5 md:grid-cols-4"
+            style={{ background: "var(--fill-tertiary)" }}
+          >
             {[
               { label: "任务总数", value: s?.total },
               { label: "进行中任务", value: s?.running },
               { label: "需要操作", value: s?.needs_action },
               { label: "已结束任务", value: s?.ended },
             ].map((m) => (
-              <div
-                key={m.label}
-                className="flex flex-col gap-1 border bg-surface px-6 py-4 shadow-sm"
-                style={{ borderColor: "var(--border)", borderRadius: "6px" }}
-              >
-                <strong className="text-[26px] font-semibold leading-8">
+              <div key={m.label} className="pr-5">
+                <strong className="block text-[44px] font-semibold leading-[48px]">
                   {summary.loading && m.value === undefined ? "…" : String(m.value ?? 0)}
                 </strong>
-                <span className="text-[13px] text-muted-foreground">{m.label}</span>
+                <span className="block text-[13px] leading-5">{m.label}</span>
               </div>
             ))}
           </div>
@@ -239,8 +234,12 @@ export default function TaskBoardPage() {
           <h2 className="text-sm font-medium">全部任务</h2>
           <Tabs value={view} onValueChange={(v) => setView(v as "list" | "lanes")}>
             <TabsList>
-              <TabsTrigger value="list">列表</TabsTrigger>
-              <TabsTrigger value="lanes">泳道</TabsTrigger>
+              <TabsTrigger value="list" aria-label="列表视图">
+                <List className="size-4" aria-hidden />
+              </TabsTrigger>
+              <TabsTrigger value="lanes" aria-label="泳道视图">
+                <SquareKanban className="size-4" aria-hidden />
+              </TabsTrigger>
             </TabsList>
           </Tabs>
           <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -252,7 +251,7 @@ export default function TaskBoardPage() {
               className="w-48"
             />
             <Select value={source} onValueChange={(v) => { setSource(v); setOffset(0) }}>
-              <SelectTrigger className="w-32" aria-label="触发方式">
+              <SelectTrigger size="sm" className="w-32" aria-label="触发方式">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -265,7 +264,7 @@ export default function TaskBoardPage() {
               </SelectContent>
             </Select>
             <Select value={groupFilter} onValueChange={(v) => { setGroupFilter(v); setOffset(0) }}>
-              <SelectTrigger className="w-32" aria-label="Waker / Group">
+              <SelectTrigger size="sm" className="w-32" aria-label="Waker / Group">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -278,7 +277,7 @@ export default function TaskBoardPage() {
               </SelectContent>
             </Select>
             <Select value={lane} onValueChange={(v) => { setLane(v); setOffset(0) }}>
-              <SelectTrigger className="w-32" aria-label="任务状态">
+              <SelectTrigger size="sm" className="w-32" aria-label="任务状态">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

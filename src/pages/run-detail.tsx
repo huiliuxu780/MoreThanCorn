@@ -527,14 +527,14 @@ export default function RunDetailPage() {
         <TabsContent value="events" className="mt-3 space-y-2">
           <FilterBar>
             <Select value={evType} onValueChange={setEvType}>
-              <SelectTrigger className="h-9 w-48"><SelectValue placeholder="事件类型" /></SelectTrigger>
+              <SelectTrigger size="sm" className="w-48"><SelectValue placeholder="事件类型" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">全部类型</SelectItem>
                 {evTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={evChannel} onValueChange={setEvChannel}>
-              <SelectTrigger className="h-9 w-36"><SelectValue placeholder="通道" /></SelectTrigger>
+              <SelectTrigger size="sm" className="w-36"><SelectValue placeholder="通道" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">全部通道</SelectItem>
                 <SelectItem value="CONTROL">控制类</SelectItem>
@@ -563,7 +563,7 @@ export default function RunDetailPage() {
         <FilterBar>
           <SearchField value={searchInput} onChange={setSearchInput} placeholder="搜索交互…" />
           <Select value={filters.executionStatus ?? "__all__"} onValueChange={(v) => update({ filters: serializeListFilters({ ...filters, executionStatus: v === "__all__" ? "" : v }) }, true)}>
-            <SelectTrigger className="h-9 w-32"><SelectValue placeholder="执行状态" /></SelectTrigger>
+            <SelectTrigger size="sm" className="w-32"><SelectValue placeholder="执行状态" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">全部状态</SelectItem>
               <SelectItem value="SUCCESS">成功</SelectItem>
@@ -572,7 +572,7 @@ export default function RunDetailPage() {
             </SelectContent>
           </Select>
           <Select value={filters.errorType ?? "__all__"} onValueChange={(v) => update({ filters: serializeListFilters({ ...filters, errorType: v === "__all__" ? "" : v }) }, true)}>
-            <SelectTrigger className="h-9 w-48"><SelectValue placeholder="错误类型" /></SelectTrigger>
+            <SelectTrigger size="sm" className="w-48"><SelectValue placeholder="错误类型" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">全部错误类型</SelectItem>
               <SelectItem value="Tool timeout">工具超时</SelectItem>
