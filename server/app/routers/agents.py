@@ -667,8 +667,12 @@ def agent_golden_eval(aid: str, payload: dict | None = None, db: Session = Depen
     for s in samples:
         sid = s.get("sample_id") or "?"
         try:
-            run_id = run_agent(db, agent, {"sample": s,
-                                           "call_record": call_records.get(sid)},
+            # 09-18 修 harness 答案泄漏：期望/工具清单/提示 note 不得进模型输入
+            _leak = {"expected_findings", "required_tools", "forbidden_tools",
+                     "expected_issue_codes", "note", "expected_evidence_refs"}
+            run_id = run_agent(db, agent, {
+                "sample": {k: v for k, v in s.items() if k not in _leak},
+                "call_record": call_records.get(sid)},
                                trigger="eval",
                                enqueue=False, provider_id=provider_id)
             r = db.get(Run, run_id)
