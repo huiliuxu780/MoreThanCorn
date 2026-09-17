@@ -171,12 +171,17 @@ export const asApi = {
   runtimeView: (aid: string) => req<RuntimeView>(`/api/v2/agents/${aid}/runtime-view`),
   listSessions: (aid: string) =>
     req<{ items: SessionRow[] }>(`/api/v2/agents/${aid}/sessions`),
-  openSession: (aid: string, conversationKey?: string) =>
+  openSession: (aid: string, opts?: {
+    conversationKey?: string; releaseId?: string; modelOverride?: { model: string }; compare?: boolean
+  }) =>
     req<{ session_id: string }>(`/api/v2/agents/${aid}/sessions`, {
       method: "POST",
       body: JSON.stringify({
-        conversation_key: conversationKey ?? null,
-        policy: conversationKey ? "conversation" : "fresh",
+        conversation_key: opts?.conversationKey ?? null,
+        policy: opts?.conversationKey ? "conversation" : "fresh",
+        release_id: opts?.releaseId ?? null,
+        model_override: opts?.modelOverride ?? null,
+        compare: opts?.compare ?? false,
       }),
     }),
   turn: (aid: string, sid: string, text: string) =>

@@ -36,6 +36,10 @@ class RunBody(BaseModel):
 class SessionBody(BaseModel):
     conversation_key: str | None = None
     policy: str = "conversation"
+    # 09-16 对比弹窗：版本对比=release 绑定；模型对比=compare+model_override（闸门）
+    release_id: str | None = None
+    model_override: dict | None = None
+    compare: bool = False
 
 
 def _agent(db: Session, aid: str) -> Agent:
@@ -157,6 +161,14 @@ def list_sessions(aid: str, request: Request, db: Session = Depends(get_db), use
 def open_session(aid: str, body: SessionBody, request: Request, db: Session = Depends(get_db), user: dict = Depends(require_operator)):
     agent = _agent(db, aid)
     uid = user.get("username", "dev")
+    if body.model_override and not body.compare:
+        raise HTTPException(422, detail={
+            "code": "MODEL_OVERRIDE_TEST_ONLY",
+            "message": "modelOverride 仅对比会话（compare=true）可用"})
+    from ..models import Release as _Rel
+    _rel = db.get(_Rel, body.release_id) if body.release_id else None
+    if body.release_id and _rel is None:
+        raise HTTPException(404, "release not found")
     try:
         index = ex.start_session(
             db,
@@ -165,6 +177,8 @@ def open_session(aid: str, body: SessionBody, request: Request, db: Session = De
             trigger_kind="chat",
             policy=body.policy,
             conversation_key=body.conversation_key or "default",
+            release_override=_rel,
+            model_override=body.model_override if body.compare else None,
         )
     except ValueError as exc:
         # §六.8：未发布/无模型等前置缺失给明确引导，不裸 500
