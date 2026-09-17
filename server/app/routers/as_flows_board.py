@@ -1020,6 +1020,9 @@ def session_manifest(
         if idx.release_id and rel
         else {}
     )
+    import logging as _lg
+    _lg.getLogger("mtc.manifest").warning(
+        "session-manifest sid=%s tools=%s", session_id, [t["name"] for t in tools])
     return {"tool_ids": tools, "tool_policy": tool_policy, "permission_policy": permission_policy}
 
 

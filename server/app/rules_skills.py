@@ -68,13 +68,30 @@ def resolve_rules(db: Session, agent: Agent) -> tuple[list | None, dict | None]:
 
 
 def criteria_prompt_block(criteria: list) -> str:
-    """run 时注入指令的规则段（简洁行格式；raw JSON 实测干扰模型判断致金样本回退）。"""
+    """run 时注入指令的规则段（简洁行格式；raw JSON 实测干扰模型判断致金样本回退）。
+
+    09-18 端到端：tool_policy 驱动工具调用——规则数据声明的必调工具写进指令，
+    未调用即结论=该准则 insufficient_evidence（否则模型有工具也偷懒裸判）。
+    """
     lines = []
+    # 09-18：规则数据里的工具别名展开为真实工具名（否则模型对着别名空转）
+    alias = {"business_fact_tools": ["ticket_query", "sms_query", "appointment_query"]}
     for c in criteria:
         if not isinstance(c, dict):
             continue
         cid = c.get("id") or ""
         desc = str(c.get("description") or "").replace("\n", " ")
-        lines.append(f"- {cid}：{desc}")
+        policy = c.get("tool_policy")
+        if isinstance(policy, str):
+            policy = [policy] if policy and policy != "forbidden" else []
+        expanded: list[str] = []
+        for p in policy or []:
+            expanded.extend(alias.get(p, [p]))
+        expanded = [p for p in expanded if p]
+        if expanded:
+            lines.append(f"- {cid}：{desc}｜结论前必须调用：{', '.join(expanded)}；"
+                         f"未调用即结论则该准则输出 insufficient_evidence")
+        else:
+            lines.append(f"- {cid}：{desc}")
     return ("\n\n## 当前规则准则（来自挂载的规则 Skill，版本已记入本任务）\n"
             + "\n".join(lines))

@@ -179,6 +179,8 @@ app.add_middleware(
 )
 
 app.include_router(auth_routes.router)
+from .routers import fixture_tools as _fixture_tools
+app.include_router(_fixture_tools.router)
 app.include_router(analytics.router)
 app.include_router(alerts.router)
 app.include_router(workflows.router)

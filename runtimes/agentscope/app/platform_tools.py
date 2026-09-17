@@ -180,6 +180,8 @@ async def platform_extra_tools(user_id: str, agent_id: str, session_id: str):
     headers = {"X-MTC-Internal": TOKEN} if TOKEN else {}
     if token:
         headers["X-MTC-Session-Token"] = token
+    import logging as _lg
+    _log = _lg.getLogger("mtc.platform_tools")
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             r = await client.get(
@@ -187,9 +189,14 @@ async def platform_extra_tools(user_id: str, agent_id: str, session_id: str):
                 params={"session_id": session_id},
                 headers=headers,
             )
+            _log.warning("manifest fetch sid=%s status=%s token=%s",
+                         session_id, r.status_code, bool(token))
             if r.status_code == 200:
                 for spec in (r.json() or {}).get("tool_ids") or []:
                     tools.append(PlatformHttpTool(spec, session_id))
-    except Exception:  # noqa: BLE001 —— 平台不可达时仅基础工具
-        pass
+            else:
+                _log.warning("manifest body=%s", r.text[:300])
+    except Exception as exc:  # noqa: BLE001 —— 平台不可达时仅基础工具
+        _log.warning("manifest fetch EXC sid=%s exc=%r", session_id, exc)
+    _log.warning("extra tools sid=%s names=%s", session_id, [t.name for t in tools])
     return tools

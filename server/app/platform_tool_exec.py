@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from .auth_signers import build_auth_headers
 from .connection_runtime import ToolUrlError, resolve_for_request, resolve_tool_url
+from .egress import enforce_egress
 from .egress import assert_safe_url
 from .models import Connection, Tool, ToolVersion
 
@@ -44,7 +45,9 @@ def execute_tool_version(db: Session, tool_version_id: str, args: dict[str, Any]
         url = resolve_tool_url(_render(req.get("url", ""), args), conn)
     except ToolUrlError as exc:
         raise ValueError(str(exc)) from exc
-    assert_safe_url(url)
+    # 09-18 端到端：与平台统一出站闸门对齐（生产拦私网、开发放行本地 fixture）；
+    # 此前直调 assert_safe_url 比平台策略更严，dev fixture 工具被误拦。
+    enforce_egress(url)
     headers: dict[str, str] = {}
     if conn:
         _ep, payload, _code = resolve_for_request(conn)

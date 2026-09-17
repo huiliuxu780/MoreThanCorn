@@ -5,10 +5,10 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..legacy_agent_archive import assert_agent_executable
-from ..models import (Agent, AgentRuntimeProvider, AgentVersion, KnowledgeSource, Release, Run,
-                      RunEvent, Tool, Workflow)
+from ..models import (Agent, AgentRuntimeProvider, AgentSessionIndex, AgentVersion, KnowledgeSource, Release, Run, RunEvent, Tool, Workflow)
 from ..routers.workflows import _default_definition
 from ..auth import require_operator, require_role
+from .. import agentscope_client as rt
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -678,13 +678,34 @@ def agent_golden_eval(aid: str, payload: dict | None = None, db: Session = Depen
             detail = [{"criterion": c, "expected": st, "actual": findings.get(c)}
                       for c, st in expected.items()]
             forbidden = s.get("forbidden_tools") or []
-            violated = [c.target_id for c in db.query(CallRecord).filter_by(run_id=run_id)
-                        if c.target_id in forbidden] if forbidden else []
+            # 09-18：structured-run 不写 call_record——工具调用核对改扫 runtime 会话消息
+            called: set = set()
+            idx_row = (db.query(AgentSessionIndex)
+                       .filter_by(session_id=r.interaction_ref).first()
+                       if r.interaction_ref else None)
+            if idx_row:
+                try:
+                    _msgs = rt.session_messages(
+                        idx_row.user_id, idx_row.runtime_agent_id,
+                        idx_row.session_id).get("messages", [])
+                    for _m in _msgs:
+                        for _b in (_m.get("content") or []):
+                            if isinstance(_b, dict) and _b.get("type") in (
+                                    "tool_call", "tool_use", "tool_call_block"):
+                                called.add(str(_b.get("name") or ""))
+                except Exception:  # noqa: BLE001
+                    pass
+            violated = [t for t in forbidden if t in called] if forbidden else []
+            # 09-18 端到端：required_tools 强制校验——样本声明必须调的工具没调=失败
+            # （此前只查 forbidden，模型裸判不调工具也能「通过」=偷懒通道）
+            required = s.get("required_tools") or []
+            missing = [t for t in required if t not in called]
             results.append({
                 "sampleId": sid, "runId": run_id, "runStatus": r.status,
                 "passed": bool(expected) and all(findings.get(c) == st for c, st in expected.items())
-                and not violated,
-                "forbiddenViolations": violated, "detail": detail,
+                and not violated and not missing,
+                "forbiddenViolations": violated, "requiredMissing": missing,
+                "detail": detail,
                 "durationMs": r.duration_ms,
             })
         except RunError as e:

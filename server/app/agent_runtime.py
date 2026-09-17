@@ -373,6 +373,10 @@ def _run_native_agent(db: Session, agent: Agent, run_input: dict, trigger: str,
             timeout_seconds=600,
             model_override=model_override,
         )
+        # 09-18 端到端观测：run ↔ session 关联落库（金样本工具调用核对依赖）
+        if not run.interaction_ref:
+            run.interaction_ref = index.session_id
+            db.commit()
     except Exception as exc:  # noqa: BLE001
         run.status = "failed"
         run.error = {"message": repr(exc)}

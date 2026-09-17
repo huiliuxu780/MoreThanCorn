@@ -21,6 +21,24 @@ NAME_MAX_LEN = 20
 from .agent_execution import resources_manifest  # noqa: E402,F401
 
 
+def _module_resources(db: Session, mod, cfg: dict) -> dict:
+    """09-18 端到端：Module logicalTools 并入冻结资源清单（仅 ready Tool 行）。
+
+    此前 resources_manifest 只看 agent.config.tools，Module 领域工具从未被
+    冻结/装配——模型物理上调不到 knowledge_search 等（金样本 required_tools
+    恒缺失的根因）。ready 之外的工具不冻结（执行面失败关闭语义不变）。
+    """
+    from .models import Tool as _Tool
+    res = resources_manifest(cfg)
+    names = [t["name"] for t in (mod.logical_tools or [])]
+    if names:
+        rows = db.query(_Tool).filter(
+            _Tool.name.in_(names), _Tool.status == "ready").all()
+        merged = list(dict.fromkeys([*res.get("tool_ids", []), *[r.id for r in rows]]))
+        res = {**res, "tool_ids": merged}
+    return res
+
+
 def build_definition(db: Session, agent: Agent) -> dict:
     """按类型组装 definition 快照（02 §2.5）。dialogue/group 的图拷贝完整草稿定义。
 
@@ -50,7 +68,7 @@ def build_definition(db: Session, agent: Agent) -> dict:
             "outputSchema": mod.output_schema_ref,
             "executionPolicy": mod.policies["execution"],
             "securityPolicy": mod.policies["security"],
-            "resources": resources_manifest(cfg),
+            "resources": _module_resources(db, mod, cfg),
         }
     if agent.type in ("autonomous", "custom"):
         # custom = 自定义角色 Agent（agent-create 产物，09-07 重构）：与
