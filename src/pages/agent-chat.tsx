@@ -842,7 +842,7 @@ export default function AgentChatPage() {
           </button>
         )}
         <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
-          <div className={`mx-auto flex min-h-full max-w-[720px] flex-col space-y-4 px-4 py-4 ${
+          <div className={`flex min-h-full w-full flex-col space-y-4 px-4 py-4 ${
             messages.length === 0 && stream.live.length === 0 ? "justify-start pt-[10vh]" : "justify-end"
           }`}>
             {messages.length === 0 && stream.live.length === 0 && (
@@ -1171,7 +1171,8 @@ export default function AgentChatPage() {
         </div>
 
         <footer className="shrink-0 border-t p-3">
-          <div className="mx-auto max-w-[720px]">
+          {/* 09-17（用户指认）：输入区左锚定、随面板收折自适应拉宽 */}
+          <div className="w-full">
             {!published && (
               <p className="mb-2 rounded-md border border-amber-400/60 bg-amber-50 px-2 py-1.5 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100">
                 该 Agent 尚未发布生产版本：请先在

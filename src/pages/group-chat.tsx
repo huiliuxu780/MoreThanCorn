@@ -106,7 +106,7 @@ export default function GroupChatPage() {
   const [msgs, setMsgs] = useState<FlatMsg[]>([])
   const [streams, setStreams] = useState<Record<string, ChatStreamState>>({})
   const [panelTab, setPanelTab] = useState<"tasks" | "settings">("tasks")
-  const [panelOpen, setPanelOpen] = useState(true)
+  const [taskOpen, setTaskOpen] = useState(true)
   const [draft, setDraft] = useState("")
   // g063：群技能 + 成员协作 SOP
   const [groupSkills, setGroupSkills] = useState<
@@ -328,8 +328,7 @@ export default function GroupChatPage() {
 
   return (
     <div className="flex min-h-0 flex-1">
-      {/* ---- 任务面板 240（当前任务钮收折） ---- */}
-      {panelOpen && (
+      {/* ---- 任务面板 240（对话列表常驻；当前任务钮收折右侧产物栏） ---- */}
       <aside className="flex w-60 shrink-0 flex-col border-r border-(--border)">
         <div className="flex items-center gap-2 px-4 pb-3 pt-4">
           <GroupAvatarCluster memberIds={group?.members.map((m) => m.agentId) ?? []} />
@@ -567,7 +566,6 @@ export default function GroupChatPage() {
           </div>
         )}
       </aside>
-      )}
 
       {/* ---- 聊天列 ---- */}
       <section className="flex min-w-0 flex-1 flex-col">
@@ -575,17 +573,19 @@ export default function GroupChatPage() {
           <span className="text-[14px] font-medium">
             {sessions.find((s) => s.id === gsid)?.title ?? "任务"}
           </span>
+          {/* 09-17（用户指认）：当前任务钮收折右侧产物栏，不再折叠左侧对话列表 */}
           <button
-            aria-pressed={panelOpen}
-            title={panelOpen ? "收起任务面板" : "展开任务面板"}
-            onClick={() => setPanelOpen((v) => !v)}
+            aria-pressed={taskOpen}
+            title={taskOpen ? "收起当前任务" : "展开当前任务"}
+            onClick={() => setTaskOpen((v) => !v)}
             className="inline-flex h-[30px] items-center gap-1.5 rounded-[4px] border border-(--border) bg-(--surface-muted) px-3 text-[13px] font-medium"
           >
             <FolderOpen size={13} /> 当前任务
           </button>
         </div>
         <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[624px] px-8 pb-4 pt-3">
+          {/* 09-17（用户指认）：聊天列左锚定、随面板收折自适应拉宽（不再居中限宽） */}
+          <div className="w-full px-8 pb-4 pt-3">
             {/* 历史终态消息（与单 Agent 聊天同组件） */}
             {msgs.map((m) => m.isUser ? (
               <Message key={m.key} from="user" animateIn>
@@ -704,7 +704,7 @@ export default function GroupChatPage() {
           </div>
         </div>
         <footer className="shrink-0 px-8 pb-3">
-          <div className="relative mx-auto w-full max-w-[560px]">
+          <div className="relative w-full">
             {mention.open && mentionCandidates.length > 0 && (
               <ul
                 role="listbox"
@@ -777,12 +777,14 @@ export default function GroupChatPage() {
         </footer>
       </section>
 
-      {/* ---- 产物面板 240 ---- */}
+      {/* ---- 产物面板 240（当前任务钮收折） ---- */}
+      {taskOpen && (
       <aside className="w-60 shrink-0 border-l border-(--border) px-4 pt-4">
         <h3 className="text-[14px] font-medium">产物</h3>
         <p className="mt-4 text-xs font-medium">共享目录</p>
         <p className="mt-2 text-xs text-(--text-tertiary)">暂无产物</p>
       </aside>
+      )}
 
       {/* ---- 群技能挂载弹窗 ---- */}
       <Dialog open={skillDialog} onOpenChange={setSkillDialog}>

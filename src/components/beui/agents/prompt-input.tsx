@@ -28,6 +28,13 @@ import {
 import { SPRING_SWAP } from "@/components/beui/lib/ease";
 import { cn } from "@/lib/utils";
 
+/** 09-17（用户指认）：@ 提及 token 拆分为彩色 span（输入框内高亮 overlay 用）。 */
+function splitMentions(text: string): ReactNode[] {
+  return text.split(/(@[^\s@]+)/g).map((part, i) => (i % 2 === 1
+    ? <span key={i} className="font-medium text-brand">{part}</span>
+    : part));
+}
+
 export interface PromptModel {
   value: string;
   label: ReactNode;
@@ -172,12 +179,15 @@ export function PromptInput({
         className,
       )}
     >
+      {/* 09-17（用户指认）：@ 提及彩色字——镜像层转为可见高亮 overlay，
+          textarea 文字透明、光标保留；滚动同步。兼作 autosize 测量层。 */}
       <div
         ref={measurementRef}
         aria-hidden="true"
-        className="pointer-events-none invisible absolute inset-x-2 top-0 whitespace-pre-wrap px-2 text-sm leading-6 [overflow-wrap:break-word]"
+        className="pointer-events-none absolute inset-x-2 top-0 overflow-hidden whitespace-pre-wrap px-2 pt-1.5 text-sm leading-6 [overflow-wrap:break-word]"
       >
-        {`${currentValue}\u200b`}
+        {splitMentions(currentValue)}
+        {"​"}
       </div>
       <textarea
         ref={textareaRef}
@@ -189,7 +199,10 @@ export function PromptInput({
         {...textareaProps}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={handleKeyDown}
-        className="scrollbar-hide block w-full resize-none overflow-y-auto bg-transparent px-2 pt-1.5 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground/55"
+        onScroll={(event) => {
+          if (measurementRef.current) measurementRef.current.scrollTop = event.currentTarget.scrollTop
+        }}
+        className="scrollbar-hide block w-full resize-none overflow-y-auto bg-transparent px-2 pt-1.5 text-sm leading-6 text-transparent caret-foreground outline-none placeholder:text-muted-foreground/55"
       />
 
       <div className="mt-1 flex min-h-8 items-center gap-1">
