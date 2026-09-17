@@ -50,6 +50,10 @@
 - UI：运行详情加「Trace」tab（时间线：model call 带 tokens/latency、tool call 带 name/args/result 折叠、
   thinking 折叠、HITL 卡、压缩标记、finished_reason 徽章）；Agent 工作区加「观测」子页
   （token 趋势图/错误率/超限次数/成本）；对话页保留 live 视图不变（trace 为事后回放）。
+- **图表组件基线（09-18 用户拍板：不手写、用 shadcn）**：shadcn/ui 官方 Charts
+  （ChartContainer/ChartTooltip/ChartTooltipContent/ChartLegend/ChartLegendContent + ChartConfig，
+  底层 Recharts v3）；主题走 --chart-1..5 CSS 变量（四主题 data-theme 各配）；accessibilityLayer 开。
+  新增依赖仅 recharts（shadcn Charts 的官方底层）。原型：prototypes/observability-v1.html。
 - 告警接口：observer 见 ERROR/EXCEED_MAX_ITERS 写 alert_event 表（告警域拍板前只落表不推送）。
 
 ## 6. 分期与验收

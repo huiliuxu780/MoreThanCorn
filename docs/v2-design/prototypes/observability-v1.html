@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<title>观测模块原型 v1（09-18）</title>
+<style>
+  :root{
+    --bg:#FFFFFF; --surface:#FFFFFF; --surface-muted:#F6F6F4; --border:#E5E5E1;
+    --ink:#111211; --ink2:#5A6472; --ink3:#B9C2CF;
+    --brand:#2F7D4B; --brand-soft:#ECF7F0;
+    --chart-1:#2F7D4B; --chart-2:#3B82F6; --chart-3:#22C55E; --chart-4:#F59E0B; --chart-5:#76D596;
+    --danger:#DC2626; --warn:#D97706;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.5 -apple-system,"system-ui","Segoe UI","Noto Sans",sans-serif;color:var(--ink);background:var(--bg)}
+  .wrap{max-width:1080px;margin:0 auto;padding:24px}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--ink2);font-size:12px;margin-bottom:20px}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .card{border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:14px}
+  .card h3{margin:0 0 8px;font-size:12px;color:var(--ink2);font-weight:600}
+  .kpi{font-size:20px;font-weight:650}
+  .kpi small{font-size:11px;color:var(--ink3);font-weight:400;margin-left:6px}
+  .span2{grid-column:span 2}
+  .chart{height:150px;display:flex;align-items:flex-end;gap:6px;padding-top:8px}
+  .bar{flex:1;background:var(--chart-1);border-radius:3px 3px 0 0;opacity:.85}
+  .bar.out{background:var(--chart-2)}
+  .spark{height:150px;position:relative}
+  .spark svg{width:100%;height:100%}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--border)}
+  th{color:var(--ink2);font-weight:600;font-size:11px}
+  .badge{display:inline-block;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600}
+  .ok{background:var(--brand-soft);color:var(--brand)}
+  .err{background:#FEE2E2;color:var(--danger)}
+  .warn{background:#FEF3C7;color:var(--warn)}
+  .sec{margin-top:28px}
+  .sec h2{font-size:16px;margin:0 0 12px}
+  /* Trace 时间线 */
+  .tl{border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .row{display:flex;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);align-items:flex-start}
+  .row:last-child{border-bottom:0}
+  .dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex:none}
+  .m{background:var(--chart-1)} .t{background:var(--chart-2)} .th{background:var(--chart-4)} .h{background:var(--warn)} .end{background:var(--ink3)}
+  .row .main{flex:1;min-width:0}
+  .row .t1{font-size:12px;font-weight:600}
+  .row .t2{font-size:11px;color:var(--ink2);margin-top:2px}
+  .row .meta{font-size:11px;color:var(--ink3);white-space:nowrap}
+  .acc{margin-top:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface-muted)}
+  .acc summary{cursor:pointer;padding:6px 8px;font-size:11px;color:var(--ink2)}
+  .acc pre{margin:0;padding:8px;font-size:11px;overflow:auto;max-height:160px}
+  .note{font-size:11px;color:var(--ink3);margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>观测（Agent 工作区子页）</h1>
+  <div class="sub">原型 v1 · 09-18 · 图表基线=shadcn Charts（ChartContainer+Recharts v3，--chart-* 四主题变量）· 数据源=run_trace_event rollup</div>
+
+  <div class="grid">
+    <div class="card"><h3>今日 token</h3><div class="kpi">1.54M <small>输入 1.2M / 输出 340K</small></div></div>
+    <div class="card"><h3>今日成本</h3><div class="kpi">¥ 12.40 <small>单价表 model_price</small></div></div>
+    <div class="card"><h3>错误率(7d)</h3><div class="kpi">2.1% <small>ERROR / runs</small></div></div>
+    <div class="card"><h3>超限(7d)</h3><div class="kpi">3 <small>EXCEED_MAX_ITERS</small></div></div>
+
+    <div class="card span2">
+      <h3>token 趋势（7d · 双序列 · ChartContainer+AreaChart·accessibilityLayer）</h3>
+      <div class="spark">
+        <svg viewBox="0 0 300 100" preserveAspectRatio="none">
+          <polyline fill="none" stroke="var(--chart-1)" stroke-width="2" points="0,70 50,60 100,45 150,55 200,30 250,38 300,22"/>
+          <polyline fill="none" stroke="var(--chart-2)" stroke-width="2" points="0,88 50,84 100,80 150,82 200,74 250,78 300,70"/>
+        </svg>
+      </div>
+      <div class="note">— 输入 tokens　— 输出 tokens　· ChartTooltipContent 显示日值与缓存命中</div>
+    </div>
+    <div class="card span2">
+      <h3>日成本（7d · BarChart stacked by model_key）</h3>
+      <div class="chart">
+        <div class="bar" style="height:40%"></div><div class="bar" style="height:55%"></div>
+        <div class="bar" style="height:35%"></div><div class="bar" style="height:70%"></div>
+        <div class="bar" style="height:50%"></div><div class="bar" style="height:85%"></div>
+        <div class="bar" style="height:62%"></div>
+      </div>
+      <div class="note">ChartLegendContent 按 model_key 图例；hover 显示分项成本</div>
+    </div>
+
+    <div class="card" style="grid-column:span 4">
+      <h3>run 明细（shadcn Table · 跳转 Trace tab）</h3>
+      <table>
+        <tr><th>run</th><th>触发</th><th>模型</th><th>tokens(in/out)</th><th>时长</th><th>结局</th><th></th></tr>
+        <tr><td>run 8f3a…</td><td>对话</td><td>qwen3.8-max</td><td>82K / 6.1K</td><td>41s</td><td><span class="badge ok">COMPLETED</span></td><td><a href="#trace">Trace</a></td></tr>
+        <tr><td>run 51c2…</td><td>自动任务</td><td>qwen3.8-max</td><td>120K / 9.4K</td><td>96s</td><td><span class="badge warn">EXCEED_MAX_ITERS</span></td><td><a href="#trace">Trace</a></td></tr>
+        <tr><td>run c9d0…</td><td>群会话</td><td>qwen3.8-max</td><td>64K / 4.2K</td><td>38s</td><td><span class="badge err">ERROR</span></td><td><a href="#trace">Trace</a></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec" id="trace">
+    <h2>运行详情 · Trace tab（时间线）</h2>
+    <div class="note" style="margin-bottom:10px">事件源=run_trace_event（bus replay log 落库）· tool args/result 脱敏+4KB 截断 · thinking 折叠复用 ThinkingCollapse</div>
+    <div class="tl">
+      <div class="row"><span class="dot m"></span><div class="main"><div class="t1">MODEL_CALL #1</div><div class="t2">qwen3.8-max · 输入 12,481 tokens（含系统提示+规则注入）· 输出 214</div></div><div class="meta">1.8s</div></div>
+      <div class="row"><span class="dot t"></span><div class="main"><div class="t1">TOOL_CALL knowledge_search</div>
+        <div class="acc"><summary>args / result（脱敏）</summary><pre>{"query":"宽带故障受理联系时限"}
+→ {"articles":[{"id":"KB-BROADBAND-RESPONSE-V1","content":"…48小时内联系客户…"}]}</pre></div></div><div class="meta">0.4s</div></div>
+      <div class="row"><span class="dot th"></span><div class="main"><div class="t1">THINKING（折叠）</div><div class="t2">「先核验知识条目再判 knowledge_accuracy…」</div></div><div class="meta">—</div></div>
+      <div class="row"><span class="dot m"></span><div class="main"><div class="t1">MODEL_CALL #2</div><div class="t2">输入 13,102 · 输出 486 · 缓存命中 11,904</div></div><div class="meta">2.6s</div></div>
+      <div class="row"><span class="dot h"></span><div class="main"><div class="t1">HITL REQUIRE_USER_CONFIRM</div><div class="t2">Bash `rm -rf /tmp/x` → 用户拒绝 → DENIED 结果回模型</div></div><div class="meta">等待 12s</div></div>
+      <div class="row"><span class="dot end"></span><div class="main"><div class="t1">REPLY_END</div><div class="t2">finished_reason=COMPLETED · 总 tokens 26,789 · 成本 ¥0.21</div></div><div class="meta">41s</div></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
