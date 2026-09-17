@@ -180,11 +180,12 @@ export function PromptInput({
       )}
     >
       {/* 09-17（用户指认）：@ 提及彩色字——镜像层转为可见高亮 overlay，
-          textarea 文字透明、光标保留；滚动同步。兼作 autosize 测量层。 */}
+          textarea 文字透明、光标保留；滚动同步。兼作 autosize 测量层。
+          top-2 对齐 form p-2 流内 textarea 顶边（top-0 会高 8px 致光标错行）。 */}
       <div
         ref={measurementRef}
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-2 top-0 overflow-hidden whitespace-pre-wrap px-2 pt-1.5 text-sm leading-6 [overflow-wrap:break-word]"
+        className="pointer-events-none absolute inset-x-2 top-2 overflow-hidden whitespace-pre-wrap px-2 pt-1.5 text-sm leading-6 [overflow-wrap:break-word]"
       >
         {splitMentions(currentValue)}
         {"​"}
