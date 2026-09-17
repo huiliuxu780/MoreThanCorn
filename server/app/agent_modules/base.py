@@ -113,13 +113,19 @@ class AgentModule:
         return [{"code": "SPEC_INVALID", "path": list(e.absolute_path), "message": e.message}
                 for e in errors]
 
-    def build_agent_spec(self, instance_config: dict | None) -> dict:
+    def build_agent_spec(self, instance_config: dict | None,
+                         rules_criteria: list | None = None) -> dict:
         """Module 默认 Spec + Agent 实例配置（模型/用途覆盖）→ 完整可冻结 AgentSpec。
 
         实例可覆盖 instructions 尾部补充与 model；criteria/tools/master_data 属于
-        Module 版本资产，不允许实例改写（防止同 Module 版本语义漂移）。"""
+        Module 版本资产，不允许实例改写（防止同 Module 版本语义漂移）。
+        09-17 规则 Skill 化：rules_criteria（来自挂载规则 Skill 的 criteria.json）
+        覆盖 manifest 默认 criteria——规则变更不再需要发版本。
+        """
         cfg = instance_config or {}
         spec = copy.deepcopy(self.default_spec)
+        if rules_criteria:
+            spec["criteria"] = copy.deepcopy(rules_criteria)
         model_ref = cfg.get("modelRef") or {}
         # 09-16 修键位漂移：前端实例配置写 modelRef.params / config.spec.purpose，
         # 旧代码只读 parameters / 顶层 purpose → 业务定位与思考参数从未进冻结 Spec。

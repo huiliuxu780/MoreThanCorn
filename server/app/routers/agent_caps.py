@@ -291,6 +291,21 @@ async def upload_skill_file(file: UploadFile, agentIds: str = Form(""),
         raise HTTPException(413, "文件上限 5MB")
     fn = (file.filename or "").lower()
     text = ""
+    # 09-17 规则 Skill 化：zip/tgz 伴生结构化文件白名单（criteria.json/contract.json/
+    # masterdata/*.json）入 extra.files；纯散文包不再能承载领域规则。
+    companions: dict[str, str] = {}
+    COMPANION_RE = re.compile(r"(^|/)(criteria\.json|contract\.json|masterdata/[^/]+\.json)$")
+
+    def _take_companion(path: str, data: bytes) -> None:
+        norm = path.lstrip("./")
+        if not COMPANION_RE.search(norm):
+            return
+        if len(data) > 512 * 1024 or sum(len(v) for v in companions.values()) + len(data) > 1024 * 1024:
+            raise HTTPException(413, "伴生结构化文件超限（单 512KB / 总 1MB）")
+        parts = [p for p in norm.split("/") if p]
+        key = "/".join(parts[-2:]) if len(parts) >= 2 and parts[-2] == "masterdata" else parts[-1]
+        companions[key] = data.decode("utf-8", "replace")
+
     if fn.endswith(".md"):
         text = raw.decode("utf-8", "replace")
     elif fn.endswith(".zip"):
@@ -299,6 +314,9 @@ async def upload_skill_file(file: UploadFile, agentIds: str = Form(""),
             if not cand:
                 raise HTTPException(422, {"code": "SKILL_MD_MISSING", "message": "压缩包必须包含 SKILL.md 文件"})
             text = z.read(cand[0]).decode("utf-8", "replace")
+            for n in z.namelist():
+                if z.getinfo(n).file_size:
+                    _take_companion(n, z.read(n))
     elif fn.endswith((".tgz", ".tar.gz")):
         with tarfile.open(fileobj=io.BytesIO(raw), mode="r:*") as tz:
             cand = [m for m in tz.getmembers() if m.isfile() and m.name.rstrip("/").endswith("SKILL.md")]
@@ -306,6 +324,11 @@ async def upload_skill_file(file: UploadFile, agentIds: str = Form(""),
                 raise HTTPException(422, {"code": "SKILL_MD_MISSING", "message": "压缩包必须包含 SKILL.md 文件"})
             f = tz.extractfile(cand[0])
             text = f.read().decode("utf-8", "replace") if f else ""
+            for m in tz.getmembers():
+                if m.isfile():
+                    ef = tz.extractfile(m)
+                    if ef is not None:
+                        _take_companion(m.name, ef.read())
     else:
         raise HTTPException(422, {"code": "SKILL_FILE_TYPE", "message": "仅支持 .md 或 .zip/.tgz/.tar.gz"})
     name, desc, category = "", "", ""
@@ -326,8 +349,13 @@ async def upload_skill_file(file: UploadFile, agentIds: str = Form(""),
                 category = v
     if not name:
         raise HTTPException(422, {"code": "FRONTMATTER_NAME", "message": ".md 需 YAML frontmatter 定义 name"})
+    # 09-17：同名 Skill 再上传版本号递增（人读）；复现凭据仍以 content_digest 为准
+    prev = (db.query(SkillResource).filter_by(name=name)
+            .order_by(SkillResource.version.desc()).first())
     skill = SkillResource(name=name, description=desc, content=text, source="upload",
-                          status="ready", category=category)
+                          status="ready", category=category,
+                          version=(prev.version if prev else 0) + 1,
+                          extra={"files": companions} if companions else {})
     db.add(skill)
     db.flush()
     # 换底（2026-09-09）：上传只入平台 Skill 库；实际挂载归 AgentScope Workspace

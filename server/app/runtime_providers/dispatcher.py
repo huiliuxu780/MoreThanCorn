@@ -54,7 +54,10 @@ def build_runtime_request(db: Session, run: Run, *, timeout_seconds: int | None 
         # 草稿预览：无冻结版本，经 Module 现算 Spec（写型业务工具禁用属 R3 策略执行）
         from ..agent_modules import registry as module_registry
         mod = module_registry.get(agent.module_key, agent.module_version)
-        spec_dict = mod.build_agent_spec(agent.config)
+        # 09-17 规则 Skill 化：草稿预览用当前规则（无需发版本）
+        from .. import rules_skills
+        _rules, _ref = rules_skills.resolve_rules(db, agent)
+        spec_dict = mod.build_agent_spec(agent.config, _rules)
         model = spec_dict.get("model") or {}
         spec = AgentExecutionSpec(
             id=agent.id, version="draft", instructions=spec_dict.get("instructions") or "",

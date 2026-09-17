@@ -59,6 +59,7 @@ async def structured_run_core(
     text: str,
     schema,
     timeout_seconds: float = 300.0,
+    rules_context: str | None = None,
 ):
     """官方原语组合的结构化执行核心（P0-1/P0-2 复用）：
     官方 get_model/get_toolkit/RAGMiddleware 装配 + reply_stream(structured_schema)
@@ -121,6 +122,10 @@ async def structured_run_core(
         react_config=agent_record.data.react_config,
         context_config=agent_record.data.context_config,
     )
+    if rules_context:
+        # 09-17 规则 Skill 化：当前规则段以 SystemMsg 注入本次执行上下文
+        from agentscope.message import SystemMsg as _RulesSysMsg
+        agent.state.context.append(_RulesSysMsg(name="system", content=rules_context))
     input_msg = UserMsg(name=user_id, content=[TextBlock(type="text", text=text)])
     await storage.upsert_message(user_id, session.id, input_msg)
     final = None
@@ -170,6 +175,8 @@ class StructuredRunBody(BaseModel):
     input_text: str
     schema: dict[str, Any]
     timeout_seconds: float = 300.0
+    # 09-17 规则 Skill 化：平台 run 时解析的当前规则段（SystemMsg 注入，不污染用户输入）
+    rules_context: str | None = None
 
 
 async def _new_session(
@@ -288,6 +295,7 @@ async def structured_run(
         text=body.input_text,
         schema=schema_model,
         timeout_seconds=body.timeout_seconds,
+        rules_context=body.rules_context,
     )
     if final is None:
         raise HTTPException(500, "structured run produced no final message")

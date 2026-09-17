@@ -2,6 +2,7 @@ moduleKey: quality-analysis
 moduleVersion: 1.0.0
 displayName: 智能质检
 description: 对脱敏服务热线通话执行事实核验（辱骂/知识准确性/承诺履约）并输出结构化质检结果。
+requiredRulesSkill: quality-rules
 riskClass: read-only
 specSchema: spec.schema.json
 inputSchema: schemas/call_record_input.schema.json

@@ -752,6 +752,15 @@ def start_session(
         agentflow_node_run_id=agentflow_node_run_id,
         conversation_key=conversation_key,
     )
+    # 09-17 规则 Skill 化：开会话冻结规则资产引用（chat 绳；fail-closed 拒无规则裸跑）
+    if agent.module_key:
+        from . import rules_skills
+        try:
+            _rules, _ref = rules_skills.resolve_rules(db, agent)
+        except rules_skills.RulesSkillMissing as exc:
+            raise ValueError(f"{exc.code}：{exc}") from exc
+        if _ref:
+            row.asset_refs = {"rules_skill": _ref}
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -924,6 +933,21 @@ def run_structured(
         environment=environment, **session_kwargs
     )
     runtime_agent_id = index.runtime_agent_id or _runtime_agent_id
+    # 09-17 规则 Skill 化：run 时解析当前规则（无需发版本）+ 冻结资产引用进 session 索引
+    rules_context = None
+    if agent.module_key:
+        from . import rules_skills
+        try:
+            rules, ref = rules_skills.resolve_rules(db, agent)
+        except rules_skills.RulesSkillMissing as exc:
+            raise ValueError(f"{exc.code}：{exc}") from exc
+        # 09-17：run 时规则注入默认 off（金样本对照未证收益，且当日环境扰动未排除）；
+        # 阶段二环境稳定后做干净 A/B 再定默认值。MTC_RULES_INJECT=on 可开。
+        if rules and __import__("os").environ.get("MTC_RULES_INJECT", "off") == "on":
+            rules_context = rules_skills.criteria_prompt_block(rules)
+        if ref:
+            index.asset_refs = {"rules_skill": ref}
+            db.commit()
     binding = rel.runtime_binding_snapshot or {}
     if binding.get("frozen_exec_timeout_seconds"):
         timeout_seconds = float(binding["frozen_exec_timeout_seconds"])
@@ -934,5 +958,6 @@ def run_structured(
         schema,
         session_id=index.session_id,
         timeout_seconds=timeout_seconds,
+        rules_context=rules_context,
     )
     return index, result

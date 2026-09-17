@@ -332,6 +332,15 @@ def _run_native_agent(db: Session, agent: Agent, run_input: dict, trigger: str,
         raise RunError("NO_RELEASED_VERSION：发布版本记录丢失，请重新发布")
     run = Run(id=run_id, agent_id=agent.id, trigger=trigger, input=run_input or {},
               agent_version_id=ver.id, definition_source="version")
+    # 09-17 规则 Skill 化：开工冻结规则资产引用（「这单按哪版规则跑」可查）；fail-closed
+    if agent.module_key:
+        from . import rules_skills
+        try:
+            _rules, _ref = rules_skills.resolve_rules(db, agent)
+        except rules_skills.RulesSkillMissing as exc:
+            raise RunError(f"{exc.code}：{exc}") from exc
+        if _ref:
+            run.asset_refs = {"rules_skill": _ref}
     db.add(run)
     db.commit()
     emit(db, run.id, "agent_started",

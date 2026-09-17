@@ -2,6 +2,7 @@ moduleKey: business-analysis
 moduleVersion: 1.0.0
 displayName: 业务分析
 description: 对业务数据进行只读分析：明确指标口径、查询数据源、确定性计算、交叉核验并带引用输出结论。
+requiredRulesSkill: business-rules
 riskClass: read-only
 specSchema: spec.schema.json
 inputSchema: schemas/input.schema.json

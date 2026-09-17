@@ -69,6 +69,16 @@ def create_agent(payload: dict, db: Session = Depends(get_db),
                           "modelRef": payload.get("modelRef") or {}})
     db.add(agent)
     db.flush()
+    # 09-17 规则 Skill 化：领域 Agent 创建即自动挂载必需规则 Skill 当前 ready
+    # 版本（产品默认行为；fail-closed 依赖此挂载，换规则=上传新版本后重挂/新 Agent 自动新版）
+    from .. import rules_skills
+    from ..models import AgentSkill, SkillResource as _SR
+    _rname = rules_skills.required_rules_skill_name(agent)
+    if _rname:
+        _skill = (db.query(_SR).filter_by(name=_rname, status="ready")
+                  .order_by(_SR.version.desc()).first())
+        if _skill:
+            db.add(AgentSkill(agent_id=agent.id, skill_id=_skill.id))
     from .admin import audit
     audit(db, "质量管理员", "agent.module.create", "agent", agent.id,
           {"moduleKey": mod.key, "moduleVersion": mod.version})

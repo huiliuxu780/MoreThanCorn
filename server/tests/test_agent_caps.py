@@ -80,7 +80,9 @@ def test_memory_versions_and_timeline():
     # 换底：skill_installed 事件随挂载退役消失；timeline 仅记忆事件
     tl = client.get(f"/api/agents/{aid}/memory/timeline").json()["items"]
     kinds = {e["type"] for e in tl}
-    assert kinds == {"memory_updated"}
+    # 09-17 规则 Skill 化：module Agent 创建即自动挂载规则 Skill，
+    # 时间线多一条 skill_installed 属真实行为
+    assert kinds == {"memory_updated", "skill_installed"}
 
 
 def test_chat_turn_retired_410_after_cutover():

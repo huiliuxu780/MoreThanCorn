@@ -204,6 +204,7 @@ def structured_run(
     chat_model_config: dict | None = None,
     session_id: str | None = None,
     timeout_seconds: float = 300.0,
+    rules_context: str | None = None,
 ) -> dict:
     with _client(user_id, timeout=timeout_seconds + 30) as c:
         return _raise(
@@ -215,6 +216,7 @@ def structured_run(
                     "chat_model_config": chat_model_config,
                     "input_text": input_text,
                     "schema": schema,
+                    "rules_context": rules_context,
                     "timeout_seconds": timeout_seconds,
                 },
             )

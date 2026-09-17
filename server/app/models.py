@@ -263,6 +263,8 @@ class Run(Base):
     task_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     task_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     interaction_ref: Mapped[str] = mapped_column(String(128), default="", index=True)
+    # 09-17 规则 Skill 化：开工时冻结的规则资产引用 {rules_skill:{skill_id,name,version,content_digest}}
+    asset_refs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     attempt: Mapped[int] = mapped_column(Integer, default=1)
     definition_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     rule_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -439,6 +441,8 @@ class SkillResource(Base):
     content: Mapped[str] = mapped_column(Text, default="")
     source: Mapped[str] = mapped_column(String(16), default="market")  # market|upload
     status: Mapped[str] = mapped_column(String(16), default="ready")
+    # 09-17 规则 Skill 化：同名再上传递增的人读版本号（复现凭据仍以 content_digest 为准）
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     extra: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -1209,6 +1213,8 @@ class AgentSessionIndex(Base):
     # 09-16 对话任务治理（用户指认 a/f）：LLM 短总结标题 + 置顶（列表置顶优先排序）
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
     pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 09-17 规则 Skill 化：开会话时冻结的规则资产引用（同 run.asset_refs 形态）
+    asset_refs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

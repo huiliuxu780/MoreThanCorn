@@ -30,8 +30,14 @@ def build_definition(db: Session, agent: Agent) -> dict:
     if agent.module_key:
         from .agent_modules import registry as module_registry
         mod = module_registry.get(agent.module_key, agent.module_version)
+        # 09-17 规则 Skill 化：发布时解析当前规则 Skill 覆盖 manifest 默认 criteria
+        from . import rules_skills
         try:
-            spec = mod.build_agent_spec(cfg)
+            _rules, _ref = rules_skills.resolve_rules(db, agent)
+        except rules_skills.RulesSkillMissing as exc:
+            raise ValueError(f"{exc.code}：{exc}") from exc
+        try:
+            spec = mod.build_agent_spec(cfg, _rules)
         except ValueError as exc:
             raise ValueError(f"AGENT_SPEC_INVALID：{exc}") from exc
         return {

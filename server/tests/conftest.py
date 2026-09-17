@@ -13,6 +13,7 @@
 ``TEST_DB_NAME``，不得再硬编码 wf_test。
 """
 import os
+import pathlib
 import uuid
 
 import pytest
@@ -179,6 +180,19 @@ def pytest_configure(config):
         "markers",
         "live_runtime: 允许打真实 8301/8120 运行时（豁免默认 hermetic 拦截）",
     )
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _rules_skills_seeded():
+    """09-17 规则 Skill 化：测试库预置三领域规则 Skill（fail-closed 闸门的前提）。"""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "seed_rules_skills",
+        pathlib.Path(__file__).resolve().parents[1] / "scripts" / "seed_rules_skills.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mod.main()
+    yield
 
 
 @pytest.fixture(autouse=True)
