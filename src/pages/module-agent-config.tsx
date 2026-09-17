@@ -22,6 +22,7 @@ import { toast } from "sonner"
 import { AgentVersionDiffDialog } from "@/components/agent-version-diff"
 import { ModulePublishDialog } from "@/components/module-publish-dialog"
 import { useAgentVersionState } from "@/components/agent-publish-dialog"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -30,7 +31,6 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { agentApi, wfApi, type AgentInfo, type AgentVersionInfo } from "@/services/wf-api"
 
-const INK = "#1F2329"; const INK2 = "#5A6472"; const INK3 = "#9AA3B2"; const CARD = "#E5E8EE"
 
 interface ModuleMeta { key: string; version: string; displayName: string; description: string; riskClass: string; providers: string[]; logicalTools: string[]; criteria: string[]; inputSchema?: { required?: string[]; properties?: Record<string, unknown> }; outputSchema?: Record<string, unknown> }
 interface ProviderOpt { id: string; name: string; kind: string; status: string; healthStatus: string | null }
@@ -39,11 +39,11 @@ interface RunResult { status: string; output?: Record<string, unknown>; usage?: 
 
 function Card({ no, title, children, right }: { no: number; title: string; children: React.ReactNode; right?: React.ReactNode }) {
   return (
-    <div className="rounded-xl border bg-white p-4" style={{ borderColor: CARD }}>
+    <div className="rounded-lg border bg-surface p-4" style={{ borderColor: "var(--border)" }}>
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="flex size-5 items-center justify-center rounded-full border text-[10px]" style={{ borderColor: CARD, color: INK2 }}>{no}</span>
-          <span className="text-[13px] font-semibold" style={{ color: INK }}>{title}</span>
+          <span className="flex size-5 items-center justify-center rounded-md bg-(--surface-muted) text-[11px] text-(--text-secondary)" style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}>{no}</span>
+          <span className="text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}>{title}</span>
         </div>
         {right}
       </div>
@@ -162,20 +162,20 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
         <Button size="sm" onClick={() => setPublishOpen(true)}>发布 ▾</Button>
       </div>
       {/* R8-UI D-1：Draft vs Last-published 对照卡 */}
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-white px-4 py-2" style={{ borderColor: CARD }}>
-        <span className="truncate text-[11px]" style={{ color: INK3 }}>{desc || meta?.description || ""}</span>
-        <div className="flex shrink-0 items-center gap-5 rounded-lg border px-3 py-1.5" style={{ borderColor: CARD }}>
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-surface px-4 py-2" style={{ borderColor: "var(--border)" }}>
+        <span className="truncate text-[11px]" style={{ color: "var(--text-tertiary)" }}>{desc || meta?.description || ""}</span>
+        <div className="flex shrink-0 items-center gap-5 rounded-lg border px-3 py-1.5" style={{ borderColor: "var(--border)" }}>
           <div>
-            <b className="flex items-center gap-1.5 text-[12px]" style={{ color: INK }}>
-              <span className="inline-block size-1.5 rounded-full bg-amber-400" />草稿版本
+            <b className="flex items-center gap-1.5 text-[12px]" style={{ color: "var(--text-primary)" }}>
+              <span className="inline-block size-1.5 rounded-full bg-(--status-warning)" />草稿版本
             </b>
-            <small className="block text-[10px]" style={{ color: INK3 }}>rev {agent.configRevision}</small>
+            <small className="block text-[10px]" style={{ color: "var(--text-tertiary)" }}>rev {agent.configRevision}</small>
           </div>
           <div>
-            <b className="flex items-center gap-1.5 text-[12px]" style={{ color: INK }}>
-              <span className="inline-block size-1.5 rounded-full bg-emerald-400" />最近发布
+            <b className="flex items-center gap-1.5 text-[12px]" style={{ color: "var(--text-primary)" }}>
+              <span className="inline-block size-1.5 rounded-full bg-(--status-success)" />最近发布
             </b>
-            <small className="block text-[10px]" style={{ color: INK3 }}>
+            <small className="block text-[10px]" style={{ color: "var(--text-tertiary)" }}>
               {vs.latest ? `V${vs.latest.versionNo} · ${vs.latest.createdAt.slice(0, 10)}` : "（无）"}
             </small>
           </div>
@@ -183,7 +183,7 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
         </div>
       </div>
       {/* 09-07：运行观测/版本/效果评测拆为工作区子页（board/governance），此处仅配置表单+测试面板 */}
-      <div className="min-h-0 flex-1 overflow-y-auto p-4" style={{ background: "#F7F8FA" }}>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4" style={{ background: "var(--surface-muted)" }}>
           <div className="flex gap-4">
             <div className="flex min-w-0 flex-1 flex-col gap-4">
               <Card no={1} title="Agent 身份">
@@ -213,12 +213,12 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
                 <div className="flex items-center gap-3">
                   <Label className="w-16 text-xs">模型</Label>
                   <Select value={modelId || undefined} onValueChange={setModelId}>
-                    <SelectTrigger className="h-8 w-56 bg-white"><SelectValue placeholder="选择模型" /></SelectTrigger>
+                    <SelectTrigger className="h-8 w-56"><SelectValue placeholder="选择模型" /></SelectTrigger>
                     <SelectContent>
                       {models.map((m, i) => <SelectItem key={`${m.modelKey}-${i}`} value={m.modelKey}>{m.modelKey}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <span className="text-[11px]" style={{ color: INK3 }}>模型随版本冻结；凭据由平台 Connection 注入</span>
+                  <span className="text-[11px]" style={{ color: "var(--text-tertiary)" }}>模型随版本冻结；凭据由平台 Connection 注入</span>
                 </div>
                 <div className="flex items-center gap-3 pt-3">
                   <Label className="w-16 text-xs">深度思考</Label>
@@ -235,7 +235,7 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
                       onChange={(e) => setThinkingBudget(e.target.value === "" ? "" : Number(e.target.value))}
                     />
                   )}
-                  <span className="text-[11px]" style={{ color: INK3 }}>
+                  <span className="text-[11px]" style={{ color: "var(--text-tertiary)" }}>
                     开启后回复携带推理过程；发布时冻结进版本快照，需重新发布生效
                   </span>
                 </div>
@@ -258,11 +258,11 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
                 </p>
               </Card>
               <Card no={4} title="指令（Module 资产 · 只读）"
-                right={<span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">只读</span>}>
-                <div className="mb-2 rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
+                right={<span className="rounded bg-(--status-warning-soft) px-1.5 py-0.5 text-[10px] text-(--status-warning-text)">只读</span>}>
+                <div className="mb-2 rounded bg-(--status-warning-soft) px-2 py-1 text-[11px] text-(--status-warning-text)">
                   criteria/工具/主数据由 Module 版本冻结；实例仅可追加「业务定位」。
                 </div>
-                <pre className="max-h-40 overflow-auto rounded border p-2 text-[11px]" style={{ borderColor: CARD, color: INK2 }}>
+                <pre className="max-h-40 overflow-auto rounded border p-2 text-[11px]" style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}>
                   {meta ? meta.criteria.map((c) => `- ${c}`).join("\n") : "（Module 未加载）"}
                 </pre>
                 <div className="mt-2 space-y-1">
@@ -270,7 +270,7 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
                   <Textarea value={purpose} placeholder="如：面向售后退款场景" onChange={(e) => setPurpose(e.target.value)} />
                 </div>
               </Card>
-              <Card no={4} title="资源（Module 冻结 · 只读）">
+              <Card no={5} title="资源（Module 冻结 · 只读）">
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { t: "工具", d: `${(meta?.logicalTools ?? []).length} 个逻辑工具` },
@@ -278,10 +278,10 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
                     { t: "输出 Schema", d: meta?.outputSchema ? "已冻结" : "—" },
                     { t: "Provider 实现", d: (meta?.providers ?? []).join(" / ") || "—" },
                   ].map((x) => (
-                    <div key={x.t} className="flex items-center justify-between rounded-lg border px-3 py-2" style={{ borderColor: CARD }}>
-                      <div><b className="block text-[12px]" style={{ color: INK }}>{x.t}</b>
-                        <small className="block text-[10px]" style={{ color: INK3 }}>{x.d}</small></div>
-                      <span className="text-[10px]" style={{ color: "#16A34A" }}>已冻结</span>
+                    <div key={x.t} className="flex items-center justify-between rounded-lg border px-3 py-2" style={{ borderColor: "var(--border)" }}>
+                      <div><b className="block text-[12px]" style={{ color: "var(--text-primary)" }}>{x.t}</b>
+                        <small className="block text-[10px]" style={{ color: "var(--text-tertiary)" }}>{x.d}</small></div>
+                      <Badge variant="outline" className="text-[10px]">已冻结</Badge>
                     </div>
                   ))}
                 </div>
@@ -289,14 +289,14 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
             </div>
             {/* 右：测试面板 */}
             <div className="w-[360px] shrink-0">
-              <div className="rounded-xl border bg-white" style={{ borderColor: CARD }}>
-                <div className="border-b px-3 py-2 text-[13px] font-semibold" style={{ borderColor: CARD, color: INK }}>测试 Agent</div>
+              <div className="rounded-lg border bg-surface" style={{ borderColor: "var(--border)" }}>
+                <div className="border-b px-3 py-2 text-[13px] font-semibold" style={{ borderColor: "var(--border)", color: "var(--text-primary)" }}>测试 Agent</div>
                 <div className="space-y-3 p-3">
                   {hasRelease ? (
                     <div className="flex items-center gap-2">
                       <Label className="text-xs">环境</Label>
                       <Select value={envSel || undefined} onValueChange={setEnvSel}>
-                        <SelectTrigger className="h-8 bg-white"><SelectValue placeholder="选择 Release 绑定" /></SelectTrigger>
+                        <SelectTrigger className="h-8"><SelectValue placeholder="选择 Release 绑定" /></SelectTrigger>
                         <SelectContent>
                           {activeReleases.map((r) => (
                             <SelectItem key={r.releaseId} value={`${r.environment}:${r.versionNo}`}>
@@ -310,41 +310,41 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
                     <div className="flex items-center gap-2">
                       <Label className="text-xs">Provider</Label>
                       <Select value={providerId} onValueChange={setProviderId}>
-                        <SelectTrigger className="h-8 bg-white"><SelectValue placeholder="草稿预览须选择" /></SelectTrigger>
+                        <SelectTrigger className="h-8"><SelectValue placeholder="草稿预览须选择" /></SelectTrigger>
                         <SelectContent>{providers.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}（{p.kind}）</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
                   )}
                   <Textarea value={sample} onChange={(e) => setSample(e.target.value)} className="min-h-20 font-mono text-[11px]" />
-                  <Button size="sm" className="w-full bg-black text-white hover:bg-neutral-800" disabled={running} onClick={runTest}>
+                  <Button size="sm" className="w-full" disabled={running} onClick={runTest}>
                     {running ? "运行中…" : "运行"}
                   </Button>
                   {result && (
-                    <div className="space-y-2 rounded border p-2 text-[11px]" style={{ borderColor: CARD }}>
+                    <div className="space-y-2 rounded border p-2 text-[11px]" style={{ borderColor: "var(--border)" }}>
                       <div className="flex items-center gap-2">状态：<b>{result.status}</b>
                         {result.runId && (
                           <Button variant="outline" size="sm" className="ml-auto h-6 text-[10px]"
                             onClick={() => navigate(`/agents/${agent.id}/runs/${result.runId}`)}>查看 Run 详情 ↗</Button>
                         )}
                       </div>
-                      {result.output && <pre className="max-h-40 overflow-auto text-[10px]" style={{ color: INK2 }}>{JSON.stringify(result.output, null, 1)}</pre>}
+                      {result.output && <pre className="max-h-40 overflow-auto text-[10px]" style={{ color: "var(--text-secondary)" }}>{JSON.stringify(result.output, null, 1)}</pre>}
                       {result.usage && (
-                        <div style={{ color: INK3 }}>
+                        <div style={{ color: "var(--text-tertiary)" }}>
                           {String((result.usage as { total?: number }).total ?? "")} tokens
                           · 模型 {String((result.usage as { modelCalls?: number }).modelCalls ?? "—")} 次
                           · 工具 {String((result.usage as { toolCalls?: number }).toolCalls ?? "—")} 次
                         </div>
                       )}
                       {(result.calls?.length ?? 0) > 0 && (
-                        <div className="rounded border" style={{ borderColor: CARD }}>
-                          <button className="flex w-full items-center gap-1 px-2 py-1 text-[11px]" style={{ color: INK2 }}
+                        <div className="rounded border" style={{ borderColor: "var(--border)" }}>
+                          <button className="flex w-full items-center gap-1 px-2 py-1 text-[11px]" style={{ color: "var(--text-secondary)" }}
                             onClick={() => setCallsOpen((o) => !o)}>
                             工具调用（{result.calls!.length}）{callsOpen ? "⌃" : "⌄"}
                           </button>
                           {callsOpen && result.calls!.map((c, i) => (
-                            <div key={i} className="flex items-center gap-2 border-t px-2 py-1" style={{ borderColor: CARD }}>
-                              <span style={{ color: "#16A34A" }}>✓</span>
-                              <span className="font-mono" style={{ color: INK2 }}>{c.targetId ?? c.kind}</span>
+                            <div key={i} className="flex items-center gap-2 border-t px-2 py-1" style={{ borderColor: "var(--border)" }}>
+                              <span style={{ color: "var(--status-success-text)" }}>✓</span>
+                              <span className="font-mono" style={{ color: "var(--text-secondary)" }}>{c.targetId ?? c.kind}</span>
                             </div>
                           ))}
                         </div>
