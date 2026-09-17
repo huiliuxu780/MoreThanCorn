@@ -70,3 +70,21 @@ run/会话开工解析+记账（asset_refs）+fail-closed。但领域 Agent 的*
 
 后端（表+迁移+registry DB 优先+template CRUD/发布+asset_refs.template_ref+通用投影双读）4–5 天；
 前端模板页 2 天；结果页切通用投影 1 天；测试+金样本回归 1–2 天。合计约 8–10 天，分两批交付。
+
+## 8. 09-18 端到端补全实录（用户指认「不要偷懒」后的自查结果）
+
+自查认账的四 corner（均已修）：
+1. Module logicalTools 从未进 release 冻结清单（resources_manifest 只看 agent.config）→ 模型物理调不到领域工具；
+2. golden harness 自 6e81200 起未拼通话文本（call_records）→ 需检出类样本恒 insufficient；
+3. golden 输入整包含期望答案/note（答案泄漏）→ 去除后真实水位 5-6/10；
+4. required_tools 从未校验（structured-run 不写 call_record，核对改扫 runtime 会话消息）。
+另修：platform_tool_exec enforce_egress import 漏落 NameError（工具执行恒失败）。
+
+现状（e2e9，qwen3.8-max 冻结）：装配链全通（freeze→manifest→runtime toolkit→fixture 执行 200），
+模型在用户输入级显式指令下会调工具；**系统级 SystemMsg 工具纪律在 structured 模式下被模型忽略**
+→ B 系列（需 knowledge_search）仍失败。真实水位 5-6/10 = 模型工具纪律问题，非装配缺口。
+
+下一步选项（待拍）：
+- (a) 规则+工具纪律编译进 release system_prompt（行为生效需随规则发版，与「免发版」承诺取舍）；
+- (b) 查 AgentScope 2.0.8 structured 模式与 ReAct 工具循环的次序语义（structured_output_grace_iters）；
+- (c) 领域级模型选择策略（工具遵循度作为选模型指标）。
