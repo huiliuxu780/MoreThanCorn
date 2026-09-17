@@ -33,7 +33,6 @@ import { agentApi, wfApi, type AgentInfo, type AgentVersionInfo } from "@/servic
 
 
 interface ModuleMeta { key: string; version: string; displayName: string; description: string; riskClass: string; providers: string[]; logicalTools: string[]; criteria: string[]; inputSchema?: { required?: string[]; properties?: Record<string, unknown> }; outputSchema?: Record<string, unknown> }
-interface ProviderOpt { id: string; name: string; kind: string; status: string; healthStatus: string | null }
 interface ReleaseOpt { releaseId: string; environment: string; status: string; canaryPercent: number; versionNo: number | null; createdAt: string }
 interface RunResult { status: string; output?: Record<string, unknown>; usage?: Record<string, unknown>; calls?: { kind: string; targetType?: string; targetId?: string }[] }
 
@@ -75,8 +74,6 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
   const [caps, setCaps] = useState<{ name: string; description: string }[]>(
     ((agent.config as { capabilities?: { name: string; description: string }[] }).capabilities) ?? [])
   // 测试面板：环境=Release 绑定；草稿=Provider 必选（R3 语义）
-  const [providers, setProviders] = useState<ProviderOpt[]>([])
-  const [providerId, setProviderId] = useState("")
   const [envSel, setEnvSel] = useState("")
   const [sample, setSample] = useState('{"sample_id": "S1", "dialogues": []}')
   const [running, setRunning] = useState(false)
@@ -89,14 +86,10 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
 
   useEffect(() => {
     agentApi.modules().then((r) => setMeta(r.items.find((m) => m.key === agent.moduleKey) ?? null)).catch(() => undefined)
-    agentApi.providers().then((r) => {
-      const en = r.items.filter((p) => p.status === "enabled")
-      setProviders(en); if (!providerId && en[0]) setProviderId(en[0].id)
-    }).catch(() => undefined)
     agentApi.versions(agent.id).then(setVersions).catch(() => undefined)
     agentApi.releases(agent.id).then((rs) => { setReleases(rs.filter((x) => x.status === "active")); }).catch(() => undefined)
     wfApi.models().then(setModels).catch(() => undefined)
-  }, [agent.id, agent.moduleKey])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [agent.id, agent.moduleKey])
 
   const activeReleases = releases.filter((r) => r.versionNo != null)
   const hasRelease = activeReleases.length > 0
@@ -132,8 +125,8 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
       if (!ver) { toast.error("该 Release 的版本不存在"); return }
       extra.versionId = ver.versionId
     } else {
-      if (!providerId) { toast.error("草稿预览须选择 Provider"); return }
-      extra.providerId = providerId
+      toast.error("无 active Release：运行只认发布快照，请先发布")
+      return
     }
     setRunning(true); setResult(null)
     try {
@@ -307,16 +300,14 @@ export default function ModuleAgentConfigPage({ agent }: { agent: AgentInfo }) {
                       </Select>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs">Provider</Label>
-                      <Select value={providerId} onValueChange={setProviderId}>
-                        <SelectTrigger className="h-8"><SelectValue placeholder="草稿预览须选择" /></SelectTrigger>
-                        <SelectContent>{providers.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}（{p.kind}）</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
+                    /* 09-16 死路径修复：执行只认 Release 快照（P0-04/P0-07），
+                       草稿+Provider 旧路径后端必 NO_RELEASED_VERSION → 明示禁跑 */
+                    <p className="rounded bg-(--status-warning-soft) px-2 py-1.5 text-[11px] text-(--status-warning-text)">
+                      该 Agent 尚无 active Release。运行只认发布快照（模型/工具/权限/技能均冻结自 Release），请先发布再测试。
+                    </p>
                   )}
                   <Textarea value={sample} onChange={(e) => setSample(e.target.value)} className="min-h-20 font-mono text-[11px]" />
-                  <Button size="sm" className="w-full" disabled={running} onClick={runTest}>
+                  <Button size="sm" className="w-full" disabled={running || !hasRelease} onClick={runTest}>
                     {running ? "运行中…" : "运行"}
                   </Button>
                   {result && (
