@@ -1,7 +1,7 @@
 # 阶段二设计稿：领域 Agent 去代码化（Module manifest → DB 模板）
 
 > 09-18 草稿，待用户审查拍板后动工。前置：阶段一（规则 Skill 化，commit 0da9485）已交付；
-> 金样本重基线 + 注入 A/B 结果回填本文 §5。
+> 金样本 harness 修复（7a686c7）后重基线与注入 A/B 已完成，见 §5。
 
 ## 0. 背景
 
@@ -50,9 +50,10 @@ run/会话开工解析+记账（asset_refs）+fail-closed。但领域 Agent 的*
 
 ## 5. 门禁与顺序（用户既有规矩：回归不绿不归档）
 
-1. 金样本重基线 20/20（注入 off，环境稳定日）← **进行中 09-18**；
-2. 注入 on 臂 20 样本 A/B：≥ 基线则默认 on（规则新版本对 prod 行为即时生效的承诺兑现），
-   否则默认 off 并记录原因；
+1. ✅ 金样本 harness 修复（call_record 拼输入，7a686c7）：修复前 5/10= harness 固有上限
+   （跨模型/跨天/跨臂稳定），修复后注入 off 臂 10/10；
+2. ✅ 注入 on 臂 10/10（与基线持平无退化）→ 按预注册规则默认 on
+   （MTC_RULES_INJECT=off 可回退）：规则 Skill 新版本对 prod run 行为即时生效；
 3. seed：三 manifest → DomainTemplate 行（version=1），registry 读 DB 优先、代码兜底；
 4. 质检结果页/看板切通用投影（双读期）；
 5. 金样本 20/20 + 全量门禁绿 → 代码 manifest/mapper/entry 归档（archive/，不删文件先冻）；

@@ -941,9 +941,10 @@ def run_structured(
             rules, ref = rules_skills.resolve_rules(db, agent)
         except rules_skills.RulesSkillMissing as exc:
             raise ValueError(f"{exc.code}：{exc}") from exc
-        # 09-17：run 时规则注入默认 off（金样本对照未证收益，且当日环境扰动未排除）；
-        # 阶段二环境稳定后做干净 A/B 再定默认值。MTC_RULES_INJECT=on 可开。
-        if rules and __import__("os").environ.get("MTC_RULES_INJECT", "off") == "on":
+        # 09-18 A/B（harness 修复后干净对照）：off 10/10 vs on 10/10 无退化 →
+        # 默认 on：规则 Skill 新版本对 prod run 行为即时生效（用户承诺兑现）；
+        # MTC_RULES_INJECT=off 可回退。
+        if rules and __import__("os").environ.get("MTC_RULES_INJECT", "on") == "on":
             rules_context = rules_skills.criteria_prompt_block(rules)
         if ref:
             index.asset_refs = {"rules_skill": ref}
