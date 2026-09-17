@@ -102,8 +102,10 @@ export function ResourcesShell() {
             )}
           >
             <span className={cn(
-              "flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground",
-              pathname === t.to ? "border bg-surface-raised" : "bg-surface-muted",
+              "flex size-9 shrink-0 items-center justify-center rounded-md",
+              pathname === t.to
+                ? "bg-(--brand-soft) text-(--brand-primary)"
+                : "bg-surface-muted text-muted-foreground",
             )}>
               <t.icon className="size-4" />
             </span>

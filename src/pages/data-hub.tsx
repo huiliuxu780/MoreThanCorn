@@ -23,7 +23,7 @@ export default function DataHubPage() {
   const raw = searchParams.get("tab") ?? "ingress"
   const tab = (TABS.some((t) => t.key === raw) ? raw : "ingress") as typeof TABS[number]["key"]
   return (
-    <div className="flex flex-col gap-4 p-4 md:p-6">
+    <div className="flex flex-col gap-4">
       <Tabs value={tab} onValueChange={(v) => setSearchParams((p) => {
         const n = new URLSearchParams(p)
         if (v === "ingress") n.delete("tab"); else n.set("tab", v)

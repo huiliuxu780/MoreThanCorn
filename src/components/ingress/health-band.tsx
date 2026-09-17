@@ -1,3 +1,4 @@
+import { useState } from "react"
 /** 16 号稿 B4：接入健康概览带（数据接入页表格上方常驻）。
  *
  * 治「看不懂」的第二半：每源一行诊断——拉取结果（含失败原因 inline 红字，
@@ -8,8 +9,14 @@
 import { useNavigate } from "react-router-dom"
 
 import { KIND_ICON, KIND_LABEL, PULL_KINDS } from "@/components/ingress/source-kind-fields"
+import { CloudDownload, Pause, Play, Send, Settings2 } from "lucide-react"
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useAsyncData } from "@/hooks/use-async-data"
 import { asApi, type SourceHealthRow } from "@/services/as-api"
 import { toast } from "sonner"
@@ -50,6 +57,11 @@ function AutoPill({ row }: { row: SourceHealthRow }) {
 export function HealthBand({ onTest }: { onTest?: (id: string) => void }) {
   const navigate = useNavigate()
   const data = useAsyncData(() => asApi.healthSummary(), [])
+  /* 09-17 用户指认：立即拉取/暂停 需二次确认；行操作 icon+tooltip 同规格 */
+  const [confirm, setConfirm] = useState<null | {
+    kind: "pull" | "toggle"; id: string; name: string; status: string
+  }>(null)
+  const [busy, setBusy] = useState(false)
   if (data.error) {
     return (
       <div role="alert" className="flex items-center gap-3 rounded-md border px-3 py-2 text-sm"
@@ -73,9 +85,6 @@ export function HealthBand({ onTest }: { onTest?: (id: string) => void }) {
       <div className="flex items-center gap-2 border-b px-3.5 py-2"
            style={{ borderColor: "var(--border)", background: "var(--surface-muted)" }}>
         <span className="text-[12.5px] font-semibold">接入健康概览</span>
-        <span className="text-[11.5px] text-muted-foreground">
-          每源一行：拉取结果 / 24h 事件 / 24h 投递 / 路由消费——「未配置」=事件只留 filtered 存证，没人消费
-        </span>
       </div>
       {data.loading && !data.data ? (
         <div className="px-3.5 py-6 text-center text-sm text-muted-foreground">加载中…</div>
@@ -144,16 +153,49 @@ export function HealthBand({ onTest }: { onTest?: (id: string) => void }) {
                   <td className="px-3.5 py-2.5 text-right">
                     <div className="flex justify-end gap-1">
                       {onTest && (
-                        <Button size="xs" variant="outline" onClick={() => onTest(r.sourceId)}>发送测试事件</Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button size="xs" variant="outline" aria-label="发送测试事件"
+                                    onClick={() => onTest(r.sourceId)}>
+                              <Send className="size-3" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>发送测试事件</TooltipContent>
+                        </Tooltip>
                       )}
                       {PULL_KINDS.includes(r.kind) && (
-                        <Button size="xs" variant="outline" onClick={() => {
-                          void asApi.pollSource(r.sourceId).then(
-                            (pr) => { toast.success(`拉取完成：${pr.polled} 条，派发 ${pr.dispatched} 条`); data.retry() },
-                            (e) => { toast.error(`拉取失败：${(e as Error).message}`); data.retry() })
-                        }}>立即拉取</Button>
+                        <>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button size="xs" variant="outline" aria-label="立即拉取"
+                                      onClick={() => setConfirm({ kind: "pull", id: r.sourceId, name: r.name, status: r.status })}>
+                                <CloudDownload className="size-3" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>立即拉取</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button size="xs" variant="outline"
+                                      aria-label={r.status === "paused" ? "恢复接收" : "暂停接收"}
+                                      onClick={() => setConfirm({ kind: "toggle", id: r.sourceId, name: r.name, status: r.status })}>
+                                {r.status === "paused"
+                                  ? <Play className="size-3" /> : <Pause className="size-3" />}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{r.status === "paused" ? "恢复接收" : "暂停接收"}</TooltipContent>
+                          </Tooltip>
+                        </>
                       )}
-                      <Button size="xs" variant="ghost" onClick={() => navigate(`/resources/data/source/${r.sourceId}`)}>管理</Button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button size="xs" variant="ghost" aria-label="管理"
+                                  onClick={() => navigate(`/resources/data/source/${r.sourceId}`)}>
+                            <Settings2 className="size-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>管理</TooltipContent>
+                      </Tooltip>
                     </div>
                   </td>
                 </tr>
@@ -162,6 +204,47 @@ export function HealthBand({ onTest }: { onTest?: (id: string) => void }) {
           </tbody>
         </table>
       )}
+      <Dialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {confirm?.kind === "pull" ? "立即拉取确认"
+                : confirm?.status === "paused" ? "恢复接收确认" : "暂停接收确认"}
+            </DialogTitle>
+            <DialogDescription>
+              {confirm?.kind === "pull"
+                ? `将对「${confirm?.name}」立即执行一次拉取（单 tick 最多 5 页、页大小封顶 200）。继续？`
+                : confirm?.status === "paused"
+                  ? `恢复后「${confirm?.name}」将按设定间隔自动拉取。继续？`
+                  : `暂停后「${confirm?.name}」不再自动拉取（进行中批次不受影响）。继续？`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirm(null)}>取消</Button>
+            <Button disabled={busy} onClick={async () => {
+              if (!confirm) return
+              setBusy(true)
+              try {
+                if (confirm.kind === "pull") {
+                  const pr = await asApi.pollSource(confirm.id)
+                  toast.success(`拉取完成：${pr.polled} 条，派发 ${pr.dispatched} 条`)
+                } else {
+                  await asApi.sourcePatch(confirm.id, {
+                    status: confirm.status === "paused" ? "active" : "paused",
+                  })
+                  toast.success(confirm.status === "paused" ? "已恢复接收" : "已暂停接收")
+                }
+                setConfirm(null)
+                data.retry()
+              } catch (e) {
+                toast.error(`${(e as Error).message}`)
+              } finally {
+                setBusy(false)
+              }
+            }}>确认</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

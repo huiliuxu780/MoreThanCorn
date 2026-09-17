@@ -19,7 +19,7 @@
 import * as React from "react"
 import { useSearchParams } from "react-router-dom"
 import { Navigate, useNavigate } from "react-router-dom"
-import { CircleCheck, CircleX, Clock, CloudDownload, Copy, Database, FlaskConical, OctagonAlert, Plus, ScrollText, Table as TableIcon, Webhook } from "lucide-react"
+import { Wand2,  CircleCheck, CircleX, Clock, CloudDownload, Copy, Database, FlaskConical, OctagonAlert, Plus, ScrollText, Table as TableIcon, Webhook } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -122,7 +122,7 @@ export function IngressSection() {
       {/* 09-15 IA 原则：连接凭据=设置→连接（系统根）；资产与接入=数据页两 tab（同页互指） */}
       <div className="flex items-center gap-2">
         <Button variant="outline" className="ml-auto" onClick={() => navigate("/resources/data/wizard")}>
-          新建接入（向导）
+          <Wand2 className="size-4" /> 新建接入（向导）
         </Button>
         <Button onClick={() => setOpen(true)}>
           <Plus className="size-4" /> 新建数据源
