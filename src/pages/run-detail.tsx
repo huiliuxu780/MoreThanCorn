@@ -1,3 +1,4 @@
+import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Copy, Download, MoreHorizontal, RotateCw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
@@ -448,10 +449,17 @@ export default function RunDetailPage() {
               <div className="text-sm font-medium">领域结果</div>
               <div className="mt-1.5 flex flex-wrap gap-2">
                 {domainLinks.map((l) => (
-                  <Button key={l.id} variant="outline" size="sm" className="h-7 text-xs"
-                    onClick={() => navigate(`/quality/results/${l.interactionRef ?? l.id}`)}>
-                    查看{l.rel === "quality-result" ? "质检结果" : l.rel}
-                  </Button>
+                  l.rel === "quality-result" ? (
+                    /* FEAT-001 质检中心下线：摘除跳转，留证据文本（后面再搞时回迁） */
+                    <Badge key={l.id} variant="outline" className="h-7 text-xs">
+                      质检结果 {String(l.interactionRef ?? l.id).slice(0, 8)}…（质检中心已下线）
+                    </Badge>
+                  ) : (
+                    <Button key={l.id} variant="outline" size="sm" className="h-7 text-xs"
+                      onClick={() => navigate(`/quality/results/${l.interactionRef ?? l.id}`)}>
+                      查看{l.rel}
+                    </Button>
+                  )
                 ))}
               </div>
             </div>
@@ -601,10 +609,10 @@ export default function RunDetailPage() {
                   {(executions?.items ?? []).map((exec) => (
                     <TableRow
                       key={exec.id}
-                      className={exec.status === "SUCCESS" ? "cursor-pointer hover:bg-muted/50" : exec.status === "ERROR" ? "cursor-pointer hover:bg-muted/50" : undefined}
+                      className={exec.status === "ERROR" ? "cursor-pointer hover:bg-muted/50" : undefined}
                       onClick={() => {
-                        if (exec.status === "SUCCESS") navigate(`/quality/results/${exec.interactionId}`)
-                        else if (exec.status === "ERROR") setSelectedExecution(exec)
+                        /* FEAT-001：SUCCESS 不再跳质检（已下线）；ERROR 仍开执行详情抽屉 */
+                        if (exec.status === "ERROR") setSelectedExecution(exec)
                       }}
                     >
                       <TableCell className="font-mono text-xs">{exec.interactionId}</TableCell>

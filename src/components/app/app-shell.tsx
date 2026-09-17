@@ -30,7 +30,6 @@ function isWorkspaceRoute(pathname: string): boolean {
 /** 从当前路径推导面包屑（MTC-001 新路由树；遗留挂载页面保留推导）。 */
 export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
   const { pathname } = useLocation()
-  const resultsQuery = "?tab=&page=1"
   const segments = pathname.split("/").filter(Boolean)
 
   const crumbs: BreadcrumbEntry[] = [
@@ -134,20 +133,6 @@ export function useRouteBreadcrumbs(): BreadcrumbEntry[] {
       if (segments[2]) crumbs.push({ label: `批次 ${segments[2]}` })
     } else if (segments[1] === "runs" && segments[2]) {
       crumbs.push({ label: `Run ${segments[2]}` })
-    }
-  } else if (first === "quality") {
-    /* 遗留挂载：不再是一级入口，面包屑保留可达路径 */
-    crumbs.push({ label: UI_TERMS.navigation.qualityCenter })
-    if (segments[1] === "overview") {
-      crumbs.push({ label: UI_TERMS.navigation.qualityOverview })
-    } else if (segments[1] === "results") {
-      crumbs.push({
-        label: UI_TERMS.navigation.qualityResults,
-        href: segments[2] ? `/quality/results${resultsQuery}` : undefined,
-      })
-      if (segments[2]) crumbs.push({ label: `Interaction ${segments[2]}` })
-    } else if (segments[1] === "agent-analysis") {
-      crumbs.push({ label: UI_TERMS.navigation.agentAnalysis })
     }
   } else if (first === "config") {
     /* 遗留挂载的子页面：归属新的一级域 */

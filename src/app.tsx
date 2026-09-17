@@ -2,10 +2,6 @@ import { lazy } from "react"
 import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom"
 import { AppShell } from "@/components/app/app-shell"
 
-const QualityOverviewPage = lazy(() => import("@/pages/quality-overview"))
-const QualityResultsPage = lazy(() => import("@/pages/quality-results"))
-const QualityResultDetailPage = lazy(() => import("@/pages/quality-result-detail"))
-const AgentAnalysisPage = lazy(() => import("@/pages/agent-analysis"))
 const TasksPage = lazy(() => import("@/pages/tasks"))
 const TaskWizardPage = lazy(() => import("@/pages/task-wizard"))
 const TaskDetailPage = lazy(() => import("@/pages/task-detail"))
@@ -169,10 +165,13 @@ export function App() {
 
           {/* ---- 保留挂载（非一级入口，URL/深链可达） ---- */}
           {/* 智能质检 */}
-          <Route path="/quality/overview" element={<QualityOverviewPage />} />
-          <Route path="/quality/results" element={<QualityResultsPage />} />
-          <Route path="/quality/results/:interactionId" element={<QualityResultDetailPage />} />
-          <Route path="/quality/agent-analysis" element={<AgentAnalysisPage />} />
+          {/* FEAT-001 质检中心下线（2026-09-16 用户开工令）：四路由 tombstone 重定向；
+              页面归档于 src/archive/quality-center/（后面再搞时回迁）；
+              数据域/质检 API/analytics KPI 保留不动（工单4） */}
+          <Route path="/quality/overview" element={<Navigate to="/tasks" replace />} />
+          <Route path="/quality/results" element={<Navigate to="/tasks" replace />} />
+          <Route path="/quality/results/:interactionId" element={<Navigate to="/tasks" replace />} />
+          <Route path="/quality/agent-analysis" element={<Navigate to="/tasks" replace />} />
 
           {/* 运行中心：批次历史 / 批次详情 / Run 详情 */}
           <Route path="/operations/task-runs/today" element={<Navigate to="/tasks" replace />} />
