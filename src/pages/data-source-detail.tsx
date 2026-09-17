@@ -8,8 +8,8 @@ import * as React from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { EMPTY_ROUTE_FORM, RouteForm, type RouteFormValue } from "@/components/ingress/route-form"
 import {
-  ArrowLeft, CircleCheck, CircleX, Clock, CloudDownload, Copy, Database, Filter,
-  FlaskConical, History, KeyRound, OctagonAlert, Pause, Play, Plus,
+  ArrowLeft, CloudDownload, Copy, Database, Filter,
+  FlaskConical, History, KeyRound, Pause, Play, Plus,
   Route as RouteIcon, ScrollText, Table as TableIcon, Trash2, Webhook,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -42,15 +42,7 @@ const STATUS_LABEL: Record<string, string> = {
 }
 const FILTER_OPS = ["eq", "ne", "contains", "gt", "lt"] as const
 
-function DeliveryIcon({ status }: { status: string }) {
-  const s = status.toUpperCase()
-  if (s === "COMPLETED") return <CircleCheck className="size-3.5 text-(--status-success-text)" />
-  if (s === "DEAD") return <OctagonAlert className="size-3.5 text-(--status-danger-text)" />
-  if (s === "FAILED") return <CircleX className="size-3.5 text-(--status-danger-text)" />
-  if (s === "RUNNING" || s === "PENDING") return <Clock className="size-3.5 text-(--status-warning-text)" />
-  if (s === "FILTERED") return <Filter className="size-3.5 text-(--text-tertiary)" />
-  return <Copy className="size-3.5 text-(--text-secondary)" />  // DEDUPED
-}
+
 const DELIVERY_LABEL: Record<string, string> = {
   COMPLETED: "已投递", DEAD: "死信", FAILED: "失败", RUNNING: "投递中",
   PENDING: "待派发", FILTERED: "已过滤", DEDUPED: "已去重",
@@ -601,20 +593,39 @@ export default function DataSourceDetailPage() {
           )}
 
           {src.data.kind !== "webhook" && src.data.kind !== "test_event" && (
-            <Card icon={KeyRound} title="凭据">
-              <div className="flex items-center gap-2 rounded-lg border px-3 py-2"
-                   style={{ borderColor: "var(--border)", background: "var(--surface-muted)" }}>
-                <code className="flex-1 text-xs text-muted-foreground">
-                  {src.data.has_secret ? "••••••••（已加密存储）" : "未配置"}
-                </code>
-                <Button size="sm" variant="outline"
-                        onClick={() => { setSecretJson(""); setSecretOpen(true) }}>
-                  {src.data.has_secret ? "更新凭据" : "设置凭据"}
-                </Button>
+            <Card icon={KeyRound} title="凭据归属">
+              {/* 09-17 mpocket 借鉴：凭据正主=Connection（设置→连接），源只引用；
+                  源级 secret 为 legacy 兼容路径，徽章+降级入口 */}
+              <div className="grid gap-1.5 text-[12.5px]">
+                <div className="flex items-center gap-2">
+                  <span className="w-24 shrink-0 text-muted-foreground">凭据正主</span>
+                  {src.data.connectionId ? (
+                    <Button size="sm" variant="outline"
+                            onClick={() => navigate("/settings/connections")}>
+                      引用 Connection（设置→连接）
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline"
+                            onClick={() => navigate("/settings/connections")}>
+                      去 设置→连接 配置凭据
+                    </Button>
+                  )}
+                </div>
+                {src.data.has_secret && (
+                  <div className="flex items-center gap-2">
+                    <span className="w-24 shrink-0 text-muted-foreground">源级凭据</span>
+                    <Badge variant="outline">legacy</Badge>
+                    <code className="text-xs text-muted-foreground">••••••••（已加密存储）</code>
+                    <Button size="sm" variant="ghost"
+                            onClick={() => { setSecretJson(""); setSecretOpen(true) }}>
+                      更新（legacy）
+                    </Button>
+                  </div>
+                )}
               </div>
               <p className="mt-2 text-[11px] text-muted-foreground">
-                飞书 {"{app_id, app_secret}"}；MaxCompute {"{access_key_id, access_key_secret}"}；
-                API 拉取 {"{type: bearer|api_key|basic, …}"}。服务端信封加密，永不回显。
+                凭据值永不回显；新源请经 Connection 管理凭据（一套凭据接 N 个源，轮换只换一处）；
+                源级凭据为兼容路径，服务端信封加密保留。
               </p>
             </Card>
           )}
@@ -688,47 +699,38 @@ export default function DataSourceDetailPage() {
           </Card>
 
           <Card icon={History} title="事件流水"
-                extra={<span className="text-[11px] text-muted-foreground">最近 50 · 含证据</span>}>
+                extra={<span className="text-[11px] text-muted-foreground">摘要 · 详情在事件流水 tab</span>}>
+            {/* 09-17 mpocket 借鉴：源详情只放实体维度摘要+跳转；
+                run/投递维度全量与重试在 数据页→事件流水 tab（预置 source 过滤） */}
             {deliveries.error ? (
               <p className="text-xs text-(--status-danger-text)">流水加载失败：{deliveries.error}</p>
             ) : (deliveries.data?.items ?? []).length === 0 ? (
               <p className="text-xs text-muted-foreground">暂无投递记录。</p>
             ) : (
-              <div className="flex flex-col">
-                {(deliveries.data?.items ?? []).map((d: EventDeliveryDTO) => (
-                  <div key={d.id} className="flex items-start gap-2 border-b py-2 last:border-b-0"
-                       style={{ borderColor: "var(--border)" }}>
-                    <span className="mt-0.5"><DeliveryIcon status={d.status} /></span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline gap-2">
-                        <span className="tabular-nums text-[11px] text-(--text-tertiary)">
-                          {d.createdAt ? new Date(d.createdAt).toLocaleTimeString() : "—"}
-                        </span>
-                        <b className="text-xs">{DELIVERY_LABEL[d.status.toUpperCase()] ?? d.status}</b>
-                      </div>
-                      <div className="truncate text-[11px] text-muted-foreground">
-                        {d.deadReason || d.error ||
-                          (d.invocationId ? `INV ${d.invocationId.slice(0, 8)}…` :
-                            d.taskRunId ? `TaskRun ${d.taskRunId.slice(0, 8)}…` :
-                              `route rev ${d.routeRevision ?? "-"}`)}
-                      </div>
-                    </div>
-                    {(d.status === "failed" || d.status === "dead") && (
-                      <Button size="sm" variant="ghost" className="text-(--brand-primary)"
-                              onClick={async () => {
-                                try {
-                                  await asApi.deliveryRetry(d.id)
-                                  toast.success("已重发")
-                                  deliveries.retry()
-                                } catch (e) {
-                                  toast.error(`${(e as Error).message}`)
-                                }
-                              }}>重试</Button>
-                    )}
-                  </div>
-                ))}
+              <div className="flex flex-wrap items-center gap-2">
+                {(["completed", "failed", "dead", "running", "pending"] as const).map((k) => {
+                  const n = (deliveries.data?.items ?? []).filter((d: EventDeliveryDTO) => d.status === k).length
+                  if (!n) return null
+                  return (
+                    <Badge key={k} variant="outline"
+                           style={k === "completed"
+                             ? { borderColor: "var(--status-success)", background: "var(--status-success-soft)", color: "var(--status-success-text)" }
+                             : k === "failed" || k === "dead"
+                               ? { borderColor: "var(--status-danger)", background: "var(--status-danger-soft)", color: "var(--status-danger-text)" }
+                               : { borderColor: "var(--border)", background: "var(--surface-muted)", color: "var(--text-secondary)" }}>
+                      {DELIVERY_LABEL[k.toUpperCase()] ?? k} {n}
+                    </Badge>
+                  )
+                })}
+                <span className="text-[11px] text-muted-foreground">最近 50 条摘要</span>
               </div>
             )}
+            <div className="mt-2 flex items-center gap-2">
+              <Button size="sm" variant="outline"
+                      onClick={() => navigate(`/resources/data?tab=events&source=${sid}`)}>
+                在事件流水 tab 查看（含重试与证据）
+              </Button>
+            </div>
             <p className="mt-2 text-[11px] text-muted-foreground">
               已过滤/已去重不产生投递行——证据来自事件层 route_outcomes（F5 AC-023/024）。
             </p>

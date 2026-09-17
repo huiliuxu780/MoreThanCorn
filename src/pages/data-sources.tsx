@@ -17,6 +17,7 @@
  * 无凭据时后端如实匿名 GET，表单不摆假字段。
  */
 import * as React from "react"
+import { useSearchParams } from "react-router-dom"
 import { Navigate, useNavigate } from "react-router-dom"
 import { CircleCheck, CircleX, Clock, CloudDownload, Copy, Database, FlaskConical, OctagonAlert, Plus, ScrollText, Table as TableIcon, Webhook } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -243,7 +244,11 @@ export function IngressSection() {
 
 /** 09-15 合并案：事件流水 section——数据页 tab③（P2 跨源事件管线聚合视图）。 */
 export function EventsSection() {
-  const deliveries = useAsyncData(() => asApi.eventDeliveries({ pageSize: 100 }), [])
+  const [searchParams] = useSearchParams()
+  const sourceFilter = searchParams.get("source") ?? ""
+  const deliveries = useAsyncData(
+    () => asApi.eventDeliveries({ pageSize: 100, ...(sourceFilter ? { sourceId: sourceFilter } : {}) }),
+    [sourceFilter])
   /* 后端 EventDelivery.status 为小写（pending/running/completed/failed/dead）；
      filtered/deduped 不产生投递行（F5 AC-023/024），故不在此表 */
   const ICON: Record<string, typeof Clock> = {
@@ -256,6 +261,12 @@ export function EventsSection() {
   }
   return (
     <div className="flex flex-col gap-3">
+      {sourceFilter && (
+        <p className="rounded-md border px-3 py-1.5 text-xs text-muted-foreground"
+           style={{ borderColor: "var(--border)" }}>
+          已预置源过滤：{sourceFilter.slice(0, 8)}…（跨源全量请清除 URL 的 source 参数）
+        </p>
+      )}
       {deliveries.error ? (
         <div className="rounded-md border px-3 py-2 text-sm" style={{ color: "var(--status-danger-text)" }}>
           事件流水加载失败：{deliveries.error}
