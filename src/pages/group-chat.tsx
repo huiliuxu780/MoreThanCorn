@@ -747,6 +747,7 @@ export default function GroupChatPage() {
               onValueChange={onDraftChange}
               minRows={2}
               maxRows={6}
+              mentionHighlight
               placeholder="输入消息… 输入 @ 提及 Agent，Enter 发送，Shift+Enter 换行"
               loading={anyRunning}
               onStop={() => { void groupsApi.interrupt(gid, gsid, "all") }}

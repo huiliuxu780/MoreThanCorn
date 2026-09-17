@@ -52,6 +52,11 @@ def _roster_msg(team_name: str, workers: list[tuple[str, str]]) -> SystemMsg:
         lines.append(f"- {name} → to=\"{addr}\"")
     lines.append("规则：用 TeamSay 派活；成员会经 TeamSay 汇报；"
                  "收齐汇报后向用户总结。禁止轮询成员。")
+    # 09-17（用户指认「群聊里面不能@ leader么」）：@ 语义进花名册——
+    # 用户消息里的 @成员名 是点名指派，不是字面文本；leader 须据此自办或转达。
+    lines.append("用户在消息中用「@成员名」点名（含 @ 你的名称）：见 @X 即用户把该诉求"
+                 "指派给 X；X 是你自己则直接办理，X 是其他成员则用 TeamSay 转达给 X 的"
+                 "寻址名；不得回复用户「@ 无效/无法 @」之类的话。")
     return SystemMsg(name="system", content="\n".join(lines))
 
 

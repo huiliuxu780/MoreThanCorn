@@ -70,6 +70,8 @@ export interface PromptInputProps extends Omit<
   maxRows?: number;
   leadingAction?: ReactNode;
   className?: string;
+  /** 09-17：@ 提及彩色高亮仅群聊启用（单 Agent 的 @ 语义=工作区上下文，非成员提及） */
+  mentionHighlight?: boolean;
 }
 
 export function PromptInput({
@@ -89,6 +91,7 @@ export function PromptInput({
   maxRows = 8,
   leadingAction,
   className,
+  mentionHighlight = false,
   disabled,
   placeholder = "输入消息…",
   "aria-label": ariaLabel = "消息输入",
@@ -187,7 +190,7 @@ export function PromptInput({
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-2 top-2 overflow-hidden whitespace-pre-wrap px-2 pt-1.5 text-sm leading-6 [overflow-wrap:break-word]"
       >
-        {splitMentions(currentValue)}
+        {mentionHighlight ? splitMentions(currentValue) : currentValue}
         {"​"}
       </div>
       <textarea
