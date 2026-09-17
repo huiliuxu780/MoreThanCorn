@@ -37,6 +37,9 @@ def build_definition(db: Session, agent: Agent) -> dict:
         return {
             "module": {"key": mod.key, "version": mod.version},
             "agentSpec": spec,
+            # 09-16：persona 纳入版本快照——此前定义缺该键，compile_system_prompt
+            # 永远编译不到实例 persona（配置页「编译进 system_prompt」为虚假声明）。
+            "persona": cfg.get("persona", ""),
             "inputSchema": mod.input_schema_ref,
             "outputSchema": mod.output_schema_ref,
             "executionPolicy": mod.policies["execution"],
@@ -49,6 +52,7 @@ def build_definition(db: Session, agent: Agent) -> dict:
         # 绑定 Workflow → 永远无法发布（任务书 §六.8 "永远跑不起来的 Agent"）。
         return {
             "rolePrompt": cfg.get("rolePrompt", ""),
+            "persona": cfg.get("persona", ""),
             "modelRef": cfg.get("modelRef") or {},
             "permissions": cfg.get("permissions") or {},
             "skills": list(cfg.get("skills") or []),

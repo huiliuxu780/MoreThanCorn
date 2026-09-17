@@ -1,16 +1,17 @@
-/** Agent 工作区路由页（09-07 重构）：二级侧栏九子页 + 对话入口。
- *  R-Archive 语义延续：旧三类封存 Agent 全子页只读、无对话入口；module 型可编辑。
+/** Agent 工作区路由页（09-07 重构；09-16 配置页退役）。
+ *  二级侧栏子页 + 对话入口。原站实测：/wakers/<id>/settings=「Waker 档案」单页，导航无
+ *  独立「配置」——module/custom 的 /config 一律重定向档案页；legacy 封存类型
+ *  （dialogue/expert-group/autonomous）保留 /config 直达只读视图（历史档案）。
+ *  R-Archive 语义延续：旧三类封存 Agent 全子页只读、无对话入口。
  *  404（历史 workflow id 误入）回落旧设计器，保持兼容。 */
 import { useEffect, useState } from "react"
-import { useParams } from "react-router-dom"
+import { Navigate, useParams } from "react-router-dom"
 
 import { AgentWorkspaceShell, type WorkspaceSection } from "@/features/agents/AgentWorkspaceShell"
 import { useAgentVersionState } from "@/components/agent-publish-dialog"
 import { Label } from "@/components/ui/label"
 import { agentApi, type AgentInfo } from "@/services/wf-api"
 import WfDesignerPage from "@/features/designer/DesignerPage"
-import ModuleAgentConfigPage from "./module-agent-config"
-import { CustomAgentConfig } from "./agent-workspace/custom-config"
 import { avatarFor } from "@/lib/agent-avatar"
 import { AgentHomeSection } from "./agent-workspace/home"
 import { AgentMemorySection } from "./agent-workspace/memory"
@@ -97,17 +98,22 @@ export default function WfAgentEditorPage() {
       case "home": return <AgentHomeSection agent={agent} />
       case "board": return <AgentTaskBoardSection agentId={agent.id} />
       case "autonomous": return <AgentAutonomousSection agentId={agent.id} />
-      case "profile": return <AgentProfileSection agent={agent} archived={archived} />
+      case "profile": return (
+        <AgentProfileSection agent={agent} archived={archived}
+          onSaved={() => { agentApi.get(agentId).then(setAgent).catch(() => undefined) }} />
+      )
       case "memory": return <AgentMemorySection agentId={agent.id} readOnly={archived} />
       case "skills": return <AgentSkillsSection agentId={agent.id} readOnly={archived} />
       case "connectors": return <AgentConnectorsSection agent={agent} readOnly={archived} />
       case "workflows": return <AgentMountsSection agent={agent} kind="workflows" readOnly={archived} />
       case "knowledge": return <AgentMountsSection agent={agent} kind="knowledges" readOnly={archived} />
       case "permissions": return <AgentPermissionsSection agent={agent} archived={archived} />
-      case "governance": return <AgentGovernanceSection agentId={agent.id} archived={archived} />
+      case "governance": return <AgentGovernanceSection agent={agent} archived={archived} />
       case "config":
-        if (agent.type === "custom") return <CustomAgentConfig agent={agent} />
-        if (agent.type === "module") return <ModuleAgentConfigPage agent={agent} />
+        // 09-16：module/custom 配置并入 Agent 档案（原站同构）；仅 legacy 封存类型保留只读视图
+        if (agent.type === "module" || agent.type === "custom") {
+          return <Navigate to={`/agents/${agent.id}/profile`} replace />
+        }
         if (agent.type === "dialogue" || agent.type === "expert-group") {
           return (
             <div className="h-[70vh] min-h-0">

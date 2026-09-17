@@ -533,7 +533,7 @@ export const agentApi = {
       scriptReferences: { count: number }
     }>(`/api/agents/${id}/references`),
   // R4：Module Agent 创建与目录
-  modules: () => req<{ items: { key: string; version: string; displayName: string; description: string; riskClass: string; providers: string[]; logicalTools: string[]; criteria: string[]; resultProjection?: string; producesQualityResult?: boolean; inputSchema?: { required?: string[]; properties?: Record<string, { type?: string }> }; outputSchema?: Record<string, unknown> }[] }>(`/api/agents/modules`),
+  modules: () => req<{ items: { key: string; version: string; displayName: string; description: string; riskClass: string; providers: string[]; logicalTools: string[]; criteria: string[]; defaultInstructions?: string; resultProjection?: string; producesQualityResult?: boolean; inputSchema?: { required?: string[]; properties?: Record<string, { type?: string }> }; outputSchema?: Record<string, unknown> }[] }>(`/api/agents/modules`),
   create: (body: { name: string; moduleKey?: string; type?: string; moduleVersion?: string; description?: string; avatar?: string; rolePrompt?: string; skills?: string[]; capabilities?: { name: string; description: string }[]; modelRef?: Record<string, unknown> }) =>
     req<{ id: string; name: string; type: string; moduleKey: string; moduleVersion: string; configRevision: number }>(`/api/agents`, {
       method: "POST", body: JSON.stringify(body) }),

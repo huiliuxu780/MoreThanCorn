@@ -104,7 +104,7 @@ function AgentCard({ r, role, onOpen, onChat, onConfig, onToggleArchive }: {
         </div>
         {/* 操作行：z-10 必压过同格统计行（否则不可见统计层吞掉点击 = 假按钮） */}
         <div className="pointer-events-none col-start-1 row-start-1 z-10 mb-3 flex h-8 items-center gap-3 self-end bg-surface opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
-          <Button variant="ghost" size="icon" className="size-8 shrink-0 border-0" aria-label="配置" title="配置" onClick={onConfig}>
+          <Button variant="ghost" size="icon" className="size-8 shrink-0 border-0" aria-label="配置与档案" title="配置与档案" onClick={onConfig}>
             <Settings2 className="size-4" />
           </Button>
           <Button variant="ghost" size="icon" className="size-8 shrink-0 border-0" aria-label="分享" title="分享"
@@ -352,7 +352,8 @@ export default function WfAgentsListPage() {
               {filtered.map((r) => (
                 <AgentCard key={r.id} r={r} role={roleOf(r)}
                   onOpen={() => navigate(`/agents/${r.id}`)}
-                  onConfig={() => navigate(`/agents/${r.id}/config`)}
+                  onConfig={() => navigate(r.type === "module" || r.type === "custom"
+                    ? `/agents/${r.id}/profile` : `/agents/${r.id}/config`)}
                   onChat={r.archived ? undefined : () => navigate(`/agents/${r.id}/chat`)}
                   onToggleArchive={() => openToggleArchive(r)} />
               ))}

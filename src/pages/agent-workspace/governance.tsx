@@ -1,23 +1,27 @@
 /** 发布治理子页：版本创建/发布（全类型 Agent）+ 效果评测 + Golden Set 主动评测。
  *  2026-09-10 P0-E/B4：发布入口从 module 配置页提升到治理页（custom Agent 同权）；
- *  Golden Set 随 openai-agents/deepseek-harness 退役改为 AgentScope 单引擎（Provider 可选）。 */
+ *  Golden Set 随 openai-agents/deepseek-harness 退役改为 AgentScope 单引擎（Provider 可选）。
+ *  09-16 配置页退役：对比（模型/版本）入口并入本页页头。 */
 import { useState } from "react"
 import { toast } from "sonner"
+import { AgentCompareDialog } from "@/components/agent-compare-dialog"
 import { AgentEvalPanel, AgentVersionsPanel } from "@/components/agent-ops-panels"
 import { Button } from "@/components/ui/button"
 import { ModulePublishDialog } from "@/components/module-publish-dialog"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
-import { agentApi } from "@/services/wf-api"
+import { agentApi, type AgentInfo } from "@/services/wf-api"
 
 type GoldenResult = Awaited<ReturnType<typeof agentApi.goldenEval>>
 
-export function AgentGovernanceSection({ agentId , archived }: { agentId: string; archived?: boolean }) {
+export function AgentGovernanceSection({ agent, archived }: { agent: AgentInfo; archived?: boolean }) {
+  const agentId = agent.id
   const [goldenLimit, setGoldenLimit] = useState(3)
   const [goldenRunning, setGoldenRunning] = useState(false)
   const [goldenResults, setGoldenResults] = useState<GoldenResult[]>([])
   const [publishOpen, setPublishOpen] = useState(false)
+  const [compareOpen, setCompareOpen] = useState(false)
   const [versionsTick, setVersionsTick] = useState(0)
 
   const runGolden = async () => {
@@ -34,9 +38,14 @@ export function AgentGovernanceSection({ agentId , archived }: { agentId: string
       <div className="flex items-center gap-3">
         <h2 className="text-[28px] font-semibold leading-[38px]">发布治理</h2>
         {!archived && (
-          <Button size="sm" className="ml-auto" onClick={() => setPublishOpen(true)}>
-            发布新版本
-          </Button>
+          <div className="ml-auto flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setCompareOpen(true)}>
+              对比
+            </Button>
+            <Button size="sm" onClick={() => setPublishOpen(true)}>
+              发布新版本
+            </Button>
+          </div>
         )}
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
@@ -49,6 +58,7 @@ export function AgentGovernanceSection({ agentId , archived }: { agentId: string
         onClose={() => setPublishOpen(false)}
         onPublished={() => setVersionsTick((t) => t + 1)}
       />
+      <AgentCompareDialog agent={agent} open={compareOpen} onClose={() => setCompareOpen(false)} />
       <section className="space-y-3 rounded-md border bg-surface p-4">
         <h3 className="text-base font-medium leading-6">Golden Set 主动评测（AgentScope 单引擎真跑）</h3>
         <div className="flex flex-wrap items-center gap-3">

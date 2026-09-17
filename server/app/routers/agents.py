@@ -177,6 +177,8 @@ def list_modules(db: Session = Depends(get_db)):
             "providers": sorted(m.manifest["implementations"]),
             "logicalTools": [t["name"] for t in m.logical_tools],
             "criteria": [c["id"] for c in m.default_spec.get("criteria", [])],
+            # 09-16 档案页 bible.md 查看=真实冻结指令（Module 版本资产），不再合成占位
+            "defaultInstructions": m.default_spec.get("instructions", ""),
             "resultProjection": projection.get(m.key, "DomainResult"),
             "producesQualityResult": m.key == "quality-analysis",
             "inputSchema": m.input_schema,

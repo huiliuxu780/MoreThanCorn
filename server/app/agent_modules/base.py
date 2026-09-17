@@ -121,12 +121,17 @@ class AgentModule:
         cfg = instance_config or {}
         spec = copy.deepcopy(self.default_spec)
         model_ref = cfg.get("modelRef") or {}
+        # 09-16 修键位漂移：前端实例配置写 modelRef.params / config.spec.purpose，
+        # 旧代码只读 parameters / 顶层 purpose → 业务定位与思考参数从未进冻结 Spec。
+        params = model_ref.get("parameters") or model_ref.get("params") or {}
         spec["model"] = {
             "provider": str(model_ref.get("provider") or "openai-compatible"),
             "model": str(model_ref.get("modelId") or "unset"),
-            "parameters": dict(model_ref.get("parameters") or {}),
+            "parameters": dict(params),
         }
-        extra = str(cfg.get("purpose") or "").strip()
+        extra = str(
+            cfg.get("purpose") or (cfg.get("spec") or {}).get("purpose") or ""
+        ).strip()
         if extra:
             spec["instructions"] = f"{spec['instructions']}\n\n## 本实例业务定位\n{extra}"
         errors = self.validate_spec(spec)

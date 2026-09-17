@@ -8,7 +8,7 @@ import type * as React from "react"
 import { useNavigate } from "react-router-dom"
 import {
   ArrowLeft, BookMarked, ClipboardList, Copy, Database, FileText, GitBranch, Home,
-  MessageCircleMore, MoreHorizontal, Plug, Settings2, ShieldAlert, ShieldCheck, Sparkles,
+  MessageCircleMore, MoreHorizontal, Plug, ShieldAlert, ShieldCheck, Sparkles,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,6 +21,9 @@ export type WorkspaceSection =
   | "home" | "board" | "autonomous" | "memory" | "skills" | "connectors" | "workflows" | "knowledge"
   | "config" | "permissions" | "governance" | "profile"
 
+/** 09-16 配置页退役（原站实测 /wakers/<id>/settings=「Waker 档案」单页，无独立配置）：
+ *  NAV 不再含「配置」；config 仅作为 legacy 封存类型（dialogue/expert-group/autonomous）
+ *  的直达 URL 保留，module/custom 访问 /config 一律重定向到档案页。 */
 const NAV: { group?: string; key: WorkspaceSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: "home", label: "概览", icon: Home },
   { group: "工作", key: "board", label: "任务看板", icon: ClipboardList },
@@ -30,15 +33,15 @@ const NAV: { group?: string; key: WorkspaceSection; label: string; icon: React.C
   { key: "connectors", label: "连接器", icon: Plug },
   { key: "workflows", label: "AgentFlow", icon: GitBranch },
   { key: "knowledge", label: "知识库", icon: Database },
-  { group: "权限与管理", key: "config", label: "配置", icon: Settings2 },
-  { key: "permissions", label: "安全与权限", icon: ShieldAlert },
+  { group: "权限与管理", key: "permissions", label: "安全与权限", icon: ShieldAlert },
   { key: "governance", label: "发布治理", icon: ShieldCheck },
   { key: "profile", label: "Agent 档案", icon: FileText },
 ]
 
-const SECTION_LABEL: Record<WorkspaceSection, string> = Object.fromEntries(
-  NAV.map((n) => [n.key, n.label]),
-) as Record<WorkspaceSection, string>
+const SECTION_LABEL: Record<WorkspaceSection, string> = {
+  ...Object.fromEntries(NAV.map((n) => [n.key, n.label])),
+  config: "配置",
+} as Record<WorkspaceSection, string>
 
 export function AgentWorkspaceShell({ agent, section, versionChip, envChips, archived, children }: {
   agent: AgentInfo

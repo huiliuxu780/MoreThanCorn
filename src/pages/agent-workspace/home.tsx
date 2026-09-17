@@ -179,7 +179,7 @@ export function AgentHomeSection({ agent }: { agent: AgentInfo }) {
         <h3 className="text-base font-medium leading-6">核心能力（{caps.length}）</h3>
         {caps.length === 0 ? (
           <p className="px-5 py-4 text-xs text-(--text-tertiary)">
-            尚未填写核心能力，去<Link className="underline" to={`/agents/${agent.id}/config`}>配置</Link>页补充。
+            尚未填写核心能力，去<Link className="underline" to={`/agents/${agent.id}/profile`}>Agent 档案</Link>页「修改」中补充。
           </p>
         ) : caps.map((c, i) => (
           <div key={i} className="flex min-h-[76px] flex-col justify-center gap-1 border-b border-dashed px-5 py-4 last:border-b-0"

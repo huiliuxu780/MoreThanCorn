@@ -21,6 +21,18 @@ import { cn } from "@/lib/utils"
 
 const BEHAVIOR_LABEL: Record<ToolBehavior, string> = { allow: "直接", ask: "询问", deny: "不可" }
 
+/** 09-16 配置页退役：六工具族装配开关（后端 TOOL_POLICY_KEYS → frozen_tool_policy）
+ *  并入本页统一编辑；保存时 v1 族开关与 v2 策略同写 config.permissions——修复此前
+ *  本页保存纯 v2 结构导致六族开关被静默重置为全开（normalize_tool_policy 缺键视为开）。 */
+const FAMILY_LABELS: [string, string][] = [
+  ["shell", "Shell 命令（Bash）"],
+  ["file_write", "文件写入（Write/Edit）"],
+  ["file_read", "文件读取与检索（Read/Grep/Glob）"],
+  ["schedule", "调度管理（Schedule 四件）"],
+  ["subagent", "子 Agent 与团队（AgentCreate/Team…）"],
+  ["platform_tools", "平台工具（run_workflow/run_agent_flow）"],
+]
+
 function OverviewCard({
   icon, status, title, desc, selected, onSelect,
 }: {
@@ -65,6 +77,11 @@ export function AgentPermissionsSection({ agent, archived }: { agent: AgentInfo;
   const [perm, setPerm] = React.useState<PermissionsV2>(() =>
     mergePermissions((agent.config as { permissions?: unknown } | undefined)?.permissions),
   )
+  const [fam, setFam] = React.useState<Record<string, boolean>>(() => {
+    const raw = ((agent.config as { permissions?: Record<string, unknown> } | undefined)?.permissions ?? {}) as Record<string, unknown>
+    return Object.fromEntries(FAMILY_LABELS.map(([k]) => [k, raw[k] !== false]))
+  })
+  const [rev, setRev] = React.useState(agent.configRevision)
   const [tab, setTab] = React.useState(0)
   const [saving, setSaving] = React.useState(false)
   const [newPath, setNewPath] = React.useState("")
@@ -78,11 +95,12 @@ export function AgentPermissionsSection({ agent, archived }: { agent: AgentInfo;
   const save = async () => {
     setSaving(true)
     try {
-      await agentApi.update(
+      const r = await agentApi.update(
         agent.id,
-        { config: { ...(agent.config as object), permissions: perm } },
-        agent.configRevision,
+        { config: { ...(agent.config as object), permissions: { ...perm, ...fam } } },
+        rev,
       )
+      setRev(r.configRevision)
       toast.success("已保存配置草稿；对运行生效需重新发布")
     } catch (e) {
       toast.error((e as Error).message)
@@ -340,6 +358,26 @@ export function AgentPermissionsSection({ agent, archived }: { agent: AgentInfo;
 
       {tab === 2 && (
         <div className="rounded-xl border bg-surface">
+          {/* 工具族装配（原配置页卡 5 迁入）：族级开关决定整个工具族是否装配进 Agent */}
+          <div className="border-b px-4 py-3">
+            <div className="text-xs font-medium text-foreground">工具族装配（发布时冻结 tool_policy）</div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {FAMILY_LABELS.map(([key, label]) => (
+                <div key={key} className="flex items-center gap-2">
+                  <Switch
+                    checked={fam[key] !== false}
+                    disabled={archived}
+                    onCheckedChange={(v) => setFam((cur) => ({ ...cur, [key]: v }))}
+                    aria-label={label}
+                  />
+                  <span className="text-xs text-muted-foreground">{label}</span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              关闭后该工具族整体不装配进 Agent（模型感知为无此能力）；下方三态策略只对已装配的族生效。需重新发布生效。
+            </p>
+          </div>
           <div className="flex items-center gap-3 border-b px-4 py-3 text-xs text-muted-foreground">
             直接使用 <b className="text-sm text-foreground">{counts.allow}</b> · 询问{" "}
             <b className="text-sm text-(--status-warning)">{counts.ask}</b> · 不可使用{" "}

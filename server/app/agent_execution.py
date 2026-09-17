@@ -99,8 +99,13 @@ def compile_system_prompt(
     if spec_instructions:
         parts.append(spec_instructions)
     legacy = (config.get("rolePrompt") or config.get("system_prompt") or "").strip()
-    if legacy and not parts:
-        parts.append(legacy)
+    if legacy:
+        if not parts:
+            parts.append(legacy)
+        elif not (config.get("identity") or "").strip():
+            # 09-16：rolePrompt=custom Agent 的 identity 分区。旧逻辑「parts 非空即
+            # 丢弃 legacy」会在配置 persona 后静默丢掉角色主体（草稿对话同坑）。
+            parts.insert(0, f"<identity>\n{legacy}\n</identity>")
     compiled = "\n\n".join(parts) or "You are a helpful assistant."
     digest = hashlib.sha256(compiled.encode()).hexdigest()
     # frozen model key — resolve from explicit model_ref, then Module Agent's
