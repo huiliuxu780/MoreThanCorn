@@ -1,4 +1,4 @@
-import {
+import { List, SquareKanban, 
   CircleAlert, Loader2, RefreshCw, Workflow as WorkflowIcon,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -15,6 +15,7 @@ import {
   Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ErrorState } from "@/components/app/list-state"
 import { PageContainer, PageHeader } from "@/components/app/page"
@@ -639,8 +640,30 @@ export default function OperationsTodayPage() {
 
       {/* ---- 全部任务区 ---- */}
       <section aria-labelledby="all-items-title" className="space-y-3">
+        {/* 09-17 用户指认：标题行只放标题+视图切换(icon)；筛选独立成行；lane 计数徽章删除 */}
         <div className="flex flex-wrap items-center gap-2">
           <h2 id="all-items-title" className="text-sm font-semibold">全部工作</h2>
+          <ToggleGroup type="single" value={view} onValueChange={(v) => { if (v) setView(v) }}
+            className="ml-auto" aria-label="视图切换">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <ToggleGroupItem value="board" aria-label="看板视图">
+                  <SquareKanban className="size-4" aria-hidden />
+                </ToggleGroupItem>
+              </TooltipTrigger>
+              <TooltipContent>看板视图</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <ToggleGroupItem value="list" aria-label="列表视图">
+                  <List className="size-4" aria-hidden />
+                </ToggleGroupItem>
+              </TooltipTrigger>
+              <TooltipContent>列表视图</TooltipContent>
+            </Tooltip>
+          </ToggleGroup>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <Input placeholder="搜索分析任务 / 批次" aria-label="搜索分析任务或批次"
             className="h-8 w-48" value={q} onChange={(e) => setQ(e.target.value)} />
           <Select value={origin || "all"} onValueChange={(v) => setOrigin(v === "all" ? "" : v)}>
@@ -685,20 +708,6 @@ export default function OperationsTodayPage() {
             onClick={() => setAttentionOnly((v) => !v)}>
             <CircleAlert className="size-3.5" aria-hidden /> 仅看需要操作
           </Button>
-          <ToggleGroup type="single" value={view} onValueChange={(v) => { if (v) setView(v) }}
-            className="ml-auto" aria-label="视图切换">
-            <ToggleGroupItem value="board" aria-label="看板视图">看板</ToggleGroupItem>
-            <ToggleGroupItem value="list" aria-label="列表视图">列表</ToggleGroupItem>
-          </ToggleGroup>
-          {view === "board" ? (
-            <div className="flex items-center gap-1.5 text-xs">
-              {LANES.map((l) => (
-                <Badge key={l.key} variant={l.badge}>
-                  {WORK_ITEM_STATUS_LABELS[l.key]} {resp?.counts?.[l.key] ?? 0}
-                </Badge>
-              ))}
-            </div>
-          ) : null}
         </div>
 
         {error && !resp ? <ErrorState title="看板加载失败" onRetry={() => void loadBoard()} /> : null}
