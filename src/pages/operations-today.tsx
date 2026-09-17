@@ -755,6 +755,7 @@ export default function OperationsTodayPage() {
             })}
           </div>
         ) : (
+          <>
           <div className="space-y-2">
             <div className="rounded-lg border bg-surface" data-testid="work-list-table">
               <Table>
@@ -801,15 +802,16 @@ export default function OperationsTodayPage() {
                 </TableBody>
               </Table>
             </div>
-            <Pagination
-              page={page}
-              pageSize={listPageSize}
-              total={total}
-              pageSizeOptions={[10, 20, 50]}
-              onPageChange={setPage}
-              onPageSizeChange={(s) => { setListPageSize(s); setPage(1) }}
-            />
           </div>
+          <Pagination
+            page={page}
+            pageSize={listPageSize}
+            total={total}
+            pageSizeOptions={[10, 20, 50]}
+            onPageChange={setPage}
+            onPageSizeChange={(s) => { setListPageSize(s); setPage(1) }}
+          />
+          </>
         )}
 
         {view === "board" && resp?.truncated ? (
