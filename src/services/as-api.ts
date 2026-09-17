@@ -51,6 +51,10 @@ export interface SessionRow {
   conversation_key: string | null;
   automation_id: string | null;
   agentflow_node_run_id?: string | null;
+  /** 09-16 f：LLM 短总结标题（空=尚未生成，前端回落触发类型文案） */
+  title?: string | null;
+  /** 09-16 a：置顶（列表已按置顶优先排序） */
+  pinned?: boolean;
   created_at: string;
 }
 
@@ -171,6 +175,16 @@ export const asApi = {
   runtimeView: (aid: string) => req<RuntimeView>(`/api/v2/agents/${aid}/runtime-view`),
   listSessions: (aid: string) =>
     req<{ items: SessionRow[] }>(`/api/v2/agents/${aid}/sessions`),
+  /** 09-16 a：对话任务重命名（原站⋯菜单同构） */
+  renameSession: (aid: string, sid: string, title: string) =>
+    req<{ session_id: string; title: string | null }>(`/api/v2/agents/${aid}/sessions/${sid}`, {
+      method: "PATCH", body: JSON.stringify({ title }),
+    }),
+  /** 09-16 a：对话任务置顶/取消置顶 */
+  pinSession: (aid: string, sid: string, pinned: boolean) =>
+    req<{ session_id: string; pinned: boolean }>(`/api/v2/agents/${aid}/sessions/${sid}/pin`, {
+      method: "POST", body: JSON.stringify({ pinned }),
+    }),
   openSession: (aid: string, opts?: {
     conversationKey?: string; releaseId?: string; modelOverride?: { model: string }; compare?: boolean
   }) =>
@@ -496,6 +510,7 @@ export interface GroupSessionView {
   id: string
   title: string | null
   status: "active" | "closed" | "failed"
+  pinned?: boolean
   leaderSessionId: string | null
   runtimeTeamId: string | null
   closedAt: string | null
@@ -558,6 +573,16 @@ export const groupsApi = {
   close: (gid: string, gsid: string) =>
     req<{ id: string; status: string }>(
       `/api/v2/groups/${gid}/sessions/${gsid}`, { method: "DELETE" }),
+  /** 09-16 a：群任务重命名 */
+  renameSession: (gid: string, gsid: string, title: string) =>
+    req<{ id: string; title: string | null }>(`/api/v2/groups/${gid}/sessions/${gsid}`, {
+      method: "PATCH", body: JSON.stringify({ title }),
+    }),
+  /** 09-16 a：群任务置顶/取消置顶 */
+  pinSession: (gid: string, gsid: string, pinned: boolean) =>
+    req<{ id: string; pinned: boolean }>(`/api/v2/groups/${gid}/sessions/${gsid}/pin`, {
+      method: "POST", body: JSON.stringify({ pinned }),
+    }),
   skills: (gid: string) =>
     req<{ items: { id: string; skillId: string; name: string; description: string }[] }>(
       `/api/v2/groups/${gid}/skills`),

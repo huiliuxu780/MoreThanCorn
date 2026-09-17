@@ -138,7 +138,9 @@ def list_sessions(aid: str, request: Request, db: Session = Depends(get_db), use
     rows = (
         db.query(AgentSessionIndex)
         .filter_by(agent_id=aid)
-        .order_by(AgentSessionIndex.created_at.desc())
+        # 09-16 a：置顶优先（pinned_at desc），其余按创建时间倒序
+        .order_by(AgentSessionIndex.pinned_at.desc().nulls_last(),
+                  AgentSessionIndex.created_at.desc())
         .limit(100)
         .all()
     )
@@ -150,11 +152,51 @@ def list_sessions(aid: str, request: Request, db: Session = Depends(get_db), use
                 "conversation_key": r.conversation_key,
                 "automation_id": r.automation_id,
                 "agentflow_node_run_id": r.agentflow_node_run_id,
+                "title": r.title,
+                "pinned": r.pinned_at is not None,
                 "created_at": r.created_at.isoformat(),
             }
             for r in rows
         ]
     }
+
+
+class SessionPatchBody(BaseModel):
+    title: str | None = None
+
+
+class PinBody(BaseModel):
+    pinned: bool
+
+
+@router.patch("/{aid}/sessions/{sid}")
+def rename_session(aid: str, sid: str, body: SessionPatchBody,
+                   db: Session = Depends(get_db), _user: dict = Depends(require_operator)):
+    """09-16 a：对话任务重命名（原站⋯菜单同构）。"""
+    row = db.query(AgentSessionIndex).filter_by(session_id=sid, agent_id=aid).first()
+    if row is None:
+        raise HTTPException(404, "session not indexed")
+    if body.title is not None:
+        clean = body.title.strip()
+        if not clean or len(clean) > 40:
+            raise HTTPException(422, detail={"code": "SESSION_TITLE_INVALID",
+                                             "message": "标题须为 1-40 字"})
+        row.title = clean
+    db.commit()
+    return {"session_id": sid, "title": row.title}
+
+
+@router.post("/{aid}/sessions/{sid}/pin")
+def pin_session(aid: str, sid: str, body: PinBody,
+                db: Session = Depends(get_db), _user: dict = Depends(require_operator)):
+    """09-16 a：对话任务置顶/取消置顶。"""
+    from ..models import utcnow
+    row = db.query(AgentSessionIndex).filter_by(session_id=sid, agent_id=aid).first()
+    if row is None:
+        raise HTTPException(404, "session not indexed")
+    row.pinned_at = utcnow() if body.pinned else None
+    db.commit()
+    return {"session_id": sid, "pinned": body.pinned}
 
 
 @router.post("/{aid}/sessions")
@@ -195,6 +237,10 @@ def chat_turn(aid: str, sid: str, body: TurnBody, request: Request, db: Session 
         raise HTTPException(404, "session not indexed")
     runtime_id, runtime_uid = _session_runtime_ref(db, uid, agent, sid)
     rt.chat_trigger(runtime_uid, runtime_id, sid, body.text)
+    # 09-16 f：首轮后台生成 LLM 短标题（仅当仍为空；线程内自行判空去重）
+    if index.title is None:
+        from ..session_title import spawn_agent_session_title
+        spawn_agent_session_title(sid, body.text)
     return {"status": "started", "session_id": sid}
 
 

@@ -385,7 +385,7 @@ function AgentListSection() {
                 <img
                   src={avatarFor(a.id, a.avatar)}
                   alt=""
-                  className="mt-0.5 size-6 shrink-0 rounded-full object-cover"
+                  className="mt-0.5 size-8 shrink-0 rounded-full object-cover"
                 />
                 <span className="min-w-0">
                   <span className="block truncate text-xs font-medium">{a.name}</span>
@@ -484,12 +484,12 @@ export function AppSidebar(props: AppNavProps) {
           column 间距12，footer padding 12px 0，不显示头像与账号文字）；展开态
           头像 28px + 名称/团队版 + 图标按钮。 */}
       <div
-        className="shrink-0 border-t p-2"
+        className="shrink-0 border-t p-1.5"
         style={{ borderColor: "var(--sidebar-border)" }}
       >
         <div className="flex items-center gap-1">
           <span
-            className="flex min-w-0 flex-1 items-center gap-2 rounded-md p-2 text-sm text-muted-foreground"
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-sm text-muted-foreground"
             title={`${UI_TERMS.navigation.account}：${username}`}
           >
             <span

@@ -1206,6 +1206,9 @@ class AgentSessionIndex(Base):
     # g062（Group Spec §3.1/§4.4）：群会话反链，仅 trigger_kind='group' 行非空
     group_session_id: Mapped[str | None] = mapped_column(
         String(32), nullable=True, index=True)
+    # 09-16 对话任务治理（用户指认 a/f）：LLM 短总结标题 + 置顶（列表置顶优先排序）
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -1602,6 +1605,8 @@ class AgentGroupSession(Base):
     max_team_turns: Mapped[int] = mapped_column(Integer, default=60)
     closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True)
+    # 09-16 对话任务治理（用户指认 a）：群任务置顶
+    pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

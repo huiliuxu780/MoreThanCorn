@@ -8,7 +8,10 @@
  * /groups/:gid → 重定向最新 active 会话（无则开聊）。 */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
-import { Copy, FolderOpen, Info, Loader2, Plus, RotateCw, Star, X } from "lucide-react"
+import {
+  Copy, FolderOpen, Info, Loader2, MoreHorizontal, Pin, PinOff, Plus, RotateCw,
+  SquarePen, Star, Trash2, X,
+} from "lucide-react"
 import { toast } from "sonner"
 import { Markdown } from "@/components/chat/markdown"
 import { ThinkingCollapse } from "@/components/chat/deep-thinking"
@@ -18,10 +21,15 @@ import { StreamingResponse } from "@/components/beui/agents/streaming-response"
 import { ToolResult } from "@/components/beui/agents/tool-result"
 import { ApprovalCard } from "@/components/beui/agents/approval-card"
 import { PromptInput } from "@/components/beui/agents/prompt-input"
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { avatarFor } from "@/lib/agent-avatar"
 import { resApi } from "@/services/resource-api"
+import { agentApi } from "@/services/wf-api"
 import {
   applyStreamEvent, initialStreamState, maskSecrets,
   type ChatStreamState,
@@ -31,6 +39,7 @@ import {
   type GroupSessionView, type GroupView,
 } from "@/services/as-api"
 import { GroupAvatarCluster } from "@/features/groups/group-avatar"
+import { GroupRenameDialog } from "@/features/groups/group-rename-dialog"
 
 interface RawMsg {
   id?: string
@@ -115,6 +124,17 @@ export default function GroupChatPage() {
   // @ 提及弹层
   const [mention, setMention] = useState<{ open: boolean; query: string }>({ open: false, query: "" })
   const [mentionIdx, setMentionIdx] = useState(0)
+  // 09-16 a/c/e（用户指认）：任务⋯菜单（置顶/详情/重命名/删除）、添加成员、群⋯（重命名/删除）
+  const [sessDetail, setSessDetail] = useState<GroupSessionView | null>(null)
+  const [sessRename, setSessRename] = useState<GroupSessionView | null>(null)
+  const [sessRenameText, setSessRenameText] = useState("")
+  const [sessDel, setSessDel] = useState<GroupSessionView | null>(null)
+  const [addMemberOpen, setAddMemberOpen] = useState(false)
+  const [memberQuery, setMemberQuery] = useState("")
+  const [memberPick, setMemberPick] = useState<string[]>([])
+  const [memberCandidates, setMemberCandidates] = useState<{ id: string; name: string }[]>([])
+  const [groupRenameOpen, setGroupRenameOpen] = useState(false)
+  const [groupDelOpen, setGroupDelOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
 
   const loadStatic = useCallback(() => {
@@ -257,9 +277,49 @@ export default function GroupChatPage() {
     try {
       const s = await groupsApi.open(gid)
       nav(`/conversations/groups/${gid}/conv_${s.id}`)
+      loadStatic()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "新建会话失败")
     }
+  }
+
+  /** 09-16 c：添加成员候选=未入群且未封存的 Agent（原站「添加 Waker」同构简化：无逐成员模型配置） */
+  const openAddMember = () => {
+    setMemberQuery("")
+    setMemberPick([])
+    const inGroup = new Set((group?.members ?? []).map((m) => m.agentId))
+    agentApi.list({ pageSize: 100, archived: "" })
+      .then((r: { items?: { id: string; name: string; archived?: boolean }[] }) => {
+        setMemberCandidates((r.items ?? [])
+          .filter((a) => !a.archived && !inGroup.has(a.id))
+          .map((a) => ({ id: a.id, name: a.name })))
+      })
+      .catch(() => setMemberCandidates([]))
+    setAddMemberOpen(true)
+  }
+
+  const submitAddMembers = () => {
+    if (!group || memberPick.length === 0) return
+    const members = [
+      ...group.members.map((m) => ({ agent_id: m.agentId, config: m.config ?? {} })),
+      ...memberPick.map((id) => ({ agent_id: id })),
+    ]
+    groupsApi.patch(gid, { revision: group.revision, members })
+      .then(() => {
+        setAddMemberOpen(false)
+        toast.success("已添加；新成员自下一个群会话起入会")
+        loadStatic()
+      })
+      .catch((e) => toast.error(e instanceof Error ? e.message : "添加成员失败"))
+  }
+
+  const removeGroup = () => {
+    groupsApi.remove(gid)
+      .then((r) => {
+        toast.success(r.archived ? "已归档（存在会话流水）" : "已删除")
+        nav("/agents")
+      })
+      .catch((e) => toast.error(e instanceof Error ? e.message : "删除失败"))
   }
 
   const liveEntries = Object.entries(streams).filter(([, s]) =>
@@ -273,7 +333,26 @@ export default function GroupChatPage() {
       <aside className="flex w-60 shrink-0 flex-col border-r border-(--border)">
         <div className="flex items-center gap-2 px-4 pb-3 pt-4">
           <GroupAvatarCluster memberIds={group?.members.map((m) => m.agentId) ?? []} />
-          <span className="truncate text-[14px] font-medium">{group?.name ?? "…"}</span>
+          <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{group?.name ?? "…"}</span>
+          {/* 09-16 e（用户指认）：群重命名/删除入口（管理页之外，聊天页同权） */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                aria-label="群组更多操作"
+                className="rounded p-1 text-(--text-tertiary) hover:bg-(--surface-muted)"
+              >
+                <MoreHorizontal size={14} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setGroupRenameOpen(true)}>
+                <SquarePen className="size-3.5" /> 重命名群组
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-destructive" onSelect={() => setGroupDelOpen(true)}>
+                <Trash2 className="size-3.5" /> 删除群组
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         <div className="mx-4 flex h-9 items-center gap-2.5 rounded-[6px] bg-(--segment-bg) p-1" role="tablist" aria-label="群组导航">
           {(["tasks", "settings"] as const).map((t) => (
@@ -303,19 +382,53 @@ export default function GroupChatPage() {
             </div>
             <ul className="min-h-0 flex-1 overflow-y-auto px-4">
               {sessions.map((s) => (
-                <li key={s.id}>
+                <li key={s.id} className="group/li relative">
                   <button
                     onClick={() => nav(`/conversations/groups/${gid}/conv_${s.id}`)}
-                    className={`flex w-full flex-col gap-0.5 rounded-[6px] py-2.5 pl-1.5 pr-1 text-left transition-colors ${
+                    className={`flex w-full flex-col gap-0.5 rounded-[6px] py-2.5 pl-1.5 pr-7 text-left transition-colors ${
                       s.id === gsid ? "bg-(--surface-muted)" : "hover:bg-(--surface-muted)"
                     }`}
                   >
                     {s.status === "closed" && (
                       <span className="text-xs text-(--text-tertiary)">已关聊·只读</span>
                     )}
-                    <span className="text-[13px] font-medium">{s.title ?? "任务"}</span>
+                    <span className="flex items-center gap-1 text-[13px] font-medium">
+                      {s.pinned && <Pin size={12} className="shrink-0 text-(--text-tertiary)" aria-label="已置顶" />}
+                      <span className="truncate">{s.title ?? "任务"}</span>
+                    </span>
                     <span className="text-xs text-(--text-tertiary)">{fmtTime(s.createdAt ?? "")}</span>
                   </button>
+                  {/* 09-16 a（原站⋯同构+用户指认）：置顶/打开详情/重命名/删除 */}
+                  <div className="absolute right-1 top-2 opacity-0 transition-opacity group-hover/li:opacity-100 group-focus-within/li:opacity-100">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button aria-label={`更多操作 ${s.title ?? "任务"}`} className="rounded p-1 text-(--text-tertiary) hover:bg-(--surface-muted)">
+                          <MoreHorizontal size={13} />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onSelect={() => groupsApi.pinSession(gid, s.id, !s.pinned)
+                            .then(loadStatic)
+                            .catch((e) => toast.error(e instanceof Error ? e.message : "置顶失败"))}
+                        >
+                          {s.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+                          {s.pinned ? "取消置顶" : "置顶"}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => setSessDetail(s)}>
+                          <Info className="size-3.5" /> 打开详情
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => { setSessRename(s); setSessRenameText(s.title ?? "") }}
+                        >
+                          <SquarePen className="size-3.5" /> 重命名
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive" onSelect={() => setSessDel(s)}>
+                          <Trash2 className="size-3.5" /> 删除
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -325,10 +438,10 @@ export default function GroupChatPage() {
             <section className="px-4 pt-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium">群成员</span>
+                {/* 09-16 c（用户指认）：添加成员真功能（原站同构；active 会话内新成员自下一会话入会） */}
                 <button
-                  disabled
-                  title="成员花名册建组时确定；active 会话冻结（ROSTER_FROZEN）"
-                  className="inline-flex h-5 items-center gap-1 rounded-[4px] px-1.5 text-xs font-medium text-(--text-tertiary) opacity-60"
+                  onClick={openAddMember}
+                  className="inline-flex h-5 items-center gap-1 rounded-[4px] px-1.5 text-xs font-medium text-(--text-secondary) hover:bg-(--surface-muted)"
                 >
                   <Plus size={12} /> 添加
                 </button>
@@ -751,6 +864,176 @@ export default function GroupChatPage() {
               创建草稿
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+      {/* ---- 09-16 a：群任务详情（⋯→打开详情） ---- */}
+      <Dialog open={!!sessDetail} onOpenChange={(o) => !o && setSessDetail(null)}>
+        <DialogContent style={{ width: 420, maxWidth: 420, borderRadius: 12 }}>
+          <DialogHeader>
+            <DialogTitle className="text-[14px] font-medium">群任务详情</DialogTitle>
+            <DialogDescription>{sessDetail?.title ?? "任务"}</DialogDescription>
+          </DialogHeader>
+          {sessDetail && (
+            <dl className="space-y-2 text-sm">
+              <div className="flex gap-2">
+                <dt className="w-20 shrink-0 text-muted-foreground">状态</dt>
+                <dd>{sessDetail.status === "active" ? "进行中" : sessDetail.status === "closed" ? "已关聊·只读" : "失败"}</dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="w-20 shrink-0 text-muted-foreground">创建时间</dt>
+                <dd>{fmtTime(sessDetail.createdAt ?? "")}</dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="w-20 shrink-0 text-muted-foreground">置顶</dt>
+                <dd>{sessDetail.pinned ? "是" : "否"}</dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="w-20 shrink-0 text-muted-foreground">成员</dt>
+                <dd className="min-w-0 flex-1 text-xs">
+                  {(group?.members ?? []).map((m) => `${m.agentName}${m.role === "leader" ? "(Leader)" : ""}`).join("、")}
+                </dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="w-20 shrink-0 text-muted-foreground">群会话</dt>
+                <dd className="min-w-0 flex-1 truncate font-mono text-xs" title={sessDetail.id}>{sessDetail.id}</dd>
+              </div>
+            </dl>
+          )}
+          <DialogFooter>
+            <Button variant="outline" className="h-8" onClick={() => setSessDetail(null)}>关闭</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ---- 09-16 a：群任务重命名 ---- */}
+      <Dialog open={!!sessRename} onOpenChange={(o) => !o && setSessRename(null)}>
+        <DialogContent style={{ width: 384, maxWidth: 384, borderRadius: 12 }}>
+          <DialogHeader>
+            <DialogTitle className="text-[14px] font-medium">重命名群任务</DialogTitle>
+            <DialogDescription>1-40 字；任务列表与页头同步展示。</DialogDescription>
+          </DialogHeader>
+          <Input
+            value={sessRenameText}
+            maxLength={40}
+            autoFocus
+            onChange={(e) => setSessRenameText(e.target.value)}
+            placeholder="如：五一出行方案协作"
+          />
+          <DialogFooter>
+            <Button variant="outline" className="h-8" onClick={() => setSessRename(null)}>取消</Button>
+            <Button
+              className="h-8 disabled:opacity-50"
+              disabled={!sessRenameText.trim()}
+              onClick={() => {
+                if (!sessRename) return
+                groupsApi.renameSession(gid, sessRename.id, sessRenameText.trim())
+                  .then(() => { setSessRename(null); loadStatic() })
+                  .catch((e) => toast.error(e instanceof Error ? e.message : "重命名失败"))
+              }}
+            >
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ---- 09-16 a：群任务删除（=关聊只读，历史保留） ---- */}
+      <Dialog open={!!sessDel} onOpenChange={(o) => !o && setSessDel(null)}>
+        <DialogContent style={{ width: 384, maxWidth: 384, borderRadius: 12 }}>
+          <DialogHeader>
+            <DialogTitle className="text-[14px] font-medium">删除这个群任务？</DialogTitle>
+            <DialogDescription>
+              删除后任务关聊并转只读，消息历史保留可查；此操作不可撤销。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" className="h-8" onClick={() => setSessDel(null)}>取消</Button>
+            <Button
+              variant="destructive"
+              className="h-8"
+              onClick={() => {
+                if (!sessDel) return
+                groupsApi.close(gid, sessDel.id)
+                  .then(() => { setSessDel(null); loadStatic() })
+                  .catch((e) => toast.error(e instanceof Error ? e.message : "删除失败"))
+              }}
+            >
+              删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ---- 09-16 c：添加群成员（原站「添加 Waker」同构简化） ---- */}
+      <Dialog open={addMemberOpen} onOpenChange={setAddMemberOpen}>
+        <DialogContent style={{ width: 420, maxWidth: 420, borderRadius: 12 }}>
+          <DialogHeader>
+            <DialogTitle className="text-[14px] font-medium">添加成员</DialogTitle>
+            <DialogDescription>
+              新成员自下一个群会话起入会；进行中的会话花名册保持冻结。
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={memberQuery}
+            onChange={(e) => setMemberQuery(e.target.value)}
+            placeholder="搜索 Agent"
+          />
+          <ul className="max-h-64 overflow-y-auto">
+            {memberCandidates
+              .filter((c) => c.name.toLowerCase().includes(memberQuery.toLowerCase()))
+              .map((c) => (
+                <li key={c.id}>
+                  <label className="flex h-9 items-center gap-2 rounded-[6px] px-2 hover:bg-(--surface-muted)">
+                    <input
+                      type="checkbox"
+                      checked={memberPick.includes(c.id)}
+                      onChange={(e) => setMemberPick((prev) => (e.target.checked
+                        ? [...prev, c.id]
+                        : prev.filter((x) => x !== c.id)))}
+                    />
+                    <img src={avatarFor(c.id)} alt="" className="size-5 rounded-full" />
+                    <span className="truncate text-[13px]">{c.name}</span>
+                  </label>
+                </li>
+              ))}
+            {memberCandidates.length === 0 && (
+              <li className="px-2 py-3 text-center text-xs text-(--text-tertiary)">
+                无可添加 Agent（均已入群或已封存）
+              </li>
+            )}
+          </ul>
+          <DialogFooter>
+            <Button variant="outline" className="h-8" onClick={() => setAddMemberOpen(false)}>取消</Button>
+            <Button
+              className="h-8 disabled:opacity-50"
+              disabled={memberPick.length === 0}
+              onClick={submitAddMembers}
+            >
+              添加
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ---- 09-16 e：群重命名 / 删除 ---- */}
+      <GroupRenameDialog
+        group={group}
+        open={groupRenameOpen}
+        onOpenChange={setGroupRenameOpen}
+        onRenamed={loadStatic}
+      />
+      <Dialog open={groupDelOpen} onOpenChange={setGroupDelOpen}>
+        <DialogContent style={{ width: 384, maxWidth: 384, borderRadius: 12 }}>
+          <DialogHeader>
+            <DialogTitle className="text-[14px] font-medium">删除群组？</DialogTitle>
+            <DialogDescription>
+              存在会话流水时删除=归档（历史只读保留）；无流水时物理删除。此操作不可撤销。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" className="h-8" onClick={() => setGroupDelOpen(false)}>取消</Button>
+            <Button variant="destructive" className="h-8" onClick={removeGroup}>删除</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

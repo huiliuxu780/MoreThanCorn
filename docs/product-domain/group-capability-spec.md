@@ -11,7 +11,7 @@
 | # | 决策 | 状态 | 结论/推荐 |
 |---|---|---|---|
 | D1 | 运行时装配模式 | 待拍板 | 平台确定性装配（§4.2）：平台直写官方 TeamRecord（**members 仅 worker，leader 经 TeamRecord.session_id/leader_agent_id 标识，官方形态**）+ 全员 session 绑 team_id；摘除 LLM 建团四工具（AgentCreate/AgentInvite/TeamCreate/TeamDelete），leader/worker 仅留 TeamSay；group 会话 manifest 缺失 fail-closed |
-| D2 | 会话模型 | 待拍板 | 一组 N 会话（会话=原站「任务」UI 文案）；**POST sessions 遇 active 一律 409 ACTIVE_SESSION_EXISTS**（前端引导续聊或先关聊）；关聊=标 closed 不解散 runtime（保 transcript，§4.1 DELETE） |
+| D2 | 会话模型 | **09-16 改拍（用户指认 d+原站多任务并存）** | 一组 N 会话（会话=原站「任务」UI 文案）；POST sessions 一律新开 team 实例（废弃单 active 409；reuse_active 仅 automation 派发复用）；关聊=标 closed 不解散 runtime（保 transcript，§4.1 DELETE） |
 | D3 | 成员「工作目录」字段 | 待拍板 | 配置 pane 改 {响应模型, 知识挂载}；不装假字段 |
 | D4 | Group 进 automation 触发面 | **已落地（09-16 P3）** | g065 group_id + g066 ck 复合约束扩 group 分支；dispatch 第四执行体（reuse active 会话）+leader chat_trigger；board group 维度+前端筛选；「一触发一 Invocation」不变、不套 TaskRun |
 | D5 | 成员数 | 待拍板 | **members 含 Leader 共 1..5，其中恰一位 role=leader**（聚合流路数=成员数） |
@@ -101,11 +101,11 @@ agent_session_index: 增列 group_session_id FK?（非空仅 trigger_kind='group
 | GET / | 列表：成员计数/Leader 名/archived 筛选/分页 | |
 | POST / | 创建 {name, leader_agent_id, members:[{agent_id, config?}]}（members 含 leader 行）；0 成员/Leader∉members/超 5 → 422 | 422 |
 | GET /{gid} | 详情（成员+config） | 404 |
-| PATCH /{gid} | 改名/描述/成员/Leader/成员 config；revision 乐观锁；**成员/Leader 变更仅允许无 active 会话**（binding 冻结） | 409 REVISION_CONFLICT / 409 ROSTER_FROZEN / 422 |
+| PATCH /{gid} | 改名/描述/成员/Leader/成员 config；revision 乐观锁；**active 会话内 Leader 冻结 409；成员增删放行**（09-16 c：新成员自下一会话入会，在会成员映射开聊时冻结） | 409 REVISION_CONFLICT / 409 ROSTER_FROZEN / 422 |
 | DELETE /{gid} | 无会话=真删；有会话=归档语义（⋯「删除」同源） | |
 | POST /{gid}/archive、/restore | 归档闸门（不变量 7）；**archive 遇 active 会话 409 ACTIVE_SESSION_EXISTS**（先关聊） | 409 |
 | GET /{gid}/sessions | 群会话列表（UI 任务列表，含 closed 只读） | |
-| POST /{gid}/sessions | 开聊=装配（§4.2）；**已有 active→409 ACTIVE_SESSION_EXISTS**（D2 拍死） | 409/422 |
+| POST /{gid}/sessions | 开聊=装配（§4.2）；**09-16 起允许多 active 并存**（D2 改拍；原站同构） | 409(归档)/422 |
 | GET /{gid}/sessions/{gsid} | 详情（成员 session 映射） | 404 |
 | POST /{gid}/sessions/{gsid}/turns | 用户发言→leader session turn | 409(closed) |
 | GET /{gid}/sessions/{gsid}/stream | 聚合 SSE（§4.3） | |

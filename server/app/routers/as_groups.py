@@ -100,6 +100,8 @@ def _view(db: Session, g: AgentGroup) -> dict[str, Any]:
     members = (db.query(AgentGroupMember)
                .filter(AgentGroupMember.group_id == g.id)
                .order_by(AgentGroupMember.created_at).all())
+    # 09-16 b（用户指认）：Leader 恒左起第一展示
+    members.sort(key=lambda m: 0 if m.role == "leader" else 1)
     agents = {a.id: a.name for a in db.query(Agent).filter(
         Agent.id.in_([m.agent_id for m in members] or [""])).all()}
     active = _active_session(db, g.id)
@@ -177,8 +179,12 @@ def patch_group(gid: str, body: GroupPatchBody, db: Session = Depends(get_db),
     roster_changed = body.members is not None or (
         body.leader_agent_id is not None and body.leader_agent_id != g.leader_agent_id)
     if roster_changed and _active_session(db, g.id):
-        raise HTTPException(409, detail={"code": "ROSTER_FROZEN",
-                                         "message": "存在 active 群会话，成员/Leader 已冻结；先关聊再改"})
+        # 09-16 c（用户指认）：active 会话只冻结 Leader 与在会成员映射；
+        # 增删成员放行——新成员自下一个群会话起入会（会话 roster 开聊时冻结不变）。
+        new_leader = body.leader_agent_id or g.leader_agent_id
+        if new_leader != g.leader_agent_id:
+            raise HTTPException(409, detail={"code": "ROSTER_FROZEN",
+                                             "message": "存在 active 群会话，Leader 已冻结；先关聊再换"})
     if body.name is not None:
         g.name = _check_name(body.name)
     if body.description is not None:
@@ -256,13 +262,56 @@ def list_sessions(gid: str, db: Session = Depends(get_db),
     _get_group(db, gid)
     rows = (db.query(AgentGroupSession)
             .filter(AgentGroupSession.group_id == gid)
-            .order_by(AgentGroupSession.created_at.desc()).all())
+            # 09-16 a：置顶优先，其余创建时间倒序
+            .order_by(AgentGroupSession.pinned_at.desc().nulls_last(),
+                      AgentGroupSession.created_at.desc()).all())
     return {"items": [{"id": s.id, "title": s.title, "status": s.status,
+                       "pinned": s.pinned_at is not None,
                        "leaderSessionId": s.leader_session_id,
                        "runtimeTeamId": s.runtime_team_id,
                        "closedAt": s.closed_at.isoformat() if s.closed_at else None,
                        "createdAt": s.created_at.isoformat() if s.created_at else None}
                       for s in rows]}
+
+
+class GroupSessionPatchBody(BaseModel):
+    title: str | None = None
+
+
+class GroupPinBody(BaseModel):
+    pinned: bool
+
+
+@router.patch("/{gid}/sessions/{gsid}")
+def rename_group_session(gid: str, gsid: str, body: GroupSessionPatchBody,
+                         db: Session = Depends(get_db),
+                         _user: dict = Depends(require_operator)):
+    """09-16 a：群任务重命名（原站⋯菜单同构）。"""
+    s = _get_session(db, gsid)
+    if s.group_id != gid:
+        raise HTTPException(404, "group session not in group")
+    if body.title is not None:
+        clean = body.title.strip()
+        if not clean or len(clean) > 40:
+            raise HTTPException(422, detail={"code": "SESSION_TITLE_INVALID",
+                                             "message": "标题须为 1-40 字"})
+        s.title = clean
+    db.commit()
+    return {"id": s.id, "title": s.title}
+
+
+@router.post("/{gid}/sessions/{gsid}/pin")
+def pin_group_session(gid: str, gsid: str, body: GroupPinBody,
+                      db: Session = Depends(get_db),
+                      _user: dict = Depends(require_operator)):
+    """09-16 a：群任务置顶/取消置顶。"""
+    from ..models import utcnow
+    s = _get_session(db, gsid)
+    if s.group_id != gid:
+        raise HTTPException(404, "group session not in group")
+    s.pinned_at = utcnow() if body.pinned else None
+    db.commit()
+    return {"id": s.id, "pinned": body.pinned}
 
 
 @router.get("/{gid}/sessions/{gsid}")
@@ -305,8 +354,9 @@ def _session_members(db: Session, gsid: str) -> list[AgentGroupSessionMember]:
 
 def open_group_session(db: Session, gid: str, uid: str, *,
                        reuse_active: bool = False) -> AgentGroupSession:
-    """开聊=装配（不变量 3/5；D2：active 存在 409，reuse_active=True 时返回
-    既有 active 会话供 automation 派发复用）。"""
+    """开聊=装配（不变量 3/5；reuse_active=True 时返回既有 active 会话供
+    automation 派发复用）。09-16 d（用户指认「无法新发起群对话」+原站多任务并存）：
+    废弃「单 active」限制——新任务一律新开 team 实例，旧 active 会话保持可续聊。"""
     from .. import agentscope_client as rt
     from ..agentflow_executor import _node_runtime_binding
 
@@ -315,11 +365,8 @@ def open_group_session(db: Session, gid: str, uid: str, *,
         raise HTTPException(409, detail={"code": "GROUP_ARCHIVED",
                                          "message": "Group 已归档，先恢复再开聊"})
     active = _active_session(db, gid)
-    if active:
-        if reuse_active:
-            return active
-        raise HTTPException(409, detail={"code": "ACTIVE_SESSION_EXISTS",
-                                         "message": "已有 active 群会话，续聊或先关聊"})
+    if active and reuse_active:
+        return active
     members = (db.query(AgentGroupMember)
                .filter(AgentGroupMember.group_id == gid).all())
     bindings: dict[str, dict] = {}
@@ -461,6 +508,10 @@ def group_turn(gid: str, gsid: str, body: TurnBody,
            .filter_by(session_id=s.leader_session_id).first())
     rt.chat_trigger(idx.user_id or uid, idx.runtime_agent_id,
                     s.leader_session_id, body.text)
+    # 09-16 f：标题仍为默认「任务 N」时后台生成 LLM 短标题（线程内判空去重）
+    if s.title is None or s.title.startswith("任务 "):
+        from ..session_title import spawn_group_session_title
+        spawn_group_session_title(s.id, body.text)
     return {"status": "started", "session_id": s.leader_session_id}
 
 

@@ -50,6 +50,13 @@ def _resolve_base_headers(db: Session, model_key: str) -> tuple[str, dict]:
         return base, {"Authorization": f"Bearer {secret}"}
     if conn is not None:
         _ep, payload, _code = resolve_for_request(conn)
+        # 09-17 修：本路径只服务 OpenAI 兼容 chat/completions——kind=api_key 的
+        # 通用签名头是 X-API-Key，DashScope 等兼容口只认 Bearer（此前 401 根因）。
+        if conn.kind == "api_key":
+            key = payload if isinstance(payload, str) else (
+                (payload or {}).get("api_key") or (payload or {}).get("key") or "")
+            if key:
+                return base, {"Authorization": f"Bearer {key}"}
         try:
             return base, build_auth_headers(conn.kind, payload, script=conn.auth_script,
                                             env_vars=payload if isinstance(payload, dict) else None)

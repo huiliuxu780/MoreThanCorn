@@ -139,17 +139,24 @@ def test_patch_leader_switch_ok():
     assert roles[a] == "leader" and roles[b] == "member"
 
 
-def test_patch_roster_frozen_with_active_session():
+def test_patch_roster_with_active_session():
+    """09-16 c 改拍：active 会话内成员增删放行（新成员自下一会话入会），Leader 仍冻结。"""
     a, b, c = _mk_agent(), _mk_agent(), _mk_agent()
     gid = _create([a, b]).json()["id"]
     _mk_session(gid)
+    # 成员增删：放行
     r = client.patch(f"/api/v2/groups/{gid}", json={
         "revision": 1, "members": [{"agent_id": a}, {"agent_id": c}]})
-    assert r.status_code == 409
-    assert r.json()["detail"]["code"] == "ROSTER_FROZEN"
+    assert r.status_code == 200
+    assert {m["agentId"] for m in r.json()["members"]} == {a, c}
+    # 换 Leader：仍冻结
+    r1 = client.patch(f"/api/v2/groups/{gid}", json={
+        "revision": 2, "leader_agent_id": c})
+    assert r1.status_code == 409
+    assert r1.json()["detail"]["code"] == "ROSTER_FROZEN"
     # 改名不受冻结限制
     r2 = client.patch(f"/api/v2/groups/{gid}",
-                      json={"revision": 1, "name": "仍可改名"})
+                      json={"revision": 2, "name": "仍可改名"})
     assert r2.status_code == 200
 
 

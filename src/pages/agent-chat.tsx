@@ -13,11 +13,15 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import {
   Copy,
   FolderOpen,
+  Info,
   Loader2,
   MoreHorizontal,
   PanelRight,
+  Pin,
+  PinOff,
   Plus,
   RotateCw,
+  SquarePen,
   Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -39,6 +43,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { PromptInput } from "@/components/beui/agents/prompt-input"
 import { AgentActivity } from "@/components/beui/agents/agent-activity"
 import type { AgentActivityItem } from "@/components/beui/agents/agent-activity"
@@ -161,6 +166,10 @@ export default function AgentChatPage() {
   const [runtimeView, setRuntimeView] = React.useState<{ published: unknown; running: unknown } | null>(null)
   const [models, setModels] = React.useState<{ modelKey: string }[]>([])
   const [delTarget, setDelTarget] = React.useState<string | null>(null)
+  // 09-16 a：⋯菜单「打开详情 / 重命名」目标
+  const [detailTarget, setDetailTarget] = React.useState<SessionRow | null>(null)
+  const [renameTarget, setRenameTarget] = React.useState<SessionRow | null>(null)
+  const [renameText, setRenameText] = React.useState("")
   const streamRef = React.useRef<AbortController | null>(null)
   const bottomRef = React.useRef<HTMLDivElement>(null)
   const scrollRef = React.useRef<HTMLDivElement>(null)
@@ -537,7 +546,7 @@ export default function AgentChatPage() {
       : !["chat", "manual"].includes(s.trigger_kind),
   )
   const currentSession = sessions.find((s) => s.session_id === sid)
-  const sessionTitle = sid ? (sessionTitles[sid] ?? `${TRIGGER_LABEL[currentSession?.trigger_kind ?? ""] ?? currentSession?.trigger_kind ?? "对话任务"}`) : ""
+  const sessionTitle = sid ? (currentSession?.title ?? sessionTitles[sid] ?? `${TRIGGER_LABEL[currentSession?.trigger_kind ?? ""] ?? currentSession?.trigger_kind ?? "对话任务"}`) : ""
   // 09-11 bug1：执行过程对历史会话恒 0 —— live 流状态之外，从持久化消息推导模型调用/工具/思考计数
   const histStats = React.useMemo(() => {
     let modelCalls = 0
@@ -685,8 +694,11 @@ export default function AgentChatPage() {
                     setParams({ session: s.session_id })
                   }}
                 >
-                  <div className="truncate font-medium">
-                    {sessionTitles[s.session_id] ?? TRIGGER_LABEL[s.trigger_kind] ?? s.trigger_kind}
+                  <div className="flex items-center gap-1 truncate font-medium">
+                    {s.pinned && <Pin className="size-3 shrink-0 text-(--text-tertiary)" aria-label="已置顶" />}
+                    <span className="truncate">
+                      {s.title ?? sessionTitles[s.session_id] ?? TRIGGER_LABEL[s.trigger_kind] ?? s.trigger_kind}
+                    </span>
                   </div>
                   <div className="text-muted-foreground">{fmtTime(s.created_at)}</div>
                 </button>
@@ -695,20 +707,32 @@ export default function AgentChatPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-6 shrink-0 opacity-0 group-hover:opacity-100"
-                      aria-label={`更多操作 ${sessionTitles[s.session_id] ?? TRIGGER_LABEL[s.trigger_kind] ?? s.trigger_kind}`}
+                      className="size-6 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                      aria-label={`更多操作 ${s.title ?? sessionTitles[s.session_id] ?? TRIGGER_LABEL[s.trigger_kind] ?? s.trigger_kind}`}
                     >
                       <MoreHorizontal className="size-3" />
                     </Button>
                   </DropdownMenuTrigger>
+                  {/* 09-16 a（原站⋯同构+用户指认）：置顶/打开详情/重命名/删除 */}
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem
+                      onSelect={() => void asApi.pinSession(agentId, s.session_id, !s.pinned)
+                        .then(() => loadSessions())
+                        .catch((e) => toast.error((e as Error).message))}
+                    >
+                      {s.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+                      {s.pinned ? "取消置顶" : "置顶"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setDetailTarget(s)}>
+                      <Info className="size-3.5" /> 打开详情
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
                       onSelect={() => {
-                        setDraftNew(false)
-                        setParams({ session: s.session_id })
+                        setRenameTarget(s)
+                        setRenameText(s.title ?? sessionTitles[s.session_id] ?? "")
                       }}
                     >
-                      打开对话任务
+                      <SquarePen className="size-3.5" /> 重命名
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className="text-destructive"
@@ -1190,6 +1214,94 @@ export default function AgentChatPage() {
               onClick={() => delTarget && void deleteTask(delTarget)}
             >
               删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 09-16 a：对话任务详情（⋯→打开详情） */}
+      <Dialog open={!!detailTarget} onOpenChange={(o) => !o && setDetailTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>对话任务详情</DialogTitle>
+            <DialogDescription>
+              {detailTarget?.title ?? sessionTitles[detailTarget?.session_id ?? ""] ?? TRIGGER_LABEL[detailTarget?.trigger_kind ?? ""] ?? detailTarget?.trigger_kind}
+            </DialogDescription>
+          </DialogHeader>
+          {detailTarget && (
+            <dl className="space-y-2 text-sm">
+              <div className="flex gap-2">
+                <dt className="w-20 shrink-0 text-muted-foreground">触发来源</dt>
+                <dd>{TRIGGER_LABEL[detailTarget.trigger_kind] ?? detailTarget.trigger_kind}</dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="w-20 shrink-0 text-muted-foreground">创建时间</dt>
+                <dd>{fmtTime(detailTarget.created_at)}</dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="w-20 shrink-0 text-muted-foreground">置顶</dt>
+                <dd>{detailTarget.pinned ? "是" : "否"}</dd>
+              </div>
+              {detailTarget.automation_id && (
+                <div className="flex gap-2">
+                  <dt className="w-20 shrink-0 text-muted-foreground">自动任务</dt>
+                  <dd className="font-mono text-xs">{detailTarget.automation_id}</dd>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <dt className="w-20 shrink-0 text-muted-foreground">Session</dt>
+                <dd className="min-w-0 flex-1 truncate font-mono text-xs" title={detailTarget.session_id}>
+                  {detailTarget.session_id}
+                </dd>
+                <Button variant="ghost" size="sm" className="h-6 px-1.5" aria-label="复制 Session ID"
+                  onClick={() => void navigator.clipboard.writeText(detailTarget.session_id)}>
+                  <Copy className="size-3" />
+                </Button>
+              </div>
+            </dl>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailTarget(null)}>关闭</Button>
+            <Button
+              onClick={() => {
+                if (!detailTarget) return
+                setDraftNew(false)
+                setParams({ session: detailTarget.session_id })
+                setDetailTarget(null)
+              }}
+            >
+              打开对话
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 09-16 a：对话任务重命名（⋯→重命名） */}
+      <Dialog open={!!renameTarget} onOpenChange={(o) => !o && setRenameTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>重命名对话任务</DialogTitle>
+            <DialogDescription>1-40 字；列表与页头同步展示。</DialogDescription>
+          </DialogHeader>
+          <Input
+            value={renameText}
+            maxLength={40}
+            autoFocus
+            onChange={(e) => setRenameText(e.target.value)}
+            placeholder="如：退款话术质检复核"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameTarget(null)}>取消</Button>
+            <Button
+              disabled={!renameText.trim()}
+              onClick={() => {
+                if (!renameTarget) return
+                asApi.renameSession(agentId, renameTarget.session_id, renameText.trim())
+                  .then(() => { setRenameTarget(null); loadSessions() })
+                  .catch((e) => toast.error((e as Error).message))
+              }}
+            >
+              保存
             </Button>
           </DialogFooter>
         </DialogContent>
