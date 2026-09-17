@@ -573,15 +573,18 @@ export default function GroupChatPage() {
           <span className="text-[14px] font-medium">
             {sessions.find((s) => s.id === gsid)?.title ?? "任务"}
           </span>
-          {/* 09-17（用户指认）：当前任务钮收折右侧产物栏，不再折叠左侧对话列表 */}
-          <button
-            aria-pressed={taskOpen}
-            title={taskOpen ? "收起当前任务" : "展开当前任务"}
-            onClick={() => setTaskOpen((v) => !v)}
-            className="inline-flex h-[30px] items-center gap-1.5 rounded-[4px] border border-(--border) bg-(--surface-muted) px-3 text-[13px] font-medium"
-          >
-            <FolderOpen size={13} /> 当前任务
-          </button>
+          {/* 09-17（用户指认）：当前任务钮=ghost 弱显示；右栏收起时才出现在聊天页头右端，
+              右栏展开时钮移入右栏页头（原站位置=页面右上缘） */}
+          {!taskOpen && (
+            <button
+              aria-pressed={taskOpen}
+              title="展开当前任务"
+              onClick={() => setTaskOpen((v) => !v)}
+              className="inline-flex h-7 items-center gap-1.5 rounded-[4px] px-2 text-[13px] font-medium text-(--text-tertiary) transition-colors hover:bg-(--surface-muted) hover:text-(--text-secondary)"
+            >
+              <FolderOpen size={14} /> 当前任务
+            </button>
+          )}
         </div>
         <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
           {/* 09-17（用户指认）：聊天列左锚定、随面板收折自适应拉宽（不再居中限宽） */}
@@ -778,12 +781,24 @@ export default function GroupChatPage() {
         </footer>
       </section>
 
-      {/* ---- 产物面板 240（当前任务钮收折） ---- */}
+      {/* ---- 产物面板 240（当前任务钮收折；钮在面板页头，ghost 弱显示） ---- */}
       {taskOpen && (
-      <aside className="w-60 shrink-0 border-l border-(--border) px-4 pt-4">
+      <aside className="flex w-60 shrink-0 flex-col border-l border-(--border)">
+        <div className="flex h-11 shrink-0 items-center justify-end px-2">
+          <button
+            aria-pressed={taskOpen}
+            title="收起当前任务"
+            onClick={() => setTaskOpen((v) => !v)}
+            className="inline-flex h-7 items-center gap-1.5 rounded-[4px] px-2 text-[13px] font-medium text-(--text-tertiary) transition-colors hover:bg-(--surface-muted) hover:text-(--text-secondary)"
+          >
+            <FolderOpen size={14} /> 当前任务
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-1">
         <h3 className="text-[14px] font-medium">产物</h3>
         <p className="mt-4 text-xs font-medium">共享目录</p>
         <p className="mt-2 text-xs text-(--text-tertiary)">暂无产物</p>
+        </div>
       </aside>
       )}
 

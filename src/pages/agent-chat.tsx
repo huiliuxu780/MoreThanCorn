@@ -819,14 +819,17 @@ export default function AgentChatPage() {
                         : "执行失败"}
             </span>
           )}
-          <Button
-            variant={rightOpen ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => setRightOpen((v) => !v)}
-            aria-label="当前任务"
-          >
-            <PanelRight className="size-4" /> 当前任务
-          </Button>
+          {/* 09-17（用户指认）：当前任务钮 ghost 弱显示；右栏展开时钮在右栏页头 */}
+          {!rightOpen && (
+            <button
+              aria-pressed={rightOpen}
+              title="展开当前任务"
+              onClick={() => setRightOpen((v) => !v)}
+              className="inline-flex h-7 items-center gap-1.5 rounded-[4px] px-2 text-[13px] font-medium text-(--text-tertiary) transition-colors hover:bg-(--surface-muted) hover:text-(--text-secondary)"
+            >
+              <PanelRight className="size-4" /> 当前任务
+            </button>
+          )}
         </header>
 
         {!atBottom && (
@@ -1344,7 +1347,17 @@ export default function AgentChatPage() {
       {/* 右：当前任务 + 产物（240，可 toggle） */}
       {rightOpen && (
         <aside className="hidden w-60 shrink-0 flex-col overflow-y-auto border-l lg:flex">
-          <div className="border-b px-3 py-2 text-sm font-semibold">产物</div>
+          <div className="flex items-center justify-between border-b px-3 py-2">
+            <span className="text-sm font-semibold">产物</span>
+            <button
+              aria-pressed={rightOpen}
+              title="收起当前任务"
+              onClick={() => setRightOpen((v) => !v)}
+              className="inline-flex h-7 items-center gap-1.5 rounded-[4px] px-2 text-[13px] font-medium text-(--text-tertiary) transition-colors hover:bg-(--surface-muted) hover:text-(--text-secondary)"
+            >
+              <PanelRight className="size-4" /> 当前任务
+            </button>
+          </div>
           <div className="space-y-3 p-3 text-xs">
             <section>
               <h3 className="mb-1 font-medium text-muted-foreground">当前任务</h3>
