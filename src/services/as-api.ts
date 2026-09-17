@@ -437,46 +437,60 @@ export function openRuntimeStream(
   onEvent: (ev: Record<string, unknown>) => void,
   onDone?: () => void,
   external?: AbortController,
+  onReconnect?: () => void,
 ): AbortController {
   const ctrl = external ?? new AbortController();
   const token = wfApiToken();
-  fetch(url, {
-    headers: {
-      Accept: "text/event-stream",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    signal: ctrl.signal,
-  })
-    .then(async (res) => {
-      if (!res.ok || !res.body) {
-        onDone?.();
-        return;
-      }
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buf.indexOf("\n\n")) >= 0) {
-          const frame = buf.slice(0, idx);
-          buf = buf.slice(idx + 2);
-          const dataLine = frame
-            .split("\n")
-            .find((l) => l.startsWith("data:"));
-          if (!dataLine) continue;
-          try {
-            onEvent(JSON.parse(dataLine.slice(5).trim()));
-          } catch {
-            /* heartbeat/注释帧忽略 */
+  // 09-17（用户指认「回答时不跟随」根因之二）：上游 SSE 结束/网络断（runtime 空闲断、
+  // 后端重启）后自动重连——此前流一次性死掉，live 事件永久丢失。
+  // !res.ok（鉴权/404 等配置性错误）不重连，交 onDone 由页面处置。
+  let established = false;
+  const run = async () => {
+    for (;;) {
+      if (ctrl.signal.aborted) return;
+      try {
+        const res = await fetch(url, {
+          headers: {
+            Accept: "text/event-stream",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          signal: ctrl.signal,
+        });
+        if (!res.ok || !res.body) {
+          onDone?.();
+          return;
+        }
+        if (established) onReconnect?.();
+        established = true;
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let idx: number;
+          while ((idx = buf.indexOf("\n\n")) >= 0) {
+            const frame = buf.slice(0, idx);
+            buf = buf.slice(idx + 2);
+            const dataLine = frame
+              .split("\n")
+              .find((l) => l.startsWith("data:"));
+            if (!dataLine) continue;
+            try {
+              onEvent(JSON.parse(dataLine.slice(5).trim()));
+            } catch {
+              /* heartbeat/注释帧忽略 */
+            }
           }
         }
+      } catch {
+        if (ctrl.signal.aborted) return;
       }
-      onDone?.();
-    })
-    .catch(() => onDone?.());
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  };
+  void run();
   return ctrl;
 }
 
@@ -618,11 +632,13 @@ export function openGroupStream(
   onEnvelope: (env: GroupStreamEnvelope) => void,
   onDone?: () => void,
   external?: AbortController,
+  onReconnect?: () => void,
 ): AbortController {
   return openRuntimeStream(
     groupsApi.streamUrl(gid, gsid),
     (ev) => onEnvelope(ev as unknown as GroupStreamEnvelope),
     onDone,
     external,
+    onReconnect,
   )
 }

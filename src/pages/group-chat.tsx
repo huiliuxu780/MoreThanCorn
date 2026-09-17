@@ -136,6 +136,10 @@ export default function GroupChatPage() {
   const [groupRenameOpen, setGroupRenameOpen] = useState(false)
   const [groupDelOpen, setGroupDelOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
+  // 09-17（用户指认）：流式贴底跟随——读者感知（贴底跟随/上读即停/回最新浮标）
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const [atBottom, setAtBottom] = useState(true)
+  const atBottomRef = useRef(true)
 
   const loadStatic = useCallback(() => {
     groupsApi.get(gid).then(setGroup).catch(() => setGroup(null))
@@ -198,6 +202,20 @@ export default function GroupChatPage() {
   useEffect(() => { loadGov() }, [loadGov])
   useEffect(() => { void loadMessages() }, [loadMessages])
 
+  // 贴底跟随：流式/消息变化时，读者在底部则跟随（瞬时跳，避免 smooth 动画与
+  // 用户上滚抢滚动）；上读即停（atBottom=false 不抢滚动）
+  useEffect(() => {
+    if (atBottomRef.current) bottomRef.current?.scrollIntoView()
+  }, [streams, msgs, atBottom])
+
+  const onScroll = () => {
+    const el = listRef.current
+    if (!el) return
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 48
+    atBottomRef.current = near
+    setAtBottom(near)
+  }
+
   // 聚合 SSE → per-source applyStreamEvent（与单 Agent 聊天同 reducer）；
   // REPLY_END 后回捞该 session 历史并清 live（归并进终态消息）
   useEffect(() => {
@@ -225,6 +243,9 @@ export default function GroupChatPage() {
           }))
         }, 400)
       }
+    }, undefined, undefined, () => {
+      // 09-17：传输层重连成功后回捞断线期间的终态消息（缺口补齐）
+      void loadMessages()
     })
     return () => ctrl.abort()
   }, [gid, gsid, detail, loadMessages])
@@ -568,7 +589,20 @@ export default function GroupChatPage() {
       </aside>
 
       {/* ---- 聊天列 ---- */}
-      <section className="flex min-w-0 flex-1 flex-col">
+      <section className="relative flex min-w-0 flex-1 flex-col">
+        {!atBottom && (
+          <button
+            type="button"
+            className="absolute bottom-40 right-6 z-10 flex items-center gap-1 rounded-full border bg-surface px-3 py-1.5 text-xs shadow-md hover:bg-muted"
+            onClick={() => {
+              atBottomRef.current = true
+              setAtBottom(true)
+              bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+            }}
+          >
+            回到最新
+          </button>
+        )}
         <div className="flex h-11 shrink-0 items-center justify-between px-8">
           <span className="text-[14px] font-medium">
             {sessions.find((s) => s.id === gsid)?.title ?? "任务"}
@@ -586,7 +620,7 @@ export default function GroupChatPage() {
             </button>
           )}
         </div>
-        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
+        <div ref={listRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
           {/* 09-17（用户指认）：聊天列左锚定、随面板收折自适应拉宽（不再居中限宽） */}
           <div className="w-full px-8 pb-4 pt-3">
             {/* 历史终态消息（与单 Agent 聊天同组件） */}
@@ -704,6 +738,7 @@ export default function GroupChatPage() {
                 </Message>
               )
             })}
+            <div ref={bottomRef} />
           </div>
         </div>
         <footer className="shrink-0 px-8 pb-3">

@@ -552,20 +552,31 @@ def group_stream(gid: str, gsid: str, request: Request,
         })
 
     q: queue.Queue = queue.Queue()
+    stop = threading.Event()
+    clients: list[httpx.Client] = []
 
     def pump(src: dict) -> None:
         url = rt.stream_url(src["session_id"], src["runtime_agent_id"])
+        client = httpx.Client(timeout=httpx.Timeout(None, read=None))
+        clients.append(client)
         try:
-            with httpx.Client(timeout=httpx.Timeout(None, read=None)) as client:
-                with client.stream(
-                        "GET", url,
-                        headers={"X-User-ID": src["runtime_uid"]}) as upstream:
-                    for line in upstream.iter_lines():
-                        if not line.startswith("data: "):
-                            continue
-                        q.put((src, line[len("data: "):]))
-        except Exception:  # noqa: BLE001 —— 单路断开不拖垮聚合流
+            with client.stream(
+                    "GET", url,
+                    headers={"X-User-ID": src["runtime_uid"]}) as upstream:
+                for line in upstream.iter_lines():
+                    if stop.is_set():
+                        break
+                    if not line.startswith("data: "):
+                        continue
+                    q.put((src, line[len("data: "):]))
+        except Exception:  # noqa: BLE001 —— 单路断开不拖垮聚合流；计一路终结
             q.put((src, None))
+        finally:
+            # 正常结束不计数（保持聚合流存活，旧行为）；断连回收由 gen finally 触发
+            try:
+                client.close()
+            except Exception:  # noqa: BLE001
+                pass
 
     threads = [threading.Thread(target=pump, args=(src,), daemon=True)
                for src in sources]
@@ -575,21 +586,31 @@ def group_stream(gid: str, gsid: str, request: Request,
     def gen():
         seq = 0
         alive = len(threads)
-        while alive:
-            try:
-                src, data = q.get(timeout=30)
-            except queue.Empty:
-                yield ": keepalive\n\n"
-                continue
-            if data is None:
-                alive -= 1
-                continue
-            seq += 1
-            payload = json.dumps({"id": seq, "source": {
-                "agentId": src["agent_id"], "name": src["name"],
-                "role": src["role"], "sessionId": src["session_id"]},
-                "payload": data})
-            yield f"id: {seq}\ndata: {payload}\n\n"
+        try:
+            while alive:
+                try:
+                    src, data = q.get(timeout=30)
+                except queue.Empty:
+                    yield ": keepalive\n\n"
+                    continue
+                if data is None:
+                    alive -= 1
+                    continue
+                seq += 1
+                payload = json.dumps({"id": seq, "source": {
+                    "agentId": src["agent_id"], "name": src["name"],
+                    "role": src["role"], "sessionId": src["session_id"]},
+                    "payload": data})
+                yield f"id: {seq}\ndata: {payload}\n\n"
+        finally:
+            # 09-17：前端断连（关页/导航/abort）必须回收 pump 线程与上游 SSE——
+            # 否则 8301 侧 redis 订阅连接累积至 MaxConnectionsError（messages 500 根因）。
+            stop.set()
+            for c in clients:
+                try:
+                    c.close()
+                except Exception:  # noqa: BLE001
+                    pass
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 
