@@ -23,7 +23,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { currentRole } from "@/services/rbac"
 import { pagedApi, runtimeProviderApi, type RuntimeProviderDTO } from "@/services/wf-api"
 
-const KINDS = ["agentscope", "deepseek-harness", "external"] as const
+// 09-17：deepseek-harness 运行时 09-04 已退役，新建/编辑不再提供该 kind（历史行只读追溯）
+const KINDS = ["agentscope", "external"] as const
 
 function relTime(iso: string | null): string {
   if (!iso) return ""

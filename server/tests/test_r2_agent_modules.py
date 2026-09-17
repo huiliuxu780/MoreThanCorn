@@ -12,6 +12,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 
+import pytest
 import httpx
 from fastapi.testclient import TestClient
 
@@ -121,7 +122,9 @@ def test_registry_assets_and_fail_fast():
     mod = module_registry.get("quality-analysis", "1.0.0")
     assert {i["name"] for i in mod.logical_tools} == set(TOOL_NAMES)
     assert mod.resolve_implementation("agentscope")["entry"] == "native_quality_v0.2"
-    assert mod.resolve_implementation("deepseek-harness")["bundle"]
+    # 09-17：deepseek-harness 运行时已退役，manifest 不再声明该实现
+    with pytest.raises(KeyError):
+        mod.resolve_implementation("deepseek-harness")
     # Schema 哈希引用稳定（同输入同哈希；发布冻结以此为凭据）
     assert mod.input_schema_ref["sha256"] == module_registry.get("quality-analysis").input_schema_ref["sha256"]
     # Spec 校验：criteria 缺 tool_policy 被拒

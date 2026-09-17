@@ -17,9 +17,6 @@ implementations:
   agentscope:
     version: 0.1.0
     entry: ticket_automation_v1
-  deepseek-harness:
-    version: 0.1.0
-    bundle: morethancorn-dsh-ticket-automation
 logicalTools:
   - { name: ticket_query, version: 1.0.0, effect: read }
   - { name: ticket_update, version: 1.0.0, effect: write-reversible }

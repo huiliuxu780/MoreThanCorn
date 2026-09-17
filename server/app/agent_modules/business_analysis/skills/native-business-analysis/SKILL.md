@@ -5,10 +5,9 @@ description: 对业务问题做只读指标分析的工作流（business_analysi
 
 # 业务指标分析（business_analysis_v1）
 
-来源：DSH 实现 `runtimes/deepseek_harness/plugins/native_business_analysis.mjs`
-（bundle `morethancorn-dsh-business-analysis`，composition
-`runtimes/deepseek_harness/config/native_business.cordis.yml`），与
-`business-analysis@1.0.0` 模块 spec/Schema 及其他 runtime 的同名工作流语义一致。
+来源：本技能规范最初与 DSH 实现（morethancorn-dsh-business-analysis）语义对齐；
+该运行时已于 09-04 退役删除，现唯一实现为 AgentScope 原生
+（business_analysis module implementations.agentscope，entry business_analysis_v1）。
 本技能是这套分析逻辑的规范描述；任何 runtime 实现必须遵守。
 
 ## 适用范围与边界

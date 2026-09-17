@@ -63,6 +63,32 @@ async def lifespan(_app: FastAPI):
     # SDD 10 R2：Module Registry 启动 fail fast（重复版本/缺 Schema/缺实现即拒绝启动）
     from .agent_modules import registry as module_registry
     module_registry.warmup()
+    # 09-17 运维陷阱固化：WF_SECRET_KEY 缺失/不匹配时秘密解密必失败（连接凭据/
+    # Webhook 签名钥），且错误只在请求期暴露、极难排查（曾致 redis 池爆排查绕远）。
+    # 启动即自检并显式 ERROR；手工重启须经 scripts/start-dev-stack.sh 或自行 export。
+    import logging as _logging
+    import os as _osenv
+    _log = _logging.getLogger("mtc.startup")
+    if not _osenv.environ.get("WF_SECRET_KEY"):
+        _log.error("WF_SECRET_KEY 缺失：连接凭据/Webhook 签名钥解密将全部失败；"
+                   "请经 scripts/start-dev-stack.sh 启动或 export WF_SECRET_KEY 后重启。")
+    else:
+        from sqlalchemy import select as _sel
+        from .db import SessionLocal as _SL
+        from .models import Connection as _Conn
+        from . import secrets as _secrets
+        _db = _SL()
+        try:
+            row = _db.execute(
+                _sel(_Conn).where(_Conn.secret_ref.is_not(None))).scalars().first()
+            if row is not None:
+                try:
+                    _secrets.decrypt_payload(row.secret_ref)
+                except RuntimeError as exc:
+                    _log.error("WF_SECRET_KEY 与入库密文不匹配（%s）；凭据相关调用将失败，"
+                               "请确认启动环境携带正确的 WF_SECRET_KEY。", exc)
+        finally:
+            _db.close()
     from .db import SessionLocal
     db = SessionLocal()
     try:

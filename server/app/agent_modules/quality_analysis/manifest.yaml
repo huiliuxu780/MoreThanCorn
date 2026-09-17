@@ -21,9 +21,6 @@ implementations:
   agentscope:
     version: 0.2.0
     entry: native_quality_v0.2
-  deepseek-harness:
-    version: 0.2.0
-    bundle: morethancorn-dsh-native-quality-workflow
 logicalTools:
   - { name: knowledge_search, version: 1.0.0, effect: read }
   - { name: ticket_query, version: 1.0.0, effect: read }

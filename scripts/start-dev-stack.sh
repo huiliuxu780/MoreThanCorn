@@ -4,6 +4,9 @@ export WF_SECRET_KEY="${WF_SECRET_KEY:-cggqm392aTD_ussCNmqX3CCwz9SGdH5yeQfK008SE
 # 诚实标注：8301/8302 是 fake provider（固定输出，仅打通链路/验收用，非真实业务判断）。
 # 真实 Agent 运行需真实模型 Key（见 REAL RUNTIME 段注释）——占位 key 下真路径恒 401。
 # 已占用的端口自动跳过；停止用 scripts/stop-dev-stack.sh。
+# 09-17 运维陷阱：**手工重启 8120/8301 必须携带本文件头部的 WF_SECRET_KEY 与
+# MTC_INTERNAL_TOKEN**（nohup uvicorn 时自行 export），否则连接凭据解密失败、
+# 错误只在请求期暴露；服务端启动自检会 ERROR 提示（logger mtc.startup）。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
