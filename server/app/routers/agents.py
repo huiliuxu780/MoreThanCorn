@@ -658,13 +658,18 @@ def agent_golden_eval(aid: str, payload: dict | None = None, db: Session = Depen
     if provider and provider.status != "enabled":
         raise HTTPException(422, f"Provider {provider.name} 非 enabled，不可评测")
     limit = max(1, min(int((payload or {}).get("limit") or 3), 10))
+    # 09-18 修金样本 harness：通话文本按 sample_id 拼进输入（此前模型看不到通话）
+    from ..agent_modules.quality_analysis.evaluators import load_call_records
+    call_records = load_call_records()
     samples = (load_ground_truth("smoke/ground_truth_v0.1.jsonl") +
                load_ground_truth("native_workflow/ground_truth_v0.2.json"))[:limit]
     results = []
     for s in samples:
         sid = s.get("sample_id") or "?"
         try:
-            run_id = run_agent(db, agent, {"sample": s}, trigger="eval",
+            run_id = run_agent(db, agent, {"sample": s,
+                                           "call_record": call_records.get(sid)},
+                               trigger="eval",
                                enqueue=False, provider_id=provider_id)
             r = db.get(Run, run_id)
             output = r.output or {}

@@ -39,3 +39,21 @@ def evaluate(output: dict, expected: dict) -> dict:
 def default_suite(output: dict, sample: dict) -> dict:
     """evaluator 入口：output + 样本（含 expected）→ 判定。"""
     return evaluate(output, sample.get("expected") or {})
+
+
+def load_call_records(name: str = "smoke/call_records_v0.1.jsonl") -> dict:
+    """09-18 修金样本 harness：按 sample_id 索引通话文本（此前 golden 端点从未
+    把 call_record 拼进 run 输入，模型看不到通话→需检出的样本恒 insufficient）。"""
+    path = DATASETS_DIR / name
+    if not path.exists():
+        return {}
+    out = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        d = json.loads(line)
+        sid = d.get("sample_id")
+        if sid:
+            out[sid] = d
+    return out
