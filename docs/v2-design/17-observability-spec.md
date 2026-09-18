@@ -89,3 +89,20 @@
 - **shadcn-admin**（satnaing/shadcn-admin，MIT，Vite+shadcn，10+ 页 dashboard）：布局/卡片/图表页惯例参考（同 Vite 栈）。
 - **shadcn 官方 Charts blocks**：ChartContainer/Tooltip/Legend+ChartConfig+--chart-* 变量（本仓 chart.tsx 已含）。
 结论：观测 UI 全栈有成熟先例，无自研必要；原型 v2 起对齐 Langfuse trace 形态。
+
+## 9. 对着 Langfuse 真实页面图重做（09-18 用户令「别意淫，对着页面图设计」）
+
+参考图入库：prototypes/reference/langfuse-trace-overview.png（langfuse.com/docs/tracing 官方截图）。
+读图结论（三栏形态）：
+- 左栏：搜索语法条（level:ERROR, latency:>2, scores.accuracy:>0.8）+ 快捷 chips（Quality/Slow/Cost/My Views）
+  + Table|Chart 切换 + facet 过滤（Environment/Type=SPAN|GENERATION/Is Root/Trace Name/Name 带计数）
+  + Count 计数直方图 + observations 表（Start Time▼/Type/Name/Trace）；
+- 中栏：span 树（缩进+连接线+每节点 latency 色阶：热红/温橙/常灰+折叠 chevron）+ 底部 Graph 折叠；
+- 右栏：观测详情=返回+名称+⋮ + 动作（Add to datasets/Annotate/Add comment）+ 时间戳
+  + meta 徽章（Latency 灰 / Session 深 / User ID 深 / Env / Release）+ Tabs（Preview|Scores|Log View）
+  + Formatted|JSON 切换 + Input/Output JSON 树（语法着色、可折叠）。
+原型 v2（prototypes/observability-v2.html）按此三栏落到我们两级：
+- 屏 A=run 列表加 facet+直方+列（latency/tokens/成本），行点击定位 span；
+- 屏 B=run 详情 Trace tab 三栏（本 run facet 表｜span 树群成员嵌套｜观测详情 meta 徽章+Preview/Scores/Log+Input/Output 脱敏 JSON 树）。
+v1 原型作废（凭印象画，用户打回）。组件映射：facet=shadcn Accordion+Checkbox、直方/趋势=ChartContainer、
+表=shadcn Table、JSON 树=自持轻量折叠 pre（脱敏）或 react-json-view-lite 待拍、徽章=shadcn Badge。

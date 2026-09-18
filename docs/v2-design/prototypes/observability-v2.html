@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<title>观测原型 v2（09-18 · 对着 Langfuse 页面图重做）</title>
+<style>
+  :root{
+    --bg:#FFFFFF; --surface:#FFFFFF; --muted:#F6F6F4; --border:#E5E5E1;
+    --ink:#111211; --ink2:#5A6472; --ink3:#B9C2CF;
+    --brand:#2F7D4B; --brand-soft:#ECF7F0;
+    --lat-hot:#DC2626; --lat-warm:#D97706; --lat-ok:#5A6472;
+    --json-bg:#F2FBF6; --json-key:#2563EB; --json-str:#16A34A;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:13px/1.45 -apple-system,"system-ui","Segoe UI","Noto Sans",sans-serif;color:var(--ink);background:var(--bg)}
+  .wrap{max-width:1440px;margin:0 auto;padding:16px}
+  h1{font-size:20px;margin:0 0 2px}
+  .sub{color:var(--ink2);font-size:11px;margin-bottom:14px}
+  .ref{font-size:11px;color:var(--ink3);margin-bottom:14px}
+  /* ---- 屏 A：run 列表（Langfuse 左栏形态） ---- */
+  .searchbar{border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--ink3);font-size:12px;margin-bottom:10px}
+  .chips{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .chip{border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;display:flex;gap:6px;align-items:center}
+  .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .cols{display:grid;grid-template-columns:220px 1fr;gap:14px}
+  .facet h4{margin:10px 0 4px;font-size:11px;color:var(--ink2);font-weight:600}
+  .facet .opt{display:flex;gap:6px;align-items:center;font-size:12px;padding:2px 0}
+  .facet .opt .n{margin-left:auto;color:var(--ink3);font-size:11px}
+  .facet input[type=checkbox]{accent-color:var(--brand)}
+  .hist{height:64px;display:flex;align-items:flex-end;gap:3px;margin-bottom:8px}
+  .hist i{flex:1;background:#C9B8F0;border-radius:2px 2px 0 0}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--border)}
+  th{color:var(--ink2);font-size:11px;font-weight:600}
+  .ty{color:var(--ink2)}
+  /* ---- 屏 B：run 详情 Trace 三栏 ---- */
+  .panes{display:grid;grid-template-columns:300px 340px 1fr;gap:0;border:1px solid var(--border);border-radius:10px;overflow:hidden;height:560px}
+  .pane{border-right:1px solid var(--border);overflow:auto;padding:10px}
+  .pane:last-child{border-right:0}
+  .pane h3{margin:0 0 8px;font-size:12px;font-weight:600}
+  .tree .node{padding:3px 4px;border-radius:4px}
+  .tree .node.sel{background:#EEF0FF}
+  .tree .nm{font-size:12px}
+  .tree .lat{font-size:11px;margin-left:6px}
+  .lat.hot{color:var(--lat-hot)} .lat.warm{color:var(--lat-warm)} .lat.ok{color:var(--lat-ok)}
+  .indent1{margin-left:14px;border-left:1px dashed var(--border);padding-left:8px}
+  .indent2{margin-left:28px;border-left:1px dashed var(--border);padding-left:8px}
+  .badge{display:inline-block;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600}
+  .b-gray{background:var(--muted);color:var(--ink2)}
+  .b-dark{background:#1F2430;color:#fff}
+  .b-ok{background:var(--brand-soft);color:var(--brand)}
+  .b-err{background:#FEE2E2;color:#DC2626}
+  .tabs{display:flex;gap:14px;border-bottom:1px solid var(--border);margin:10px 0;font-size:12px}
+  .tabs span{padding:6px 2px;color:var(--ink2)}
+  .tabs span.on{color:var(--ink);border-bottom:2px solid var(--ink);font-weight:600}
+  .json{background:var(--json-bg);border-radius:8px;padding:10px;font:11px/1.5 ui-monospace,Menlo,monospace;overflow:auto;max-height:220px}
+  .json .k{color:var(--json-key)} .json .s{color:var(--json-str)}
+  .meta-row{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+  .note{font-size:11px;color:var(--ink3);margin-top:8px}
+  .sec{margin-top:26px}
+  .sec h2{font-size:15px;margin:0 0 10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>观测原型 v2</h1>
+  <div class="sub">09-18 · 对着 Langfuse 真实页面图重做（参考图：prototypes/reference/langfuse-trace-overview.png）· 组件基线=shadcn Charts/Table/Accordion（仓内已有）</div>
+  <div class="ref"> Langfuse 三栏形态：左=facet 过滤+计数直方+observations 表 ｜ 中=span 树（latency 色阶+折叠）｜ 右=观测详情（meta 徽章+Preview/Scores/Log+Input/Output JSON 树）。本原型把它落到 run 列表 + run 详情 Trace tab。</div>
+
+  <div class="sec">
+    <h2>屏 A · run 列表（任务看板/运行列表既有页加列加 facet）</h2>
+    <div class="searchbar">搜索 — 例：level:ERROR, -env:dev, latency:&gt;2s, agent:景点搜索C-e02e, cost:&gt;0.2</div>
+    <div class="chips">
+      <span class="chip">⊘ 错误</span><span class="chip">⏱ 慢</span><span class="chip">¥ 贵</span>
+      <span class="chip">My Views 0</span><span class="chip on">Table</span><span class="chip">Chart</span>
+    </div>
+    <div class="cols">
+      <div class="facet">
+        <h3 style="margin:0 0 6px">Filters</h3>
+        <h4>类型 Type</h4>
+        <label class="opt"><input type="checkbox" checked /> MODEL_CALL <span class="n">412</span></label>
+        <label class="opt"><input type="checkbox" checked /> TOOL_CALL <span class="n">96</span></label>
+        <label class="opt"><input type="checkbox" checked /> THINKING <span class="n">58</span></label>
+        <label class="opt"><input type="checkbox" checked /> HITL <span class="n">7</span></label>
+        <h4>结局 finished_reason</h4>
+        <label class="opt"><input type="checkbox" checked /> COMPLETED <span class="n">489</span></label>
+        <label class="opt"><input type="checkbox" checked /> EXCEED_MAX_ITERS <span class="n">3</span></label>
+        <label class="opt"><input type="checkbox" checked /> ERROR <span class="n">3</span></label>
+        <h4>Agent</h4>
+        <label class="opt"><input type="checkbox" checked /> 景点搜索C-e02e <span class="n">120</span></label>
+        <label class="opt"><input type="checkbox" checked /> 业务分析-通话打标 <span class="n">88</span></label>
+        <label class="opt"><input type="checkbox" checked /> E2E 质检群 <span class="n">40</span></label>
+        <h4>名称（filter values）</h4>
+        <label class="opt"><input type="checkbox" checked /> knowledge_search <span class="n">41</span></label>
+        <label class="opt"><input type="checkbox" checked /> ticket_query <span class="n">22</span></label>
+      </div>
+      <div>
+        <div class="hist"><i style="height:30%"></i><i style="height:55%"></i><i style="height:80%"></i><i style="height:40%"></i><i style="height:65%"></i><i style="height:90%"></i><i style="height:50%"></i><i style="height:35%"></i><i style="height:70%"></i><i style="height:60%"></i><i style="height:45%"></i><i style="height:75%"></i></div>
+        <table>
+          <tr><th><input type="checkbox" /></th><th>开始时间 ▼</th><th>类型</th><th>名称</th><th>run</th><th>latency</th><th>tokens</th><th>成本</th></tr>
+          <tr><td><input type="checkbox" /></td><td>09-18 02:14:07</td><td class="ty">↔ MODEL_CALL</td><td>qwen3.8-max #2</td><td>run 8f3a…</td><td>2.6s</td><td>13.6K</td><td>¥0.19</td></tr>
+          <tr><td><input type="checkbox" /></td><td>09-18 02:14:05</td><td class="ty">⚡ TOOL_CALL</td><td>knowledge_search</td><td>run 8f3a…</td><td>0.4s</td><td>—</td><td>¥0.00</td></tr>
+          <tr><td><input type="checkbox" /></td><td>09-18 01:58:41</td><td class="ty">↔ MODEL_CALL</td><td>qwen3.8-max #7</td><td>run 51c2…</td><td class="lat hot">38.2s</td><td>22.1K</td><td>¥0.31</td></tr>
+          <tr><td><input type="checkbox" /></td><td>09-18 01:31:12</td><td class="ty">⚡ TOOL_CALL</td><td>ticket_query</td><td>run c9d0…</td><td class="lat warm">11.4s</td><td>—</td><td>¥0.00</td></tr>
+        </table>
+        <div class="note">行点击→run 详情 Trace tab 定位到该 span；Table|Chart 切换=shadcn ChartContainer 直方/趋势</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>屏 B · run 详情 Trace tab（三栏对齐 Langfuse）</h2>
+    <div class="panes">
+      <!-- 左：本 run 的 facet+事件表 -->
+      <div class="pane">
+        <h3>本 run 事件（facet）</h3>
+        <div class="searchbar" style="margin-bottom:8px">搜索 — level:ERROR, latency:&gt;2s</div>
+        <label class="opt"><input type="checkbox" checked /> MODEL_CALL <span class="n">2</span></label>
+        <label class="opt"><input type="checkbox" checked /> TOOL_CALL <span class="n">3</span></label>
+        <label class="opt"><input type="checkbox" checked /> THINKING <span class="n">1</span></label>
+        <label class="opt"><input type="checkbox" checked /> HITL <span class="n">1</span></label>
+        <table style="margin-top:8px">
+          <tr><th>开始时间</th><th>类型</th><th>名称</th></tr>
+          <tr><td>02:14:07</td><td class="ty">↔</td><td>MODEL_CALL #2</td></tr>
+          <tr><td>02:14:05</td><td class="ty">⚡</td><td>knowledge_search</td></tr>
+          <tr><td>02:14:02</td><td class="ty">◌</td><td>THINKING</td></tr>
+          <tr><td>02:13:58</td><td class="ty">↔</td><td>MODEL_CALL #1</td></tr>
+          <tr><td>02:13:55</td><td class="ty">⚠</td><td>HITL confirm</td></tr>
+        </table>
+      </div>
+      <!-- 中：span 树 -->
+      <div class="pane tree">
+        <h3>Trace · run 8f3a… <span class="badge b-ok">COMPLETED</span></h3>
+        <div class="node"><span class="nm">run 8f3a…（root）</span><span class="lat warm">41.0s</span> ⌄</div>
+        <div class="indent1">
+          <div class="node"><span class="nm">MODEL_CALL #1 · qwen3.8-max</span><span class="lat ok">1.8s</span> ⌄</div>
+          <div class="node"><span class="nm">TOOL_CALL knowledge_search</span><span class="lat ok">0.4s</span> </div>
+          <div class="node"><span class="nm">THINKING</span><span class="lat ok">—</span> ⌄</div>
+          <div class="node sel"><span class="nm">MODEL_CALL #2 · qwen3.8-max</span><span class="lat ok">2.6s</span> ⌄</div>
+          <div class="indent2">
+            <div class="node"><span class="nm">↳ worker 天气查询B · TOOL_CALL weather_query</span><span class="lat ok">0.6s</span> ⌄</div>
+            <div class="node"><span class="nm">↳ worker 景点搜索C · TOOL_CALL poi_search</span><span class="lat ok">0.9s</span> ⌄</div>
+          </div>
+          <div class="node"><span class="nm">HITL REQUIRE_USER_CONFIRM（Bash rm -rf）</span><span class="lat warm">等待 12s</span> ⌄</div>
+          <div class="node"><span class="nm">REPLY_END</span><span class="lat ok">—</span></div>
+        </div>
+        <div class="note">latency 色阶：&gt;30s 红 / &gt;10s 橙 / 其余灰（Langfuse 同）；群成员观测嵌套挂 leader 调用下</div>
+      </div>
+      <!-- 右：观测详情 -->
+      <div class="pane">
+        <h3>← MODEL_CALL #2 </h3>
+        <div style="display:flex;gap:6px;font-size:11px;margin-bottom:6px">
+          <span class="badge b-gray">+ 加入数据集</span><span class="badge b-gray">标注 ▾</span><span class="badge b-gray">加评论</span>
+        </div>
+        <div style="font-size:11px;color:var(--ink2)">2026-09-18 02:14:07.412</div>
+        <div class="meta-row">
+          <span class="badge b-gray">Latency: 2.6s</span>
+          <span class="badge b-dark">Session: conv_8f3a… ⧉</span>
+          <span class="badge b-dark">Agent: 景点搜索C-e02e ⧉</span>
+        </div>
+        <div class="meta-row">
+          <span class="badge b-gray">Env: prod</span>
+          <span class="badge b-gray">Release: V6 ⧉</span>
+          <span class="badge b-gray">规则 Skill: quality-rules v3 ⧉</span>
+        </div>
+        <div class="tabs"><span class="on">Preview</span><span>Scores</span><span>Log View</span><span style="margin-left:auto">Formatted | JSON</span></div>
+        <h3>Input</h3>
+        <div class="json">{ <span class="k">messages</span>: [ … ] ,<br/>&nbsp;&nbsp;<span class="k">tools</span>: [ <span class="s">"knowledge_search"</span>, <span class="s">"ticket_query"</span> … ],<br/>&nbsp;&nbsp;<span class="k">rules_injected</span>: <span class="s">"quality-rules v3（3 准则）"</span> }</div>
+        <h3 style="margin-top:10px">Output</h3>
+        <div class="json">{ <span class="k">findings</span>: [ { <span class="k">criterion</span>: <span class="s">"knowledge_accuracy"</span>, <span class="k">status</span>: <span class="s">"passed"</span>, <span class="k">evidence</span>: [ <span class="s">"KB-BROADBAND-RESPONSE-V1"</span> ] } ],<br/>&nbsp;&nbsp;<span class="k">tokens</span>: { <span class="k">in</span>: 13102, <span class="k">out</span>: 486, <span class="k">cache_hit</span>: 11904 } }</div>
+        <div class="note">Scores tab=金样本/人工标注对照；Log View=原始事件 JSON；Input/Output 脱敏+4KB 截断+offload 引用</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
