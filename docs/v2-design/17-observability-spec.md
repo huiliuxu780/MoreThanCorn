@@ -49,11 +49,13 @@
 - GET /api/v2/agents/{id}/sessions/{sid}/trace（分页 seq）；
 - GET /api/v2/runs/{runId}/trace（run↔session 关联沿用 interaction_ref）；
 - GET /api/v2/agents/{id}/usage?from&to（日 rollup）；
-- **IA（09-18 用户拍板方向：Trace 独立菜单页，形态对齐 Langfuse）**：一级组「观测」下两页——
-  **Traces**（Langfuse 形态列表：filter 条+trace 行=时间/agent/触发/结局徽章/latency/tokens/cost，
-  行点击进 /traces/:traceId 详情时间线/树）+ **Metrics**（agent 级 token 趋势/成本/错误率/超限）；
-  运行详情保留「Trace」tab=同组件嵌入式深链（单 run 作用域 vs 全局检索，作用域不同非重复）；
-  对话页保留 live 视图不变（trace 为事后回放）。Trace 对象唯一归属=观测/Traces。
+- **IA（09-18 用户二次收敛：「我只要 run 的列表、run 的详情」）**：**不新建一级观测组**。
+  观测落在 run 既有两处：
+  - **run 列表**（任务看板/运行列表既有页）：加列 latency/tokens(in/out)/成本/finished_reason 徽章+filter 扩展；
+  - **run 详情**（/agents/:agentId/runs/:runId，**已有 Trace(span 树)/events/executions/snapshot 四 Tab**，
+    workflow run 已有数据）：O1 把 agent 执行（chat/structured/group）事件写入同一 run_event/run_trace_event，
+    **复用既有四 Tab  UI**，不新建页面；群 run 的 span 树按成员嵌套（Langfuse 树形态）。
+  - 对话页 live 视图不变（trace 为事后回放）；agent 级 Metrics 趋势延后（用户只要 run 两级）。
 - **图表组件基线（09-18 用户拍板：不手写、用 shadcn）**：shadcn/ui 官方 Charts
   （ChartContainer/ChartTooltip/ChartTooltipContent/ChartLegend/ChartLegendContent + ChartConfig，
   底层 Recharts v3）；主题走 --chart-1..5 CSS 变量（四主题 data-theme 各配）；accessibilityLayer 开。

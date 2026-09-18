@@ -115,23 +115,16 @@
   </div>
 
   <div class="sec">
-    <h2>观测 / Traces（一级菜单页 · Langfuse 形态列表）</h2>
-    <div class="note" style="margin-bottom:10px">nav 一级组「观测」：Traces ｜ Metrics · 行点击进 /traces/:traceId · 运行详情 Trace tab=同组件深链</div>
+    <h2>run 列表（既有页加列 · 不新建观测组）</h2>
+    <div class="note" style="margin-bottom:10px">任务看板/运行列表既有页加列：latency / tokens(in/out) / 成本 / 结局徽章；filter 扩展模型与成本区间</div>
     <div class="card" style="padding:10px 12px">
-      <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--ink2)">
-        <span style="border:1px solid var(--border);border-radius:6px;padding:3px 8px">agent: 全部 ▾</span>
-        <span style="border:1px solid var(--border);border-radius:6px;padding:3px 8px">结局: 全部 ▾</span>
-        <span style="border:1px solid var(--border);border-radius:6px;padding:3px 8px">触发: 全部 ▾</span>
-        <span style="border:1px solid var(--border);border-radius:6px;padding:3px 8px">模型: 全部 ▾</span>
-        <span style="border:1px solid var(--border);border-radius:6px;padding:3px 8px">时间: 24h ▾</span>
-        <span style="border:1px solid var(--border);border-radius:6px;padding:3px 8px">成本 ≥ ¥0 ▾</span>
-      </div>
-      <table style="margin-top:10px">
-        <tr><th>时间</th><th>trace</th><th>agent</th><th>触发</th><th>结局</th><th>latency</th><th>tokens</th><th>成本</th></tr>
-        <tr><td>09-18 02:14</td><td><a href="#trace">tr_8f3a…</a></td><td>景点搜索C-e02e</td><td>对话</td><td><span class="badge ok">COMPLETED</span></td><td>41s</td><td>88K</td><td>¥0.21</td></tr>
-        <tr><td>09-18 01:58</td><td><a href="#trace">tr_51c2…</a></td><td>业务分析-通话打标</td><td>自动任务</td><td><span class="badge warn">EXCEED_MAX_ITERS</span></td><td>96s</td><td>129K</td><td>¥0.34</td></tr>
-        <tr><td>09-18 01:31</td><td><a href="#trace">tr_c9d0…</a></td><td>E2E 质检群(leader)</td><td>群会话</td><td><span class="badge err">ERROR</span></td><td>38s</td><td>68K</td><td>¥0.18</td></tr>
+      <table>
+        <tr><th>run</th><th>agent</th><th>触发</th><th>结局</th><th>latency</th><th>tokens(in/out)</th><th>成本</th></tr>
+        <tr><td><a href="#trace">run 8f3a…</a></td><td>景点搜索C-e02e</td><td>对话</td><td><span class="badge ok">COMPLETED</span></td><td>41s</td><td>82K / 6.1K</td><td>¥0.21</td></tr>
+        <tr><td><a href="#trace">run 51c2…</a></td><td>业务分析-通话打标</td><td>自动任务</td><td><span class="badge warn">EXCEED_MAX_ITERS</span></td><td>96s</td><td>120K / 9.4K</td><td>¥0.34</td></tr>
+        <tr><td><a href="#trace">run c9d0…</a></td><td>E2E 质检群(leader)</td><td>群会话</td><td><span class="badge err">ERROR</span></td><td>38s</td><td>64K / 4.2K</td><td>¥0.18</td></tr>
       </table>
+      <div class="note">run 详情=既有四 Tab（Trace span 树/events/executions/snapshot）；O1 把 agent 执行事件接入同一 UI；群 span 树按成员嵌套</div>
     </div>
   </div>
 </div>
