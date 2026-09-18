@@ -44,12 +44,16 @@
 
 ## 5. 端点与 UI
 
+- GET /api/v2/traces（跨 Agent trace 列表：filter=agent/status/trigger/model/时间窗/token 成本区间，分页）；
+- GET /api/v2/traces/{traceId}（trace 详情=事件时间线/树）；
 - GET /api/v2/agents/{id}/sessions/{sid}/trace（分页 seq）；
 - GET /api/v2/runs/{runId}/trace（run↔session 关联沿用 interaction_ref）；
 - GET /api/v2/agents/{id}/usage?from&to（日 rollup）；
-- UI：运行详情加「Trace」tab（时间线：model call 带 tokens/latency、tool call 带 name/args/result 折叠、
-  thinking 折叠、HITL 卡、压缩标记、finished_reason 徽章）；Agent 工作区加「观测」子页
-  （token 趋势图/错误率/超限次数/成本）；对话页保留 live 视图不变（trace 为事后回放）。
+- **IA（09-18 用户拍板方向：Trace 独立菜单页，形态对齐 Langfuse）**：一级组「观测」下两页——
+  **Traces**（Langfuse 形态列表：filter 条+trace 行=时间/agent/触发/结局徽章/latency/tokens/cost，
+  行点击进 /traces/:traceId 详情时间线/树）+ **Metrics**（agent 级 token 趋势/成本/错误率/超限）；
+  运行详情保留「Trace」tab=同组件嵌入式深链（单 run 作用域 vs 全局检索，作用域不同非重复）；
+  对话页保留 live 视图不变（trace 为事后回放）。Trace 对象唯一归属=观测/Traces。
 - **图表组件基线（09-18 用户拍板：不手写、用 shadcn）**：shadcn/ui 官方 Charts
   （ChartContainer/ChartTooltip/ChartTooltipContent/ChartLegend/ChartLegendContent + ChartConfig，
   底层 Recharts v3）；主题走 --chart-1..5 CSS 变量（四主题 data-theme 各配）；accessibilityLayer 开。
