@@ -106,3 +106,29 @@
 - 屏 B=run 详情 Trace tab 三栏（本 run facet 表｜span 树群成员嵌套｜观测详情 meta 徽章+Preview/Scores/Log+Input/Output 脱敏 JSON 树）。
 v1 原型作废（凭印象画，用户打回）。组件映射：facet=shadcn Accordion+Checkbox、直方/趋势=ChartContainer、
 表=shadcn Table、JSON 树=自持轻量折叠 pre（脱敏）或 react-json-view-lite 待拍、徽章=shadcn Badge。
+
+## 10. 与 AgentScope 数据的字段级对账（09-18 用户问「能和我们 agentscope 的数据对的上么」）
+
+逐格核对（源=已安装 2.0.8 包事件/存储实证，见 audits/2026-09-18-agentscope-truth-audit.md §1）：
+
+| 原型格子 | 数据源 | 性质 |
+|---|---|---|
+| trace 行/详情 id | session_id + reply_id（ReplyStart/End 事件对） | 原生事件+平台索引 |
+| span 行 id | bus replay log 事件 id | 原生 |
+| **span 父子（树）** | **推导规则**：reply→model call→tool call 按事件 sequence+cur_iter 链接；群嵌套=leader session→worker session（team record+TeamSay 目标）。AgentScope 事件**无原生 parent span id** | **推导（O1 实现并单测）** |
+| latency | END.ts−START.ts（bus log 时间戳） | 原生 |
+| tokens in/out/cache | ModelCallEndEvent.input_tokens/output_tokens/cache_input_tokens/cache_creation_input_tokens | 原生 |
+| 成本 | tokens×model_price（O2 单价表） | 平台推导 |
+| 结局徽章 | ReplyEndEvent.finished_reason | 原生 |
+| tool 名/args | TOOL_CALL_START/DELTA（tool name+input） | 原生 |
+| tool result | TOOL_RESULT_TEXT_DELTA/DATA_DELTA/END | 原生 |
+| thinking | THINKING_BLOCK_START/DELTA/END | 原生 |
+| HITL | REQUIRE_USER_CONFIRM + USER_CONFIRM_RESULT | 原生 |
+| **model call Input** | **推导**：该 iteration 为止的 session 持久化 context 快照（upsert_message 消息列） | **推导（O1）** |
+| model call Output | 该 iteration assistant 消息块（持久化消息） | 原生（持久化消息） |
+| **压缩标记** | **无原生事件**（EventType 无 COMPRESS）→ 推导=AgentState.summary 版本变化（per reply 粒度，非 per call） | **推导（粗粒度，原型标注）** |
+| Session/User/Env/Release/规则Skill 徽章 | 平台（session index/release binding/asset_refs） | 平台 |
+| Scores | golden 比对（run_id 关联）+annotation 表（O5） | 平台 |
+
+结论：16 格中 10 原生、3 推导（树父子/model Input/压缩标记，推导规则入 O1 单测）、3 平台侧；**无悬空无假格**。
+推导项在 UI 标注「推导」角标，与原生字段区分（诚实呈现）。
