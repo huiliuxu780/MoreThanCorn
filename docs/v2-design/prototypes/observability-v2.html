@@ -34,7 +34,7 @@
   th{color:var(--ink2);font-size:11px;font-weight:600}
   .ty{color:var(--ink2)}
   /* ---- 屏 B：run 详情 Trace 三栏 ---- */
-  .panes{display:grid;grid-template-columns:300px 340px 1fr;gap:0;border:1px solid var(--border);border-radius:10px;overflow:hidden;height:560px}
+  .panes{display:grid;grid-template-columns:340px 1fr;gap:0;border:1px solid var(--border);border-radius:10px;overflow:hidden;height:560px}
   .pane{border-right:1px solid var(--border);overflow:auto;padding:10px}
   .pane:last-child{border-right:0}
   .pane h3{margin:0 0 8px;font-size:12px;font-weight:600}
@@ -111,26 +111,14 @@
   <div class="sec">
     <h2>屏 B · run 详情 Trace tab（三栏对齐 Langfuse）</h2>
     <div class="panes">
-      <!-- 左：本 run 的 facet+事件表 -->
-      <div class="pane">
-        <h3>本 run 事件（facet）</h3>
-        <div class="searchbar" style="margin-bottom:8px">搜索 — level:ERROR, latency:&gt;2s</div>
-        <label class="opt"><input type="checkbox" checked /> MODEL_CALL <span class="n">2</span></label>
-        <label class="opt"><input type="checkbox" checked /> TOOL_CALL <span class="n">3</span></label>
-        <label class="opt"><input type="checkbox" checked /> THINKING <span class="n">1</span></label>
-        <label class="opt"><input type="checkbox" checked /> HITL <span class="n">1</span></label>
-        <table style="margin-top:8px">
-          <tr><th>开始时间</th><th>类型</th><th>名称</th></tr>
-          <tr><td>02:14:07</td><td class="ty">↔</td><td>MODEL_CALL #2</td></tr>
-          <tr><td>02:14:05</td><td class="ty">⚡</td><td>knowledge_search</td></tr>
-          <tr><td>02:14:02</td><td class="ty">◌</td><td>THINKING</td></tr>
-          <tr><td>02:13:58</td><td class="ty">↔</td><td>MODEL_CALL #1</td></tr>
-          <tr><td>02:13:55</td><td class="ty">⚠</td><td>HITL confirm</td></tr>
-        </table>
-      </div>
-      <!-- 中：span 树 -->
+      <!-- 左：span 树（图=中栏；per-run 过滤=树上工具条，对齐图中栏 toolbar） -->
       <div class="pane tree">
         <h3>Trace · run 8f3a… <span class="badge b-ok">COMPLETED</span></h3>
+        <div class="searchbar" style="margin-bottom:6px">搜索本 run — type:TOOL_CALL, latency:&gt;2s</div>
+        <div class="chips" style="margin-bottom:6px">
+          <span class="chip on">MODEL_CALL 2</span><span class="chip on">TOOL_CALL 3</span>
+          <span class="chip on">THINKING 1</span><span class="chip on">HITL 1</span>
+        </div>
         <div class="node"><span class="nm">run 8f3a…（root）</span><span class="lat warm">41.0s</span> ⌄</div>
         <div class="indent1">
           <div class="node"><span class="nm">MODEL_CALL #1 · qwen3.8-max</span><span class="lat ok">1.8s</span> ⌄</div>
@@ -149,14 +137,13 @@
       <!-- 右：观测详情 -->
       <div class="pane">
         <h3>← MODEL_CALL #2 </h3>
-        <div style="display:flex;gap:6px;font-size:11px;margin-bottom:6px">
-          <span class="badge b-gray">+ 加入数据集</span><span class="badge b-gray">标注 ▾</span><span class="badge b-gray">加评论</span>
-        </div>
+        <div class="note" style="margin:0 0 6px">数据集/标注/评论=延后（无后端不放假按钮，审计 F2）</div>
         <div style="font-size:11px;color:var(--ink2)">2026-09-18 02:14:07.412</div>
         <div class="meta-row">
           <span class="badge b-gray">Latency: 2.6s</span>
           <span class="badge b-dark">Session: conv_8f3a… ⧉</span>
           <span class="badge b-dark">Agent: 景点搜索C-e02e ⧉</span>
+          <span class="badge b-dark">User: dev ⧉</span>
         </div>
         <div class="meta-row">
           <span class="badge b-gray">Env: prod</span>
@@ -168,7 +155,7 @@
         <div class="json">{ <span class="k">messages</span>: [ … ] ,<br/>&nbsp;&nbsp;<span class="k">tools</span>: [ <span class="s">"knowledge_search"</span>, <span class="s">"ticket_query"</span> … ],<br/>&nbsp;&nbsp;<span class="k">rules_injected</span>: <span class="s">"quality-rules v3（3 准则）"</span> }</div>
         <h3 style="margin-top:10px">Output</h3>
         <div class="json">{ <span class="k">findings</span>: [ { <span class="k">criterion</span>: <span class="s">"knowledge_accuracy"</span>, <span class="k">status</span>: <span class="s">"passed"</span>, <span class="k">evidence</span>: [ <span class="s">"KB-BROADBAND-RESPONSE-V1"</span> ] } ],<br/>&nbsp;&nbsp;<span class="k">tokens</span>: { <span class="k">in</span>: 13102, <span class="k">out</span>: 486, <span class="k">cache_hit</span>: 11904 } }</div>
-        <div class="note">Scores tab=金样本/人工标注对照；Log View=原始事件 JSON；Input/Output 脱敏+4KB 截断+offload 引用</div>
+        <div class="note">Scores tab=golden 比对结果(run_id 关联)+人工标注(annotation 表, O5)；O5 前空态+CTA 不放假数据；Log View=原始事件 JSON；Input/Output=react-json-view-lite 脱敏+4KB 截断+offload 引用（审计 F3/F5）</div>
       </div>
     </div>
   </div>
