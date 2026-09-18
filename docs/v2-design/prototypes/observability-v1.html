@@ -96,15 +96,19 @@
   </div>
 
   <div class="sec" id="trace">
-    <h2>运行详情 · Trace tab（时间线）</h2>
+    <h2>运行详情 · Trace tab（Langfuse 形态：时间线/树双视图 · 每行 latency+tokens+cost 徽章）</h2>
+    <div style="margin:0 0 10px;display:flex;gap:8px">
+      <button class="badge ok">按时间</button><button class="badge" style="background:var(--surface-muted);color:var(--ink2)">按树（群成员嵌套）</button>
+    </div>
     <div class="note" style="margin-bottom:10px">事件源=run_trace_event（bus replay log 落库）· tool args/result 脱敏+4KB 截断 · thinking 折叠复用 ThinkingCollapse</div>
     <div class="tl">
       <div class="row"><span class="dot m"></span><div class="main"><div class="t1">MODEL_CALL #1</div><div class="t2">qwen3.8-max · 输入 12,481 tokens（含系统提示+规则注入）· 输出 214</div></div><div class="meta">1.8s</div></div>
-      <div class="row"><span class="dot t"></span><div class="main"><div class="t1">TOOL_CALL knowledge_search</div>
+      <div class="row"><span class="dot t"></span><div class="main"><div class="t1">TOOL_CALL knowledge_search <span class="badge ok">¥0.00</span></div>
         <div class="acc"><summary>args / result（脱敏）</summary><pre>{"query":"宽带故障受理联系时限"}
 → {"articles":[{"id":"KB-BROADBAND-RESPONSE-V1","content":"…48小时内联系客户…"}]}</pre></div></div><div class="meta">0.4s</div></div>
       <div class="row"><span class="dot th"></span><div class="main"><div class="t1">THINKING（折叠）</div><div class="t2">「先核验知识条目再判 knowledge_accuracy…」</div></div><div class="meta">—</div></div>
-      <div class="row"><span class="dot m"></span><div class="main"><div class="t1">MODEL_CALL #2</div><div class="t2">输入 13,102 · 输出 486 · 缓存命中 11,904</div></div><div class="meta">2.6s</div></div>
+      <div class="row"><span class="dot m"></span><div class="main"><div class="t1">MODEL_CALL #2 <span class="badge ok">¥0.19</span></div><div class="t2">输入 13,102 · 输出 486 · 缓存命中 11,904</div></div><div class="meta">2.6s</div></div>
+      <div class="row" style="padding-left:34px"><span class="dot t"></span><div class="main"><div class="t1">↳ worker 天气查询B · TOOL_CALL weather_query</div><div class="t2">树视图嵌套：群成员观测挂 leader 调用下（Langfuse 树形态）</div></div><div class="meta">0.6s</div></div>
       <div class="row"><span class="dot h"></span><div class="main"><div class="t1">HITL REQUIRE_USER_CONFIRM</div><div class="t2">Bash `rm -rf /tmp/x` → 用户拒绝 → DENIED 结果回模型</div></div><div class="meta">等待 12s</div></div>
       <div class="row"><span class="dot end"></span><div class="main"><div class="t1">REPLY_END</div><div class="t2">finished_reason=COMPLETED · 总 tokens 26,789 · 成本 ¥0.21</div></div><div class="meta">41s</div></div>
     </div>

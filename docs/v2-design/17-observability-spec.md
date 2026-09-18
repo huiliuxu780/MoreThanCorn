@@ -72,3 +72,14 @@
 - D2 成本单价来源（手工配置表推荐 vs 提供商 API 拉取后置）；
 - D3 采集形态（live 订阅+结束回捞双保险推荐 vs 仅结束回捞=省资源但 live 期间无 trace）；
 - D4 告警阈值（ERROR 即报推荐；EXCEED_MAX_ITERS 按 agent 日次数阈值另配）。
+
+## 8. 先例调研（09-18 用户令「去找找有没有人用 shadcn 做过」）
+
+- **Langfuse**（LLM 观测开源事实标准，github langfuse/langfuse，web/package.json 实证）：
+  recharts ^3.8.0（与本仓同版本）+ @radix-ui 全家 + tailwindcss/tailwind-merge/tailwindcss-animate
+  = shadcn/ui 模式（components/ui 复制式）。其 Trace 视图=业界标准形态：
+  观测树/时间线行（每行 latency+tokens+cost 徽章）、展开 input/output JSON、
+  按时间/按树双视图。**本 spec Trace tab 形态对齐 Langfuse**（树嵌套=群成员 leader→worker 观测）。
+- **shadcn-admin**（satnaing/shadcn-admin，MIT，Vite+shadcn，10+ 页 dashboard）：布局/卡片/图表页惯例参考（同 Vite 栈）。
+- **shadcn 官方 Charts blocks**：ChartContainer/Tooltip/Legend+ChartConfig+--chart-* 变量（本仓 chart.tsx 已含）。
+结论：观测 UI 全栈有成熟先例，无自研必要；原型 v2 起对齐 Langfuse trace 形态。
