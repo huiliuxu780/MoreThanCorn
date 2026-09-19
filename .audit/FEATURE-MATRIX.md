@@ -152,3 +152,11 @@ overview/results/result-detail(含复核 UI)/agent-analysis 四页齐全、互�
 - 终态工单（待开工令）：运行时 MCP mount（stdio/http）→ lark-cli 包为首个 stdio MCP 插件
   （record_list/record_batch_create/field_list）→ 退役 feishu_tools 适配器；submit 端点服务端
   写回改由 agent 经 MCP 写工具完成（prompt 加步）。
+
+### AUD-FEAT-007 修正（2026-09-18 同轮自纠）：插件层=MCP，**已实施**（http transport）
+- 上轮"运行时 MCP 挂载未实施"=**误判撤回**（grep 漏了运行时路由文件；/workspace/mcp /hub/mcp /mcp 端点集全在，
+  p07 活体实证=仓内 tool_service MCP over streamable HTTP 真挂载真调用）。
+- 真限制仅一条：**stdio transport 未支持**（平台侧显式 raise；frozen 路径硬编码 http_mcp）；
+  mcp-b17dz(stdio) 当前无 agent 挂载（mcps 挂载表空），无地雷。
+- lark-cli 插件化终态修正：包 **http MCP 插件**（p07 同形），非 stdio；feishu_tools 适配器届时退役。
+- 两层并存分工：工具层=声明式 HTTP 配方+平台鉴权执行；插件层=MCP 外部能力服务器+协议发现。
