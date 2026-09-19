@@ -1,10 +1,9 @@
-"""飞书（lark-cli）工具包装层（09-18 TrueAsk 场景拍板：形态 A + 用户 lark-cli 鉴权）。
+"""飞书（lark-cli）过渡插件适配器（09-18 定位修正：用户指认 lark-cli 的正位=插件层）。
 
-dev-only：生产环境或 MTC_FEISHU_CLI=off 时全部 404（与 fixture-tools 同门控语义）。
-白名单 ops + 严格参数：subprocess 以 argv 列表 exec lark-cli（无 shell、无自由命令），
-输出原样解析返回；失败给 error 信封（fail-closed，不 mock）。
-凭据不复制进平台：exec 继承本机 lark-cli 已登录 profile（用户身份）。
-"""
+平台插件槽=MCP server 实体（mcp_server+release 冻结），但运行时 MCP 挂载未实施
+（probes/p07 仅实证）。本模块是过渡插件适配器：dev-gated subprocess exec lark-cli
+（--as user 借本机登录态），待运行时 MCP mount 落地后由 stdio MCP 插件取代并退役本模块。
+白名单 ops + 严格参数；生产 404。"""
 from __future__ import annotations
 
 import json
