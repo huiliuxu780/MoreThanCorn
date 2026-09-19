@@ -517,6 +517,13 @@ def exec_tool(node, ctx) -> dict:
         if tool and (tool.status or "ready") != "ready":
             raise RunError(f"工具 {tool.name} 状态为 {tool.status}：执行面失败关闭（仅 ready 可执行）")
         conn = ctx.db.get(Connection, tool.connection_id) if (tool and tool.connection_id) else None
+        # 09-18：env 三层合并与 execute_tool_version 对齐（连接 env < spec env < 调用入参）；
+        # 此前 /test 与 Workflow 工具节点两条路径漏合并，spec.env 注入的固定参数失效
+        _env: dict = {}
+        if conn:
+            _env.update((conn.endpoint or {}).get("env") or {})
+        _env.update(spec.get("env") or {})
+        inputs = {**_env, **inputs}
         # 09-14：相对 URL 由绑定 Connection 的 endpoint.base_url 解析（端点单点、多环境切域名）
         from .connection_runtime import ToolUrlError, resolve_tool_url
         try:
