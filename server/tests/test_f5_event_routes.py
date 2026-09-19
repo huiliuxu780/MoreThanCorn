@@ -607,6 +607,27 @@ def test_terminal_policy_reconcile():
         db.close()
 
 
+def test_terminal_policy_event_status_dispatched():
+    """09-18 回归：terminal 策略成功派发（delivery=running 等结算）时，事件
+    聚合不得误标 failed。修复前活体证据：事件 53a6ad7a… error='all deliveries
+    failed'，而其唯一 delivery completed、Invocation COMPLETED。"""
+    src = _mk_source()
+    aid = _mk_automation()
+    _mk_route(src["id"], "automation", aid, completionPolicy="terminal")
+    r = client.post(f"/api/v2/data-sources/{src['id']}/test-event",
+                    json={"id": uniq("evt")})
+    eid = r.json()["event_id"]
+    db = SessionLocal()
+    try:
+        ev = db.get(DataSourceEvent, eid)
+        assert ev.status == "dispatched", \
+            f"terminal 派发成功≠失败: status={ev.status} error={ev.error}"
+        assert not ev.error
+        assert ev.dispatch_ref
+    finally:
+        db.close()
+
+
 def test_watcher_recovers_stale_pending():
     """F5 可靠性：进程中断遗留的陈旧 pending（>10min）纳入 watcher 恢复轨道；
     目标已删除 → dead（活体 wf_dev 实抓此类 09-09 遗留行 db6faa52…）。"""

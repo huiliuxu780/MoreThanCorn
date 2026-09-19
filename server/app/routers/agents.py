@@ -367,25 +367,73 @@ def mounts_health(aid: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "agent not found")
     cfg = a.config or {}
     items = []
-    # 09-07：一等实体 Skill 挂载真校验（agent_skill → skill.status）
-    from ..models import AgentSkill, SkillResource
-    # docs/v2-design/10 §5.3：遗留 config.skills 名字对照注册表真校验（未注册 valid=False）
-    registered = {r for (r,) in db.query(SkillResource.name).all()}
+    from ..models import AgentSkill, SkillResource, ToolVersion
+    from ..models import Release as _Release
+    from ..agent_execution import manifest_for_release
+
+    # 09-18 修正：标题称"真实冻结清单"就读 active release 的冻结快照（含冻结名）；
+    # 此前读活 config 且把 config.skills 的值当名字对照注册表——存 ID 的 agent
+    # 全部误判"无效"+裸 ID 展示（UI 降级根因）
+    rel = (db.query(_Release).filter_by(agent_id=a.id, status="active")
+           .order_by(_Release.created_at.desc()).first())
+    if rel is not None:
+        manifest = manifest_for_release(rel)
+        frozen_skills = manifest.get("_frozen_skills") or {}
+        for sid in manifest.get("skill_ids") or []:
+            fs = frozen_skills.get(sid)
+            live = db.get(SkillResource, sid)
+            items.append({"kind": "skill",
+                          "name": (fs or {}).get("name") or (live.name if live else sid),
+                          "valid": bool(fs) and bool(live and live.status == "ready")})
+        frozen_tools = manifest.get("_frozen_tools") or {}
+        for tid in manifest.get("tool_ids") or []:
+            ft = frozen_tools.get(tid) or {}
+            tv = db.get(ToolVersion, ft.get("tool_version_id") or "")
+            t = db.get(Tool, tid)
+            items.append({"kind": "tool", "name": t.name if t else tid,
+                          "valid": bool(ft) and bool(t and t.status == "ready")
+                          and bool(tv and tv.status == "ready")})
+        for wid in manifest.get("workflow_ids") or []:
+            w = db.get(Workflow, wid)
+            items.append({"kind": "workflow", "name": w.name if w else wid,
+                          "valid": bool(w and w.status == "published")})
+        for kid in manifest.get("knowledge_ids") or []:
+            fk = (manifest.get("_frozen_knowledges") or {}).get(kid) or {}
+            k = db.get(KnowledgeSource, kid)
+            items.append({"kind": "knowledge",
+                          "name": fk.get("name") or (k.name if k else kid),
+                          "valid": fk.get("mount_status") != "disabled"
+                          and bool(k and k.status == "enabled")})
+        seen_skill_ids = {i["name"] for i in items if i["kind"] == "skill"}
+        for link in db.execute(
+                select(AgentSkill).where(AgentSkill.agent_id == a.id)).scalars():
+            s = db.get(SkillResource, link.skill_id)
+            if s and s.name not in seen_skill_ids:
+                items.append({"kind": "skill", "name": s.name,
+                              "valid": bool(s.status == "ready")})
+        return {"items": items}
+
+    # 无 active release：回落活 config，ID/名字双路解析（09-18 修正裸 ID）
     for s in cfg.get("skills", []):
-        items.append({"kind": "skill", "name": s, "valid": s in registered})
+        srow = db.get(SkillResource, s) or db.query(SkillResource).filter_by(name=s).first()
+        items.append({"kind": "skill", "name": srow.name if srow else s,
+                      "valid": bool(srow and srow.status == "ready")})
     for link in db.execute(select(AgentSkill).where(AgentSkill.agent_id == a.id)).scalars():
         s = db.get(SkillResource, link.skill_id)
         items.append({"kind": "skill", "name": s.name if s else link.skill_id,
                       "valid": bool(s and s.status == "ready")})
     for tname in cfg.get("tools", []):
         t = db.get(Tool, tname) or db.query(Tool).filter_by(name=tname).first()
-        items.append({"kind": "tool", "name": tname, "valid": bool(t and t.status in ("ready", "enabled"))})
+        items.append({"kind": "tool", "name": t.name if t else tname,
+                      "valid": bool(t and t.status in ("ready", "enabled"))})
     for wname in cfg.get("workflows", []):
         w = db.get(Workflow, wname) or db.query(Workflow).filter_by(name=wname).first()
-        items.append({"kind": "workflow", "name": wname, "valid": bool(w and w.status == "published")})
+        items.append({"kind": "workflow", "name": w.name if w else wname,
+                      "valid": bool(w and w.status == "published")})
     for kname in cfg.get("knowledges", []):
         k = db.get(KnowledgeSource, kname) or db.query(KnowledgeSource).filter_by(name=kname).first()
-        items.append({"kind": "knowledge", "name": kname, "valid": bool(k and k.status == "enabled")})
+        items.append({"kind": "knowledge", "name": k.name if k else kname,
+                      "valid": bool(k and k.status == "enabled")})
     for m in cfg.get("memories", []):
         items.append({"kind": "memory", "name": m, "valid": True})
     return {"items": items}

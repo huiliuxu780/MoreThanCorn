@@ -45,15 +45,22 @@ def _assert_writable(a: Agent) -> None:
 
 @router.get("/{aid}/run-stats")
 def run_stats(aid: str, db: Session = Depends(get_db)):
-    """工作日志卡数据：四数字 + 触发类型分布 + 近 365 天按日计数。"""
+    """工作日志卡数据：四数字 + 触发类型分布 + 近 365 天按日计数。
+
+    09-18 修正（用户指认假零）：事件/自动任务触发的执行不落 Run 表，只读 Run
+    会把跑了几百通的 agent 显示成全 0。并入 AgentSessionIndex 会话，状态由
+    Invocation 终态 + 平台消息事实推导（completed 但零模型回复=静默消失→failed，
+    与看板 lane 同口径）。"""
     a = _agent_or_404(db, aid)
-    since = datetime.now(timezone.utc) - timedelta(days=365)
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=365)
     rows = db.execute(
         select(Run.status, Run.trigger, func.count(Run.id))
         .where(Run.agent_id == aid, Run.created_at >= since)
         .group_by(Run.status, Run.trigger)).all()
     by_status: dict[str, int] = {}
     by_trigger: dict[str, int] = {}
+    day_counts: dict[str, int] = {}
     running = done = pending = 0
     for status, trigger, cnt in rows:
         by_status[status] = by_status.get(status, 0) + cnt
@@ -68,11 +75,62 @@ def run_stats(aid: str, db: Session = Depends(get_db)):
         select(func.date(Run.created_at), func.count(Run.id))
         .where(Run.agent_id == aid, Run.created_at >= since)
         .group_by(func.date(Run.created_at))).all()
-    now = datetime.now(timezone.utc)
+    for d, c in days:
+        day_counts[str(d)] = day_counts.get(str(d), 0) + c
+    # —— 会话并入（事件/自动任务/对话触发的真实执行量）——
+    from ..models import AgentSessionIndex, AutomationTriggerLog
+    sess = db.execute(
+        select(AgentSessionIndex.session_id, AgentSessionIndex.trigger_kind,
+               AgentSessionIndex.created_at, AutomationTriggerLog.status)
+        .outerjoin(AutomationTriggerLog,
+                   AutomationTriggerLog.session_id == AgentSessionIndex.session_id)
+        .where(AgentSessionIndex.agent_id == aid,
+               AgentSessionIndex.created_at >= since)).all()
+    msg_n: dict[str, int] = {}
+    sids = [s[0] for s in sess]
+    if sids:
+        from sqlalchemy import text as _sa_text
+        from sqlalchemy.exc import ProgrammingError as _Prog
+        try:
+            for c0 in range(0, len(sids), 500):
+                res = db.execute(
+                    _sa_text("SELECT session_id, count(*) FROM messages "
+                             "WHERE session_id = ANY(:s) GROUP BY session_id"),
+                    {"s": sids[c0:c0 + 500]})
+                for sid, n in res:
+                    msg_n[sid] = int(n)
+        except _Prog:
+            db.rollback()  # 无运行时 storage 表的测试库：按无消息口径继续
+    for sid, trig, created, inv in sess:
+        has_reply = msg_n.get(sid, 0) > 1
+        if inv == "running":
+            st = "running"
+        elif inv in ("queued", "accepted"):
+            st = "queued"
+        elif inv == "failed":
+            st = "failed"
+        elif inv == "cancelled":
+            st = "cancelled"
+        elif inv == "completed":
+            st = "succeeded" if has_reply else "failed"
+        else:  # 对话/手动会话无 invocation：有回复=完成；无回复且新鲜=在跑，否则废弃
+            st = "succeeded" if has_reply else (
+                "running" if (now - created) < timedelta(minutes=10) else "failed")
+        by_status[st] = by_status.get(st, 0) + 1
+        key = trig or "chat"
+        by_trigger[key] = by_trigger.get(key, 0) + 1
+        dk = str(created.date())
+        day_counts[dk] = day_counts.get(dk, 0) + 1
+        if st in RUNNING_STATES:
+            running += 1
+        elif st == "succeeded":
+            done += 1
+        elif st in PENDING_STATES:
+            pending += 1
     return {"sinceDays": max((now - a.created_at).days, 0),
             "running": running, "done": done, "pending": pending,
             "byStatus": by_status, "byTrigger": by_trigger,
-            "byDay": [{"date": str(d), "count": c} for d, c in days]}
+            "byDay": [{"date": d, "count": c} for d, c in sorted(day_counts.items())]}
 
 
 # ---------- Skills ----------
@@ -80,7 +138,7 @@ def run_stats(aid: str, db: Session = Depends(get_db)):
 
 @router.get("/{aid}/skills")
 def list_agent_skills(aid: str, db: Session = Depends(get_db)):
-    _agent_or_404(db, aid)
+    a = _agent_or_404(db, aid)
     links = db.execute(select(AgentSkill).where(AgentSkill.agent_id == aid)
                        .order_by(AgentSkill.installed_at)).scalars().all()
     items = []
@@ -90,6 +148,17 @@ def list_agent_skills(aid: str, db: Session = Depends(get_db)):
             continue
         dto = to_dto(db, "skill", s)
         dto["installedAt"] = l.installed_at.isoformat()
+        items.append(dto)
+    # 09-18 修正：agent_skill 表已退役为辅助登记，真挂载在 config.skills
+    # （发布冻结进 release）；此前只读表 → skill 页安装态全假（"都没安装"根因）
+    seen = {s["id"] for s in items}
+    for ref in (a.config or {}).get("skills", []):
+        srow = db.get(SkillResource, ref) or db.query(SkillResource).filter_by(name=ref).first()
+        if not srow or srow.id in seen:
+            continue
+        seen.add(srow.id)
+        dto = to_dto(db, "skill", srow)
+        dto["installedAt"] = ""
         items.append(dto)
     return {"items": items}
 

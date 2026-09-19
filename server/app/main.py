@@ -181,6 +181,10 @@ app.add_middleware(
 app.include_router(auth_routes.router)
 from .routers import fixture_tools as _fixture_tools
 app.include_router(_fixture_tools.router)
+from .routers import feishu_tools as _feishu_tools  # 09-18 飞书(lark-cli)工具包装层
+app.include_router(_feishu_tools.router)
+from .routers import trueask as _trueask  # 09-18 TrueAsk 提交端点
+app.include_router(_trueask.router)
 app.include_router(analytics.router)
 app.include_router(alerts.router)
 app.include_router(workflows.router)

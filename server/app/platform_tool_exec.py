@@ -41,8 +41,16 @@ def execute_tool_version(db: Session, tool_version_id: str, args: dict[str, Any]
     if not req:
         raise ValueError(f"tool {tool.name} 无 request 配方（测试 fixture 不允许生产执行）")
     conn = db.get(Connection, tool.connection_id) if tool.connection_id else None
+    # 09-18 用户拍板：固定参数做环境变量，不烧进 prompt/调用方。三层合并，
+    # 优先级 连接 endpoint.env（连接通用）< 工具版本 spec.env（单工具绑定常量）
+    # < 运行时 args（调用方显式传参最高）。
+    env: dict[str, Any] = {}
+    if conn:
+        env.update((conn.endpoint or {}).get("env") or {})
+    env.update(spec.get("env") or {})
+    eff_args: dict[str, Any] = {**env, **(args or {})}
     try:
-        url = resolve_tool_url(_render(req.get("url", ""), args), conn)
+        url = resolve_tool_url(_render(req.get("url", ""), eff_args), conn)
     except ToolUrlError as exc:
         raise ValueError(str(exc)) from exc
     # 09-18 端到端：与平台统一出站闸门对齐（生产拦私网、开发放行本地 fixture）；
@@ -53,9 +61,9 @@ def execute_tool_version(db: Session, tool_version_id: str, args: dict[str, Any]
         _ep, payload, _code = resolve_for_request(conn)
         headers = build_auth_headers(conn.kind, payload, script=conn.auth_script)
     method = (req.get("method") or "POST").upper()
-    body = args if req.get("body") == "$args" else (req.get("body") or None)
+    body = eff_args if req.get("body") == "$args" else (req.get("body") or None)
     if isinstance(body, str):
-        body = _render(body, args)
+        body = _render(body, eff_args)
     resp = httpx.request(method, url, headers=headers, json=body if not isinstance(body, str) else None,
                          content=body if isinstance(body, str) else None, timeout=60, follow_redirects=False)
     try:

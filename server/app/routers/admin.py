@@ -657,6 +657,9 @@ def list_models(page: int = 1, pageSize: int = 20, db: Session = Depends(get_db)
         .offset((page - 1) * pageSize).limit(pageSize)).all()
     return {"items": [{"modelKey": m.model_key, "displayName": m.display_name,
                        "provider": p.name if p else "", "baseUrl": p.base_url if p else "",
+                       # 09-18：暴露 enabled——对比弹窗/选择器此前无此字段，
+                       # 停用模型（qwen-max）混进可选列表
+                       "enabled": m.enabled,
                        "capabilities": m.capabilities or []} for m, p in rows],
             "total": total, "page": page, "pageSize": pageSize}
 

@@ -1661,9 +1661,13 @@ def ingest(
     elif all(d.status == "dead" for d in deliveries):
         event.status = "dead"
         event.error = "all deliveries dead"
-    elif any(d.status == "completed" for d in deliveries):
+    elif any(d.status in ("completed", "running", "pending") for d in deliveries):
         # 09-13 审计修复（P2）：部分投递失败不再被 dispatched 掩盖——
         # 明细仍在 delivery 层，列表级状态如实标 partial_failed
+        # 09-18 修复：completionPolicy=terminal 成功派发=running（等 watcher 结算），
+        # 原条件只认 completed → 成功派发的事件被误标 failed（"all deliveries
+        # failed"）。派发契约已履行即 dispatched；业务结果归 Invocation 侧
+        # （Spec §10.2 COMPLETED 语义，reconcile_terminal_deliveries 结算 delivery）。
         bad = [d for d in deliveries if d.status in ("failed", "dead")]
         event.status = "partial_failed" if bad else "dispatched"
         if bad:

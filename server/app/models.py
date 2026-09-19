@@ -1660,3 +1660,28 @@ class AgentGroupSop(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class ConsumerAnalysisResultAcceptance(Base):
+    """消费者通话语义分析落库（09-18 复活：TrueAsk submit 的本地审计镜像）。
+
+    表建于业务分析轮；写入方曾随 09-04 openai-agents 运行时下线成孤儿表。
+    09-18 用户拍板复活为 trueask submit 落点之一（主落=飞书目标表，本表=镜像），
+    字段与 trueask-profile-v4 同构；表已存在，无迁移。
+    """
+    __tablename__ = "consumer_analysis_result_acceptance"
+
+    _run_id: Mapped[str] = mapped_column("_run_id", Text, primary_key=True)
+    _task_run_id: Mapped[str] = mapped_column("_task_run_id", Text, default="")
+    _task_id: Mapped[str] = mapped_column("_task_id", Text, default="")
+    _task_version_id: Mapped[str] = mapped_column("_task_version_id", Text, default="")
+    _interaction_ref: Mapped[str] = mapped_column("_interaction_ref", Text, default="")
+    _output_schema_ref: Mapped[str] = mapped_column("_output_schema_ref", Text, default="")
+    _written_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow)
+    call_id: Mapped[str] = mapped_column(Text)
+    analysis_status: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text)
+    summary: Mapped[str] = mapped_column(Text)
+    segments: Mapped[dict] = mapped_column(JSONB, default=list)
+    full_output: Mapped[dict] = mapped_column(JSONB, default=dict)

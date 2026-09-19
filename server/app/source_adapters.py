@@ -125,6 +125,52 @@ def _feishu_tenant_token(secret: Any) -> str:
     return str(body["tenant_access_token"])
 
 
+def _fetch_feishu_bitable_cli(config: dict, app_token: str, table_id: str,
+                              cursor: str | None) -> tuple[list[dict], str | None]:
+    """09-18 dev 后端（用户拍板）：subprocess exec lark-cli，借本机已登录 profile，
+    凭据不复制进平台；cursor=offset 字符串。生产 fail-closed 禁走本路径。"""
+    import subprocess
+
+    from .config import is_production
+    if is_production():
+        raise SourceFetchError(
+            "飞书 bitable cli 后端仅 dev；生产须配置 OpenAPI 凭据（secret={app_id, app_secret}）")
+    offset = int(cursor or 0)
+    limit = min(int(config.get("page_size") or 100), MAX_PAGE_SIZE)
+    argv = ["lark-cli", "base", "+record-list", "--base-token", app_token,
+            "--table-id", table_id, "--limit", str(limit),
+            "--offset", str(offset), "--as", "user", "--json"]
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=90)  # noqa: S603
+    except subprocess.TimeoutExpired as exc:
+        raise SourceFetchError(f"lark-cli 拉取超时：{exc}") from exc
+    if proc.returncode != 0:
+        raise SourceFetchError(
+            f"lark-cli 拉取失败：{(proc.stderr or proc.stdout)[:400]}")
+    try:
+        body = json.loads(proc.stdout or "{}")
+    except json.JSONDecodeError as exc:
+        raise SourceFetchError(f"lark-cli 输出非 JSON：{exc}") from exc
+    # lark-cli +record-list --json 形态：data.fields 列名 + data.data 行矩阵 +
+    # data.record_id_list 并行；全空行跳过，不造空事件
+    d = (body.get("data") or {}) if isinstance(body, dict) else {}
+    fields = d.get("fields") or []
+    matrix = d.get("data") or []
+    rec_ids = d.get("record_id_list") or []
+    rows: list[dict] = []
+    for i, raw in enumerate(matrix):
+        if not isinstance(raw, list) or not any(
+                v not in (None, "") for v in raw):
+            continue
+        row = {"record_id": rec_ids[i] if i < len(rec_ids) else None}
+        row.update({f: _jsonable(raw[j]) for j, f in enumerate(fields)
+                    if j < len(raw)})
+        rows.append(row)
+    next_cursor = (str(offset + len(matrix))
+                   if d.get("has_more") and matrix else None)
+    return rows, next_cursor
+
+
 def fetch_feishu_bitable(config: dict, secret: Any,
                          cursor: str | None) -> tuple[list[dict], str | None]:
     app_token = str(config.get("app_token") or "")
@@ -132,6 +178,8 @@ def fetch_feishu_bitable(config: dict, secret: Any,
     if not app_token or not table_id:
         raise SourceFetchError(
             "飞书多维表格源需要 config.app_token 与 config.table_id")
+    if str(config.get("backend") or "") == "cli":
+        return _fetch_feishu_bitable_cli(config, app_token, table_id, cursor)
     token = _feishu_tenant_token(secret)
     page_size = min(int(config.get("page_size") or 100), MAX_PAGE_SIZE)
     url = (f"https://open.feishu.cn/open-apis/bitable/v1"
