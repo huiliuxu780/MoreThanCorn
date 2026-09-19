@@ -45,8 +45,15 @@ async def _call_platform(
                 state=ToolResultState.ERROR,
                 is_last=True,
             )
+        # 09-18（用户追问截断来源）：4000 ad-hoc 截断改为环境变量可配+显式标记；
+        # 此前静默截断使模型在长转写上做半视图分析（批4分段偏差根因之一）
+        import os as _os
+        _cap = int(_os.environ.get("MTC_TOOL_RESULT_MAX", "24000"))
+        _t = r.text
+        if len(_t) > _cap:
+            _t = _t[:_cap] + f"\n…[截断：原文 {len(_t)} 字，仅示前 {_cap} 字]"
         return ToolChunk(
-            content=[TextBlock(type="text", text=r.text[:4000])],
+            content=[TextBlock(type="text", text=_t)],
             state=ToolResultState.SUCCESS,
             is_last=True,
         )

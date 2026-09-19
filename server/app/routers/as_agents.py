@@ -386,7 +386,7 @@ def single_run(aid: str, body: RunBody, request: Request, db: Session = Depends(
         now = datetime.now(timezone.utc)
         run = Run(
             agent_id=aid, trigger="api",
-            input={"text": body.text[:4000]},
+            input={"text": body.text[:int(__import__("os").environ.get("MTC_TOOL_RESULT_MAX", "24000"))]},
             agent_version_id=rel.agent_version_id if rel else None,
             definition_source="version" if rel else None,
             status=status, output=output, error=error,

@@ -42,7 +42,11 @@ def _run(argv: list[str]) -> dict:
     try:
         return {"ok": True, "output": json.loads(out)}
     except json.JSONDecodeError:
-        return {"ok": True, "output": out[:4000]}
+        _cap = int(os.environ.get("MTC_TOOL_RESULT_MAX", "24000"))
+        _o = out if isinstance(out, str) else json.dumps(out, ensure_ascii=False)
+        if len(_o) > _cap:
+            _o = _o[:_cap] + f"\n…[截断：原文 {len(_o)} 字，仅示前 {_cap} 字]"
+        return {"ok": True, "output": _o}
 
 
 @router.post("/record_list")
