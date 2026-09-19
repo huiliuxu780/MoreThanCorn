@@ -1,0 +1,41 @@
+{
+  "skill_id": "e23d4e4b2ee0413cad6cc678f159876a",
+  "skill_name": "热线日志事件分析规程",
+  "agent_id": "d95aa5d02a8f44a29da896cfb316fa64",
+  "version_id": "727c492686fb4c8090b6571cf5b2b93a",
+  "release_id": "c0fcf1d2ea36434684ed32e02e56ac57",
+  "automation_id": "81e044b9a50840d88e7340d6e1705523",
+  "route_id": "c1ab9465f5a7481c9ed066d69498d4ac",
+  "poll": {
+    "polled": 500,
+    "dispatched": 0,
+    "pages": 5,
+    "cursor": "1789546507:5000"
+  },
+  "invocations": [
+    {
+      "id": "f6389f7d13444968810213c2e138d9e9",
+      "automationId": "81e044b9a50840d88e7340d6e1705523",
+      "triggerId": null,
+      "source": "event",
+      "sourceMode": null,
+      "idempotencyKey": null,
+      "status": "COMPLETED",
+      "attempt": 1,
+      "retryOfId": null,
+      "cancelRequested": false,
+      "target": {
+        "kind": "agent_session",
+        "id": "d65097dcc49a45bbab010f82fa32c9a6"
+      },
+      "conversationKey": null,
+      "queuedAt": "2026-09-18T11:37:09.582354+08:00",
+      "startedAt": "2026-09-18T11:37:09.587091+08:00",
+      "endedAt": "2026-09-18T11:37:41.390827+08:00",
+      "createdAt": "2026-09-18T11:37:09.362754+08:00",
+      "errorCode": null,
+      "errorDetail": null,
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "id": "81e044b9a50840d88e7340d6e1705523",
+  "name": "生产ERROR事件分析-0918",
+  "description": "SLS 生产 ERROR 日志事件 → 数据事件分析员逐条分析（09-18 端到端，max_runs=3 限流）",
+  "target_kind": "agent",
+  "agent_id": "d95aa5d02a8f44a29da896cfb316fa64",
+  "workflow_id": null,
+  "agentflow_id": null,
+  "agentflow_release_id": null,
+  "group_id": null,
+  "executor": {
+    "kind": "agent",
+    "id": "d95aa5d02a8f44a29da896cfb316fa64",
+    "name": "数据事件分析员-0918",
+    "avatar": null,
+    "missing": false
+  },
+  "enabled": true,
+  "session_policy": "fresh",
+  "prompt_template": "生产链路新到一条 ERROR 日志事件，请严格按已挂载的《热线日志事件分析规程》完整分析，并按规程第 4 节格式输出。\n\n事件内容：\n{{content}}\n\n注意：需要核实业务数据时必须真实调用工具；工具报错要如实引用，不得假装查到数据。",
+  "input_mapping": {},
+  "max_runs": 3,
+  "deadline": null,
+  "runtime_schedule_id": null,
+  "last_auto_fire_at": null,
+  "auto_run_count": 0,
+  "last_auto_status": null,
+  "triggers": []
+}

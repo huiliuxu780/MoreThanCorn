@@ -1,0 +1,22 @@
+{
+  "id": "e23d4e4b2ee0413cad6cc678f159876a",
+  "type": "skill",
+  "name": "热线日志事件分析规程",
+  "description": "生产热线/质检链路 ERROR 日志事件的标准分析步骤：要素解析→业务ID提取→工具核实→结构化结论输出",
+  "status": "enabled",
+  "health": "untested",
+  "updatedAt": "2026-09-18T03:31:39.870325+00:00",
+  "metadata": {
+    "category": "analysis",
+    "source": "upload",
+    "chars": 918,
+    "version": null,
+    "versions": []
+  },
+  "usage": {
+    "refCount": 0,
+    "calls7d": 0
+  },
+  "mounted": [],
+  "mount_hint": "挂载请在对话 Session 的 Workspace 内完成：/api/v2/agents/{agentId}/sessions/{sessionId}/skills/upload"
+}

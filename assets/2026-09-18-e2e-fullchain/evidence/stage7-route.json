@@ -1,0 +1,32 @@
+{
+  "id": "c1ab9465f5a7481c9ed066d69498d4ac",
+  "origin": "event_route",
+  "sourceId": "da363b4af61340a186f81ecda681d4b4",
+  "eventType": "",
+  "destination": {
+    "kind": "automation",
+    "id": "81e044b9a50840d88e7340d6e1705523"
+  },
+  "filter": {
+    "version": 1,
+    "expression": {
+      "op": "contains",
+      "field": "content",
+      "value": "ERROR"
+    }
+  },
+  "mapping": {
+    "version": 1,
+    "fields": {}
+  },
+  "dedupe": {},
+  "completionPolicy": "terminal",
+  "completionMeaning": "目标执行到达终态后才完成（端到端确认）",
+  "retryPolicy": {},
+  "enabled": true,
+  "archived": false,
+  "revision": 1,
+  "createdBy": "dev",
+  "createdAt": "2026-09-18T11:31:39.968269+08:00",
+  "updatedAt": "2026-09-18T11:31:39.968273+08:00"
+}
