@@ -1,0 +1,22 @@
+wave 1 poll: {'polled': 500, 'dispatched': 500, 'pages': 5, 'cursor': '500'}
+Traceback (most recent call last):
+  File "/Users/rivers/MoreThanCorn/server/../assets/2026-09-18-trueask/run_batch_waves.py", line 72, in <module>
+    main()
+  File "/Users/rivers/MoreThanCorn/server/../assets/2026-09-18-trueask/run_batch_waves.py", line 58, in main
+    drops = dropped_acids()
+            ^^^^^^^^^^^^^^^
+  File "/Users/rivers/MoreThanCorn/server/../assets/2026-09-18-trueask/run_batch_waves.py", line 38, in dropped_acids
+    from tests.conftest import pg_dsn  # noqa: F401  仅用 dsn 不便，直连 wf_dev
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'tests'
+wave 1 poll: {'polled': 26, 'dispatched': 0, 'pages': 1, 'cursor': None}
+wave 1 dropped: 57
+wave 2 poll: {'polled': 26, 'dispatched': 0, 'pages': 1, 'cursor': None}
+wave 2 dropped: 57
+wave 3 poll: {'polled': 26, 'dispatched': 0, 'pages': 1, 'cursor': None}
+wave 3 dropped: 57
+wave 4 poll: {'polled': 26, 'dispatched': 0, 'pages': 1, 'cursor': None}
+wave 4 dropped: 57
+wave 5 poll: {'polled': 26, 'dispatched': 0, 'pages': 1, 'cursor': None}
+wave 5 dropped: 57
+FINAL invocations completed=0 total=600
