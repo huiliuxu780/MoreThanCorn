@@ -82,3 +82,15 @@
 ## 5. 已实施别漏看（防"以为没有"）
 
 freeze 不可变发布 / 双环境+AkSk+script 鉴权 / HITL ApprovalCard+权限六开关 / group 多 agent / AgentFlow 脚本引擎+投影 / structured output / SSE 流式 / golden eval / 封存闸门 / 幂等 dedup / terminal 结算 watcher。
+
+## 6. 装配实证（09-18 活体对账，用户质疑回应）
+- 冻结快照（release 14d2ca61）：prompt_digest / _frozen_skills(trueask-taxonomy-v4 全文摘要) /
+  _frozen_tools(3 个 tool_version_id) / frozen_model_id+key+params / frozen_tool_policy /
+  frozen_permission_policy / frozen_exec_timeout 全在。
+- 运行时工作区（探针会话 e5629715）：/workspace/skill 返回 trueask-taxonomy-v4 冻结全文；
+  /workspace/mcp = []（本 agent 未配 MCP，装配路径在、零挂载）。
+- 工具装配行为实证：探针回合自报 toolkit = 配置三工具（热线语音转文本记录查询 /
+  submit_trueask_analysis_result / feishu_record_batch_create）+ Skill + 运行时内建 +
+  run_workflow/run_agent_flow；批4 trace 含四工具真调用环。
+- 诚实缺口：MCP/KB 装配路径已实施但**当前全平台零活体挂载**（mcps 挂载表空）；
+  memory 运行时完全不挂载（表仅凭据缓存用）。
