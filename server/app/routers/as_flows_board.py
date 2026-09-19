@@ -640,11 +640,12 @@ def _project(db: Session, uid: str, period: str) -> list[dict]:
     start = _period_start(period)
     rows: list[dict] = []
 
+    # 09-18 看板统计修正：去掉 limit(300) 硬截断（汇总带总数曾被静默砍到
+    # 300+runs 上限）；全周期投影，状态批量拉取见下
     indexes = (
         db.query(AgentSessionIndex)
         .filter(AgentSessionIndex.created_at >= start)
         .order_by(AgentSessionIndex.created_at.desc())
-        .limit(300)
         .all()
     )
     # P1-1：优先使用索引创建期固化的 runtime_agent_id，避免重发布后漂移
@@ -658,17 +659,43 @@ def _project(db: Session, uid: str, period: str) -> list[dict]:
     ]
     triples = [t for t in triples if t["agent_id"]]
     statuses: dict[str, dict] = {}
-    if triples:
+    # 09-18：分批拉运行时状态，单批失败不影响其余（去截断后单请求过大会超时）
+    for c in range(0, len(triples), 250):
         try:
-            for s in rt.sessions_status(uid, triples):
+            for s in rt.sessions_status(uid, triples[c:c + 250]):
                 statuses[s["session_id"]] = s
         except rt.RuntimeError_:
-            statuses = {}
+            continue
+    # 09-18：平台侧消息计数作为 lane 事实基（运行时活状态会把静默消失/
+    # 未关闭会话永久标 running，看板"进行中"曾因此虚高）
+    from sqlalchemy import text as _sa_text
+    from sqlalchemy.exc import ProgrammingError as _SaProgError
+    msg_counts: dict[str, int] = {}
+    sids = [i.session_id for i in indexes]
+    for c in range(0, len(sids), 500):
+        try:
+            res = db.execute(
+                _sa_text("SELECT session_id, count(*) FROM messages "
+                         "WHERE session_id = ANY(:sids) GROUP BY session_id"),
+                {"sids": sids[c:c + 500]})
+            for sid, n in res:
+                msg_counts[sid] = int(n)
+        except _SaProgError:
+            # 测试库等无运行时 storage 表的环境：回落运行时活状态口径
+            db.rollback()
+            break
+    now = datetime.now(timezone.utc)
     for i in indexes:
         st = statuses.get(i.session_id, {})
         lane = map_session_lane(
             st.get("status"), st.get("finished_reason"), 1 if st.get("found") else 0
         )
+        # 09-18 胎死/僵尸修正：lane 称在跑但平台侧无模型回复且过 10 分钟
+        # 宽限 = 判 failed（静默消失/从未启动），不占"进行中"
+        if (lane in ("running", "pending")
+                and msg_counts.get(i.session_id, 0) <= 1
+                and (now - i.created_at) > timedelta(minutes=10)):
+            lane = "failed"
         agent = db.get(Agent, i.agent_id)
         group_id, group_name = "", ""
         detail_route = f"/agents/{i.agent_id}/chat?session={i.session_id}"
@@ -700,7 +727,8 @@ def _project(db: Session, uid: str, period: str) -> list[dict]:
             }
         )
 
-    runs = db.query(Run).filter(Run.created_at >= start).order_by(Run.created_at.desc()).limit(200).all()
+    # 09-18：同去 limit(200) 截断
+    runs = db.query(Run).filter(Run.created_at >= start).order_by(Run.created_at.desc()).all()
     for r in runs:
         lane = map_workflow_lane(r.status)
         rows.append(
@@ -722,7 +750,7 @@ def _project(db: Session, uid: str, period: str) -> list[dict]:
             }
         )
 
-    flows = db.query(AgentFlowRun).filter(AgentFlowRun.started_at >= start).order_by(AgentFlowRun.started_at.desc()).limit(200).all()
+    flows = db.query(AgentFlowRun).filter(AgentFlowRun.started_at >= start).order_by(AgentFlowRun.started_at.desc()).all()
     for f in flows:
         lane = map_agentflow_lane(f.status)
         rows.append(

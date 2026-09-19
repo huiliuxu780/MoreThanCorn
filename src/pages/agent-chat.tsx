@@ -49,7 +49,10 @@ import { AgentActivity } from "@/components/beui/agents/agent-activity"
 import type { AgentActivityItem } from "@/components/beui/agents/agent-activity"
 import { ApprovalCard } from "@/components/beui/agents/approval-card"
 import { Message } from "@/components/beui/agents/message"
-import { MessageBubble } from "@/components/beui/agents/message-bubble"
+import {
+  MessageBubble,
+  MessageBubbleCollapsible,
+} from "@/components/beui/agents/message-bubble"
 import { agentApi, wfApi, type AgentInfo } from "@/services/wf-api"
 import { asApi, openRuntimeStream, type SessionRow } from "@/services/as-api"
 import {
@@ -59,6 +62,7 @@ import {
   type ChatStreamState,
 } from "@/services/chat-stream"
 import { Markdown } from "@/components/chat/markdown"
+import { prettyToolPayload, toolResultText } from "@/lib/tool-display"
 import { ThinkingCollapse } from "@/components/chat/deep-thinking"
 import {
   ImagesSection,
@@ -72,6 +76,8 @@ import { AgentProgress } from "@/components/beui/agents/agent-progress"
 
 const SUBAGENT_TOOLS = new Set(["AgentCreate", "AgentInvite", "TeamCreate", "TeamDelete", "TeamSay"])
 const PLATFORM_TOOLS = new Set(["run_workflow", "run_agent_flow"])
+// 用户消息超此长度折叠展示（事件注入的整段日志/堆栈）；展开可看全文
+const USER_TEXT_COLLAPSE_CHARS = 1500
 function toolBadge(name: string): { label: string; variant: "default" | "secondary" | "outline" } {
   if (name === "Skill") return { label: "技能", variant: "default" }
   if (name === "search_knowledge") return { label: "知识", variant: "default" }
@@ -79,20 +85,6 @@ function toolBadge(name: string): { label: string; variant: "default" | "seconda
   if (SUBAGENT_TOOLS.has(name)) return { label: "子Agent", variant: "default" }
   if (PLATFORM_TOOLS.has(name)) return { label: "平台", variant: "secondary" }
   return { label: "工具", variant: "outline" }
-}
-
-/** 09-11：运行时 TOOL_RESULT 文本 delta 为 JSON 字符串封装，展示前解包防双重转义。 */
-function unwrapJsonString(s: string): string {
-  const t = s.trim()
-  if (t.startsWith('"') && t.endsWith('"')) {
-    try {
-      const v = JSON.parse(t)
-      if (typeof v === "string") return v
-    } catch {
-      /* 保持原文 */
-    }
-  }
-  return s
 }
 
 function blockText(b: unknown): string {
@@ -927,7 +919,21 @@ export default function AgentChatPage() {
                   <Message key={String(m.id ?? i)} from="user" animateIn>
                     <div className="flex w-full flex-col items-end gap-1">
                     <MessageBubble align="end">
-                      <span className="text-sm">{text}</span>
+                      {text.length > USER_TEXT_COLLAPSE_CHARS ? (
+                        // 09-18：事件触发的自动任务会把整段生产日志/堆栈注入用户
+                        // 消息——裸 span 既不保换行又不限长，9KB 堆栈直接撑成
+                        // 2848px 文字墙。长文本走组件库既有折叠件（截断须可展开）。
+                        <MessageBubbleCollapsible
+                          collapsedLines={6}
+                          contentClassName="whitespace-pre-wrap break-words"
+                        >
+                          <span className="text-sm">{text}</span>
+                        </MessageBubbleCollapsible>
+                      ) : (
+                        <span className="whitespace-pre-wrap break-words text-sm">
+                          {text}
+                        </span>
+                      )}
                     </MessageBubble>
                     <div className="flex w-full items-center justify-end gap-2 text-[11px] text-muted-foreground">
                       <span>{fmtTime(String(m.created_at ?? ""))}</span>
@@ -1006,14 +1012,14 @@ export default function AgentChatPage() {
                         status={tr ? "success" : "running"}
                         defaultOpen={false}
                         maxHeight={280}
-                        copyText={maskSecrets(JSON.stringify(tu.input ?? {}))}
+                        copyText={maskSecrets(prettyToolPayload(tu.input, 20000))}
                       >
                         <pre className="whitespace-pre-wrap break-words">
-                          {maskSecrets(JSON.stringify(tu.input ?? {}).slice(0, 800))}
+                          {maskSecrets(prettyToolPayload(tu.input, 800))}
                         </pre>
                         {tr && (
                           <pre className="mt-1 whitespace-pre-wrap break-words">
-                            {maskSecrets(unwrapJsonString(JSON.stringify(tr.output ?? tr.content ?? "")).slice(0, 1200))}
+                            {maskSecrets(prettyToolPayload(toolResultText(tr), 1200))}
                           </pre>
                         )}
                       </ToolResult>
@@ -1102,7 +1108,7 @@ export default function AgentChatPage() {
                     <pre className="whitespace-pre-wrap break-words">{maskSecrets(t.args.slice(0, 800))}</pre>
                   )}
                   {t.result && (
-                    <pre className="mt-1 whitespace-pre-wrap break-words">{maskSecrets(unwrapJsonString(t.result).slice(0, 1200))}</pre>
+                    <pre className="mt-1 whitespace-pre-wrap break-words">{maskSecrets(prettyToolPayload(t.result, 1200))}</pre>
                   )}
                 </ToolResult>
               )

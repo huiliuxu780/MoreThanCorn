@@ -72,7 +72,7 @@ function ArchivedAutonomousView({ agent }: { agent: AgentInfo }) {
   )
 }
 
-const SECTIONS: WorkspaceSection[] = ["home", "board", "autonomous", "memory", "skills", "connectors", "workflows", "knowledge", "config", "permissions", "governance", "profile"]
+const SECTIONS: WorkspaceSection[] = ["home", "board", "autonomous", "memory", "skills", "connectors", "tools", "workflows", "knowledge", "config", "permissions", "governance", "profile"]
 
 export default function WfAgentEditorPage() {
   const { agentId = "", section: sectionParam } = useParams()
@@ -105,6 +105,7 @@ export default function WfAgentEditorPage() {
       case "memory": return <AgentMemorySection agentId={agent.id} readOnly={archived} />
       case "skills": return <AgentSkillsSection agentId={agent.id} readOnly={archived} />
       case "connectors": return <AgentConnectorsSection agent={agent} readOnly={archived} />
+      case "tools": return <AgentMountsSection agent={agent} kind="tools" readOnly={archived} />
       case "workflows": return <AgentMountsSection agent={agent} kind="workflows" readOnly={archived} />
       case "knowledge": return <AgentMountsSection agent={agent} kind="knowledges" readOnly={archived} />
       case "permissions": return <AgentPermissionsSection agent={agent} archived={archived} />

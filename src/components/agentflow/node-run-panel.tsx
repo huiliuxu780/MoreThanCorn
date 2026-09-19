@@ -23,20 +23,7 @@ import { Markdown } from "@/components/chat/markdown"
 import { ThinkingCollapse } from "@/components/chat/deep-thinking"
 import { StreamingResponse } from "@/components/beui/agents/streaming-response"
 import { ToolResult } from "@/components/beui/agents/tool-result"
-
-/** 09-11：运行时 TOOL_RESULT 文本 delta 为 JSON 字符串封装，展示前解包防双重转义。 */
-function unwrapJsonString(s: string): string {
-  const t = s.trim()
-  if (t.startsWith('"') && t.endsWith('"')) {
-    try {
-      const v = JSON.parse(t)
-      if (typeof v === "string") return v
-    } catch {
-      /* 保持原文 */
-    }
-  }
-  return s
-}
+import { prettyToolPayload } from "@/lib/tool-display"
 
 function blockText(b: unknown): string {
   if (typeof b === "string") return b
@@ -171,7 +158,7 @@ export function NodeRunPanel({
                       maxHeight={280}
                     >
                       <pre className="whitespace-pre-wrap break-words">
-                        {maskSecrets(JSON.stringify(tu.input ?? {}).slice(0, 800))}
+                        {maskSecrets(prettyToolPayload(tu.input, 800))}
                       </pre>
                     </ToolResult>
                   ))}
@@ -195,7 +182,7 @@ export function NodeRunPanel({
                 defaultOpen={false}
                 maxHeight={280}
               >
-                {t.result && <pre className="whitespace-pre-wrap break-words">{maskSecrets(unwrapJsonString(t.result).slice(0, 1200))}</pre>}
+                {t.result && <pre className="whitespace-pre-wrap break-words">{maskSecrets(prettyToolPayload(t.result, 1200))}</pre>}
               </ToolResult>
             ))}
           </div>

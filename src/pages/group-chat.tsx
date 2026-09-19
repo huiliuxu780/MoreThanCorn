@@ -16,7 +16,10 @@ import { toast } from "sonner"
 import { Markdown } from "@/components/chat/markdown"
 import { ThinkingCollapse } from "@/components/chat/deep-thinking"
 import { Message } from "@/components/beui/agents/message"
-import { MessageBubble } from "@/components/beui/agents/message-bubble"
+import {
+  MessageBubble,
+  MessageBubbleCollapsible,
+} from "@/components/beui/agents/message-bubble"
 import { StreamingResponse } from "@/components/beui/agents/streaming-response"
 import { ToolResult } from "@/components/beui/agents/tool-result"
 import { ApprovalCard } from "@/components/beui/agents/approval-card"
@@ -71,6 +74,8 @@ interface FlatMsg {
 
 interface SourceMeta { agentId: string; name: string; role: "leader" | "member" }
 
+// 用户消息超此长度折叠展示（与 agent-chat 同阈值）；展开可看全文
+const USER_TEXT_COLLAPSE_CHARS = 1500
 const fmtTime = (v: string) => (v
   ? new Date(v).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
   : "")
@@ -635,7 +640,20 @@ export default function GroupChatPage() {
               <Message key={m.key} from="user" animateIn>
                 <div className="flex w-full flex-col items-end gap-1">
                   <MessageBubble align="end">
-                    <span className="text-sm">{m.text}</span>
+                    {m.text.length > USER_TEXT_COLLAPSE_CHARS ? (
+                      // 09-18：与 agent-chat 同修——长文本（事件注入的整段日志/
+                      // 堆栈）折叠展示，裸 span 不保换行又不限长会撑爆会话列
+                      <MessageBubbleCollapsible
+                        collapsedLines={6}
+                        contentClassName="whitespace-pre-wrap break-words"
+                      >
+                        <span className="text-sm">{m.text}</span>
+                      </MessageBubbleCollapsible>
+                    ) : (
+                      <span className="whitespace-pre-wrap break-words text-sm">
+                        {m.text}
+                      </span>
+                    )}
                   </MessageBubble>
                   <div className="flex w-full items-center justify-end gap-2 text-[11px] text-muted-foreground">
                     <span>{fmtTime(new Date(m.at).toISOString())}</span>
