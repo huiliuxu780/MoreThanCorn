@@ -48,39 +48,6 @@ def test_cost_stats_aggregates_from_call_records():
     assert body.get("modelCalls", 0) >= 2
 
 
-def test_alert_metrics_datasource_and_model():
-    """P1-08：告警指标覆盖数据源故障 / 模型不可用。"""
-    from app.models import Datasource, ModelProvider
-    db = SessionLocal()
-    try:
-        ds = Datasource(name="bad-ds", type="postgresql", health="error")
-        db.add(ds)
-        prov = ModelProvider(name="mock-prov", base_url="mock://fake")
-        db.add(prov)
-        db.commit()
-    finally:
-        db.close()
-    from app.routers.alerts import _metric_value
-    db = SessionLocal()
-    try:
-        assert _metric_value(db, "datasource_error") >= 1, "应统计 health=error 的数据源"
-        assert _metric_value(db, "model_unavailable") >= 1, "应统计 mock:// Provider"
-    finally:
-        db.close()
-
-
-def test_alert_evaluate_consumes_notify():
-    """P1-08（审计：消费 notify）：评估返回 notified 计数，不崩溃。"""
-    r = client.post("/api/alerts/rules", json={
-        "name": "backlog-rule", "metric": "queue_backlog", "operator": "gte",
-        "threshold": 0, "severity": "warning",
-        "notify": {"webhook": "http://127.0.0.1:1/none"}})
-    assert r.status_code == 201
-    ev = client.post("/api/alerts/evaluate")
-    assert ev.status_code == 200
-    assert "fired" in ev.json() and "notified" in ev.json()
-
-
 def test_worker_id_unique_not_fixed():
     """审计：Worker ID 曾固定 w1；现每进程唯一。"""
     from app.runner import WORKER_ID

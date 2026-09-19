@@ -247,8 +247,18 @@ def test_separation_of_duties(auth_on):
     admin_tok = _login("admin", "admin")
     # 建一个 operator
     op_name = f"op-{uuid.uuid4().hex[:8]}"
-    client.post("/api/auth/users", headers={"Authorization": f"Bearer {admin_tok}"},
-                json={"username": op_name, "password": "pass12345", "role": "operator"})
+    import uuid as _uuid
+    from app.auth import hash_password
+    from app.db import SessionLocal as _SL
+    from app.models import AppUser as _AU
+    _db = _SL()
+    try:
+        _u = _AU(username=f"op-{_uuid.uuid4().hex[:8]}", password_hash=hash_password("pass12345"),
+                 role="operator", status="active")
+        _db.add(_u); _db.commit()
+        op_name = _u.username
+    finally:
+        _db.close()
     op_tok = _login(op_name, "pass12345")
     H_OP = {"Authorization": f"Bearer {op_tok}"}
     H_AD = {"Authorization": f"Bearer {admin_tok}"}

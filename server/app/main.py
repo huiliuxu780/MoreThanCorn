@@ -7,7 +7,7 @@ from sqlalchemy import text
 from .config import auth_enforced, is_production
 from .legacy_agent_archive import LegacyAgentArchivedError
 from .runner import start_worker
-from .routers import (admin, agent_caps, agents, alerts, analytics, as_agents,
+from .routers import (admin, agent_caps, agents, analytics, as_agents,
                       as_automations, as_flows_board, as_groups, auth_routes,
                       automations, business, event_routes, forms, governance,
                       operations, registry, resources, runs, work_items, workflows)
@@ -186,7 +186,13 @@ app.include_router(_feishu_tools.router)
 from .routers import trueask as _trueask  # 09-18 TrueAsk 提交端点
 app.include_router(_trueask.router)
 app.include_router(analytics.router)
-app.include_router(alerts.router)
+# 09-18 用户拍板：告警域全下线（纯后端无 UI）——tombstone 410 明示
+@app.api_route("/api/alerts", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+@app.api_route("/api/alerts/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+def _alerts_retired(path: str = ""):
+    from fastapi import HTTPException as _HE
+    raise _HE(410, {"code": "RETIRED",
+                           "message": "告警域已下线（09-18 用户拍板）；观测走运行中心/工作日志"})
 app.include_router(workflows.router)
 app.include_router(registry.router)
 app.include_router(runs.router)

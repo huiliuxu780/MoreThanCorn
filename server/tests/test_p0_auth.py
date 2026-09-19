@@ -27,12 +27,21 @@ def _login(username: str, password: str) -> dict:
 
 
 def _mk_user(admin_token: str, role: str) -> dict:
-    name = f"{role}-{uuid.uuid4().hex[:8]}"
-    r = client.post("/api/auth/users",
-                    headers={"Authorization": f"Bearer {admin_token}"},
-                    json={"username": name, "password": "pass12345", "role": role})
-    assert r.status_code == 201, r.text
-    return r.json()
+    # 09-18 用户管理下线：建用户 API 410；测试夹具改 DB 直种
+    import uuid as _uuid
+    from app.auth import hash_password
+    from app.db import SessionLocal
+    from app.models import AppUser
+    name = f"{role}-{_uuid.uuid4().hex[:8]}"
+    db = SessionLocal()
+    try:
+        u = AppUser(username=name, password_hash=hash_password("pass12345"),
+                    role=role, status="active")
+        db.add(u)
+        db.commit()
+        return {"id": u.id, "username": name, "role": role}
+    finally:
+        db.close()
 
 
 def test_unauthenticated_401(auth_on):

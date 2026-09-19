@@ -40,9 +40,16 @@ def me(request: Request):
             "displayName": db_user.display_name if db_user else user["username"]}
 
 
+def _users_retired() -> None:
+    """09-18 用户拍板：用户管理下线；登录与当前身份保留。"""
+    raise HTTPException(410, {"code": "RETIRED",
+                           "message": "用户管理已下线（09-18 用户拍板）；登录与 /api/auth/me 保留"})
+
+
 @router.post("/api/auth/users", status_code=201)
 def create_user(payload: dict, db: Session = Depends(get_db),
                 admin_user: dict = Depends(require_admin)):
+    _users_retired()
     username = str((payload or {}).get("username") or "").strip()
     password = str((payload or {}).get("password") or "")
     role = str((payload or {}).get("role") or "viewer")
@@ -68,6 +75,7 @@ def create_user(payload: dict, db: Session = Depends(get_db),
 
 @router.get("/api/auth/users")
 def list_users(db: Session = Depends(get_db), _admin: dict = Depends(require_admin)):
+    _users_retired()
     rows = db.query(AppUser).order_by(AppUser.created_at.desc()).all()
     return {"items": [{"id": u.id, "username": u.username, "displayName": u.display_name,
                        "role": u.role, "status": u.status, "team": u.team or "",
@@ -78,6 +86,7 @@ def list_users(db: Session = Depends(get_db), _admin: dict = Depends(require_adm
 @router.post("/api/auth/users/{uid}/scope")
 def set_user_scope(uid: str, payload: dict, db: Session = Depends(get_db),
                    admin_user: dict = Depends(require_admin)):
+    _users_retired()
     """P2-02：设置用户团队与数据范围（admin；变更即时生效于后续请求）。"""
     u = db.get(AppUser, uid)
     if not u:
@@ -97,6 +106,7 @@ def set_user_scope(uid: str, payload: dict, db: Session = Depends(get_db),
 @router.post("/api/auth/users/{uid}/status")
 def set_user_status(uid: str, payload: dict, db: Session = Depends(get_db),
                     admin_user: dict = Depends(require_admin)):
+    _users_retired()
     """09 P2-01：用户生命周期——启用/停用。停用用户无法登录。"""
     u = db.get(AppUser, uid)
     if not u:
@@ -114,6 +124,7 @@ def set_user_status(uid: str, payload: dict, db: Session = Depends(get_db),
 @router.post("/api/auth/users/{uid}/password")
 def change_user_password(uid: str, payload: dict, db: Session = Depends(get_db),
                          admin_user: dict = Depends(require_admin)):
+    _users_retired()
     """09 P2-01：用户生命周期——重置密码（admin）。"""
     u = db.get(AppUser, uid)
     if not u:

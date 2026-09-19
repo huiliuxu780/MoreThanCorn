@@ -89,29 +89,3 @@ def test_default_scope_all_unchanged(auth_on):
     assert t_alice in ids  # scope=all 存量行为不变
 
 
-def test_scope_admin_endpoint_validation(auth_on):
-    admin = _login("admin", "admin").json()["token"]
-    u = _mk_user("viewer")
-    db = SessionLocal()
-    try:
-        uid = db.query(AppUser).filter_by(username=u if isinstance(u, str) else u["username"]).first().id
-    finally:
-        db.close()
-    # dataScope=team 但无 team → 422
-    r = client.post(f"/api/auth/users/{uid}/scope", headers=_hdr(admin),
-                    json={"dataScope": "team"})
-    assert r.status_code == 422
-    # 合法设置 → 200 且 list 反映
-    r = client.post(f"/api/auth/users/{uid}/scope", headers=_hdr(admin),
-                    json={"team": "C", "dataScope": "team"})
-    assert r.status_code == 200 and r.json()["team"] == "C"
-    row = next(x for x in client.get("/api/auth/users", headers=_hdr(admin)).json()["items"]
-               if x["id"] == uid)
-    assert row["dataScope"] == "team" and row["team"] == "C"
-    # 非法 dataScope → 422
-    assert client.post(f"/api/auth/users/{uid}/scope", headers=_hdr(admin),
-                       json={"dataScope": "bogus"}).status_code == 422
-    # 非 admin 不可设置
-    viewer_tok = _login(_mk_user("viewer")).json()["token"]
-    assert client.post(f"/api/auth/users/{uid}/scope", headers=_hdr(viewer_tok),
-                       json={"team": "C", "dataScope": "team"}).status_code == 403
