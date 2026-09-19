@@ -11,17 +11,22 @@ import { agentApi, wfApi, type AgentInfo } from "@/services/wf-api"
 import { resApi } from "@/services/resource-api"
 
 export function AgentMountsSection({ agent, kind, readOnly }: {
-  agent: AgentInfo; kind: "workflows" | "knowledges"; readOnly?: boolean
+  agent: AgentInfo; kind: "workflows" | "knowledges" | "tools"; readOnly?: boolean
 }) {
   const navigate = useNavigate()
   const [options, setOptions] = useState<{ id: string; name: string }[]>([])
   const [revision, setRevision] = useState(agent.configRevision)
   const [pick, setPick] = useState("")
-  const mounted = ((agent.config as { workflows?: string[]; knowledges?: string[] })[kind]) ?? []
+  const mounted = ((agent.config as {
+    workflows?: string[]; knowledges?: string[]; tools?: string[]
+  })[kind]) ?? []
 
   const load = useCallback(() => {
     if (kind === "workflows") {
       wfApi.list({ pageSize: 100 }).then((r) => setOptions(r.items.map((w) => ({ id: w.id, name: w.name })))).catch(() => setOptions([]))
+    } else if (kind === "tools") {
+      // 09-18：工具挂载独立子页（IA 单一归属，自档案页「能力挂载」块迁入）
+      resApi.registry("tools", false).then((r) => setOptions(r.items.map((t) => ({ id: t.id, name: t.name })))).catch(() => setOptions([]))
     } else {
       resApi.registry("knowledge", false).then((r) => setOptions(r.items.map((k) => ({ id: k.id, name: k.name })))).catch(() => setOptions([]))
     }
@@ -41,7 +46,7 @@ export function AgentMountsSection({ agent, kind, readOnly }: {
     } catch (e) { toast.error((e as Error).message) }
   }
 
-  const title = kind === "workflows" ? "Wakerflow" : "知识库"
+  const title = kind === "workflows" ? "Wakerflow" : kind === "tools" ? "工具" : "知识库"
   const unmounted = options.filter((o) => !mounted.includes(o.id))
 
   return (

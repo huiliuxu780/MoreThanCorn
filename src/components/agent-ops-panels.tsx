@@ -4,7 +4,15 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
+import { toast } from "sonner"
+
 import { Button } from "@/components/ui/button"
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { agentApi, runEventsList } from "@/services/wf-api"
 
 const INK = "var(--text-primary)"; const INK2 = "var(--text-secondary)"; const INK3 = "color-mix(in srgb, var(--text-secondary) 62%, transparent)"; const CARD = "var(--border)"
@@ -94,28 +102,86 @@ export function AgentRunsPanel({ agentId }: { agentId: string }) {
 /* ---------- 效果评测（只读：历史样本与 Judge 结果查看） ---------- */
 export function AgentEvalPanel({ agentId, archived }: { agentId: string; archived?: boolean }) {
   const [samples, setSamples] = useState<{ id: string; name: string; input: Record<string, unknown>; expected?: { text?: string } | null }[]>([])
-  useEffect(() => {
-    agentApi.evalSamples(agentId).then((r) => setSamples(r.items as typeof samples)).catch(() => undefined)
-  }, [agentId])
+  const [addOpen, setAddOpen] = useState(false)
+  const [form, setForm] = useState({ name: "", input: "{}", expected: "" })
+  const load = () => agentApi.evalSamples(agentId).then((r) => setSamples(r.items as typeof samples)).catch(() => undefined)
+  useEffect(() => { load() }, [agentId])
+  const submit = async () => {
+    if (!form.name.trim()) { toast.error("请填写样本名称"); return }
+    let input: Record<string, unknown>
+    try { input = JSON.parse(form.input) as Record<string, unknown> } catch { toast.error("输入 JSON 解析失败"); return }
+    try {
+      await agentApi.addEvalSample(agentId, {
+        name: form.name.trim(), input,
+        expected: form.expected.trim() ? { text: form.expected.trim() } : null,
+      })
+      toast.success("样本已添加")
+      setAddOpen(false)
+      setForm({ name: "", input: "{}", expected: "" })
+      load()
+    } catch (e) { toast.error((e as Error).message) }
+  }
   return (
-    <div className="h-full space-y-4 overflow-y-auto p-6">
-      <div className="rounded-lg border bg-surface p-4" style={{ borderColor: CARD }}>
-        <div className="pb-2 text-[13px] font-medium" style={{ color: INK }}>评测集（样本 = 固定输入 + 可选期望答案）</div>
-        {samples.length === 0 && <div className="py-4 text-center text-xs" style={{ color: INK3 }}>暂无样本记录</div>}
-        {samples.map((s) => (
-          <div key={s.id} className="flex items-center gap-2 border-b py-1.5 text-xs" style={{ borderColor: CARD }}>
-            <span className="flex-1 truncate" style={{ color: INK2 }}>{s.name}</span>
-            <span className="truncate font-mono" style={{ color: INK3 }}>{JSON.stringify(s.input).slice(0, 40)}</span>
-            {s.expected?.text && <span className="truncate rounded bg-status-success-soft px-1 text-[10px] text-status-success">期望：{s.expected.text.slice(0, 16)}</span>}
+    <section className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold" style={{ color: INK }}>
+          评测集 <span className="text-xs font-normal" style={{ color: INK3 }}>样本 = 固定输入 + 可选期望答案</span>
+        </h3>
+        {!archived && (
+          <Button variant="outline" size="sm" className="shrink-0" onClick={() => setAddOpen(true)}>添加样本</Button>
+        )}
+      </div>
+      <div className="max-w-3xl">
+        {samples.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-8 text-center text-xs text-muted-foreground">
+            <p>暂无样本记录</p>
+            {!archived && <p className="mt-1">添加固定输入样本后，可运行 Golden Set 主动评测。</p>}
+          </div>
+        ) : samples.map((s) => (
+          <div key={s.id} className="flex min-h-[67px] items-center gap-3 border-b px-1 py-2 text-sm" style={{ borderColor: CARD }}>
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-medium" style={{ color: INK }}>{s.name}</div>
+              <div className="truncate font-mono text-xs" style={{ color: INK3 }}>{JSON.stringify(s.input).slice(0, 80)}</div>
+            </div>
+            {s.expected?.text && (
+              <span className="shrink-0 rounded bg-status-success-soft px-1.5 py-0.5 text-[10px] text-status-success">
+                期望：{s.expected.text.slice(0, 24)}
+              </span>
+            )}
           </div>
         ))}
         {archived && (
-          <div className="rounded bg-amber-50 px-3 py-2 text-xs text-amber-600">
-            该旧版 Agent 已封存：样本维护与评测运行入口不再开放。
-          </div>
+          <p className="pt-2 text-xs text-amber-600">该旧版 Agent 已封存：样本维护与评测运行入口不再开放。</p>
         )}
       </div>
-    </div>
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>添加评测样本</DialogTitle>
+            <DialogDescription>固定输入 + 可选期望答案；期望用于 Golden Set 逐 criterion 对比。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label>样本名称</Label>
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="如：冰箱不制冷故障咨询" />
+            </div>
+            <div className="space-y-1">
+              <Label>输入 JSON</Label>
+              <Textarea className="min-h-[96px] font-mono text-xs" value={form.input}
+                onChange={(e) => setForm({ ...form, input: e.target.value })} />
+            </div>
+            <div className="space-y-1">
+              <Label>期望答案（可选）</Label>
+              <Input value={form.expected} onChange={(e) => setForm({ ...form, expected: e.target.value })} placeholder="如：fault-consultation" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setAddOpen(false)}>取消</Button>
+            <Button size="sm" onClick={() => void submit()}>添加</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </section>
   )
 }
 
@@ -146,73 +212,72 @@ export function AgentEvolutionPanel({ agentId }: { agentId: string }) {
 }
 
 /* ---------- 版本指标 ---------- */
-export function AgentVersionsPanel({ agentId }: { agentId: string }) {
+export function AgentVersionsPanel({ agentId, onCompare }: {
+  agentId: string
+  onCompare?: (versionNo: number) => void
+}) {
   const [versions, setVersions] = useState<{ versionId: string; versionNo: number; note: string; artifactHash: string; createdAt: string; frozenMembers: { ref: string; version: string | null }[] }[]>([])
-  const [releases, setReleases] = useState<{ environment: string; status: string; versionNo: number | null; frozenModelParams?: Record<string, unknown>; frozenToolPolicy?: Record<string, boolean>; frozenPermissionPolicy?: Record<string, unknown> }[]>([])
+  const [releases, setReleases] = useState<{ releaseId?: string; environment: string; status: string; versionNo: number | null; frozenModelParams?: Record<string, unknown>; frozenToolPolicy?: Record<string, boolean>; frozenPermissionPolicy?: Record<string, unknown> }[]>([])
   useEffect(() => {
     agentApi.versionsWithMembers(agentId).then(setVersions).catch(() => undefined)
     agentApi.releases(agentId).then(setReleases).catch(() => undefined)
   }, [agentId])
   return (
-    <div className="h-full space-y-4 overflow-y-auto p-6">
-      {versions.length === 0 && <div className="py-20 text-center text-xs" style={{ color: INK3 }}>暂无历史版本</div>}
-      {versions.map((v) => {
-        const rels = releases.filter((r) => r.status === "active" && r.versionNo === v.versionNo)
-        const thinkingParams = rels.map((r) => r.frozenModelParams ?? {}).find((p) => p.thinking_enable)
-        return (
-          <div key={v.versionId} className="rounded-lg border bg-surface p-4" style={{ borderColor: CARD }}>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold" style={{ color: INK }}>V{v.versionNo}</span>
-              {rels.map((r) => (
-                <span key={r.environment} className={`rounded px-1.5 py-0.5 text-[10px] ${r.environment === "prod" ? "bg-status-running-soft text-status-running" : "bg-status-success-soft text-status-success"}`}>
-                  {r.environment === "prod" ? "线上生效" : "沙箱生效"}
-                </span>
-              ))}
-              {(() => {
-                const pol = rels.map((r) => r.frozenToolPolicy ?? {}).find((p) => p && Object.values(p).some((v) => v === false))
-                const off = pol ? Object.entries(pol).filter(([, v]) => v === false).map(([k]) => k) : []
-                if (off.length === 0) return null
-                return (
-                  <span className="rounded bg-(--segment-bg) px-1.5 py-0.5 text-[10px]" style={{ color: INK2 }}>
-                    权限收紧：{off.join("、")}
+    <section className="space-y-2">
+      <h3 className="text-sm font-semibold" style={{ color: INK }}>版本</h3>
+      <div className="max-w-3xl">
+        {versions.length === 0 && (
+          <div className="rounded-lg border border-dashed p-8 text-center text-xs text-muted-foreground">暂无历史版本</div>
+        )}
+        {versions.map((v) => {
+          const rels = releases.filter((r) => r.status === "active" && r.versionNo === v.versionNo)
+          const rolled = releases.some((r) => r.status === "rolled_back" && r.versionNo === v.versionNo)
+          const thinkingParams = rels.map((r) => r.frozenModelParams ?? {}).find((p) => p.thinking_enable)
+          const pol = rels.map((r) => r.frozenToolPolicy ?? {}).find((p) => p && Object.values(p).some((x) => x === false))
+          const off = pol ? Object.entries(pol).filter(([, x]) => x === false).map(([k]) => k) : []
+          return (
+            <div key={v.versionId} className="flex min-h-[67px] items-center gap-3 border-b px-1 py-2 text-sm" style={{ borderColor: CARD }}>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium" style={{ color: INK }}>V{v.versionNo}</span>
+                  {rels.map((r) => (
+                    <span key={r.environment} className={`rounded px-1.5 py-0.5 text-[10px] ${r.environment === "prod" ? "bg-status-running-soft text-status-running" : "bg-status-success-soft text-status-success"}`}>
+                      {r.environment === "prod" ? "线上生效" : "沙箱生效"}
+                    </span>
+                  ))}
+                  {rels.length === 0 && (
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                      {rolled ? "已回滚" : "未发布"}
+                    </span>
+                  )}
+                  {off.length > 0 && (
+                    <span className="rounded bg-(--segment-bg) px-1.5 py-0.5 text-[10px]" style={{ color: INK2 }}>
+                      权限收紧：{off.join("、")}
+                    </span>
+                  )}
+                  {thinkingParams && (
+                    <span className="rounded bg-(--segment-bg) px-1.5 py-0.5 text-[10px]" style={{ color: INK2 }}>
+                      深度思考：开{typeof thinkingParams.thinking_budget === "number" ? `（预算 ${thinkingParams.thinking_budget}）` : ""}
+                    </span>
+                  )}
+                  <span className="ml-auto shrink-0 text-[11px]" style={{ color: INK3 }}>
+                    {new Date(v.createdAt).toLocaleString()}
                   </span>
-                )
-              })()}
-              {(() => {
-                const pp = rels.map((r) => r.frozenPermissionPolicy ?? {}).find((x) => x && (x.master === true || (x.deny_tools as unknown[] | undefined)?.length || (x.ask_tools as unknown[] | undefined)?.length)) as Record<string, unknown> | undefined
-                if (!pp) return null
-                const deny = (pp.deny_tools as unknown[] | undefined)?.length ?? 0
-                const ask = (pp.ask_tools as unknown[] | undefined)?.length ?? 0
-                return (
-                  <span className="rounded bg-(--segment-bg) px-1.5 py-0.5 text-[10px]" style={{ color: INK2 }}>
-                    权限快照：主开关{pp.master === true ? "开" : "关"} · {ask} 询问 · {deny} 不可
-                  </span>
-                )
-              })()}
-              {thinkingParams && (
-                <span className="rounded bg-(--segment-bg) px-1.5 py-0.5 text-[10px]" style={{ color: INK2 }}>
-                  深度思考：开{typeof thinkingParams.thinking_budget === "number" ? `（预算 ${thinkingParams.thinking_budget}）` : ""}
-                </span>
-              )}
-              <span className="flex-1" />
-              <span className="text-[11px]" style={{ color: INK3 }}>{new Date(v.createdAt).toLocaleString()}</span>
-            </div>
-            <div className="pt-1 font-mono text-[10px]" style={{ color: INK3 }}>sha256:{v.artifactHash.slice(0, 24)}…</div>
-            {v.note && <div className="pt-1 text-xs" style={{ color: INK2 }}>备注：{v.note}</div>}
-            {v.frozenMembers.length > 0 && (
-              <div className="pt-2">
-                <div className="text-[11px] font-medium" style={{ color: INK2 }}>成员冻结版本</div>
-                {v.frozenMembers.map((m, i) => (
-                  <div key={i} className="flex gap-2 pt-0.5 font-mono text-[10px]" style={{ color: INK3 }}>
-                    <span>{m.ref.slice(0, 8)}…</span>
-                    <span>{m.version ? `→ ${m.version.slice(0, 8)}…` : "（未发布，运行时回退草稿并留痕）"}</span>
-                  </div>
-                ))}
+                </div>
+                <div className="truncate text-xs" style={{ color: INK3 }}>
+                  <span className="font-mono">sha256:{v.artifactHash.slice(0, 16)}…</span>
+                  {v.note ? ` · ${v.note}` : ""}
+                  {v.frozenMembers.length > 0 && ` · 冻结成员 ${v.frozenMembers.length}`}
+                </div>
               </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
+              {onCompare && (
+                <Button variant="outline" size="sm" className="shrink-0"
+                  onClick={() => onCompare(v.versionNo)}>对比当前</Button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }

@@ -104,7 +104,9 @@ export function AgentSkillsSection({ agentId, readOnly }: { agentId: string; rea
             : market.map((s) => (
               <Row key={s.id} s={s} right={
                 installedIds.has(s.id)
-                  ? <span className="shrink-0 text-xs text-(--text-tertiary)">已安装</span>
+                  // 09-18 行规格对齐（用户指认）：已安装态用同规格禁用按钮，
+                  // 与"安装"按钮同高同位，行右控件垂直对齐
+                  ? <Button variant="outline" size="sm" className="shrink-0" disabled>已安装</Button>
                   : !readOnly && <Button variant="outline" size="sm" className="shrink-0" onClick={() => void install(s.id)}>安装</Button>
               } />
             )))

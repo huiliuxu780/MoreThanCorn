@@ -77,24 +77,38 @@ function Pane({ title, right, state }: {
   )
 }
 
-export function AgentCompareDialog({ agent, open, onClose }: {
+export function AgentCompareDialog({ agent, open, onClose, initialVersionNo }: {
   agent: AgentInfo
   open: boolean
   onClose: () => void
+  /** 09-18：版本行「对比当前」快捷入口按 versionNo 预置右栏 */
+  initialVersionNo?: number
 }) {
   const [mode, setMode] = useState<"version" | "model">("version")
   const [releases, setReleases] = useState<ReleaseOpt[]>([])
   const [models, setModels] = useState<{ modelKey: string }[]>([])
   const [rightVersion, setRightVersion] = useState("")
   const [rightModel, setRightModel] = useState("")
+  const [leftModel, setLeftModel] = useState("")
   const [input, setInput] = useState("")
   const [left, setLeft] = useState<PaneState>({ msgs: [], running: false })
   const [right, setRight] = useState<PaneState>({ msgs: [], running: false })
 
   useEffect(() => {
     if (!open) return
-    agentApi.releases(agent.id).then((rs) => setReleases(rs.filter((x) => x.status === "active"))).catch(() => undefined)
-    wfApi.models().then(setModels).catch(() => undefined)
+    // 09-18 修正：版本对比此前只列 active release——线性发布史下右栏恒空、
+    // 没法比 V3 vs V2；改为全量 release（含 rolled_back），状态进标签
+    agentApi.releases(agent.id).then((rs) => {
+      setReleases(rs)
+      if (initialVersionNo != null) {
+        const target = rs.find((r) => r.versionNo === initialVersionNo)
+        if (target?.releaseId) { setMode("version"); setRightVersion(target.releaseId) }
+      }
+    }).catch(() => undefined)
+    // 09-18 修正：模型对比列过停用模型（qwen-max）；只列 enabled
+    wfApi.models()
+      .then((ms) => setModels(ms.filter((m) => (m as { enabled?: boolean }).enabled !== false)))
+      .catch(() => undefined)
   }, [open, agent.id])
 
   const prodStable = releases.find((r) => r.environment === "prod" && !(r.canaryPercent > 0))
@@ -136,12 +150,21 @@ export function AgentCompareDialog({ agent, open, onClose }: {
     }
   }
 
+  // 09-18（用户指认）：模型对比必须两边都选模型——左栏不再钉死线上版本
+  const defaultModel = ((agent.config as { modelRef?: { modelId?: string } })?.modelRef?.modelId)
+    ?? models[0]?.modelKey ?? ""
+  const leftModelEff = leftModel || defaultModel
+
   const runBoth = async (text: string) => {
     if (!text.trim()) { toast.error("请输入问题"); return }
     if (!prodStable) { toast.error("无 active prod Release：请先发布"); return }
     if (mode === "version" && !rightVersion) { toast.error("请选择对比版本"); return }
-    if (mode === "model" && !rightModel) { toast.error("请选择对比模型"); return }
-    void runPane(setLeft, undefined, text)
+    if (mode === "model" && (!leftModelEff || !rightModel)) {
+      toast.error("模型对比需左右两栏各选一个模型"); return
+    }
+    void runPane(setLeft, mode === "model"
+      ? { modelOverride: { model: leftModelEff } }
+      : undefined, text)
     void runPane(setRight, mode === "version"
       ? { releaseId: rightVersion }
       : { modelOverride: { model: rightModel } }, text)
@@ -167,17 +190,32 @@ export function AgentCompareDialog({ agent, open, onClose }: {
           </div>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 gap-4 p-4">
-          <Pane title={`当前版本 V${prodStable?.versionNo ?? "—"}`}
-            right={<Badge variant="outline">线上</Badge>}
+          <Pane
+            title={mode === "model" ? `左栏模型 · ${leftModelEff || "—"}` : `当前版本 V${prodStable?.versionNo ?? "—"}`}
+            right={mode === "model" ? (
+              <Select value={leftModelEff || undefined} onValueChange={setLeftModel}>
+                <SelectTrigger size="sm" className="w-36"><SelectValue placeholder="选择模型" /></SelectTrigger>
+                <SelectContent>
+                  {models.map((m, i) => (
+                    <SelectItem key={`${m.modelKey}-${i}`} value={m.modelKey}>{m.modelKey}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Badge variant="outline">线上</Badge>
+            )}
             state={left} />
-          <Pane title="对比版本"
+          <Pane title={mode === "model" ? `右栏模型 · ${rightModel || "—"}` : "对比版本"}
             right={mode === "version" ? (
               <Select value={rightVersion || undefined} onValueChange={setRightVersion}>
                 <SelectTrigger size="sm" className="w-36"><SelectValue placeholder="选择版本" /></SelectTrigger>
                 <SelectContent>
                   {releases.filter((r) => r.releaseId !== prodStable?.releaseId).map((r) => (
                     <SelectItem key={r.releaseId} value={r.releaseId}>
-                      {r.environment === "prod" ? "线上灰度" : "沙箱"} V{r.versionNo}
+                      {r.status === "active"
+                        ? (r.environment === "prod" ? "线上灰度" : "沙箱生效")
+                        : r.status === "rolled_back" ? "已回滚" : r.status}
+                      {" "}V{r.versionNo}
                     </SelectItem>
                   ))}
                 </SelectContent>

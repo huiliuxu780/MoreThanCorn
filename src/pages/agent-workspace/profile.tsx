@@ -29,7 +29,6 @@ import { AVATARS, avatarFor } from "@/lib/agent-avatar"
 import { cn } from "@/lib/utils"
 import { agentApi, wfApi, type AgentInfo } from "@/services/wf-api"
 
-export interface MountRow { kind: string; name?: string; ref?: string; status?: string; valid?: boolean; version?: string | null }
 
 interface ModuleMeta {
   key: string; version: string; displayName: string; providers: string[]; logicalTools: string[]
@@ -57,7 +56,6 @@ export function AgentProfileSection({ agent, archived, onSaved }: {
 
   const [meta, setMeta] = React.useState<ModuleMeta | null>(null)
   const [models, setModels] = React.useState<{ modelKey: string; capabilities?: string[] }[]>([])
-  const [mounts, setMounts] = React.useState<MountRow[]>([])
   const [busy, setBusy] = React.useState(false)
 
   // 修改对话框（名称/头像/核心能力）
@@ -80,9 +78,6 @@ export function AgentProfileSection({ agent, archived, onSaved }: {
 
   const [delOpen, setDelOpen] = React.useState(false)
 
-  React.useEffect(() => {
-    agentApi.mountsHealth(agent.id).then((r) => setMounts((r.items as MountRow[]) ?? [])).catch(() => setMounts([]))
-  }, [agent.id])
   React.useEffect(() => {
     if (agent.moduleKey) {
       agentApi.modules().then((r) => setMeta(r.items.find((m) => m.key === agent.moduleKey) ?? null)).catch(() => undefined)
@@ -328,22 +323,9 @@ export function AgentProfileSection({ agent, archived, onSaved }: {
         </section>
       )}
 
-      {/* 能力挂载（平台扩展：真实冻结清单） */}
-      <section className="rounded-lg border bg-surface p-4">
-        <h3 className="text-sm font-semibold">能力挂载（真实冻结清单）</h3>
-        {mounts.length === 0 ? (
-          <p className="mt-1 text-xs text-muted-foreground">暂无挂载（Skill / 连接器 / 知识库 / 工具）。</p>
-        ) : (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {mounts.map((m, i) => (
-              <Badge key={i} variant={m.valid === false ? "outline" : "secondary"}>
-                {m.kind}·{String(m.name ?? m.ref ?? "").slice(0, 20)}
-                {m.valid === false ? "（无效）" : ""}
-              </Badge>
-            ))}
-          </div>
-        )}
-      </section>
+      {/* 09-18 IA 单一归属（用户指认）：能力挂载整块撤出档案页——
+          Skill→Skill 子页、工具→工具子页、Workflow/知识库→各自子页、
+          连接器→连接器子页；档案页不再重复展示挂载清单 */}
 
       {/* 角色管理（原站=删除 Waker；我方=归档，历史只读保留） */}
       {!archived && (

@@ -169,7 +169,7 @@ export const wfApi = {
   migrate: (wid: string) => req<{ migrated: boolean; draftRevision: number }>(`/api/workflows/${wid}/migrate`, { method: "POST" }),
   resume: (rid: string, payload: Record<string, unknown>) =>
     req<{ status: string; nodeId: string }>(`/api/runs/${rid}/resume`, { method: "POST", body: JSON.stringify(payload) }),
-  models: () => req<{ items: { modelKey: string; capabilities: string[] }[] }>("/api/registry/models").then((r) => r.items ?? []),
+  models: () => req<{ items: { modelKey: string; capabilities: string[]; enabled?: boolean }[] }>("/api/registry/models").then((r) => r.items ?? []),
 }
 
 export const wfEnabled = () => import.meta.env.VITE_WF_API === "1"
@@ -580,6 +580,10 @@ export const agentApi = {
     req<(AgentVersionInfo & { frozenMembers: { ref: string; version: string | null }[] })[]>(`/api/agents/${id}/versions`),
   evalSamples: (id: string) =>
     req<{ items: { id: string; name: string; input: Record<string, unknown>; expected?: unknown }[] }>(`/api/agents/${id}/eval-samples`),
+  addEvalSample: (id: string, body: { name: string; input: Record<string, unknown>; expected?: { text: string } | null }) =>
+    req<{ id: string; name: string }>(`/api/agents/${id}/eval-samples`, {
+      method: "POST", body: JSON.stringify(body),
+    }),
   /* R8-UI-4：Golden Set 主动评测（真跑指定 Provider，逐 criterion 对比+违禁检查） */
   goldenEval: (id: string, providerId: string, limit = 3) =>
     req<{

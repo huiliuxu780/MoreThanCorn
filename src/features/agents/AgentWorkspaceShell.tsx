@@ -8,7 +8,7 @@ import type * as React from "react"
 import { useNavigate } from "react-router-dom"
 import {
   ArrowLeft, BookMarked, ClipboardList, Copy, Database, FileText, GitBranch, Home,
-  MessageCircleMore, MoreHorizontal, Plug, ShieldAlert, ShieldCheck, Sparkles,
+  MessageCircleMore, MoreHorizontal, Plug, ShieldAlert, ShieldCheck, Sparkles, Wrench,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -18,7 +18,8 @@ import { avatarFor } from "@/lib/agent-avatar"
 import type { AgentInfo } from "@/services/wf-api"
 
 export type WorkspaceSection =
-  | "home" | "board" | "autonomous" | "memory" | "skills" | "connectors" | "workflows" | "knowledge"
+  | "home" | "board" | "autonomous" | "memory" | "skills" | "connectors" | "tools"
+  | "workflows" | "knowledge"
   | "config" | "permissions" | "governance" | "profile"
 
 /** 09-16 配置页退役（原站实测 /wakers/<id>/settings=「Waker 档案」单页，无独立配置）：
@@ -26,17 +27,32 @@ export type WorkspaceSection =
  *  的直达 URL 保留，module/custom 访问 /config 一律重定向到档案页。 */
 const NAV: { group?: string; key: WorkspaceSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: "home", label: "概览", icon: Home },
+  // 09-18 对齐目标产品（19830 实测）：组内 item 间距 4px、组边界 12px+标签；
+  // 此前每 section 自成一组 → 全列 12px 等距，与目标组内 4px 不符
   { group: "工作", key: "board", label: "任务看板", icon: ClipboardList },
-  { key: "autonomous", label: "自主工作", icon: Sparkles },
+  { group: "工作", key: "autonomous", label: "自主工作", icon: Sparkles },
   { group: "记忆与学习", key: "memory", label: "记忆", icon: BookMarked },
   { group: "能力与资源", key: "skills", label: "Skill", icon: Sparkles },
-  { key: "connectors", label: "连接器", icon: Plug },
-  { key: "workflows", label: "AgentFlow", icon: GitBranch },
-  { key: "knowledge", label: "知识库", icon: Database },
+  { group: "能力与资源", key: "connectors", label: "连接器", icon: Plug },
+  // 09-18 IA 单一归属：工具挂载从档案页「能力挂载」块迁到独立子页
+  { group: "能力与资源", key: "tools", label: "工具", icon: Wrench },
+  { group: "能力与资源", key: "workflows", label: "AgentFlow", icon: GitBranch },
+  { group: "能力与资源", key: "knowledge", label: "知识库", icon: Database },
   { group: "权限与管理", key: "permissions", label: "安全与权限", icon: ShieldAlert },
-  { key: "governance", label: "发布治理", icon: ShieldCheck },
-  { key: "profile", label: "Agent 档案", icon: FileText },
+  { group: "权限与管理", key: "governance", label: "发布治理", icon: ShieldCheck },
+  { group: "权限与管理", key: "profile", label: "Agent 档案", icon: FileText },
 ]
+
+/** 连续同 group 归并为一个视觉组（组内 gap-1，组间 gap-3） */
+const NAV_GROUPS: { group?: string; items: typeof NAV }[] = NAV.reduce(
+  (acc: { group?: string; items: typeof NAV }[], item) => {
+    const last = acc[acc.length - 1]
+    if (last && last.group === item.group) last.items.push(item)
+    else acc.push({ group: item.group, items: [item] })
+    return acc
+  },
+  [],
+)
 
 const SECTION_LABEL: Record<WorkspaceSection, string> = {
   ...Object.fromEntries(NAV.map((n) => [n.key, n.label])),
@@ -72,21 +88,24 @@ export function AgentWorkspaceShell({ agent, section, versionChip, envChips, arc
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
           <div className="flex flex-col gap-3">
-            {NAV.map((item) => (
-              <div key={item.key} className="flex flex-col gap-1">
-                {item.group ? (
-                  <div className="px-2 py-1 text-[11px] leading-[13px] text-(--text-tertiary)">{item.group}</div>
+            {NAV_GROUPS.map((g, gi) => (
+              <div key={g.group ?? `solo-${gi}`} className="flex flex-col gap-1">
+                {g.group ? (
+                  <div className="px-2 py-1 text-[11px] leading-[13px] text-(--text-tertiary)">{g.group}</div>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={() => navigate(`/agents/${agent.id}/${item.key}`)}
-                  className={`flex h-8 w-full items-center gap-2 rounded px-3 text-[13px] leading-5 transition-colors ${
-                    section === item.key
-                      ? "bg-(--detail-menu-active) font-medium text-[#FAFAF8]"
-                      : "text-muted-foreground hover:bg-(--fill-tertiary) hover:text-foreground"}`}
-                >
-                  <item.icon className="size-4" /> {item.label}
-                </button>
+                {g.items.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => navigate(`/agents/${agent.id}/${item.key}`)}
+                    className={`flex h-8 w-full items-center gap-2 rounded px-3 text-[13px] leading-5 transition-colors ${
+                      section === item.key
+                        ? "bg-(--detail-menu-active) font-medium text-[#FAFAF8]"
+                        : "text-muted-foreground hover:bg-(--fill-tertiary) hover:text-foreground"}`}
+                  >
+                    <item.icon className="size-4" /> {item.label}
+                  </button>
+                ))}
               </div>
             ))}
           </div>
